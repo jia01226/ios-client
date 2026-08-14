@@ -1,0 +1,12 @@
+.DS_Store
+.build/
+DerivedData/
+build/
+*.xcarchive
+*.ipa
+*.dSYM.zip
+*.mobileprovision
+*.p12
+KeApp.xcodeproj/
+KeApp/Info.plist
+

@@ -1,0 +1,42 @@
+name: KeApp
+
+options:
+  createIntermediateGroups: true
+  groupSortPosition: top
+  deploymentTarget:
+    iOS: "17.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.1.0"
+
+targets:
+  KeApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: KeApp
+    info:
+      path: KeApp/Info.plist
+      properties:
+        CFBundleDisplayName: 柯
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSRequiresIPhoneOS: true
+        NSFaceIDUsageDescription: 用于打开只有你能进入的私密空间
+        UIApplicationSupportsIndirectInputEvents: true
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: love.jiagude.ke
+        PRODUCT_NAME: 柯
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTS_MACCATALYST: false
+        CODE_SIGN_STYLE: Automatic
+    scheme:
+      gatherCoverageData: false
+
