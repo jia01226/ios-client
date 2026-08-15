@@ -9,8 +9,13 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    CURRENT_PROJECT_VERSION: "1"
+    CURRENT_PROJECT_VERSION: "2"
     MARKETING_VERSION: "0.1.0"
+
+packages:
+  EventSource:
+    url: https://github.com/Recouse/EventSource.git
+    exactVersion: 0.1.8
 
 targets:
   KeApp:
@@ -22,6 +27,7 @@ targets:
       path: KeApp/Info.plist
       properties:
         CFBundleDisplayName: 柯
+        APIBaseURL: https://jiagude.love
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSRequiresIPhoneOS: true
@@ -38,5 +44,7 @@ targets:
         SUPPORTS_MACCATALYST: false
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: KeApp/KeApp.entitlements
+    dependencies:
+      - package: EventSource
     scheme:
       gatherCoverageData: false

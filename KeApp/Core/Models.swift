@@ -7,13 +7,15 @@ import Foundation
 
 // MARK: - 聊天
 
-struct Message: Identifiable, Hashable, Codable {
-    enum Sender: String, Codable {
+struct Message: Identifiable, Hashable, Codable, Sendable {
+    enum Sender: String, Codable, Sendable {
         case ke   // 柯
         case me   // 佳佳
     }
 
     let id: String
+    var serverID: Int? = nil
+    var clientID: String? = nil
     let sender: Sender
     var text: String
     let time: Date
@@ -23,6 +25,24 @@ struct Message: Identifiable, Hashable, Codable {
 
     /// 流式回复时，这条还没写完
     var isStreaming: Bool = false
+
+    var deliveryState: DeliveryState = .sent
+
+    enum DeliveryState: String, Codable, Sendable {
+        case sent
+        case sending
+        case waiting
+        case failed
+
+        var label: String? {
+            switch self {
+            case .sent: return nil
+            case .sending: return "发送中"
+            case .waiting: return "等待接回"
+            case .failed: return "没有发稳"
+            }
+        }
+    }
 }
 
 /// 柯回复时附带的状态信号。
