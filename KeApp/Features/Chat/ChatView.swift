@@ -15,19 +15,24 @@ struct ChatView: View {
     @State private var importingFile = false
 
     var body: some View {
-        Group {
-            switch vm.phase {
-            case .checking:
-                checkingView
-            case .needsLogin:
-                LoginView(vm: vm)
-            case .ready:
-                chatContent
-            case let .unavailable(message):
-                unavailableView(message)
+        ZStack {
+            // TabView 在真机上会提供自己的不透明内容层；把背景放进聊天页本身，
+            // 才能保证山茶花晚霞不会被系统白底挡住。
+            AppAtmosphere()
+
+            Group {
+                switch vm.phase {
+                case .checking:
+                    checkingView
+                case .needsLogin:
+                    LoginView(vm: vm)
+                case .ready:
+                    chatContent
+                case let .unavailable(message):
+                    unavailableView(message)
+                }
             }
         }
-        .background(Color.clear)
         .animation(.easeInOut(duration: 0.6), value: theme.isBedroom)
         .task { await vm.bootstrap() }
         .onChange(of: scenePhase) { _, phase in
@@ -290,16 +295,16 @@ struct ChatView: View {
             settingsLink("模型选择", icon: "sparkles")
 
             settingSlider(
-                title: "聊天字体",
-                value: $theme.chatFontSize,
-                range: 14...24,
-                valueText: "\(Int(theme.chatFontSize))"
-            )
-            settingSlider(
                 title: "气泡透明度",
                 value: $theme.bubbleOpacity,
-                range: 0.06...0.28,
-                valueText: "\(Int(theme.bubbleOpacity * 100))%"
+                range: 0.005...0.08,
+                valueText: "\(Int((theme.bubbleOpacity * 100).rounded()))%"
+            )
+            settingSlider(
+                title: "玻璃模糊",
+                value: $theme.glassBlur,
+                range: 0...theme.glass.maximumBlurValue,
+                valueText: "\(Int(theme.glassBlur.rounded()))"
             )
             settingSlider(
                 title: "气泡圆角",
@@ -307,8 +312,14 @@ struct ChatView: View {
                 range: 12...34,
                 valueText: "\(Int(theme.bubbleCornerRadius))"
             )
+            settingSlider(
+                title: "聊天字体",
+                value: $theme.chatFontSize,
+                range: 13...22,
+                valueText: "\(Int(theme.chatFontSize))"
+            )
 
-            Text("字体、透明度和圆角会即时预览，并保存在这台手机上。")
+            Text("透明度、模糊、圆角和字体都会即时预览，并保存在这台手机上。")
                 .font(theme.font.caption)
                 .foregroundStyle(theme.color.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -518,7 +529,7 @@ private struct MessageRow: View {
     @State private var copied = false
 
     var body: some View {
-        HStack {
+        HStack(spacing: 0) {
             if message.sender == .me { Spacer(minLength: theme.metric.messageSideReserve) }
 
             VStack(
@@ -573,9 +584,19 @@ private struct MessageRow: View {
                 .foregroundStyle(theme.color.textSecondary)
                 .padding(.horizontal, theme.metric.gapXS)
             }
+            .frame(
+                maxWidth: usesWideKeLayout ? .infinity : nil,
+                alignment: message.sender == .ke ? .leading : .trailing
+            )
 
-            if message.sender == .ke { Spacer(minLength: theme.metric.messageSideReserve) }
+            if message.sender == .ke && !usesWideKeLayout {
+                Spacer(minLength: theme.metric.messageSideReserve)
+            }
         }
+        .frame(
+            maxWidth: .infinity,
+            alignment: message.sender == .ke ? .leading : .trailing
+        )
     }
 
     private func thoughtCard(_ summary: String) -> some View {
@@ -635,12 +656,26 @@ private struct MessageRow: View {
             .lineSpacing(CGFloat(max(3, theme.chatFontSize * 0.28)))
             .padding(.horizontal, theme.metric.bubbleHorizontalPadding)
             .padding(.vertical, theme.metric.bubbleVerticalPadding)
+            .frame(
+                maxWidth: usesWideKeLayout ? .infinity : theme.metric.bubbleMaxWidth,
+                alignment: message.sender == .ke ? .leading : .trailing
+            )
             .background(CrystalSurface(
                 cornerRadius: CGFloat(theme.bubbleCornerRadius),
-                strength: message.sender == .ke ? 0.92 : 1.08
+                strength: message.sender == .ke ? 0.92 : 1.08,
+                usesChatControls: true
             ))
             .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: theme.metric.bubbleMaxWidth, alignment: message.sender == .ke ? .leading : .trailing)
+    }
+
+    private var usesWideKeLayout: Bool {
+        guard message.sender == .ke else { return false }
+        let visibleLineCount = message.text.split(
+            separator: "\n",
+            omittingEmptySubsequences: false
+        ).count
+        return message.text.count >= theme.metric.wideMessageCharacterThreshold
+            || visibleLineCount >= theme.metric.wideMessageLineThreshold
     }
 }
 

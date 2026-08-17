@@ -71,19 +71,19 @@ extension Palette {
         cardElevated:  Color(hex: 0xFDF6EC),
         separator:     Color(hex: 0xEDE3D6),
 
-        textPrimary:   Color(hex: 0x2B2620),
-        textSecondary: Color(hex: 0x8A7E70),
+        textPrimary:   Color(hex: 0x4C4056),
+        textSecondary: Color(hex: 0x766B82),
         textOnAccent:  Color(hex: 0xFFFFFF),
 
         accent:        Color(hex: 0xC79A4B),   // 金
         accentSoft:    Color(hex: 0xE3CDA1),
 
         bubbleKe:      Color(hex: 0xFFFFFF),
-        bubbleKeText:  Color(hex: 0x2B2620),
+        bubbleKeText:  Color(hex: 0x4C4056),
         bubbleMe:      Color(hex: 0xF3E4D2),
-        bubbleMeText:  Color(hex: 0x2B2620),
+        bubbleMeText:  Color(hex: 0x4C4056),
 
-        glassTint:       Color.white.opacity(0.10),
+        glassTint:       Color.white,
         glassTintStrong: Color.white.opacity(0.17),
         glassEdge:       Color.white.opacity(0.72),
         glassInnerLight: Color.white.opacity(0.46),
@@ -112,7 +112,7 @@ extension Palette {
         bubbleMe:      Color(hex: 0x3A2E52),
         bubbleMeText:  Color(hex: 0xF4F1EA),
 
-        glassTint:       Color.white.opacity(0.055),
+        glassTint:       Color.white,
         glassTintStrong: Color.white.opacity(0.10),
         glassEdge:       Color.white.opacity(0.40),
         glassInnerLight: Color.white.opacity(0.22),
@@ -152,6 +152,8 @@ struct Metrics {
     let tabMinimumHeight: CGFloat = 54
     let messageSideReserve: CGFloat = 44
     let bubbleMaxWidth: CGFloat = 318
+    let wideMessageCharacterThreshold: Int = 72
+    let wideMessageLineThreshold: Int = 3
     let bubbleHorizontalPadding: CGFloat = 16
     let bubbleVerticalPadding: CGFloat = 12
     let glassStrokeWidth: CGFloat = 0.8
@@ -198,8 +200,9 @@ struct Typo {
 }
 
 struct GlassTokens {
-    let materialBaseOpacity: Double = 0.58
-    let materialStrengthOpacity: Double = 0.12
+    let maximumBlurValue: Double = 20
+    let fixedSurfaceBlurIntensity: Double = 0.30
+    let fixedSurfaceTintOpacity: Double = 0.025
     let accentEdgeOpacity: Double = 0.24
     let scrimOpacity: Double = 0.08
     let sendFillOpacity: Double = 0.72
@@ -244,18 +247,32 @@ final class Theme: ObservableObject {
         didSet { UserDefaults.standard.set(bubbleOpacity, forKey: "app.bubbleOpacity") }
     }
 
+    @Published var glassBlur: Double {
+        didSet { UserDefaults.standard.set(glassBlur, forKey: "app.glassBlur") }
+    }
+
     @Published var bubbleCornerRadius: Double {
         didSet { UserDefaults.standard.set(bubbleCornerRadius, forKey: "app.bubbleCornerRadius") }
     }
 
     private init() {
         let defaults = UserDefaults.standard
-        let savedFont = defaults.double(forKey: "app.chatFontSize")
-        let savedOpacity = defaults.double(forKey: "app.bubbleOpacity")
-        let savedRadius = defaults.double(forKey: "app.bubbleCornerRadius")
-        chatFontSize = savedFont == 0 ? 16 : min(max(savedFont, 14), 24)
-        bubbleOpacity = savedOpacity == 0 ? 0.12 : min(max(savedOpacity, 0.06), 0.28)
-        bubbleCornerRadius = savedRadius == 0 ? 22 : min(max(savedRadius, 12), 34)
+        let savedFont = defaults.object(forKey: "app.chatFontSize") as? Double
+        let savedOpacity = defaults.object(forKey: "app.bubbleOpacity") as? Double
+        let savedBlur = defaults.object(forKey: "app.glassBlur") as? Double
+        let savedRadius = defaults.object(forKey: "app.bubbleCornerRadius") as? Double
+
+        chatFontSize = min(max(savedFont ?? 15, 13), 22)
+
+        // Build 5 使用 0.06...0.28；迁移为预览确认过的 0.5%...8%。
+        let migratedOpacity = (savedOpacity ?? 0.012) > 0.08
+            ? (savedOpacity ?? 0.12) / 10
+            : (savedOpacity ?? 0.012)
+        bubbleOpacity = min(max(migratedOpacity, 0.005), 0.08)
+        glassBlur = min(max(savedBlur ?? 9, 0), 20)
+        bubbleCornerRadius = min(max(savedRadius ?? 20, 12), 34)
+
+        defaults.set(bubbleOpacity, forKey: "app.bubbleOpacity")
     }
 
     var font: Typo { Typo(chatSize: CGFloat(chatFontSize)) }
