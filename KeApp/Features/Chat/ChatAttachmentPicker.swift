@@ -18,12 +18,15 @@ final class RecentPhotosStore: ObservableObject {
     private var didLoad = false
 
     func loadIfNeeded() async {
-        guard !didLoad else { return }
+        let current = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        let authorizationBecameAvailable = permissionDenied
+            && (current == .authorized || current == .limited)
+        guard !didLoad || authorizationBecameAvailable else { return }
         didLoad = true
         isLoading = true
+        permissionDenied = false
         defer { isLoading = false }
 
-        let current = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         let status: PHAuthorizationStatus
         if current == .notDetermined {
             status = await withCheckedContinuation { continuation in

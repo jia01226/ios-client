@@ -303,7 +303,7 @@ struct ChatView: View {
                             Button {
                                 Task {
                                     guard let value = await recentPhotos.imageData(for: photo.id) else { return }
-                                    await vm.addAttachment(
+                                    await vm.addPhotoAttachment(
                                         data: value.data,
                                         fileName: value.fileName,
                                         mimeType: value.mimeType
@@ -344,7 +344,7 @@ struct ChatView: View {
                     guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
                     let type = item.supportedContentTypes.first ?? .jpeg
                     let ext = type.preferredFilenameExtension ?? "jpg"
-                    await vm.addAttachment(
+                    await vm.addPhotoAttachment(
                         data: data,
                         fileName: "照片-\(UUID().uuidString.prefix(8)).\(ext)",
                         mimeType: type.preferredMIMEType ?? "image/jpeg"
@@ -1228,6 +1228,7 @@ final class ChatViewModel: ObservableObject {
     private var didBootstrap = false
     private var activeJobID: String?
     private var recoveringJobID: String?
+    private var activeStreamClientID: String?
 
     func bootstrap() async {
         guard !didBootstrap else { return }
@@ -1263,6 +1264,8 @@ final class ChatViewModel: ObservableObject {
 
     func resumeFromForeground() async {
         guard phase == .ready else { return }
+        // 原 SSE 仍是这条回复的唯一所有者时，不并行启动 job polling。
+        guard activeStreamClientID == nil else { return }
         await recoverActiveJobsIfNeeded()
         if recoveringJobID == nil {
             await refreshHistory(showFailure: false)
@@ -1282,6 +1285,12 @@ final class ChatViewModel: ObservableObject {
         let clientID = "ios-\(UUID().uuidString.lowercased())"
         let userLocalID = "user-\(clientID)"
         let assistantLocalID = "assistant-\(clientID)"
+        activeStreamClientID = clientID
+        defer {
+            if activeStreamClientID == clientID {
+                activeStreamClientID = nil
+            }
+        }
 
         messages.append(
             Message(
@@ -1338,6 +1347,25 @@ final class ChatViewModel: ObservableObject {
         } catch {
             uploadError = error.localizedDescription
         }
+    }
+
+    func addPhotoAttachment(data: Data, fileName: String, mimeType: String) async {
+        let allowed = ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp"]
+        let ext = URL(fileURLWithPath: fileName).pathExtension.lowercased()
+        if allowed.contains(ext) {
+            await addAttachment(data: data, fileName: fileName, mimeType: mimeType)
+            return
+        }
+        guard let image = UIImage(data: data),
+              let jpeg = image.jpegData(compressionQuality: 0.88) else {
+            uploadError = "这张照片的格式暂时不能发送。"
+            return
+        }
+        await addAttachment(
+            data: jpeg,
+            fileName: "照片-\(UUID().uuidString.prefix(8)).jpg",
+            mimeType: "image/jpeg"
+        )
     }
 
     func addFile(url: URL) async {
@@ -1525,7 +1553,8 @@ final class ChatViewModel: ObservableObject {
         guard let sessionID else { return }
         do {
             let remote = try await api.fetchMessages(sessionID: sessionID)
-            let merged = preserveLocalThinking(in: remote)
+            let withThinking = preserveLocalThinking(in: remote)
+            let merged = mergeRemoteHistory(withThinking)
             messages = merged
             searchCorpus = mergeMessages(searchCorpus, with: merged)
             isShowingCachedMessages = false
@@ -1673,7 +1702,9 @@ final class ChatViewModel: ObservableObject {
     }
 
     private func recoverActiveJobsIfNeeded() async {
-        guard let sessionID, recoveringJobID == nil else { return }
+        guard let sessionID,
+              recoveringJobID == nil,
+              activeStreamClientID == nil else { return }
         do {
             let jobs = try await api.activeJobs(sessionID: sessionID)
             guard let job = jobs.first else {
@@ -1750,6 +1781,28 @@ final class ChatViewModel: ObservableObject {
             var preserved = message
             preserved.thoughtSummary = summary
             return preserved
+        }
+    }
+
+    private func mergeRemoteHistory(_ remote: [Message]) -> [Message] {
+        let remoteServerIDs = Set(remote.compactMap(\.serverID))
+        var merged = remote
+        for local in messages {
+            if let serverID = local.serverID, remoteServerIDs.contains(serverID) {
+                continue
+            }
+            let belongsToActiveStream = local.clientID != nil
+                && local.clientID == activeStreamClientID
+            let needsPreserving = local.isStreaming
+                || local.deliveryState != .sent
+                || belongsToActiveStream
+            if needsPreserving && !merged.contains(where: { $0.id == local.id }) {
+                merged.append(local)
+            }
+        }
+        return merged.sorted {
+            if $0.time == $1.time { return ($0.serverID ?? 0) < ($1.serverID ?? 0) }
+            return $0.time < $1.time
         }
     }
 
