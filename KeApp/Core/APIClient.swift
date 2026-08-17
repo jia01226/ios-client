@@ -51,19 +51,43 @@ private struct LoginResponse: Decodable {
     let ok: Bool
 }
 
-private struct ActiveSessionResponse: Decodable {
+struct ActiveChatSession: Decodable, Sendable {
     let id: Int
+    let model: String?
+}
+
+struct ChatModelOption: Decodable, Identifiable, Hashable, Sendable {
+    let id: String
+    let provider: String?
+    let label: String?
+    let description: String?
+    let group: String?
+
+    var displayName: String {
+        let value = label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return value.isEmpty ? id : value
+    }
+}
+
+struct ChatModelCatalog: Decodable, Sendable {
+    let models: [String]
+    let `default`: String
+    let options: [ChatModelOption]
 }
 
 private struct ChatRequestBody: Encodable {
     let text: String
     let sessionID: Int
     let clientMessageID: String
+    let model: String?
+    let attachments: [ChatAttachment]
 
     enum CodingKeys: String, CodingKey {
         case text
         case sessionID = "session_id"
         case clientMessageID = "client_msg_id"
+        case model
+        case attachments
     }
 }
 
@@ -73,11 +97,13 @@ private struct RemoteMessage: Decodable {
     let content: String
     let createdAt: String
     let thoughtNote: String?
+    let attachments: [ChatAttachment]?
 
     enum CodingKeys: String, CodingKey {
         case id, author, content
         case createdAt = "created_at"
         case thoughtNote = "thought_note"
+        case attachments
     }
 
     func appMessage() -> Message {
@@ -88,6 +114,7 @@ private struct RemoteMessage: Decodable {
             text: content,
             time: ServerDateParser.parse(createdAt),
             thoughtSummary: thoughtNote?.nilIfBlank,
+            attachments: attachments,
             isStreaming: false,
             deliveryState: .sent
         )
@@ -154,27 +181,108 @@ actor APIClient {
         }
     }
 
-    func activeSessionID() async throws -> Int {
+    func activeSession() async throws -> ActiveChatSession {
         let request = try makeRequest(path: "/api/sessions/active")
         let (data, _) = try await perform(request)
         do {
-            return try decoder.decode(ActiveSessionResponse.self, from: data).id
+            return try decoder.decode(ActiveChatSession.self, from: data)
         } catch {
             throw APIError.decoding(error)
         }
     }
 
-    func fetchMessages(sessionID: Int, limit: Int = 100) async throws -> [Message] {
+    func activeSessionID() async throws -> Int {
+        try await activeSession().id
+    }
+
+    func fetchModels() async throws -> ChatModelCatalog {
+        let request = try makeRequest(path: "/api/models")
+        let (data, _) = try await perform(request)
+        do {
+            return try decoder.decode(ChatModelCatalog.self, from: data)
+        } catch {
+            throw APIError.decoding(error)
+        }
+    }
+
+    func selectModel(sessionID: Int, model: String) async throws -> ActiveChatSession {
+        var request = try makeRequest(path: "/api/sessions/active", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "id": sessionID,
+            "model": model,
+        ])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, _) = try await perform(request)
+        do {
+            return try decoder.decode(ActiveChatSession.self, from: data)
+        } catch {
+            throw APIError.decoding(error)
+        }
+    }
+
+    func fetchMessages(
+        sessionID: Int,
+        limit: Int = 100,
+        beforeID: Int? = nil,
+        aroundID: Int? = nil
+    ) async throws -> [Message] {
+        var queryItems = [
+            URLQueryItem(name: "session_id", value: String(sessionID)),
+            URLQueryItem(name: "limit", value: String(limit)),
+        ]
+        if let beforeID {
+            queryItems.append(URLQueryItem(name: "before_id", value: String(beforeID)))
+        }
+        if let aroundID {
+            queryItems.append(URLQueryItem(name: "around_id", value: String(aroundID)))
+        }
         let request = try makeRequest(
             path: "/api/messages",
-            queryItems: [
-                URLQueryItem(name: "session_id", value: String(sessionID)),
-                URLQueryItem(name: "limit", value: String(limit))
-            ]
+            queryItems: queryItems
         )
         let (data, _) = try await perform(request)
         do {
             return try decoder.decode([RemoteMessage].self, from: data).map { $0.appMessage() }
+        } catch {
+            throw APIError.decoding(error)
+        }
+    }
+
+    func deleteMessage(id: Int) async throws {
+        var request = try makeRequest(path: "/api/messages/delete", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["id": id])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        _ = try await perform(request)
+    }
+
+    func uploadAttachment(
+        data: Data,
+        fileName: String,
+        mimeType: String
+    ) async throws -> ChatAttachment {
+        let boundary = "KeApp-\(UUID().uuidString)"
+        var request = try makeRequest(path: "/api/upload", method: "POST")
+        request.setValue(
+            "multipart/form-data; boundary=\(boundary)",
+            forHTTPHeaderField: "Content-Type"
+        )
+
+        var body = Data()
+        body.appendMultipart("--\(boundary)\r\n")
+        body.appendMultipart("Content-Disposition: form-data; name=\"original_name\"\r\n\r\n")
+        body.appendMultipart("\(fileName.multipartEscaped)\r\n")
+        body.appendMultipart("--\(boundary)\r\n")
+        body.appendMultipart(
+            "Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName.multipartEscaped)\"\r\n"
+        )
+        body.appendMultipart("Content-Type: \(mimeType)\r\n\r\n")
+        body.append(data)
+        body.appendMultipart("\r\n--\(boundary)--\r\n")
+        request.httpBody = body
+
+        let (responseData, _) = try await perform(request)
+        do {
+            return try decoder.decode(UploadResponse.self, from: responseData).attachment
         } catch {
             throw APIError.decoding(error)
         }
@@ -205,14 +313,18 @@ actor APIClient {
     func streamMessage(
         text: String,
         sessionID: Int,
-        clientMessageID: String
+        clientMessageID: String,
+        model: String?,
+        attachments: [ChatAttachment]
     ) throws -> AsyncThrowingStream<ChatStreamEvent, Error> {
         var request = try makeRequest(path: "/api/chat", method: "POST", includeCookieHeader: true)
         request.httpBody = try JSONEncoder().encode(
             ChatRequestBody(
                 text: text,
                 sessionID: sessionID,
-                clientMessageID: clientMessageID
+                clientMessageID: clientMessageID,
+                model: model,
+                attachments: attachments
             )
         )
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -372,5 +484,30 @@ actor APIClient {
             return ""
         }
         return message
+    }
+}
+
+private struct UploadResponse: Decodable {
+    let url: String
+    let name: String
+    let kind: String
+
+    var attachment: ChatAttachment {
+        ChatAttachment(url: url, name: name, kind: kind)
+    }
+}
+
+private extension Data {
+    mutating func appendMultipart(_ value: String) {
+        append(Data(value.utf8))
+    }
+}
+
+private extension String {
+    var multipartEscaped: String {
+        replacingOccurrences(of: "\\", with: "_")
+            .replacingOccurrences(of: "\"", with: "_")
+            .replacingOccurrences(of: "\r", with: "_")
+            .replacingOccurrences(of: "\n", with: "_")
     }
 }

@@ -160,6 +160,9 @@ struct Metrics {
     let glassShadowRadius: CGFloat = 12
     let glassShadowY: CGFloat = 6
     let drawerWidth: CGFloat = 310
+    let drawerHeaderHeight: CGFloat = 56
+    let recentPhotoSize: CGFloat = 68
+    let messageImageHeight: CGFloat = 180
 }
 
 // MARK: - 字号
@@ -264,11 +267,11 @@ final class Theme: ObservableObject {
 
         chatFontSize = min(max(savedFont ?? 15, 13), 22)
 
-        // Build 5 使用 0.06...0.28；迁移为预览确认过的 0.5%...8%。
+        // 允许真正的 0% 透明；玻璃边缘和模糊仍可独立保留。
         let migratedOpacity = (savedOpacity ?? 0.012) > 0.08
             ? (savedOpacity ?? 0.12) / 10
             : (savedOpacity ?? 0.012)
-        bubbleOpacity = min(max(migratedOpacity, 0.005), 0.08)
+        bubbleOpacity = min(max(migratedOpacity, 0), 0.06)
         glassBlur = min(max(savedBlur ?? 9, 0), 20)
         bubbleCornerRadius = min(max(savedRadius ?? 20, 12), 34)
 

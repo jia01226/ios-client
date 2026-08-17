@@ -23,6 +23,9 @@ struct Message: Identifiable, Hashable, Codable, Sendable {
     /// 后端 SSE 的 `think_summary`。这里只展示可读摘要，不展示隐藏的逐步推理。
     var thoughtSummary: String? = nil
 
+    /// 聊天附件只保存服务器返回的相对地址与展示名称；文件本体仍以 VPS 为准。
+    var attachments: [ChatAttachment]? = nil
+
     /// 流式回复时，这条还没写完
     var isStreaming: Bool = false
 
@@ -43,6 +46,15 @@ struct Message: Identifiable, Hashable, Codable, Sendable {
             }
         }
     }
+}
+
+struct ChatAttachment: Identifiable, Hashable, Codable, Sendable {
+    let url: String
+    let name: String
+    let kind: String
+
+    var id: String { url }
+    var isImage: Bool { kind == "image" }
 }
 
 /// 柯回复时附带的状态信号。
