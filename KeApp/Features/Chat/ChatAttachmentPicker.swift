@@ -73,7 +73,7 @@ final class RecentPhotosStore: ObservableObject {
                     continuation.resume(returning: nil)
                     return
                 }
-                let type = uti.map { UTType($0) } ?? .jpeg
+                let type = uti.flatMap { UTType($0) } ?? .jpeg
                 let ext = type.preferredFilenameExtension ?? "jpg"
                 continuation.resume(returning: (
                     data,
