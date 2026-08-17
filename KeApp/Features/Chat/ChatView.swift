@@ -1229,6 +1229,7 @@ final class ChatViewModel: ObservableObject {
     private var activeJobID: String?
     private var recoveringJobID: String?
     private var activeStreamClientID: String?
+    private var recoveryProbeID: UUID?
 
     func bootstrap() async {
         guard !didBootstrap else { return }
@@ -1267,6 +1268,7 @@ final class ChatViewModel: ObservableObject {
         // 原 SSE 仍是这条回复的唯一所有者时，不并行启动 job polling。
         guard activeStreamClientID == nil else { return }
         await recoverActiveJobsIfNeeded()
+        guard activeStreamClientID == nil else { return }
         if recoveringJobID == nil {
             await refreshHistory(showFailure: false)
         }
@@ -1280,6 +1282,8 @@ final class ChatViewModel: ObservableObject {
         isSending = true
         statusText = nil
         activeJobID = nil
+        // Invalidate any foreground recovery probe that is currently awaiting the network.
+        recoveryProbeID = nil
         pendingAttachments = []
 
         let clientID = "ios-\(UUID().uuidString.lowercased())"
@@ -1543,8 +1547,11 @@ final class ChatViewModel: ObservableObject {
 
     private func loadCache(sessionID: Int) async {
         let cached = await cache.load(sessionID: sessionID)
-        if !cached.isEmpty {
-            messages = cached
+        guard self.sessionID == sessionID, !cached.isEmpty else { return }
+        // Cache I/O may finish after send() has created local bubbles. Always merge
+        // so streaming, waiting and failed local bubbles remain addressable.
+        messages = mergeRemoteHistory(cached)
+        if !messages.isEmpty {
             isShowingCachedMessages = true
         }
     }
@@ -1660,10 +1667,10 @@ final class ChatViewModel: ObservableObject {
             }
 
             guard didComplete else { throw APIError.streamClosed }
-            isSending = false
             activeJobID = nil
             statusText = nil
             await refreshHistory(showFailure: false)
+            isSending = false
 
         } catch APIError.unauthorized {
             flushBufferedEvents()
@@ -1704,9 +1711,21 @@ final class ChatViewModel: ObservableObject {
     private func recoverActiveJobsIfNeeded() async {
         guard let sessionID,
               recoveringJobID == nil,
-              activeStreamClientID == nil else { return }
+              activeStreamClientID == nil,
+              recoveryProbeID == nil else { return }
+        let probeID = UUID()
+        recoveryProbeID = probeID
+        defer {
+            if recoveryProbeID == probeID {
+                recoveryProbeID = nil
+            }
+        }
         do {
             let jobs = try await api.activeJobs(sessionID: sessionID)
+            // send() may have started while activeJobs was in flight. A stale probe
+            // must never clear its state or start a second polling owner.
+            guard recoveryProbeID == probeID,
+                  activeStreamClientID == nil else { return }
             guard let job = jobs.first else {
                 isSending = false
                 return
