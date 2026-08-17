@@ -1,5 +1,7 @@
 import SwiftUI
 import UIKit
+import PhotosUI
+import UniformTypeIdentifiers
 
 struct ChatView: View {
     @EnvironmentObject private var theme: Theme
@@ -7,6 +9,10 @@ struct ChatView: View {
     @StateObject private var vm = ChatViewModel()
     @State private var draft = ""
     @FocusState private var inputFocused: Bool
+    @State private var settingsOpen = false
+    @State private var attachmentsOpen = false
+    @State private var pickedPhoto: PhotosPickerItem?
+    @State private var importingFile = false
 
     var body: some View {
         Group {
@@ -21,7 +27,7 @@ struct ChatView: View {
                 unavailableView(message)
             }
         }
-        .background(theme.effectiveBackground.ignoresSafeArea())
+        .background(Color.clear)
         .animation(.easeInOut(duration: 0.6), value: theme.isBedroom)
         .task { await vm.bootstrap() }
         .onChange(of: scenePhase) { _, phase in
@@ -31,48 +37,87 @@ struct ChatView: View {
     }
 
     private var chatContent: some View {
-        VStack(spacing: 0) {
-            header
-            if let status = vm.statusText {
-                StatusBanner(text: status)
-                    .padding(.horizontal, theme.metric.pagePadding)
-                    .padding(.bottom, theme.metric.gapS)
+        ZStack(alignment: .trailing) {
+            VStack(spacing: 0) {
+                header
+                if let status = vm.statusText {
+                    StatusBanner(text: status)
+                        .padding(.horizontal, theme.metric.pagePadding)
+                        .padding(.bottom, theme.metric.gapS)
+                }
+                messageList
+                if attachmentsOpen { attachmentTray }
+                inputBar
             }
-            messageList
-            inputBar
+
+            if settingsOpen {
+                theme.color.glassShadow.opacity(theme.glass.scrimOpacity)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture { closeTransientPanels() }
+                    .transition(.opacity)
+
+                settingsDrawer
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
         }
+        .animation(.easeOut(duration: 0.22), value: settingsOpen)
+        .animation(.easeOut(duration: 0.18), value: attachmentsOpen)
+        .fileImporter(
+            isPresented: $importingFile,
+            allowedContentTypes: [.item],
+            allowsMultipleSelection: false
+        ) { _ in attachmentsOpen = false }
     }
 
     private var header: some View {
-        HStack(spacing: theme.metric.gapM) {
-            VStack(alignment: .leading, spacing: 2) {
+        ZStack {
+            VStack(spacing: 3) {
                 Text("柯")
-                    .font(theme.font.sectionTitle)
+                    .font(theme.font.chatHeader)
                     .foregroundStyle(theme.color.textPrimary)
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(theme.effectiveAccent)
-                        .frame(width: 6, height: 6)
-                    Text(vm.isShowingCachedMessages ? "离线记录 · 接回后会自动更新" : "在这里 · 佳佳和柯的家")
-                        .font(theme.font.caption)
+
+                if vm.isSending {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .tint(theme.color.glassEdge)
+                        Text("正在输入…")
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(theme.color.textSecondary)
+                    .transition(.opacity)
+                } else {
+                    Text(vm.isShowingCachedMessages ? "离线记录" : "在线")
+                        .font(.caption2)
                         .foregroundStyle(theme.color.textSecondary)
+                        .transition(.opacity)
                 }
             }
 
-            Spacer()
-
-            Button {
-                // 打电话排在真实聊天之后；入口先保留，不做假功能。
-            } label: {
-                Image(systemName: "phone")
-                    .foregroundStyle(theme.effectiveAccent)
-                    .frame(width: 38, height: 38)
-                    .background(Circle().stroke(theme.color.accentSoft, lineWidth: 1))
+            HStack {
+                Spacer()
+                Button {
+                    settingsOpen = true
+                    attachmentsOpen = false
+                    inputFocused = false
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .symbolVariant(.none)
+                        .rotationEffect(.degrees(90))
+                        .font(theme.font.menuIcon)
+                        .foregroundStyle(theme.color.textPrimary)
+                        .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("打开聊天设置")
             }
-            .accessibilityLabel("打电话，后续开放")
         }
         .padding(.horizontal, theme.metric.pagePadding)
-        .padding(.vertical, theme.metric.gapM)
+        .padding(.top, theme.metric.headerTopPadding)
+        .padding(.bottom, theme.metric.headerBottomPadding)
+        .frame(minHeight: theme.metric.headerMinHeight)
     }
 
     private var messageList: some View {
@@ -100,6 +145,11 @@ struct ChatView: View {
                 .padding(.bottom, theme.metric.gapL)
             }
             .scrollDismissesKeyboard(.interactively)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                inputFocused = false
+                if attachmentsOpen { attachmentsOpen = false }
+            }
             .onChange(of: vm.messages.count) { _, _ in
                 scrollToBottom(proxy, animated: true)
             }
@@ -126,18 +176,25 @@ struct ChatView: View {
 
     private var inputBar: some View {
         HStack(spacing: theme.metric.gapS) {
+            Button {
+                inputFocused = false
+                attachmentsOpen.toggle()
+            } label: {
+                Image(systemName: attachmentsOpen ? "xmark" : "plus")
+                    .font(theme.font.composerIcon)
+                    .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(theme.color.textPrimary)
+
             TextField("和柯说点什么…", text: $draft, axis: .vertical)
                 .lineLimit(1...5)
                 .font(theme.font.body)
                 .foregroundStyle(theme.color.textPrimary)
                 .focused($inputFocused)
                 .disabled(vm.isSending)
-                .padding(.horizontal, theme.metric.gapM)
+                .padding(.horizontal, 4)
                 .padding(.vertical, 11)
-                .background(
-                    RoundedRectangle(cornerRadius: theme.metric.radiusBubble, style: .continuous)
-                        .fill(theme.color.card)
-                )
 
             Button { send() } label: {
                 Group {
@@ -146,18 +203,174 @@ struct ChatView: View {
                             .tint(theme.color.textOnAccent)
                     } else {
                         Image(systemName: "arrow.up")
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(theme.font.sendIcon)
                     }
                 }
                 .foregroundStyle(theme.color.textOnAccent)
                 .frame(width: 40, height: 40)
-                .background(Circle().fill(theme.effectiveAccent))
+                .background(
+                    Circle()
+                        .fill(theme.effectiveAccent.opacity(theme.glass.sendFillOpacity))
+                        .overlay(Circle().stroke(theme.color.glassEdge, lineWidth: theme.metric.glassStrokeWidth))
+                )
             }
             .disabled(trimmedDraft.isEmpty || vm.isSending)
             .opacity(trimmedDraft.isEmpty || vm.isSending ? 0.45 : 1)
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(CrystalSurface(cornerRadius: theme.metric.radiusComposer, strength: 1.05))
         .padding(.horizontal, theme.metric.pagePadding)
         .padding(.vertical, theme.metric.gapS)
+    }
+
+    private var attachmentTray: some View {
+        HStack(spacing: theme.metric.gapM) {
+            attachmentButton(title: "拍照", systemImage: "camera") {
+                attachmentsOpen = false
+            }
+
+            PhotosPicker(selection: $pickedPhoto, matching: .images) {
+                attachmentLabel(title: "照片", systemImage: "photo")
+            }
+            .buttonStyle(.plain)
+
+            attachmentButton(title: "文件", systemImage: "folder") {
+                importingFile = true
+            }
+        }
+        .padding(theme.metric.gapM)
+        .background(CrystalSurface(cornerRadius: theme.metric.radiusAttachmentTray, strength: 1.08))
+        .padding(.horizontal, theme.metric.pagePadding)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .onChange(of: pickedPhoto) { _, value in
+            if value != nil { attachmentsOpen = false }
+        }
+    }
+
+    private func attachmentButton(
+        title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            attachmentLabel(title: title, systemImage: systemImage)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func attachmentLabel(title: String, systemImage: String) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .font(theme.font.attachmentIcon)
+            Text(title).font(.caption)
+        }
+        .foregroundStyle(theme.color.textPrimary)
+        .frame(maxWidth: .infinity, minHeight: 66)
+        .contentShape(Rectangle())
+    }
+
+    private var settingsDrawer: some View {
+        VStack(alignment: .leading, spacing: theme.metric.gapL) {
+            HStack {
+                Text("聊天设置")
+                    .font(theme.font.sectionTitle)
+                    .foregroundStyle(theme.color.textPrimary)
+                Spacer()
+                Button { closeTransientPanels() } label: {
+                    Image(systemName: "xmark")
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(theme.color.textSecondary)
+            }
+
+            settingsLink("查找聊天记录", icon: "magnifyingglass")
+            settingsLink("批量整理聊天记录", icon: "checklist")
+            settingsLink("模型选择", icon: "sparkles")
+
+            settingSlider(
+                title: "聊天字体",
+                value: $theme.chatFontSize,
+                range: 14...24,
+                valueText: "\(Int(theme.chatFontSize))"
+            )
+            settingSlider(
+                title: "气泡透明度",
+                value: $theme.bubbleOpacity,
+                range: 0.06...0.28,
+                valueText: "\(Int(theme.bubbleOpacity * 100))%"
+            )
+            settingSlider(
+                title: "气泡圆角",
+                value: $theme.bubbleCornerRadius,
+                range: 12...34,
+                valueText: "\(Int(theme.bubbleCornerRadius))"
+            )
+
+            Text("字体、透明度和圆角会即时预览，并保存在这台手机上。")
+                .font(theme.font.caption)
+                .foregroundStyle(theme.color.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer()
+        }
+        .padding(.top, 10)
+        .padding(.horizontal, theme.metric.gapL)
+        .padding(.bottom, theme.metric.gapL)
+            .frame(width: theme.metric.drawerWidth)
+        .frame(maxHeight: .infinity)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(theme.color.glassEdge.opacity(theme.glass.drawerEdgeOpacity))
+                .frame(width: 0.7)
+        }
+        .ignoresSafeArea(edges: .vertical)
+    }
+
+    private func settingsLink(_ title: String, icon: String) -> some View {
+        Button {
+            // 第一包装机先保留入口；后端删除与模型切换需分别接真实接口。
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: icon).frame(width: 22)
+                Text(title)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+            }
+            .font(theme.font.body)
+            .foregroundStyle(theme.color.textPrimary)
+            .frame(minHeight: 46)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func settingSlider(
+        title: String,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        valueText: String
+    ) -> some View {
+        VStack(spacing: 7) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text(valueText).monospacedDigit()
+            }
+            .font(theme.font.caption)
+            .foregroundStyle(theme.color.textSecondary)
+            Slider(value: value, in: range)
+                .tint(theme.effectiveAccent)
+        }
+    }
+
+    private func closeTransientPanels() {
+        settingsOpen = false
+        attachmentsOpen = false
+        inputFocused = false
     }
 
     private var trimmedDraft: String {
@@ -185,7 +398,7 @@ struct ChatView: View {
     private func unavailableView(_ message: String) -> some View {
         VStack(spacing: theme.metric.gapM) {
             Image(systemName: "wifi.exclamationmark")
-                .font(.system(size: 28, weight: .medium))
+                .font(theme.font.unavailableIcon)
                 .foregroundStyle(theme.effectiveAccent)
             Text(message)
                 .font(theme.font.body)
@@ -306,7 +519,7 @@ private struct MessageRow: View {
 
     var body: some View {
         HStack {
-            if message.sender == .me { Spacer(minLength: theme.metric.gapXL) }
+            if message.sender == .me { Spacer(minLength: theme.metric.messageSideReserve) }
 
             VStack(
                 alignment: message.sender == .ke ? .leading : .trailing,
@@ -318,7 +531,9 @@ private struct MessageRow: View {
                     thoughtCard(summary)
                 }
 
-                bubble
+                if !message.text.isEmpty {
+                    bubble
+                }
 
                 HStack(spacing: theme.metric.gapS) {
                     Text(message.time.formatted(date: .omitted, time: .shortened))
@@ -328,15 +543,29 @@ private struct MessageRow: View {
                     }
 
                     if !message.text.isEmpty {
-                        Button(copied ? "已复制" : "复制") {
+                        Button {
                             UIPasteboard.general.string = message.text
                             copied = true
                             Task {
                                 try? await Task.sleep(nanoseconds: 1_200_000_000)
                                 copied = false
                             }
+                        } label: {
+                            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                                .font(theme.font.copyIcon)
+                                .frame(width: 24, height: 24)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .foregroundStyle(copied ? theme.effectiveAccent : theme.color.textSecondary)
+                    }
+
+                    if message.sender == .me && message.deliveryState == .sent {
+                        HStack(spacing: -4) {
+                            Image(systemName: "checkmark")
+                            Image(systemName: "checkmark")
+                        }
+                        .font(theme.font.receiptIcon)
                         .foregroundStyle(theme.effectiveAccent)
                     }
                 }
@@ -345,27 +574,30 @@ private struct MessageRow: View {
                 .padding(.horizontal, theme.metric.gapXS)
             }
 
-            if message.sender == .ke { Spacer(minLength: theme.metric.gapXL) }
+            if message.sender == .ke { Spacer(minLength: theme.metric.messageSideReserve) }
         }
     }
 
     private func thoughtCard(_ summary: String) -> some View {
-        let expanded = thoughtChoice ?? message.isStreaming
-        return VStack(alignment: .leading, spacing: theme.metric.gapS) {
+        let expanded = thoughtChoice ?? false
+        return HStack(alignment: .top, spacing: 12) {
+            Rectangle()
+                .fill(theme.color.accentSoft.opacity(theme.glass.thinkingLineOpacity))
+                .frame(width: 1)
+
+            VStack(alignment: .leading, spacing: theme.metric.gapS) {
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(.easeOut(duration: 0.22)) {
                     thoughtChoice = !expanded
                 }
             } label: {
                 HStack(spacing: theme.metric.gapS) {
-                    Image(systemName: "sparkles")
-                    Text(message.isStreaming ? "正在想" : "思考摘要")
-                    Spacer(minLength: 0)
+                    Text("Thinking")
                     Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(theme.font.thinkingChevron)
                 }
-                .font(theme.font.caption)
-                .foregroundStyle(theme.effectiveAccent)
+                .font(theme.font.thinking)
+                .foregroundStyle(theme.color.textSecondary)
             }
             .buttonStyle(.plain)
 
@@ -380,35 +612,35 @@ private struct MessageRow: View {
                         thoughtText(summary)
                     }
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
+            }
             }
         }
-        .padding(theme.metric.gapS)
-        .background(
-            RoundedRectangle(cornerRadius: theme.metric.radiusChip, style: .continuous)
-                .fill(theme.color.cardElevated)
-        )
+        .padding(.vertical, theme.metric.gapXS)
+        .padding(.horizontal, 2)
     }
 
     private func thoughtText(_ summary: String) -> some View {
         Text(summary)
-            .font(theme.font.caption)
+            .font(theme.font.thinkingBody)
             .foregroundStyle(theme.color.textSecondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
     }
 
     private var bubble: some View {
-        Text(message.text.isEmpty && message.isStreaming ? "…" : message.text)
+        Text(message.text)
             .font(theme.font.bubble)
             .foregroundStyle(message.sender == .ke ? theme.color.bubbleKeText : theme.color.bubbleMeText)
-            .padding(.horizontal, theme.metric.gapM)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: theme.metric.radiusBubble, style: .continuous)
-                    .fill(message.sender == .ke ? theme.color.bubbleKe : theme.color.bubbleMe)
-            )
+            .lineSpacing(CGFloat(max(3, theme.chatFontSize * 0.28)))
+            .padding(.horizontal, theme.metric.bubbleHorizontalPadding)
+            .padding(.vertical, theme.metric.bubbleVerticalPadding)
+            .background(CrystalSurface(
+                cornerRadius: CGFloat(theme.bubbleCornerRadius),
+                strength: message.sender == .ke ? 0.92 : 1.08
+            ))
             .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: theme.metric.bubbleMaxWidth, alignment: message.sender == .ke ? .leading : .trailing)
     }
 }
 

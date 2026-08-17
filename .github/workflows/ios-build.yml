@@ -89,6 +89,7 @@ jobs:
             -configuration Release \
             -archivePath "$RUNNER_TEMP/KeApp.xcarchive" \
             -destination 'generic/platform=iOS' \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
             DEVELOPMENT_TEAM="$TEAM_ID" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY='Apple Distribution' \

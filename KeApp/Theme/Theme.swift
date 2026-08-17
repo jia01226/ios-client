@@ -48,6 +48,13 @@ struct Palette {
     let bubbleMe: Color        // 她说的话
     let bubbleMeText: Color
 
+    // 水晶玻璃：页面只使用这些令牌，不在组件里写颜色。
+    let glassTint: Color
+    let glassTintStrong: Color
+    let glassEdge: Color
+    let glassInnerLight: Color
+    let glassShadow: Color
+
     // 卧室模式（由柯触发，不由她按）
     let bedroomBg: Color
     let bedroomAccent: Color
@@ -76,6 +83,12 @@ extension Palette {
         bubbleMe:      Color(hex: 0xF3E4D2),
         bubbleMeText:  Color(hex: 0x2B2620),
 
+        glassTint:       Color.white.opacity(0.10),
+        glassTintStrong: Color.white.opacity(0.17),
+        glassEdge:       Color.white.opacity(0.72),
+        glassInnerLight: Color.white.opacity(0.46),
+        glassShadow:     Color(hex: 0x6D5670).opacity(0.14),
+
         bedroomBg:     Color(hex: 0x2A1D1F),
         bedroomAccent: Color(hex: 0xC79A4B)
     )
@@ -99,6 +112,12 @@ extension Palette {
         bubbleMe:      Color(hex: 0x3A2E52),
         bubbleMeText:  Color(hex: 0xF4F1EA),
 
+        glassTint:       Color.white.opacity(0.055),
+        glassTintStrong: Color.white.opacity(0.10),
+        glassEdge:       Color.white.opacity(0.40),
+        glassInnerLight: Color.white.opacity(0.22),
+        glassShadow:     Color.black.opacity(0.22),
+
         bedroomBg:     Color(hex: 0x120A14),
         bedroomAccent: Color(hex: 0xD9AE5F)
     )
@@ -120,6 +139,25 @@ struct Metrics {
     let gapXL: CGFloat = 28
 
     let pagePadding: CGFloat = 18
+
+    // 聊天水晶界面
+    let touchTarget: CGFloat = 44
+    let headerMinHeight: CGFloat = 70
+    let headerTopPadding: CGFloat = 8
+    let headerBottomPadding: CGFloat = 9
+    let radiusDock: CGFloat = 29
+    let radiusComposer: CGFloat = 28
+    let radiusAttachmentTray: CGFloat = 24
+    let navArtworkSize: CGFloat = 42
+    let tabMinimumHeight: CGFloat = 54
+    let messageSideReserve: CGFloat = 44
+    let bubbleMaxWidth: CGFloat = 318
+    let bubbleHorizontalPadding: CGFloat = 16
+    let bubbleVerticalPadding: CGFloat = 12
+    let glassStrokeWidth: CGFloat = 0.8
+    let glassShadowRadius: CGFloat = 12
+    let glassShadowY: CGFloat = 6
+    let drawerWidth: CGFloat = 310
 }
 
 // MARK: - 字号
@@ -128,13 +166,45 @@ struct Metrics {
 // 正文一律 .regular 起步，标题用 .medium / .semibold。
 
 struct Typo {
+    let chatSize: CGFloat
+
     let pageTitle   = Font.system(size: 30, weight: .semibold)
     let sectionTitle = Font.system(size: 17, weight: .medium)
     let body        = Font.system(size: 16, weight: .regular)
-    let bubble      = Font.system(size: 16, weight: .regular)
     let caption     = Font.system(size: 13, weight: .regular)
     let quote       = Font.system(size: 20, weight: .regular)   // "柯先开的口"那张卡
     let numberBig   = Font.system(size: 44, weight: .light)     // 428 天
+    let chatHeader  = Font.system(size: 26, weight: .medium, design: .serif)
+    let menuIcon    = Font.system(size: 20, weight: .semibold)
+    let composerIcon = Font.system(size: 18, weight: .regular)
+    let sendIcon    = Font.system(size: 17, weight: .semibold)
+    let attachmentIcon = Font.system(size: 19, weight: .regular)
+    let copyIcon    = Font.system(size: 11, weight: .regular)
+    let receiptIcon = Font.system(size: 10, weight: .semibold)
+    let thinkingChevron = Font.system(size: 10, weight: .medium)
+    let unavailableIcon = Font.system(size: 28, weight: .medium)
+
+    var bubble: Font {
+        Font.system(size: chatSize, weight: .regular, design: .serif)
+    }
+
+    var thinking: Font {
+        Font.system(size: max(15, chatSize - 1), weight: .regular, design: .serif).italic()
+    }
+
+    var thinkingBody: Font {
+        Font.system(size: max(13, chatSize - 2), weight: .regular, design: .serif)
+    }
+}
+
+struct GlassTokens {
+    let materialBaseOpacity: Double = 0.58
+    let materialStrengthOpacity: Double = 0.12
+    let accentEdgeOpacity: Double = 0.24
+    let scrimOpacity: Double = 0.08
+    let sendFillOpacity: Double = 0.72
+    let drawerEdgeOpacity: Double = 0.55
+    let thinkingLineOpacity: Double = 0.76
 }
 
 // MARK: - 对外的门面
@@ -163,7 +233,32 @@ final class Theme: ObservableObject {
     }
 
     let metric = Metrics()
-    let font = Typo()
+    let glass = GlassTokens()
+
+    /// 只控制聊天正文；标题、时间和设置文字保持自己的层级。
+    @Published var chatFontSize: Double {
+        didSet { UserDefaults.standard.set(chatFontSize, forKey: "app.chatFontSize") }
+    }
+
+    @Published var bubbleOpacity: Double {
+        didSet { UserDefaults.standard.set(bubbleOpacity, forKey: "app.bubbleOpacity") }
+    }
+
+    @Published var bubbleCornerRadius: Double {
+        didSet { UserDefaults.standard.set(bubbleCornerRadius, forKey: "app.bubbleCornerRadius") }
+    }
+
+    private init() {
+        let defaults = UserDefaults.standard
+        let savedFont = defaults.double(forKey: "app.chatFontSize")
+        let savedOpacity = defaults.double(forKey: "app.bubbleOpacity")
+        let savedRadius = defaults.double(forKey: "app.bubbleCornerRadius")
+        chatFontSize = savedFont == 0 ? 16 : min(max(savedFont, 14), 24)
+        bubbleOpacity = savedOpacity == 0 ? 0.12 : min(max(savedOpacity, 0.06), 0.28)
+        bubbleCornerRadius = savedRadius == 0 ? 22 : min(max(savedRadius, 12), 34)
+    }
+
+    var font: Typo { Typo(chatSize: CGFloat(chatFontSize)) }
 
     // MARK: 卧室模式
     //
