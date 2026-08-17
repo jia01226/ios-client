@@ -34,7 +34,8 @@ struct MemoriesView: View {
             }
             .padding(theme.metric.pagePadding)
         }
-        .background(theme.effectiveBackground.ignoresSafeArea())
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
     }
 
     // MARK: 今天浮上来的回忆

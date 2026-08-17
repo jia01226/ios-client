@@ -33,7 +33,8 @@ struct PlayView: View {
             }
             .padding(theme.metric.pagePadding)
         }
-        .background(theme.effectiveBackground.ignoresSafeArea())
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
     }
 
     // MARK: 小游戏

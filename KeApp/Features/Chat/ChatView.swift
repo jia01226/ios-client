@@ -15,24 +15,20 @@ struct ChatView: View {
     @State private var importingFile = false
 
     var body: some View {
-        ZStack {
-            // TabView 在真机上会提供自己的不透明内容层；把背景放进聊天页本身，
-            // 才能保证山茶花晚霞不会被系统白底挡住。
-            AppAtmosphere()
-
-            Group {
-                switch vm.phase {
-                case .checking:
-                    checkingView
-                case .needsLogin:
-                    LoginView(vm: vm)
-                case .ready:
-                    chatContent
-                case let .unavailable(message):
-                    unavailableView(message)
-                }
+        Group {
+            switch vm.phase {
+            case .checking:
+                checkingView
+            case .needsLogin:
+                LoginView(vm: vm)
+            case .ready:
+                chatContent
+            case let .unavailable(message):
+                unavailableView(message)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.clear)
         .animation(.easeInOut(duration: 0.6), value: theme.isBedroom)
         .task { await vm.bootstrap() }
         .onChange(of: scenePhase) { _, phase in
@@ -149,6 +145,7 @@ struct ChatView: View {
                 .padding(.horizontal, theme.metric.pagePadding)
                 .padding(.bottom, theme.metric.gapL)
             }
+            .scrollContentBackground(.hidden)
             .scrollDismissesKeyboard(.interactively)
             .contentShape(Rectangle())
             .onTapGesture {

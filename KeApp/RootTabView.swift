@@ -20,13 +20,20 @@ struct RootTabView: View {
         ZStack {
             AppAtmosphere()
 
-            TabView(selection: $selection) {
-                UsView().tag(Tab.us)
-                ChatView().tag(Tab.ke)
-                PlayView().tag(Tab.play)
-                MemoriesView().tag(Tab.memories)
+            Group {
+                switch selection {
+                case .us:
+                    UsView()
+                case .ke:
+                    ChatView()
+                case .play:
+                    PlayView()
+                case .memories:
+                    MemoriesView()
+                }
             }
-            .toolbar(.hidden, for: .tabBar)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.clear)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             crystalTabBar
@@ -71,35 +78,26 @@ private struct NavArtwork: View {
     let selected: Bool
 
     var body: some View {
-        Group {
-            switch tab {
-            case .us:
-                sprite("UsNavSheet", size: CGSize(width: 93, height: 93), x: -26, y: selected ? -48 : -1)
-            case .ke:
-                sprite("KePlayNavSheet", size: CGSize(width: 134, height: 89), x: -24, y: selected ? -45 : -2)
-            case .play:
-                sprite("KePlayNavSheet", size: CGSize(width: 134, height: 89), x: -76, y: selected ? -45 : -2)
-            case .memories:
-                Image(selected ? "MemoryOpen" : "MemoryClosed")
-                    .resizable()
-                    .scaledToFit()
-                    .padding(1)
-            }
-        }
+        Image(assetName)
+            .resizable()
+            .scaledToFit()
+            .padding(1)
         .scaleEffect(selected ? 1 : 0.92)
         .animation(.easeOut(duration: 0.16), value: selected)
         .accessibilityHidden(true)
     }
 
-    private func sprite(_ name: String, size: CGSize, x: CGFloat, y: CGFloat) -> some View {
-        ZStack(alignment: .topLeading) {
-            Image(name)
-                .resizable()
-                .frame(width: size.width, height: size.height)
-                .offset(x: x, y: y)
+    private var assetName: String {
+        switch (tab, selected) {
+        case (.us, false): return "NavUsIdle"
+        case (.us, true): return "NavUsSelected"
+        case (.ke, false): return "NavKeIdle"
+        case (.ke, true): return "NavKeSelected"
+        case (.play, false): return "NavPlayIdle"
+        case (.play, true): return "NavPlaySelected"
+        case (.memories, false): return "NavMemoryIdle"
+        case (.memories, true): return "NavMemorySelected"
         }
-        .frame(width: 42, height: 42, alignment: .topLeading)
-        .clipped()
     }
 }
 

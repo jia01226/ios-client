@@ -25,7 +25,8 @@ struct UsView: View {
             }
             .padding(theme.metric.pagePadding)
         }
-        .background(theme.effectiveBackground.ignoresSafeArea())
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
     }
 
     // MARK: 在一起多少天
