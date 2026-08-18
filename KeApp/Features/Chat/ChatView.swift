@@ -231,12 +231,16 @@ struct ChatView: View {
                 if attachmentsOpen { attachmentsOpen = false }
             }
             .onChange(of: vm.messages.last?.id) { _, _ in
+                // 展开 Thinking 时，当前视口属于用户；下面即使继续收到分条消息，
+                // 也只让内容向下生长，不把已经展开的标题和上方消息拖走。
+                guard expandedThinkingMessageIDs.isEmpty else { return }
                 guard Date.now >= suppressAutoScrollUntil else { return }
                 scrollToBottom(proxy, animated: true)
             }
             .onChange(of: vm.streamRevision) { _, _ in
                 // Thinking 展开/收起后的短窗内不跟滚——锚定恢复期间谁都不许抢方向盘，
                 // 消息纹丝不动（她要的：被输入框遮住没关系，不许跳）。
+                guard expandedThinkingMessageIDs.isEmpty else { return }
                 guard Date.now >= suppressAutoScrollUntil else { return }
                 scrollToBottom(proxy, animated: false)
             }
@@ -285,6 +289,7 @@ struct ChatView: View {
             .foregroundStyle(theme.color.textPrimary)
 
             TextField("和柯说点什么…", text: $draft, axis: .vertical)
+                .accessibilityIdentifier("chat-composer")
                 .lineLimit(1...5)
                 .font(theme.font.body)
                 .foregroundStyle(theme.color.textPrimary)

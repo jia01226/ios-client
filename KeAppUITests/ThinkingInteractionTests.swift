@@ -95,8 +95,8 @@ final class ThinkingInteractionTests: XCTestCase {
         let app = launch(arguments: ["-ui-test-scroll-control"])
         let latest = app.staticTexts["这是最新一条回复。"]
         XCTAssertTrue(latest.waitForExistence(timeout: 5))
-        let input = app.textFields["和柯说点什么…"]
-        XCTAssertTrue(input.exists)
+        let input = app.descendants(matching: .any)["chat-composer"]
+        XCTAssertTrue(input.waitForExistence(timeout: 2))
 
         input.tap()
         let keyboard = app.keyboards.firstMatch
