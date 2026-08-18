@@ -3,6 +3,7 @@ name: KeApp
 options:
   createIntermediateGroups: true
   groupSortPosition: top
+  projectFormat: xcode15_3
   deploymentTarget:
     iOS: "17.0"
 
