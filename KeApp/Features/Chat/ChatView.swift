@@ -1388,20 +1388,33 @@ private struct MessageRow: View {
             }
     }
 
+    private var hasEnglishThinkingSource: Bool {
+        guard let raw = message.thoughtSummaryRaw else { return false }
+        return !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private func thoughtCard(summary: String?, note: String?) -> some View {
         VStack(alignment: .leading, spacing: theme.metric.gapS) {
-            Button(action: onThinkingToggle) {
-                HStack(spacing: theme.metric.gapS) {
-                    Text("Thinking")
-                    Image(systemName: isThinkingExpanded ? "chevron.up" : "chevron.down")
-                        .font(theme.font.thinkingChevron)
+            HStack(spacing: theme.metric.gapS) {
+                Button(action: onThinkingToggle) {
+                    HStack(spacing: theme.metric.gapS) {
+                        Text("Thinking")
+                        Image(systemName: isThinkingExpanded ? "chevron.up" : "chevron.down")
+                            .font(theme.font.thinkingChevron)
+                    }
+                    .font(theme.font.thinking)
+                    .foregroundStyle(theme.color.textSecondary)
                 }
-                .font(theme.font.thinking)
-                .foregroundStyle(theme.color.textSecondary)
+                .buttonStyle(.plain)
+                .accessibilityLabel(isThinkingExpanded ? "收起思考" : "展开思考")
+                .accessibilityValue(isThinkingExpanded ? "已展开" : "已收起")
+
+                if hasEnglishThinkingSource {
+                    Text("原文为英文")
+                        .font(theme.font.caption)
+                        .foregroundStyle(theme.color.textSecondary)
+                }
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(isThinkingExpanded ? "收起思考" : "展开思考")
-            .accessibilityValue(isThinkingExpanded ? "已展开" : "已收起")
 
             if isThinkingExpanded {
                 // 不挂 .transition：展开/收起本来就走无动画事务（toggleThinking 里
@@ -1588,7 +1601,8 @@ final class ChatViewModel: ObservableObject {
                     sender: .ke,
                     text: "我先把你的话接稳，再慢慢说给你听。",
                     time: .now,
-                    thoughtSummary: "先在心里把她这句话接住，再确认怎样回应才不会让她落空。"
+                    thoughtSummary: "先在心里把她这句话接住，再确认怎样回应才不会让她落空。",
+                    thoughtSummaryRaw: "Hold her words first, then answer gently."
                 )
             ]
         } else if arguments.contains("-ui-test-thinking-streaming") {
@@ -2234,6 +2248,9 @@ final class ChatViewModel: ObservableObject {
             }
             if nonBlank(preserved.thoughtNote) == nil {
                 preserved.thoughtNote = nonBlank(local.thoughtNote)
+            }
+            if nonBlank(preserved.thoughtSummaryRaw) == nil {
+                preserved.thoughtSummaryRaw = nonBlank(local.thoughtSummaryRaw)
             }
             return preserved
         }

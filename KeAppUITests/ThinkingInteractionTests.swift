@@ -9,6 +9,8 @@ final class ThinkingInteractionTests: XCTestCase {
         let app = launch(arguments: ["-ui-test-thinking-static"])
         let expand = app.buttons["展开思考"]
         XCTAssertTrue(expand.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["原文为英文"].exists)
+        XCTAssertFalse(app.staticTexts["Hold her words first, then answer gently."].exists)
         attachScreenshot(named: "01-thinking-collapsed")
 
         expand.tap()
@@ -17,6 +19,7 @@ final class ThinkingInteractionTests: XCTestCase {
         ]
         XCTAssertTrue(body.waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["收起思考"].exists)
+        XCTAssertFalse(app.staticTexts["Hold her words first, then answer gently."].exists)
         attachScreenshot(named: "02-thinking-expanded")
 
         app.buttons["收起思考"].tap()

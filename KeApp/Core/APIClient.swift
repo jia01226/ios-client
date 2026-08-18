@@ -99,6 +99,7 @@ private struct RemoteMessage: Decodable {
     let createdAt: String
     let thinkSummary: String?
     let thoughtNote: String?
+    let thinkSummaryRaw: String?
     let attachments: [ChatAttachment]?
 
     enum CodingKeys: String, CodingKey {
@@ -106,6 +107,7 @@ private struct RemoteMessage: Decodable {
         case createdAt = "created_at"
         case thinkSummary = "think_summary"
         case thoughtNote = "thought_note"
+        case thinkSummaryRaw = "think_summary_raw"
         case attachments
     }
 
@@ -120,6 +122,7 @@ private struct RemoteMessage: Decodable {
             serverTimeIsValid: parsedTime.isValid,
             thoughtSummary: thinkSummary?.nilIfBlank,
             thoughtNote: thoughtNote?.nilIfBlank,
+            thoughtSummaryRaw: thinkSummaryRaw?.nilIfBlank,
             attachments: attachments,
             isStreaming: false,
             deliveryState: .sent

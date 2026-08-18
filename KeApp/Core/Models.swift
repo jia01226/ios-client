@@ -30,6 +30,9 @@ struct Message: Identifiable, Hashable, Codable, Sendable {
     /// 旧版 SSE `think_summary` / 历史 `thought_note`，与真实思考摘要分开保留。
     var thoughtNote: String? = nil
 
+    /// 历史消息中非空表示 `thoughtSummary` 是中文译文；英文原文只作来源留档，不渲染。
+    var thoughtSummaryRaw: String? = nil
+
     /// 聊天附件只保存服务器返回的相对地址与展示名称；文件本体仍以 VPS 为准。
     var attachments: [ChatAttachment]? = nil
 
