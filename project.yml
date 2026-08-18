@@ -52,3 +52,18 @@ targets:
       - package: EventSource
     scheme:
       gatherCoverageData: false
+      testTargets:
+        - KeAppUITests
+
+  KeAppUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: KeAppUITests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: love.jiagude.ke.uitests
+        GENERATE_INFOPLIST_FILE: true
+        CODE_SIGN_STYLE: Automatic
+    dependencies:
+      - target: KeApp

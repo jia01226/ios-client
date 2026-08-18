@@ -1561,11 +1561,102 @@ final class ChatViewModel: ObservableObject {
     private var activeStreamClientID: String?
     private var recoveryProbeID: UUID?
 
+#if DEBUG
+    private enum UITestFixture: Equatable {
+        case thinkingStatic
+        case thinkingStreaming
+    }
+
+    private var uiTestFixture: UITestFixture?
+#endif
+
+    init() {
+#if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("-ui-test-thinking-static") {
+            uiTestFixture = .thinkingStatic
+            phase = .ready
+            messages = [
+                Message(
+                    id: "ui-test-user",
+                    sender: .me,
+                    text: "你刚刚在想什么？",
+                    time: .now
+                ),
+                Message(
+                    id: "ui-test-assistant",
+                    sender: .ke,
+                    text: "我先把你的话接稳，再慢慢说给你听。",
+                    time: .now,
+                    thoughtSummary: "先在心里把她这句话接住，再确认怎样回应才不会让她落空。"
+                )
+            ]
+        } else if arguments.contains("-ui-test-thinking-streaming") {
+            uiTestFixture = .thinkingStreaming
+            phase = .ready
+            isSending = true
+            messages = [
+                Message(
+                    id: "ui-test-streaming-user",
+                    sender: .me,
+                    text: "慢慢想，我在这里。",
+                    time: .now
+                ),
+                Message(
+                    id: "ui-test-streaming-assistant",
+                    sender: .ke,
+                    text: "",
+                    time: .now,
+                    thoughtSummary: "先接住她这句话。",
+                    isStreaming: true,
+                    deliveryState: .sending
+                )
+            ]
+        }
+#endif
+    }
+
     func bootstrap() async {
+#if DEBUG
+        if let uiTestFixture {
+            if uiTestFixture == .thinkingStreaming {
+                await runUITestThinkingStream()
+            }
+            return
+        }
+#endif
         guard !didBootstrap else { return }
         didBootstrap = true
         await connect()
     }
+
+#if DEBUG
+    private func runUITestThinkingStream() async {
+        let messageID = "ui-test-streaming-assistant"
+        let chunks = [
+            "先分清她真正担心的地方，",
+            "再把回答收得温柔一点。",
+            "最后确认每句话都只用中文。"
+        ]
+
+        for chunk in chunks {
+            try? await Task.sleep(nanoseconds: 420_000_000)
+            updateMessage(id: messageID) {
+                $0.thoughtSummary = ($0.thoughtSummary ?? "") + chunk
+            }
+            streamRevision += 1
+        }
+
+        try? await Task.sleep(nanoseconds: 420_000_000)
+        updateMessage(id: messageID) {
+            $0.text = "想好了，我会一直用中文把心里的话说给你听。"
+            $0.isStreaming = false
+            $0.deliveryState = .sent
+        }
+        isSending = false
+        streamRevision += 1
+    }
+#endif
 
     func retryBootstrap() async {
         phase = .checking

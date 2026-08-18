@@ -1,0 +1,40 @@
+name: Verify Thinking Simulator
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: macos-15
+    timeout-minutes: 20
+
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+
+      - name: 安装 XcodeGen
+        run: brew install xcodegen
+
+      - name: 生成 Xcode 工程
+        run: xcodegen generate --spec project.yml
+
+      - name: 模拟器核验 Thinking 三态
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -project KeApp.xcodeproj \
+            -scheme KeApp \
+            -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=latest' \
+            -resultBundlePath "$RUNNER_TEMP/ThinkingSimulator.xcresult" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: 上传模拟器核验记录
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ThinkingSimulator-xcresult
+          path: ${{ runner.temp }}/ThinkingSimulator.xcresult
+          retention-days: 14
