@@ -164,11 +164,36 @@ struct ChatView: View {
             ScrollView {
                 LazyVStack(spacing: theme.metric.gapM) {
                     if vm.messages.isEmpty {
-                        Text("这里还没有聊天记录。\n想说什么，就从下面开始。")
-                            .font(theme.font.body)
-                            .foregroundStyle(theme.color.textSecondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.top, 80)
+                        if vm.isLoadingHistory {
+                            VStack(spacing: theme.metric.gapM) {
+                                ProgressView()
+                                    .tint(theme.effectiveAccent)
+                                Text("正在接回聊天记录…")
+                                    .font(theme.font.body)
+                                    .foregroundStyle(theme.color.textSecondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, theme.metric.gapXL)
+                        } else if vm.historyLoadFailed {
+                            VStack(spacing: theme.metric.gapM) {
+                                Text("聊天记录这次没有接上。")
+                                    .font(theme.font.body)
+                                    .foregroundStyle(theme.color.textSecondary)
+                                Button("重新加载聊天记录") {
+                                    Task { await vm.retryHistory() }
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(theme.effectiveAccent)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, theme.metric.gapXL)
+                        } else {
+                            Text("这里还没有聊天记录。\n想说什么，就从下面开始。")
+                                .font(theme.font.body)
+                                .foregroundStyle(theme.color.textSecondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.top, theme.metric.gapXL)
+                        }
                     }
 
                     ForEach(vm.messages) { message in
@@ -176,6 +201,7 @@ struct ChatView: View {
                             message: message,
                             isHighlighted: highlightedMessageID == message.id,
                             isThinkingExpanded: expandedThinkingMessageIDs.contains(message.id),
+                            scrollAnchorController: scrollAnchorController,
                             onThinkingToggle: {
                                 toggleThinking(for: message.id)
                             }
@@ -189,8 +215,8 @@ struct ChatView: View {
                 }
                 .padding(.horizontal, theme.metric.pagePadding)
                 .padding(.bottom, theme.metric.gapL)
-                .background(ChatScrollViewResolver(controller: scrollAnchorController))
             }
+            .defaultScrollAnchor(.bottom)
             .scrollContentBackground(.hidden)
             .scrollDismissesKeyboard(.interactively)
             .contentShape(Rectangle())
@@ -198,7 +224,7 @@ struct ChatView: View {
                 inputFocused = false
                 if attachmentsOpen { attachmentsOpen = false }
             }
-            .onChange(of: vm.messages.count) { _, _ in
+            .onChange(of: vm.messages.last?.id) { _, _ in
                 scrollToBottom(proxy, animated: true)
             }
             .onChange(of: vm.streamRevision) { _, _ in
@@ -364,30 +390,27 @@ struct ChatView: View {
 
     private func toggleThinking(for messageID: String) {
         let willExpand = !expandedThinkingMessageIDs.contains(messageID)
-        let animation: Animation? = reduceMotion
-            ? nil
-            : .spring(
-                response: theme.motion.thinkingResponse,
-                dampingFraction: theme.motion.thinkingDampingFraction
-            )
-
-        // 展开时让折叠条以上保持原位；收起时锁住下方气泡和消息的位置。
         if willExpand {
             scrollAnchorController.cancelPreservation()
-        } else {
-            scrollAnchorController.preserveBottom(
-                during: reduceMotion
-                    ? theme.motion.reducedMotionAnchorDuration
-                    : theme.motion.thinkingAnchorDuration
-            )
-        }
-
-        withAnimation(animation) {
-            if willExpand {
+            let animation: Animation? = reduceMotion
+                ? nil
+                : .spring(
+                    response: theme.motion.thinkingResponse,
+                    dampingFraction: theme.motion.thinkingDampingFraction
+                )
+            withAnimation(animation) {
                 expandedThinkingMessageIDs.insert(messageID)
-            } else {
+            }
+        } else {
+            // 收起时保存这一整条消息的屏幕位置。布局完成后只恢复一次，
+            // 避免逐帧改 contentOffset 导致聊天列表持续向下漂移。
+            scrollAnchorController.prepareToRestore(messageID: messageID)
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
                 expandedThinkingMessageIDs.remove(messageID)
             }
+            scrollAnchorController.restoreAfterCurrentLayout(messageID: messageID)
         }
     }
 
@@ -1012,50 +1035,84 @@ private struct StatusBanner: View {
     }
 }
 
-/// 在 Thinking 收起的每一帧补偿内容高度差，让它下面的内容留在原位。
-private final class ChatScrollAnchorController: NSObject, ObservableObject {
-    private weak var scrollView: UIScrollView?
-    private var displayLink: CADisplayLink?
-    private var distanceFromViewportBottomToContentBottom: CGFloat?
-    private var preservationDeadline: CFTimeInterval = 0
+/// 保存一条可见消息的位置快照，并在折叠布局完成后只恢复一次。
+/// 这是聊天列表常用的 item snapshot 做法；不要在动画每一帧修正 contentOffset。
+@MainActor
+private final class ChatScrollAnchorController: ObservableObject {
+    private final class WeakAnchor {
+        weak var view: UIView?
 
-    func attach(to scrollView: UIScrollView) {
-        self.scrollView = scrollView
+        init(_ view: UIView) {
+            self.view = view
+        }
     }
 
-    func preserveBottom(during duration: TimeInterval) {
-        guard let scrollView else { return }
+    private struct PendingRestore {
+        let messageID: String
+        let viewportMaxY: CGFloat
+        let expiresAt: CFTimeInterval
+    }
 
+    private weak var scrollView: UIScrollView?
+    private var anchors: [String: WeakAnchor] = [:]
+    private var pendingRestore: PendingRestore?
+    private var restoreScheduled = false
+
+    func register(_ anchor: UIView, messageID: String) {
+        anchors[messageID] = WeakAnchor(anchor)
+        resolveScrollView(from: anchor)
+        if pendingRestore?.messageID == messageID {
+            scheduleRestore(messageID: messageID)
+        }
+    }
+
+    func prepareToRestore(messageID: String) {
         cancelPreservation()
-        scrollView.layoutIfNeeded()
+        guard
+            let anchor = anchors[messageID]?.view,
+            anchor.window != nil
+        else { return }
 
-        let contentBottom = scrollView.contentSize.height
-            + scrollView.adjustedContentInset.bottom
-        distanceFromViewportBottomToContentBottom = max(
-            0,
-            contentBottom - (scrollView.contentOffset.y + scrollView.bounds.height)
+        resolveScrollView(from: anchor)
+        pendingRestore = PendingRestore(
+            messageID: messageID,
+            viewportMaxY: anchor.convert(anchor.bounds, to: nil).maxY,
+            expiresAt: CACurrentMediaTime() + 0.5
         )
-        preservationDeadline = CACurrentMediaTime() + duration
+    }
 
-        let displayLink = CADisplayLink(
-            target: self,
-            selector: #selector(preserveBottomAnchor)
-        )
-        displayLink.add(to: .main, forMode: .common)
-        self.displayLink = displayLink
+    func restoreAfterCurrentLayout(messageID: String) {
+        guard pendingRestore?.messageID == messageID else { return }
+        scheduleRestore(messageID: messageID)
+    }
+
+    func anchorDidLayout(messageID: String) {
+        guard pendingRestore?.messageID == messageID else { return }
+        scheduleRestore(messageID: messageID)
     }
 
     func cancelPreservation() {
-        displayLink?.invalidate()
-        displayLink = nil
-        distanceFromViewportBottomToContentBottom = nil
+        pendingRestore = nil
+        restoreScheduled = false
     }
 
-    @objc
-    private func preserveBottomAnchor(_ displayLink: CADisplayLink) {
+    private func scheduleRestore(messageID: String) {
+        guard !restoreScheduled else { return }
+        restoreScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.restoreScheduled = false
+            self.restoreOnce(messageID: messageID)
+        }
+    }
+
+    private func restoreOnce(messageID: String) {
         guard
+            let pendingRestore,
+            pendingRestore.messageID == messageID,
+            let anchor = anchors[messageID]?.view,
             let scrollView,
-            let bottomDistance = distanceFromViewportBottomToContentBottom,
+            anchor.window != nil,
             !scrollView.isTracking,
             !scrollView.isDragging,
             !scrollView.isDecelerating
@@ -1065,6 +1122,14 @@ private final class ChatScrollAnchorController: NSObject, ObservableObject {
         }
 
         scrollView.layoutIfNeeded()
+        let currentViewportMaxY = anchor.convert(anchor.bounds, to: nil).maxY
+        let delta = currentViewportMaxY - pendingRestore.viewportMaxY
+        guard abs(delta) > 0.5 else {
+            if CACurrentMediaTime() >= pendingRestore.expiresAt {
+                cancelPreservation()
+            }
+            return
+        }
 
         let minimumY = -scrollView.adjustedContentInset.top
         let maximumY = max(
@@ -1075,74 +1140,55 @@ private final class ChatScrollAnchorController: NSObject, ObservableObject {
         )
         let targetY = min(
             maximumY,
-            max(
-                minimumY,
-                scrollView.contentSize.height
-                    + scrollView.adjustedContentInset.bottom
-                    - scrollView.bounds.height
-                    - bottomDistance
-            )
+            max(minimumY, scrollView.contentOffset.y + delta)
         )
-
-        if abs(scrollView.contentOffset.y - targetY) > 0.25 {
-            scrollView.setContentOffset(
-                CGPoint(x: scrollView.contentOffset.x, y: targetY),
-                animated: false
-            )
-        }
-
-        if displayLink.timestamp >= preservationDeadline {
-            cancelPreservation()
-        }
-    }
-}
-
-private struct ChatScrollViewResolver: UIViewRepresentable {
-    let controller: ChatScrollAnchorController
-
-    func makeUIView(context: Context) -> ChatScrollProbeView {
-        ChatScrollProbeView(controller: controller)
+        cancelPreservation()
+        scrollView.setContentOffset(
+            CGPoint(x: scrollView.contentOffset.x, y: targetY),
+            animated: false
+        )
     }
 
-    func updateUIView(_ uiView: ChatScrollProbeView, context: Context) {
-        uiView.resolveScrollView()
-    }
-}
-
-private final class ChatScrollProbeView: UIView {
-    private weak var controller: ChatScrollAnchorController?
-
-    init(controller: ChatScrollAnchorController) {
-        self.controller = controller
-        super.init(frame: .zero)
-        isUserInteractionEnabled = false
-        backgroundColor = .clear
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func didMoveToSuperview() {
-        super.didMoveToSuperview()
-        resolveScrollView()
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        resolveScrollView()
-    }
-
-    func resolveScrollView() {
-        var ancestor = superview
+    private func resolveScrollView(from anchor: UIView) {
+        var ancestor = anchor.superview
         while let view = ancestor {
             if let scrollView = view as? UIScrollView {
-                controller?.attach(to: scrollView)
+                self.scrollView = scrollView
                 return
             }
             ancestor = view.superview
         }
+    }
+}
+
+private final class ChatMessageAnchorView: UIView {
+    weak var controller: ChatScrollAnchorController?
+    var messageID = ""
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        controller?.anchorDidLayout(messageID: messageID)
+    }
+}
+
+private struct ChatMessageAnchorProbe: UIViewRepresentable {
+    let messageID: String
+    let controller: ChatScrollAnchorController
+
+    func makeUIView(context: Context) -> ChatMessageAnchorView {
+        let view = ChatMessageAnchorView(frame: .zero)
+        view.isUserInteractionEnabled = false
+        view.backgroundColor = .clear
+        view.controller = controller
+        view.messageID = messageID
+        controller.register(view, messageID: messageID)
+        return view
+    }
+
+    func updateUIView(_ uiView: ChatMessageAnchorView, context: Context) {
+        uiView.controller = controller
+        uiView.messageID = messageID
+        controller.register(uiView, messageID: messageID)
     }
 }
 
@@ -1205,6 +1251,7 @@ private struct MessageRow: View {
     let message: Message
     let isHighlighted: Bool
     let isThinkingExpanded: Bool
+    let scrollAnchorController: ChatScrollAnchorController
     let onThinkingToggle: () -> Void
     @State private var copied = false
 
@@ -1286,6 +1333,12 @@ private struct MessageRow: View {
         .frame(
             maxWidth: .infinity,
             alignment: message.sender == .ke ? .leading : .trailing
+        )
+        .background(
+            ChatMessageAnchorProbe(
+                messageID: message.id,
+                controller: scrollAnchorController
+            )
         )
         .overlay {
             if isHighlighted {
@@ -1459,6 +1512,8 @@ final class ChatViewModel: ObservableObject {
     @Published var isLoggingIn = false
     @Published var isSending = false
     @Published var isShowingCachedMessages = false
+    @Published var isLoadingHistory = false
+    @Published var historyLoadFailed = false
     @Published var streamRevision = 0
     @Published var modelOptions: [ChatModelOption] = []
     @Published var selectedModel: String?
@@ -1524,6 +1579,10 @@ final class ChatViewModel: ObservableObject {
         if recoveringJobID == nil {
             await refreshHistory(showFailure: false)
         }
+    }
+
+    func retryHistory() async {
+        await refreshHistory(showFailure: true)
     }
 
     func send(_ text: String) async {
@@ -1810,8 +1869,17 @@ final class ChatViewModel: ObservableObject {
 
     private func refreshHistory(showFailure: Bool) async {
         guard let sessionID else { return }
+        isLoadingHistory = messages.isEmpty
+        historyLoadFailed = false
+        defer { isLoadingHistory = false }
         do {
             let remote = try await api.fetchMessages(sessionID: sessionID)
+            guard self.sessionID == sessionID else { return }
+            if remote.isEmpty, messages.contains(where: { $0.serverID != nil }) {
+                isShowingCachedMessages = true
+                statusText = "服务器这次返回了空记录，先保留手机里的聊天。"
+                return
+            }
             let withThinking = preserveLocalThinking(in: remote)
             let merged = mergeRemoteHistory(withThinking)
             messages = merged
@@ -1827,6 +1895,7 @@ final class ChatViewModel: ObservableObject {
             phase = .needsLogin
         } catch {
             isShowingCachedMessages = !messages.isEmpty
+            historyLoadFailed = messages.isEmpty
             if showFailure || !messages.isEmpty {
                 statusText = messages.isEmpty
                     ? "聊天记录暂时没有拉下来。"

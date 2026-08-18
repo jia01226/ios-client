@@ -225,8 +225,6 @@ struct GlassTokens {
 struct MotionTokens {
     let thinkingResponse: Double = 0.30
     let thinkingDampingFraction: Double = 1.0
-    let thinkingAnchorDuration: TimeInterval = 0.42
-    let reducedMotionAnchorDuration: TimeInterval = 0.08
 }
 
 // MARK: - 对外的门面
