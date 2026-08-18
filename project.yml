@@ -37,6 +37,8 @@ targets:
         NSFaceIDUsageDescription: 用于打开只有你能进入的私密空间
         NSCameraUsageDescription: 用于拍照并把你选择的照片发送给柯
         NSPhotoLibraryUsageDescription: 用于选择你想发送给柯的照片
+        NSLocationWhenInUseUsageDescription: 用于让柯知道你到了哪里和那边的天气，只在位置明显变化时更新
+        NSLocationAlwaysAndWhenInUseUsageDescription: 用于在你到达新地方时安静更新给柯，不持续追踪路线
         UIApplicationSupportsIndirectInputEvents: true
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:

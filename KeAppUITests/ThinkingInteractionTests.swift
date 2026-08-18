@@ -46,6 +46,17 @@ final class ThinkingInteractionTests: XCTestCase {
         attachScreenshot(named: "05-thinking-streaming-finished")
     }
 
+    func testAssistantReplyAppearsAsSeparateBubbles() throws {
+        let app = launch(arguments: ["-ui-test-segmented-reply"])
+        XCTAssertTrue(app.staticTexts["第一句先接住你。"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["第二句慢一点出来。"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["第三句最后跟上。"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.staticTexts[
+            "第一句先接住你。\n\n第二句慢一点出来。\n\n   \n第三句最后跟上。"
+        ].exists)
+        attachScreenshot(named: "06-segmented-reply")
+    }
+
     private func launch(arguments: [String]) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = arguments

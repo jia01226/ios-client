@@ -52,6 +52,21 @@ private struct LoginResponse: Decodable {
     let ok: Bool
 }
 
+struct APNsRegistrationResponse: Decodable, Sendable {
+    let ok: Bool
+    let apnsConfigured: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case ok
+        case apnsConfigured = "apns_configured"
+    }
+}
+
+struct LocationContextResponse: Decodable, Sendable {
+    let ok: Bool
+    let weather: String?
+}
+
 struct ActiveChatSession: Decodable, Sendable {
     let id: Int
     let model: String?
@@ -332,6 +347,52 @@ actor APIClient {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         _ = try await perform(request)
+    }
+
+    func registerAPNsToken(
+        _ token: String,
+        deviceName: String?
+    ) async throws -> APNsRegistrationResponse {
+        var request = try makeRequest(path: "/api/push/apns-token", method: "POST")
+        var body: [String: String] = ["token": token]
+        if let deviceName,
+           !deviceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            body["device_name"] = deviceName
+        }
+        request.httpBody = try JSONEncoder().encode(body)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, _) = try await perform(request)
+        do {
+            return try decoder.decode(APNsRegistrationResponse.self, from: data)
+        } catch {
+            throw APIError.decoding(error)
+        }
+    }
+
+    func reportLocation(
+        latitude: Double,
+        longitude: Double,
+        accuracy: Double?,
+        place: String?
+    ) async throws -> LocationContextResponse {
+        var request = try makeRequest(path: "/api/context/location", method: "POST")
+        var body: [String: Any] = [
+            "lat": latitude,
+            "lng": longitude,
+        ]
+        if let accuracy { body["accuracy"] = accuracy }
+        if let place,
+           !place.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            body["place"] = String(place.prefix(120))
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, _) = try await perform(request)
+        do {
+            return try decoder.decode(LocationContextResponse.self, from: data)
+        } catch {
+            throw APIError.decoding(error)
+        }
     }
 
     func streamMessage(

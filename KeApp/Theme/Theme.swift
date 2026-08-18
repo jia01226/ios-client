@@ -156,6 +156,7 @@ struct Metrics {
     let wideMessageLineThreshold: Int = 3
     let bubbleHorizontalPadding: CGFloat = 16
     let bubbleVerticalPadding: CGFloat = 12
+    let splitBubbleGap: CGFloat = 5
     let thinkingBubbleGap: CGFloat = 4
     let thinkingLineGap: CGFloat = 12
     let thinkingLineWidth: CGFloat = 1
@@ -225,6 +226,7 @@ struct GlassTokens {
 struct MotionTokens {
     let thinkingResponse: Double = 0.30
     let thinkingDampingFraction: Double = 1.0
+    let splitBubbleInterval: Double = 0.40
 }
 
 // MARK: - 对外的门面

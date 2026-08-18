@@ -1,4 +1,4 @@
-name: Verify Thinking Simulator
+name: Verify Chat Simulator
 
 on:
   workflow_dispatch:
@@ -28,7 +28,7 @@ jobs:
       - name: 生成 Xcode 工程
         run: xcodegen generate --spec project.yml
 
-      - name: 模拟器核验 Thinking 三态
+      - name: 模拟器核验 Thinking 三态与消息分条
         run: |
           set -euo pipefail
           SIMULATOR_ID=$(xcrun simctl list devices available -j | python3 -c '
@@ -49,13 +49,13 @@ jobs:
             -project KeApp.xcodeproj \
             -scheme KeApp \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
-            -resultBundlePath "$RUNNER_TEMP/ThinkingSimulator.xcresult" \
+            -resultBundlePath "$RUNNER_TEMP/ChatSimulator.xcresult" \
             CODE_SIGNING_ALLOWED=NO
 
       - name: 上传模拟器核验记录
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ThinkingSimulator-xcresult
-          path: ${{ runner.temp }}/ThinkingSimulator.xcresult
+          name: ChatSimulator-xcresult
+          path: ${{ runner.temp }}/ChatSimulator.xcresult
           retention-days: 14

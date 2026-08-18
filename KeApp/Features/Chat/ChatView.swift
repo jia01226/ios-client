@@ -13,6 +13,7 @@ private enum ChatSettingsPage: Equatable {
 struct ChatView: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var vm = ChatViewModel()
     @StateObject private var recentPhotos = RecentPhotosStore()
     @StateObject private var scrollAnchorController = ChatScrollAnchorController()
@@ -200,6 +201,7 @@ struct ChatView: View {
                             message: message,
                             isHighlighted: highlightedMessageID == message.id,
                             isThinkingExpanded: expandedThinkingMessageIDs.contains(message.id),
+                            visibleSegmentCount: vm.visibleSegmentCount(for: message),
                             scrollAnchorController: scrollAnchorController,
                             onThinkingToggle: {
                                 toggleThinking(for: message.id)
@@ -898,7 +900,7 @@ struct ChatView: View {
         let text = trimmedDraft
         guard canSend, !vm.isSending, !vm.isUploading else { return }
         draft = ""
-        Task { await vm.send(text) }
+        Task { await vm.send(text, reduceMotion: reduceMotion) }
     }
 
     private var checkingView: some View {
@@ -1269,9 +1271,11 @@ private struct MessageUnitLayout: Layout {
 
 private struct MessageRow: View {
     @EnvironmentObject private var theme: Theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let message: Message
     let isHighlighted: Bool
     let isThinkingExpanded: Bool
+    let visibleSegmentCount: Int?
     let scrollAnchorController: ChatScrollAnchorController
     let onThinkingToggle: () -> Void
     @State private var copied = false
@@ -1295,7 +1299,7 @@ private struct MessageRow: View {
                                 note: message.thoughtNote
                             )
                         }
-                        bubble
+                        bubbleStack
                     }
                 } else if message.sender == .ke, hasThinkingContent {
                     thoughtCard(
@@ -1464,16 +1468,37 @@ private struct MessageRow: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    private var bubble: some View {
+    private var bubbleStack: some View {
+        VStack(
+            alignment: message.sender == .ke ? .leading : .trailing,
+            spacing: theme.metric.splitBubbleGap
+        ) {
+            if visibleSegments.isEmpty, !(message.attachments ?? []).isEmpty {
+                bubbleSurface(text: nil, includesAttachments: true)
+            } else {
+                ForEach(Array(visibleSegments.enumerated()), id: \.offset) { index, segment in
+                    bubbleSurface(text: segment, includesAttachments: index == 0)
+                }
+            }
+        }
+        .frame(
+            maxWidth: usesWideKeLayout ? .infinity : nil,
+            alignment: message.sender == .ke ? .leading : .trailing
+        )
+    }
+
+    private func bubbleSurface(text: String?, includesAttachments: Bool) -> some View {
         VStack(
             alignment: message.sender == .ke ? .leading : .trailing,
             spacing: theme.metric.gapS
         ) {
-            ForEach(message.attachments ?? []) { attachment in
-                attachmentView(attachment)
+            if includesAttachments {
+                ForEach(message.attachments ?? []) { attachment in
+                    attachmentView(attachment)
+                }
             }
-            if !message.text.isEmpty {
-                Text(message.text)
+            if let text, !text.isEmpty {
+                Text(text)
                     .font(theme.font.bubble)
                     .foregroundStyle(message.sender == .ke
                                      ? theme.color.bubbleKeText
@@ -1490,9 +1515,18 @@ private struct MessageRow: View {
                 usesChatControls: true
             ))
             .frame(
-                maxWidth: usesWideKeLayout ? .infinity : theme.metric.bubbleMaxWidth,
+                maxWidth: isWideBubble(text) ? .infinity : theme.metric.bubbleMaxWidth,
                 alignment: message.sender == .ke ? .leading : .trailing
             )
+    }
+
+    private var visibleSegments: [String] {
+        let segments = message.bubbleSegments
+        guard message.sender == .ke,
+              !message.isStreaming,
+              !reduceMotion,
+              let visibleSegmentCount else { return segments }
+        return Array(segments.prefix(max(1, visibleSegmentCount)))
     }
 
     @ViewBuilder
@@ -1523,11 +1557,16 @@ private struct MessageRow: View {
 
     private var usesWideKeLayout: Bool {
         guard message.sender == .ke else { return false }
-        let visibleLineCount = message.text.split(
+        return message.bubbleSegments.contains(where: isWideBubble)
+    }
+
+    private func isWideBubble(_ text: String?) -> Bool {
+        guard message.sender == .ke, let text else { return false }
+        let visibleLineCount = text.split(
             separator: "\n",
             omittingEmptySubsequences: false
         ).count
-        return message.text.count >= theme.metric.wideMessageCharacterThreshold
+        return text.count >= theme.metric.wideMessageCharacterThreshold
             || visibleLineCount >= theme.metric.wideMessageLineThreshold
     }
 }
@@ -1564,6 +1603,7 @@ final class ChatViewModel: ObservableObject {
     @Published var pendingAttachments: [ChatAttachment] = []
     @Published var isUploading = false
     @Published var uploadError: String?
+    @Published private var visibleSegmentCounts: [String: Int] = [:]
 
     private let api = APIClient.shared
     private let cache = ChatCache.shared
@@ -1573,11 +1613,13 @@ final class ChatViewModel: ObservableObject {
     private var recoveringJobID: String?
     private var activeStreamClientID: String?
     private var recoveryProbeID: UUID?
+    private var segmentRevealTasks: [String: Task<Void, Never>] = [:]
 
 #if DEBUG
     private enum UITestFixture: Equatable {
         case thinkingStatic
         case thinkingStreaming
+        case segmentedReply
     }
 
     private var uiTestFixture: UITestFixture?
@@ -1626,6 +1668,18 @@ final class ChatViewModel: ObservableObject {
                     deliveryState: .sending
                 )
             ]
+        } else if arguments.contains("-ui-test-segmented-reply") {
+            uiTestFixture = .segmentedReply
+            phase = .ready
+            let message = Message(
+                id: "ui-test-segmented-assistant",
+                serverID: 9001,
+                sender: .ke,
+                text: "第一句先接住你。\n\n第二句慢一点出来。\n\n   \n第三句最后跟上。",
+                time: .now
+            )
+            messages = [message]
+            visibleSegmentCounts[message.bubbleRevealKey] = 1
         }
 #endif
     }
@@ -1635,6 +1689,8 @@ final class ChatViewModel: ObservableObject {
         if let uiTestFixture {
             if uiTestFixture == .thinkingStreaming {
                 await runUITestThinkingStream()
+            } else if uiTestFixture == .segmentedReply {
+                stageSegments(for: messages[0], reduceMotion: false)
             }
             return
         }
@@ -1688,6 +1744,7 @@ final class ChatViewModel: ObservableObject {
             sessionID = active.id
             selectedModel = active.model
             phase = .ready
+            CompanionPermissionCoordinator.shared.sessionDidBecomeReady()
             await loadCache(sessionID: active.id)
             await refreshHistory(showFailure: true)
             await recoverActiveJobsIfNeeded()
@@ -1713,7 +1770,7 @@ final class ChatViewModel: ObservableObject {
         await refreshHistory(showFailure: true)
     }
 
-    func send(_ text: String) async {
+    func send(_ text: String, reduceMotion: Bool = false) async {
         guard let sessionID, !isSending else { return }
         let attachments = pendingAttachments
         guard !text.isEmpty || !attachments.isEmpty else { return }
@@ -1765,6 +1822,7 @@ final class ChatViewModel: ObservableObject {
             userLocalID: userLocalID,
             assistantLocalID: assistantLocalID,
             attachments: attachments,
+            reduceMotion: reduceMotion,
             retryCount: 0
         )
     }
@@ -1966,6 +2024,7 @@ final class ChatViewModel: ObservableObject {
             let active = try await api.activeSession()
             sessionID = active.id
             selectedModel = active.model
+            CompanionPermissionCoordinator.shared.sessionDidBecomeReady()
             await loadCache(sessionID: active.id)
             phase = .ready
             await refreshHistory(showFailure: messages.isEmpty)
@@ -2039,6 +2098,7 @@ final class ChatViewModel: ObservableObject {
         userLocalID: String,
         assistantLocalID: String,
         attachments: [ChatAttachment],
+        reduceMotion: Bool,
         retryCount: Int
     ) async {
         var didComplete = false
@@ -2108,6 +2168,9 @@ final class ChatViewModel: ObservableObject {
                         $0.isStreaming = false
                         $0.deliveryState = .sent
                     }
+                    if let completed = messages.first(where: { $0.id == assistantLocalID }) {
+                        stageSegments(for: completed, reduceMotion: reduceMotion)
+                    }
                     applyBedroom(bedroom)
 
                 case let .serverError(message):
@@ -2120,6 +2183,7 @@ final class ChatViewModel: ObservableObject {
             statusText = nil
             await refreshHistory(showFailure: false)
             isSending = false
+            CompanionPermissionCoordinator.shared.conversationDidComplete()
 
         } catch APIError.unauthorized {
             flushBufferedEvents()
@@ -2146,6 +2210,7 @@ final class ChatViewModel: ObservableObject {
                     userLocalID: userLocalID,
                     assistantLocalID: assistantLocalID,
                     attachments: attachments,
+                    reduceMotion: reduceMotion,
                     retryCount: 1
                 )
             } else {
@@ -2224,6 +2289,35 @@ final class ChatViewModel: ObservableObject {
     private func applyBedroom(_ bedroom: Bool?) {
         guard let bedroom else { return }
         Theme.shared.applyServerSignal(bedroom: bedroom)
+    }
+
+    func visibleSegmentCount(for message: Message) -> Int? {
+        visibleSegmentCounts[message.bubbleRevealKey]
+    }
+
+    private func stageSegments(for message: Message, reduceMotion: Bool) {
+        let key = message.bubbleRevealKey
+        segmentRevealTasks[key]?.cancel()
+        guard !reduceMotion, message.bubbleSegments.count > 1 else {
+            visibleSegmentCounts.removeValue(forKey: key)
+            return
+        }
+
+        let total = message.bubbleSegments.count
+        visibleSegmentCounts[key] = 1
+        segmentRevealTasks[key] = Task { [weak self] in
+            guard let self else { return }
+            for count in 2...total {
+                try? await Task.sleep(
+                    nanoseconds: UInt64(Theme.shared.motion.splitBubbleInterval * 1_000_000_000)
+                )
+                guard !Task.isCancelled else { return }
+                visibleSegmentCounts[key] = count
+                streamRevision += 1
+            }
+            visibleSegmentCounts.removeValue(forKey: key)
+            segmentRevealTasks[key] = nil
+        }
     }
 
     private func updateMessage(id: String, mutate: (inout Message) -> Void) {
