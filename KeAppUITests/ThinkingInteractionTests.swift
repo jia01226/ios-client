@@ -22,7 +22,7 @@ final class ThinkingInteractionTests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Hold her words first, then answer gently."].exists)
         attachScreenshot(named: "02-thinking-expanded")
 
-        app.buttons["收起思考"].tap()
+        tapVisibleCenter(of: app.buttons["收起思考"], in: app)
         XCTAssertTrue(body.waitForNonExistence(timeout: 2))
         XCTAssertTrue(app.buttons["展开思考"].exists)
         attachScreenshot(named: "03-thinking-collapsed-again")
@@ -58,5 +58,13 @@ final class ThinkingInteractionTests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    private func tapVisibleCenter(of element: XCUIElement, in app: XCUIApplication) {
+        let frame = element.frame
+        XCTAssertFalse(frame.isEmpty)
+        app.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: frame.midX, dy: frame.midY))
+            .tap()
     }
 }
