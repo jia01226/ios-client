@@ -426,6 +426,9 @@ struct ChatView: View {
             }
         }
         scrollAnchorController.restoreAfterCurrentLayout(messageID: messageID)
+#if DEBUG
+        vm.didToggleThinkingForUITest(messageID: messageID)
+#endif
     }
 
     private var pendingAttachmentBar: some View {
@@ -1639,6 +1642,8 @@ final class ChatViewModel: ObservableObject {
         case thinkingStatic
         case thinkingStreaming
         case segmentedReply
+        case scrollControl
+        case thinkingSegmentRace
     }
 
     private var uiTestFixture: UITestFixture?
@@ -1699,6 +1704,42 @@ final class ChatViewModel: ObservableObject {
             )
             messages = [message]
             visibleSegmentCounts[message.bubbleRevealKey] = 1
+        } else if arguments.contains("-ui-test-scroll-control")
+                    || arguments.contains("-ui-test-thinking-segment-race") {
+            uiTestFixture = arguments.contains("-ui-test-thinking-segment-race")
+                ? .thinkingSegmentRace
+                : .scrollControl
+            phase = .ready
+            var fixtureMessages: [Message] = []
+            for index in 0..<7 {
+                fixtureMessages.append(Message(
+                    id: "ui-test-history-user-\(index)",
+                    sender: .me,
+                    text: "前面的消息 \(index + 1)",
+                    time: .now.addingTimeInterval(Double(index - 14) * 60)
+                ))
+                fixtureMessages.append(Message(
+                    id: "ui-test-history-ke-\(index)",
+                    sender: .ke,
+                    text: "前面的回复 \(index + 1)，用来把聊天列表撑过一屏。",
+                    time: .now.addingTimeInterval(Double(index - 13) * 60)
+                ))
+            }
+            let latest = Message(
+                id: "ui-test-scroll-latest",
+                serverID: 9101,
+                sender: .ke,
+                text: arguments.contains("-ui-test-thinking-segment-race")
+                    ? "第一条气泡已经到了。\n\n第二条气泡随后出现。\n\n第三条气泡最后出现。"
+                    : "这是最新一条回复。",
+                time: .now,
+                thoughtSummary: "展开后标题应钉在原位，下面的内容只向下生长，不允许自动滚底抢走位置。"
+            )
+            fixtureMessages.append(latest)
+            messages = fixtureMessages
+            if uiTestFixture == .thinkingSegmentRace {
+                visibleSegmentCounts[latest.bubbleRevealKey] = 1
+            }
         }
 #endif
     }
@@ -1744,6 +1785,14 @@ final class ChatViewModel: ObservableObject {
         }
         isSending = false
         streamRevision += 1
+    }
+
+    func didToggleThinkingForUITest(messageID: String) {
+        guard uiTestFixture == .thinkingSegmentRace,
+              messageID == "ui-test-scroll-latest",
+              let message = messages.first(where: { $0.id == messageID }),
+              segmentRevealTasks[message.bubbleRevealKey] == nil else { return }
+        stageSegments(for: message, reduceMotion: false)
     }
 #endif
 
