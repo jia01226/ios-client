@@ -27,6 +27,8 @@ struct ChatView: View {
     @State private var selectedMessageIDs: Set<Int> = []
     @State private var showingDeleteConfirmation = false
     @State private var highlightedMessageID: String?
+    @State private var expandedThinkingMessageIDs: Set<String> = []
+    @State private var isChatBottomVisible = true
 
     var body: some View {
         Group {
@@ -171,7 +173,11 @@ struct ChatView: View {
                     ForEach(vm.messages) { message in
                         MessageRow(
                             message: message,
-                            isHighlighted: highlightedMessageID == message.id
+                            isHighlighted: highlightedMessageID == message.id,
+                            isThinkingExpanded: expandedThinkingMessageIDs.contains(message.id),
+                            onThinkingToggle: {
+                                toggleThinking(for: message.id, proxy: proxy)
+                            }
                         )
                             .id(message.id)
                     }
@@ -179,6 +185,8 @@ struct ChatView: View {
                     Color.clear
                         .frame(height: 1)
                         .id("chat-bottom")
+                        .onAppear { isChatBottomVisible = true }
+                        .onDisappear { isChatBottomVisible = false }
                 }
                 .padding(.horizontal, theme.metric.pagePadding)
                 .padding(.bottom, theme.metric.gapL)
@@ -350,6 +358,26 @@ struct ChatView: View {
                         mimeType: type.preferredMIMEType ?? "image/jpeg"
                     )
                 }
+            }
+        }
+    }
+
+    private func toggleThinking(for messageID: String, proxy: ScrollViewProxy) {
+        let willExpand = !expandedThinkingMessageIDs.contains(messageID)
+        let shouldKeepBottomAnchored = isChatBottomVisible
+
+        withAnimation(.easeOut(duration: 0.22)) {
+            if willExpand {
+                expandedThinkingMessageIDs.insert(messageID)
+            } else {
+                expandedThinkingMessageIDs.remove(messageID)
+            }
+        }
+
+        guard shouldKeepBottomAnchored else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+            withAnimation(.easeOut(duration: 0.18)) {
+                proxy.scrollTo("chat-bottom", anchor: .bottom)
             }
         }
     }
@@ -985,7 +1013,9 @@ private struct MessageUnitLayout: Layout {
         cache: inout ()
     ) -> CGSize {
         guard let bubble = subviews.last else { return .zero }
-        let bubbleSize = bubble.sizeThatFits(proposal)
+        let bubbleSize = bubble.sizeThatFits(
+            ProposedViewSize(width: proposal.width, height: nil)
+        )
         guard includesThinking, subviews.count > 1 else { return bubbleSize }
 
         let thinkingSize = subviews[0].sizeThatFits(
@@ -1031,7 +1061,8 @@ private struct MessageRow: View {
     @EnvironmentObject private var theme: Theme
     let message: Message
     let isHighlighted: Bool
-    @State private var thoughtChoice: Bool?
+    let isThinkingExpanded: Bool
+    let onThinkingToggle: () -> Void
     @State private var copied = false
 
     var body: some View {
@@ -1141,46 +1172,41 @@ private struct MessageRow: View {
     }
 
     private func thoughtCard(summary: String?, note: String?) -> some View {
-        let expanded = thoughtChoice ?? false
-        return HStack(alignment: .top, spacing: theme.metric.thinkingLineGap) {
+        VStack(alignment: .leading, spacing: theme.metric.gapS) {
+            Button(action: onThinkingToggle) {
+                HStack(spacing: theme.metric.gapS) {
+                    Text("Thinking")
+                    Image(systemName: isThinkingExpanded ? "chevron.up" : "chevron.down")
+                        .font(theme.font.thinkingChevron)
+                }
+                .font(theme.font.thinking)
+                .foregroundStyle(theme.color.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isThinkingExpanded ? "收起思考" : "展开思考")
+            .accessibilityValue(isThinkingExpanded ? "已展开" : "已收起")
+
+            if isThinkingExpanded {
+                Group {
+                    if message.isStreaming {
+                        ScrollView {
+                            thinkingTextStack(summary: summary, note: note)
+                        }
+                        .frame(maxHeight: theme.metric.thinkingStreamingMaxHeight)
+                    } else {
+                        thinkingTextStack(summary: summary, note: note)
+                    }
+                }
+                .transition(.opacity)
+            }
+        }
+        .padding(.leading, theme.metric.thinkingLineGap + theme.metric.thinkingLineWidth)
+        .overlay(alignment: .leading) {
             Rectangle()
                 .fill(theme.color.accentSoft.opacity(theme.glass.thinkingLineOpacity))
                 .frame(width: theme.metric.thinkingLineWidth)
-
-            VStack(alignment: .leading, spacing: theme.metric.gapS) {
-                Button {
-                    withAnimation(.easeOut(duration: 0.22)) {
-                        thoughtChoice = !expanded
-                    }
-                } label: {
-                    HStack(spacing: theme.metric.gapS) {
-                        Text("Thinking")
-                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                            .font(theme.font.thinkingChevron)
-                    }
-                    .font(theme.font.thinking)
-                    .foregroundStyle(theme.color.textSecondary)
-                }
-                .buttonStyle(.plain)
-
-                if expanded {
-                    Group {
-                        if message.isStreaming {
-                            ScrollView {
-                                thinkingTextStack(summary: summary, note: note)
-                            }
-                            .frame(maxHeight: theme.metric.thinkingStreamingMaxHeight)
-                        } else {
-                            thinkingTextStack(summary: summary, note: note)
-                        }
-                    }
-                    .transition(.opacity)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, theme.metric.gapXS)
         .padding(.horizontal, theme.metric.thinkingHorizontalPadding)
     }
 
