@@ -156,6 +156,11 @@ struct Metrics {
     let wideMessageLineThreshold: Int = 3
     let bubbleHorizontalPadding: CGFloat = 16
     let bubbleVerticalPadding: CGFloat = 12
+    let thinkingBubbleGap: CGFloat = 2
+    let thinkingLineGap: CGFloat = 12
+    let thinkingLineWidth: CGFloat = 1
+    let thinkingHorizontalPadding: CGFloat = 2
+    let thinkingStreamingMaxHeight: CGFloat = 118
     let glassStrokeWidth: CGFloat = 0.8
     let glassShadowRadius: CGFloat = 12
     let glassShadowY: CGFloat = 6
@@ -188,6 +193,10 @@ struct Typo {
     let receiptIcon = Font.system(size: 10, weight: .semibold)
     let thinkingChevron = Font.system(size: 10, weight: .medium)
     let unavailableIcon = Font.system(size: 28, weight: .medium)
+    let memorySparkleIcon = Font.system(size: 12, weight: .regular)
+    let disclosureIcon = Font.system(size: 13, weight: .regular)
+    let anniversaryCountdown = Font.system(size: 26, weight: .light)
+    let shiftBadge = Font.system(size: 15, weight: .medium)
 
     var bubble: Font {
         Font.system(size: chatSize, weight: .regular, design: .serif)

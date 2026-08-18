@@ -68,7 +68,7 @@ struct UsView: View {
                         .foregroundStyle(theme.color.textPrimary)
                     Spacer()
                     Text("\(vm.daysUntil(next.date))")
-                        .font(.system(size: 26, weight: .light))
+                        .font(theme.font.anniversaryCountdown)
                         .foregroundStyle(theme.effectiveAccent)
                     Text("天")
                         .font(theme.font.caption)
@@ -125,7 +125,7 @@ struct UsView: View {
                             .font(theme.font.caption)
                             .foregroundStyle(theme.color.textSecondary)
                         Text(vm.shiftLabel(day.kind))
-                            .font(.system(size: 15, weight: .medium))
+                            .font(theme.font.shiftBadge)
                             .foregroundStyle(
                                 day.kind == .off ? theme.color.textSecondary : theme.color.textPrimary
                             )

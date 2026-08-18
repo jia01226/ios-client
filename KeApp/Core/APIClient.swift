@@ -1,5 +1,6 @@
 import Foundation
 import EventSource
+import OSLog
 
 enum APIError: LocalizedError {
     case badURL
@@ -42,7 +43,7 @@ enum ChatStreamEvent: Sendable {
     case receipt(userMessageID: Int?, jobID: String?, bedroom: Bool?)
     case text(String)
     case thinkingDelta(String)
-    case thoughtSummary(String)
+    case thoughtNote(String)
     case completed(assistantMessageID: Int?, bedroom: Bool?)
     case serverError(String)
 }
@@ -96,24 +97,29 @@ private struct RemoteMessage: Decodable {
     let author: String
     let content: String
     let createdAt: String
+    let thinkSummary: String?
     let thoughtNote: String?
     let attachments: [ChatAttachment]?
 
     enum CodingKeys: String, CodingKey {
         case id, author, content
         case createdAt = "created_at"
+        case thinkSummary = "think_summary"
         case thoughtNote = "thought_note"
         case attachments
     }
 
     func appMessage() -> Message {
-        Message(
+        let parsedTime = ServerDateParser.parse(createdAt)
+        return Message(
             id: "server-\(id)",
             serverID: id,
             sender: author == "user" ? .me : .ke,
             text: content,
-            time: ServerDateParser.parse(createdAt),
-            thoughtSummary: thoughtNote?.nilIfBlank,
+            time: parsedTime.date,
+            serverTimeIsValid: parsedTime.isValid,
+            thoughtSummary: thinkSummary?.nilIfBlank,
+            thoughtNote: thoughtNote?.nilIfBlank,
             attachments: attachments,
             isStreaming: false,
             deliveryState: .sent
@@ -122,6 +128,16 @@ private struct RemoteMessage: Decodable {
 }
 
 private enum ServerDateParser {
+    struct Result {
+        let date: Date
+        let isValid: Bool
+    }
+
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "KeApp",
+        category: "ServerDateParser"
+    )
+
     private static let formatters: [DateFormatter] = {
         ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss.SSSSSS"].map {
             let formatter = DateFormatter()
@@ -132,12 +148,17 @@ private enum ServerDateParser {
         }
     }()
 
-    static func parse(_ raw: String) -> Date {
-        if let iso = ISO8601DateFormatter().date(from: raw) { return iso }
-        for formatter in formatters {
-            if let value = formatter.date(from: raw) { return value }
+    static func parse(_ raw: String) -> Result {
+        if let iso = ISO8601DateFormatter().date(from: raw) {
+            return Result(date: iso, isValid: true)
         }
-        return .now
+        for formatter in formatters {
+            if let value = formatter.date(from: raw) {
+                return Result(date: value, isValid: true)
+            }
+        }
+        logger.error("无法解析服务端时间戳：\(raw, privacy: .public)")
+        return Result(date: .distantPast, isValid: false)
     }
 }
 
@@ -454,7 +475,7 @@ actor APIClient {
             events.append(.thinkingDelta(value))
         }
         if let value = object["think_summary"] as? String, !value.isEmpty {
-            events.append(.thoughtSummary(value))
+            events.append(.thoughtNote(value))
         }
         if let value = object["t"] as? String, !value.isEmpty {
             events.append(.text(value))

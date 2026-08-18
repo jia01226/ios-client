@@ -20,8 +20,15 @@ struct Message: Identifiable, Hashable, Codable, Sendable {
     var text: String
     let time: Date
 
-    /// 后端 SSE 的 `think_summary`。这里只展示可读摘要，不展示隐藏的逐步推理。
+    /// 仅远端消息设置；`false` 时排序改用 `serverID`，避免坏时间戳把旧消息排到最底。
+    var serverTimeIsValid: Bool? = nil
+
+    /// SSE 的 `thinking_summary_delta` 累积值，或历史消息的 `think_summary`。
+    /// 这里只展示后端提供的可读摘要，不展示隐藏的逐步推理。
     var thoughtSummary: String? = nil
+
+    /// 旧版 SSE `think_summary` / 历史 `thought_note`，与真实思考摘要分开保留。
+    var thoughtNote: String? = nil
 
     /// 聊天附件只保存服务器返回的相对地址与展示名称；文件本体仍以 VPS 为准。
     var attachments: [ChatAttachment]? = nil

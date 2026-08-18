@@ -88,7 +88,7 @@ struct PlayView: View {
 
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 13))
+                    .font(theme.font.disclosureIcon)
                     .foregroundStyle(theme.color.textSecondary)
             }
             .padding(theme.metric.gapM)

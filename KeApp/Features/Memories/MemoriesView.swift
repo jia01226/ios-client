@@ -48,7 +48,7 @@ struct MemoriesView: View {
                     .foregroundStyle(theme.effectiveAccent)
                 Spacer()
                 Image(systemName: "sparkle")
-                    .font(.system(size: 12))
+                    .font(theme.font.memorySparkleIcon)
                     .foregroundStyle(theme.effectiveAccent)
             }
 

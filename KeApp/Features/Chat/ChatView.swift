@@ -975,6 +975,58 @@ private struct StatusBanner: View {
     }
 }
 
+private struct MessageUnitLayout: Layout {
+    let includesThinking: Bool
+    let spacing: CGFloat
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) -> CGSize {
+        guard let bubble = subviews.last else { return .zero }
+        let bubbleSize = bubble.sizeThatFits(proposal)
+        guard includesThinking, subviews.count > 1 else { return bubbleSize }
+
+        let thinkingSize = subviews[0].sizeThatFits(
+            ProposedViewSize(width: bubbleSize.width, height: nil)
+        )
+        return CGSize(
+            width: bubbleSize.width,
+            height: thinkingSize.height + spacing + bubbleSize.height
+        )
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) {
+        guard let bubble = subviews.last else { return }
+        var nextY = bounds.minY
+
+        if includesThinking, subviews.count > 1 {
+            let thinkingProposal = ProposedViewSize(width: bounds.width, height: nil)
+            let thinkingSize = subviews[0].sizeThatFits(thinkingProposal)
+            subviews[0].place(
+                at: CGPoint(x: bounds.minX, y: nextY),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(width: bounds.width, height: thinkingSize.height)
+            )
+            nextY += thinkingSize.height + spacing
+        }
+
+        let bubbleProposal = ProposedViewSize(width: bounds.width, height: nil)
+        let bubbleSize = bubble.sizeThatFits(bubbleProposal)
+        bubble.place(
+            at: CGPoint(x: bounds.minX, y: nextY),
+            anchor: .topLeading,
+            proposal: ProposedViewSize(width: bounds.width, height: bubbleSize.height)
+        )
+    }
+}
+
 private struct MessageRow: View {
     @EnvironmentObject private var theme: Theme
     let message: Message
@@ -990,13 +1042,24 @@ private struct MessageRow: View {
                 alignment: message.sender == .ke ? .leading : .trailing,
                 spacing: theme.metric.gapXS
             ) {
-                if message.sender == .ke,
-                   message.isStreaming || hasThoughtSummary {
-                    thoughtCard(message.thoughtSummary)
-                }
-
-                if !message.text.isEmpty || !(message.attachments ?? []).isEmpty {
-                    bubble
+                if hasBubbleContent {
+                    MessageUnitLayout(
+                        includesThinking: message.sender == .ke && hasThinkingContent,
+                        spacing: theme.metric.thinkingBubbleGap
+                    ) {
+                        if message.sender == .ke, hasThinkingContent {
+                            thoughtCard(
+                                summary: message.thoughtSummary,
+                                note: message.thoughtNote
+                            )
+                        }
+                        bubble
+                    }
+                } else if message.sender == .ke, hasThinkingContent {
+                    thoughtCard(
+                        summary: message.thoughtSummary,
+                        note: message.thoughtNote
+                    )
                 }
 
                 HStack(spacing: theme.metric.gapS) {
@@ -1060,59 +1123,79 @@ private struct MessageRow: View {
         }
     }
 
-    private var hasThoughtSummary: Bool {
-        !(message.thoughtSummary ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .isEmpty
+    private var hasThinkingContent: Bool {
+        !thinkingSections.isEmpty
     }
 
-    private func thoughtCard(_ summary: String?) -> some View {
+    private var hasBubbleContent: Bool {
+        !message.text.isEmpty || !(message.attachments ?? []).isEmpty
+    }
+
+    private var thinkingSections: [String] {
+        [message.thoughtSummary, message.thoughtNote]
+            .compactMap { value in
+                guard let value else { return nil }
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : trimmed
+            }
+    }
+
+    private func thoughtCard(summary: String?, note: String?) -> some View {
         let expanded = thoughtChoice ?? false
-        return HStack(alignment: .top, spacing: 12) {
+        return HStack(alignment: .top, spacing: theme.metric.thinkingLineGap) {
             Rectangle()
                 .fill(theme.color.accentSoft.opacity(theme.glass.thinkingLineOpacity))
-                .frame(width: 1)
+                .frame(width: theme.metric.thinkingLineWidth)
 
             VStack(alignment: .leading, spacing: theme.metric.gapS) {
-            Button {
-                withAnimation(.easeOut(duration: 0.22)) {
-                    thoughtChoice = !expanded
-                }
-            } label: {
-                HStack(spacing: theme.metric.gapS) {
-                    Text("Thinking")
-                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                        .font(theme.font.thinkingChevron)
-                }
-                .font(theme.font.thinking)
-                .foregroundStyle(theme.color.textSecondary)
-            }
-            .buttonStyle(.plain)
-
-            if expanded {
-                Group {
-                    if let summary,
-                       !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                       message.isStreaming {
-                        ScrollView {
-                            thoughtText(summary)
-                        }
-                        .frame(maxHeight: 118)
-                    } else if let summary,
-                              !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        thoughtText(summary)
-                    } else {
-                        Text("正在整理…")
-                            .font(theme.font.thinkingBody)
-                            .foregroundStyle(theme.color.textSecondary)
+                Button {
+                    withAnimation(.easeOut(duration: 0.22)) {
+                        thoughtChoice = !expanded
                     }
+                } label: {
+                    HStack(spacing: theme.metric.gapS) {
+                        Text("Thinking")
+                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                            .font(theme.font.thinkingChevron)
+                    }
+                    .font(theme.font.thinking)
+                    .foregroundStyle(theme.color.textSecondary)
                 }
-                .transition(.opacity)
+                .buttonStyle(.plain)
+
+                if expanded {
+                    Group {
+                        if message.isStreaming {
+                            ScrollView {
+                                thinkingTextStack(summary: summary, note: note)
+                            }
+                            .frame(maxHeight: theme.metric.thinkingStreamingMaxHeight)
+                        } else {
+                            thinkingTextStack(summary: summary, note: note)
+                        }
+                    }
+                    .transition(.opacity)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, theme.metric.gapXS)
+        .padding(.horizontal, theme.metric.thinkingHorizontalPadding)
+    }
+
+    private func thinkingTextStack(summary: String?, note: String?) -> some View {
+        let sections = [summary, note]
+            .compactMap { value -> String? in
+                guard let value else { return nil }
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : trimmed
+            }
+        return VStack(alignment: .leading, spacing: theme.metric.gapS) {
+            ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
+                thoughtText(section)
             }
         }
-        .padding(.vertical, theme.metric.gapXS)
-        .padding(.horizontal, 2)
     }
 
     private func thoughtText(_ summary: String) -> some View {
@@ -1646,9 +1729,9 @@ final class ChatViewModel: ObservableObject {
                         flushBufferedEvents()
                     }
 
-                case let .thoughtSummary(summary):
+                case let .thoughtNote(summary):
                     flushBufferedEvents()
-                    updateMessage(id: assistantLocalID) { $0.thoughtSummary = summary }
+                    updateMessage(id: assistantLocalID) { $0.thoughtNote = summary }
                     streamRevision += 1
 
                 case let .completed(assistantMessageID, bedroom):
@@ -1784,23 +1867,30 @@ final class ChatViewModel: ObservableObject {
 
     private func preserveLocalThinking(in remote: [Message]) -> [Message] {
         let localByServerID = Dictionary(
-            uniqueKeysWithValues: messages.compactMap { message -> (Int, String)? in
-                guard let serverID = message.serverID,
-                      let summary = message.thoughtSummary,
-                      !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    return nil
-                }
-                return (serverID, summary)
-            }
+            messages.compactMap { message -> (Int, Message)? in
+                guard let serverID = message.serverID else { return nil }
+                return (serverID, message)
+            },
+            uniquingKeysWith: { first, _ in first }
         )
         return remote.map { message in
-            guard message.thoughtSummary == nil,
-                  let serverID = message.serverID,
-                  let summary = localByServerID[serverID] else { return message }
+            guard let serverID = message.serverID,
+                  let local = localByServerID[serverID] else { return message }
             var preserved = message
-            preserved.thoughtSummary = summary
+            if nonBlank(preserved.thoughtSummary) == nil {
+                preserved.thoughtSummary = nonBlank(local.thoughtSummary)
+            }
+            if nonBlank(preserved.thoughtNote) == nil {
+                preserved.thoughtNote = nonBlank(local.thoughtNote)
+            }
             return preserved
         }
+    }
+
+    private func nonBlank(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func mergeRemoteHistory(_ remote: [Message]) -> [Message] {
@@ -1819,19 +1909,25 @@ final class ChatViewModel: ObservableObject {
                 merged.append(local)
             }
         }
-        return merged.sorted {
-            if $0.time == $1.time { return ($0.serverID ?? 0) < ($1.serverID ?? 0) }
-            return $0.time < $1.time
-        }
+        return merged.sorted(by: messagePrecedes)
     }
 
     private func mergeMessages(_ current: [Message], with incoming: [Message]) -> [Message] {
         var values: [String: Message] = Dictionary(uniqueKeysWithValues: current.map { ($0.id, $0) })
         for message in incoming { values[message.id] = message }
-        return values.values.sorted {
-            if $0.time == $1.time { return ($0.serverID ?? 0) < ($1.serverID ?? 0) }
-            return $0.time < $1.time
+        return values.values.sorted(by: messagePrecedes)
+    }
+
+    private func messagePrecedes(_ lhs: Message, _ rhs: Message) -> Bool {
+        if (lhs.serverTimeIsValid == false || rhs.serverTimeIsValid == false),
+           let lhsServerID = lhs.serverID,
+           let rhsServerID = rhs.serverID {
+            return lhsServerID < rhsServerID
         }
+        if lhs.time == rhs.time {
+            return (lhs.serverID ?? 0) < (rhs.serverID ?? 0)
+        }
+        return lhs.time < rhs.time
     }
 
     private func mergeAttachments(
@@ -1848,7 +1944,9 @@ final class ChatViewModel: ObservableObject {
     private func markFailed(userLocalID: String, assistantLocalID: String) {
         updateMessage(id: userLocalID) { $0.deliveryState = .failed }
         if let index = messages.firstIndex(where: { $0.id == assistantLocalID }) {
-            if messages[index].text.isEmpty && messages[index].thoughtSummary == nil {
+            if messages[index].text.isEmpty
+                && nonBlank(messages[index].thoughtSummary) == nil
+                && nonBlank(messages[index].thoughtNote) == nil {
                 messages.remove(at: index)
             } else {
                 messages[index].isStreaming = false
