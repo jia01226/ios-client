@@ -1404,6 +1404,9 @@ private struct MessageRow: View {
             .accessibilityValue(isThinkingExpanded ? "已展开" : "已收起")
 
             if isThinkingExpanded {
+                // 不挂 .transition：展开/收起本来就走无动画事务（toggleThinking 里
+                // transaction.animation = nil），而 transition 会在流式期间列表高频
+                // 重建时被误触发，opacity 反复重播就是她报的"点开频闪"。
                 Group {
                     if message.isStreaming {
                         ScrollView {
@@ -1414,7 +1417,6 @@ private struct MessageRow: View {
                         thinkingTextStack(summary: summary, note: note)
                     }
                 }
-                .transition(.opacity)
             }
         }
         .padding(.leading, theme.metric.thinkingLineGap + theme.metric.thinkingLineWidth)
