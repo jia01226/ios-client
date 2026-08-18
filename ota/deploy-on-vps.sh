@@ -7,7 +7,7 @@ SITE="/etc/nginx/sites-enabled/gude"
 SNIPPET="/etc/nginx/snippets/ke-ota.conf"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 BACKUP_DIR="/root/ota-deploy-backups/$STAMP"
-EXPECTED_IPA_SHA256="f84c460bdcbe33ee78c7fa8a2749ab49b5e8cc968414f7d044df53b1c3ae47d6"
+EXPECTED_IPA_SHA256="01b1a0f37e521907de5e8ef99fef843588de1e28cb8b6216a8a9e94916a3aba7"
 INSTALL_URL="https://jiagude.love/ios/2c9715755397490791ffbe1568d2b914/"
 
 for file in index.html manifest.plist KeApp.ipa nginx-location.conf; do
