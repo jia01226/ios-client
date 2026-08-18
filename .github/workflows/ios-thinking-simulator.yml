@@ -17,6 +17,11 @@ jobs:
       - name: 检出源码
         uses: actions/checkout@v4
 
+      - name: 选择带 Swift 6 与 iOS 18 模拟器的 Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.2.app
+          xcodebuild -version
+
       - name: 安装 XcodeGen
         run: brew install xcodegen
 
