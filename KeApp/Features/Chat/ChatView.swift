@@ -390,10 +390,10 @@ struct ChatView: View {
     private func toggleThinking(for messageID: String) {
         let willExpand = !expandedThinkingMessageIDs.contains(messageID)
         // 展开固定消息顶部，让上方记录不动、内容只向下长；
-        // 收起固定消息底部，让气泡及其下方记录留在原位。
+        // 收起只固定当前视口，不把聊天拉回展开前的位置。
         scrollAnchorController.prepareToRestore(
             messageID: messageID,
-            edge: willExpand ? .top : .bottom
+            edge: willExpand ? .top : .viewport
         )
         var transaction = Transaction()
         transaction.animation = nil
@@ -1034,7 +1034,7 @@ private struct StatusBanner: View {
 private final class ChatScrollAnchorController: ObservableObject {
     enum AnchorEdge: Equatable {
         case top
-        case bottom
+        case viewport
     }
 
     private final class WeakAnchor {
@@ -1074,12 +1074,15 @@ private final class ChatScrollAnchorController: ObservableObject {
         else { return }
 
         resolveScrollView(from: anchor)
+        guard let scrollView else { return }
         let boundsInViewport = anchor.convert(anchor.bounds, to: nil)
         pendingRestore = PendingRestore(
             token: UUID(),
             messageID: messageID,
             edge: edge,
-            viewportCoordinate: edge == .top ? boundsInViewport.minY : boundsInViewport.maxY,
+            viewportCoordinate: edge == .top
+                ? boundsInViewport.minY
+                : scrollView.contentOffset.y,
             attempts: 0
         )
     }
@@ -1133,7 +1136,7 @@ private final class ChatScrollAnchorController: ObservableObject {
         let boundsInViewport = anchor.convert(anchor.bounds, to: nil)
         let currentCoordinate = pendingRestore.edge == .top
             ? boundsInViewport.minY
-            : boundsInViewport.maxY
+            : scrollView.contentOffset.y
         let delta = currentCoordinate - pendingRestore.viewportCoordinate
         guard abs(delta) > 0.5 else {
             pendingRestore.attempts += 1
@@ -1156,10 +1159,10 @@ private final class ChatScrollAnchorController: ObservableObject {
                 + scrollView.adjustedContentInset.bottom
                 - scrollView.bounds.height
         )
-        let targetY = min(
-            maximumY,
-            max(minimumY, scrollView.contentOffset.y + delta)
-        )
+        let proposedY = pendingRestore.edge == .top
+            ? scrollView.contentOffset.y + delta
+            : pendingRestore.viewportCoordinate
+        let targetY = min(maximumY, max(minimumY, proposedY))
         cancelPreservation()
         scrollView.setContentOffset(
             CGPoint(x: scrollView.contentOffset.x, y: targetY),
