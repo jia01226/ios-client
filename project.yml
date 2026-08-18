@@ -30,6 +30,8 @@ targets:
         APIBaseURL: https://jiagude.love
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        UIAppFonts:
+          - Allura-Regular.ttf
         LSRequiresIPhoneOS: true
         NSFaceIDUsageDescription: 用于打开只有你能进入的私密空间
         NSCameraUsageDescription: 用于拍照并把你选择的照片发送给柯

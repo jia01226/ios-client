@@ -13,8 +13,10 @@ private enum ChatSettingsPage: Equatable {
 struct ChatView: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var vm = ChatViewModel()
     @StateObject private var recentPhotos = RecentPhotosStore()
+    @StateObject private var scrollAnchorController = ChatScrollAnchorController()
     @State private var draft = ""
     @FocusState private var inputFocused: Bool
     @State private var settingsOpen = false
@@ -28,7 +30,6 @@ struct ChatView: View {
     @State private var showingDeleteConfirmation = false
     @State private var highlightedMessageID: String?
     @State private var expandedThinkingMessageIDs: Set<String> = []
-    @State private var isChatBottomVisible = true
 
     var body: some View {
         Group {
@@ -176,7 +177,7 @@ struct ChatView: View {
                             isHighlighted: highlightedMessageID == message.id,
                             isThinkingExpanded: expandedThinkingMessageIDs.contains(message.id),
                             onThinkingToggle: {
-                                toggleThinking(for: message.id, proxy: proxy)
+                                toggleThinking(for: message.id)
                             }
                         )
                             .id(message.id)
@@ -185,11 +186,10 @@ struct ChatView: View {
                     Color.clear
                         .frame(height: 1)
                         .id("chat-bottom")
-                        .onAppear { isChatBottomVisible = true }
-                        .onDisappear { isChatBottomVisible = false }
                 }
                 .padding(.horizontal, theme.metric.pagePadding)
                 .padding(.bottom, theme.metric.gapL)
+                .background(ChatScrollViewResolver(controller: scrollAnchorController))
             }
             .scrollContentBackground(.hidden)
             .scrollDismissesKeyboard(.interactively)
@@ -362,22 +362,31 @@ struct ChatView: View {
         }
     }
 
-    private func toggleThinking(for messageID: String, proxy: ScrollViewProxy) {
+    private func toggleThinking(for messageID: String) {
         let willExpand = !expandedThinkingMessageIDs.contains(messageID)
-        let shouldKeepBottomAnchored = isChatBottomVisible
+        let animation: Animation? = reduceMotion
+            ? nil
+            : .spring(
+                response: theme.motion.thinkingResponse,
+                dampingFraction: theme.motion.thinkingDampingFraction
+            )
 
-        withAnimation(.easeOut(duration: 0.22)) {
+        // 展开时让折叠条以上保持原位；收起时锁住下方气泡和消息的位置。
+        if willExpand {
+            scrollAnchorController.cancelPreservation()
+        } else {
+            scrollAnchorController.preserveBottom(
+                during: reduceMotion
+                    ? theme.motion.reducedMotionAnchorDuration
+                    : theme.motion.thinkingAnchorDuration
+            )
+        }
+
+        withAnimation(animation) {
             if willExpand {
                 expandedThinkingMessageIDs.insert(messageID)
             } else {
                 expandedThinkingMessageIDs.remove(messageID)
-            }
-        }
-
-        guard shouldKeepBottomAnchored else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
-            withAnimation(.easeOut(duration: 0.18)) {
-                proxy.scrollTo("chat-bottom", anchor: .bottom)
             }
         }
     }
@@ -1000,6 +1009,140 @@ private struct StatusBanner: View {
             RoundedRectangle(cornerRadius: theme.metric.radiusChip, style: .continuous)
                 .fill(theme.color.card)
         )
+    }
+}
+
+/// 在 Thinking 收起的每一帧补偿内容高度差，让它下面的内容留在原位。
+private final class ChatScrollAnchorController: NSObject, ObservableObject {
+    private weak var scrollView: UIScrollView?
+    private var displayLink: CADisplayLink?
+    private var distanceFromViewportBottomToContentBottom: CGFloat?
+    private var preservationDeadline: CFTimeInterval = 0
+
+    func attach(to scrollView: UIScrollView) {
+        self.scrollView = scrollView
+    }
+
+    func preserveBottom(during duration: TimeInterval) {
+        guard let scrollView else { return }
+
+        cancelPreservation()
+        scrollView.layoutIfNeeded()
+
+        let contentBottom = scrollView.contentSize.height
+            + scrollView.adjustedContentInset.bottom
+        distanceFromViewportBottomToContentBottom = max(
+            0,
+            contentBottom - (scrollView.contentOffset.y + scrollView.bounds.height)
+        )
+        preservationDeadline = CACurrentMediaTime() + duration
+
+        let displayLink = CADisplayLink(
+            target: self,
+            selector: #selector(preserveBottomAnchor)
+        )
+        displayLink.add(to: .main, forMode: .common)
+        self.displayLink = displayLink
+    }
+
+    func cancelPreservation() {
+        displayLink?.invalidate()
+        displayLink = nil
+        distanceFromViewportBottomToContentBottom = nil
+    }
+
+    @objc
+    private func preserveBottomAnchor(_ displayLink: CADisplayLink) {
+        guard
+            let scrollView,
+            let bottomDistance = distanceFromViewportBottomToContentBottom,
+            !scrollView.isTracking,
+            !scrollView.isDragging,
+            !scrollView.isDecelerating
+        else {
+            cancelPreservation()
+            return
+        }
+
+        scrollView.layoutIfNeeded()
+
+        let minimumY = -scrollView.adjustedContentInset.top
+        let maximumY = max(
+            minimumY,
+            scrollView.contentSize.height
+                + scrollView.adjustedContentInset.bottom
+                - scrollView.bounds.height
+        )
+        let targetY = min(
+            maximumY,
+            max(
+                minimumY,
+                scrollView.contentSize.height
+                    + scrollView.adjustedContentInset.bottom
+                    - scrollView.bounds.height
+                    - bottomDistance
+            )
+        )
+
+        if abs(scrollView.contentOffset.y - targetY) > 0.25 {
+            scrollView.setContentOffset(
+                CGPoint(x: scrollView.contentOffset.x, y: targetY),
+                animated: false
+            )
+        }
+
+        if displayLink.timestamp >= preservationDeadline {
+            cancelPreservation()
+        }
+    }
+}
+
+private struct ChatScrollViewResolver: UIViewRepresentable {
+    let controller: ChatScrollAnchorController
+
+    func makeUIView(context: Context) -> ChatScrollProbeView {
+        ChatScrollProbeView(controller: controller)
+    }
+
+    func updateUIView(_ uiView: ChatScrollProbeView, context: Context) {
+        uiView.resolveScrollView()
+    }
+}
+
+private final class ChatScrollProbeView: UIView {
+    private weak var controller: ChatScrollAnchorController?
+
+    init(controller: ChatScrollAnchorController) {
+        self.controller = controller
+        super.init(frame: .zero)
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func didMoveToSuperview() {
+        super.didMoveToSuperview()
+        resolveScrollView()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        resolveScrollView()
+    }
+
+    func resolveScrollView() {
+        var ancestor = superview
+        while let view = ancestor {
+            if let scrollView = view as? UIScrollView {
+                controller?.attach(to: scrollView)
+                return
+            }
+            ancestor = view.superview
+        }
     }
 }
 

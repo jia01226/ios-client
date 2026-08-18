@@ -156,7 +156,7 @@ struct Metrics {
     let wideMessageLineThreshold: Int = 3
     let bubbleHorizontalPadding: CGFloat = 16
     let bubbleVerticalPadding: CGFloat = 12
-    let thinkingBubbleGap: CGFloat = 2
+    let thinkingBubbleGap: CGFloat = 4
     let thinkingLineGap: CGFloat = 12
     let thinkingLineWidth: CGFloat = 1
     let thinkingHorizontalPadding: CGFloat = 2
@@ -203,7 +203,7 @@ struct Typo {
     }
 
     var thinking: Font {
-        Font.system(size: max(15, chatSize - 1), weight: .regular, design: .serif).italic()
+        Font.custom("Allura-Regular", size: max(18, chatSize + 2), relativeTo: .body)
     }
 
     var thinkingBody: Font {
@@ -220,6 +220,13 @@ struct GlassTokens {
     let sendFillOpacity: Double = 0.72
     let drawerEdgeOpacity: Double = 0.55
     let thinkingLineOpacity: Double = 0.76
+}
+
+struct MotionTokens {
+    let thinkingResponse: Double = 0.30
+    let thinkingDampingFraction: Double = 1.0
+    let thinkingAnchorDuration: TimeInterval = 0.42
+    let reducedMotionAnchorDuration: TimeInterval = 0.08
 }
 
 // MARK: - 对外的门面
@@ -249,6 +256,7 @@ final class Theme: ObservableObject {
 
     let metric = Metrics()
     let glass = GlassTokens()
+    let motion = MotionTokens()
 
     /// 只控制聊天正文；标题、时间和设置文字保持自己的层级。
     @Published var chatFontSize: Double {
