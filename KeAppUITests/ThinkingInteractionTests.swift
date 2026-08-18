@@ -110,6 +110,24 @@ final class ThinkingInteractionTests: XCTestCase {
         attachScreenshot(named: "10-keyboard-dismissed")
     }
 
+    func testAttachmentTrayOverlaysWithoutMovingMessages() throws {
+        let app = launch(arguments: [
+            "-ui-test-scroll-control",
+            "-ui-test-attachment-overlay"
+        ])
+        let latest = app.staticTexts["这是最新一条回复。"]
+        XCTAssertTrue(latest.waitForExistence(timeout: 5))
+        let originalY = latest.frame.minY
+
+        let openAttachments = app.buttons["打开附件"]
+        XCTAssertTrue(openAttachments.waitForExistence(timeout: 2))
+        openAttachments.tap()
+        let tray = app.descendants(matching: .any)["attachment-tray"]
+        XCTAssertTrue(tray.waitForExistence(timeout: 2))
+        XCTAssertLessThan(abs(latest.frame.minY - originalY), 3)
+        attachScreenshot(named: "11-attachment-tray-overlay")
+    }
+
     private func launch(arguments: [String]) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = arguments

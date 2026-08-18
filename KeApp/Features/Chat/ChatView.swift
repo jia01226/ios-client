@@ -66,7 +66,9 @@ struct ChatView: View {
                         .padding(.bottom, theme.metric.gapS)
                 }
                 messageList
-                if attachmentsOpen { attachmentTray }
+                    .overlay(alignment: .bottom) {
+                        if attachmentsOpen { attachmentTray }
+                    }
                 if vm.isUploading || !vm.pendingAttachments.isEmpty || vm.uploadError != nil {
                     pendingAttachmentBar
                 }
@@ -251,6 +253,18 @@ struct ChatView: View {
                     scrollToBottom(proxy, animated: true)
                 }
             }
+            .onReceive(
+                NotificationCenter.default.publisher(
+                    for: UIResponder.keyboardDidShowNotification
+                )
+            ) { _ in
+                // Focus 变化发生在键盘动画之前；等系统确认键盘已就位，再按缩小后的
+                // 可视高度做一次无动画校准，保证最新消息不会被键盘压住。
+                guard inputFocused else { return }
+                DispatchQueue.main.async {
+                    scrollToBottom(proxy, animated: false)
+                }
+            }
             .onChange(of: highlightedMessageID) { _, value in
                 guard let value else { return }
                 withAnimation(.easeOut(duration: 0.22)) {
@@ -287,6 +301,7 @@ struct ChatView: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(theme.color.textPrimary)
+            .accessibilityLabel(attachmentsOpen ? "关闭附件" : "打开附件")
 
             TextField("和柯说点什么…", text: $draft, axis: .vertical)
                 .accessibilityIdentifier("chat-composer")
@@ -388,8 +403,16 @@ struct ChatView: View {
         .padding(theme.metric.gapM)
         .background(CrystalSurface(cornerRadius: theme.metric.radiusAttachmentTray, strength: 1.08))
         .padding(.horizontal, theme.metric.pagePadding)
+        .accessibilityIdentifier("attachment-tray")
         .transition(.move(edge: .bottom).combined(with: .opacity))
-        .task { await recentPhotos.loadIfNeeded() }
+        .task {
+#if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-ui-test-attachment-overlay") {
+                return
+            }
+#endif
+            await recentPhotos.loadIfNeeded()
+        }
         .onChange(of: pickedPhotos) { _, value in
             guard !value.isEmpty else { return }
             attachmentsOpen = false
