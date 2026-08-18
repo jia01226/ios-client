@@ -13,7 +13,6 @@ private enum ChatSettingsPage: Equatable {
 struct ChatView: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var vm = ChatViewModel()
     @StateObject private var recentPhotos = RecentPhotosStore()
     @StateObject private var scrollAnchorController = ChatScrollAnchorController()
@@ -390,28 +389,22 @@ struct ChatView: View {
 
     private func toggleThinking(for messageID: String) {
         let willExpand = !expandedThinkingMessageIDs.contains(messageID)
-        if willExpand {
-            scrollAnchorController.cancelPreservation()
-            let animation: Animation? = reduceMotion
-                ? nil
-                : .spring(
-                    response: theme.motion.thinkingResponse,
-                    dampingFraction: theme.motion.thinkingDampingFraction
-                )
-            withAnimation(animation) {
+        // 展开固定消息顶部，让上方记录不动、内容只向下长；
+        // 收起固定消息底部，让气泡及其下方记录留在原位。
+        scrollAnchorController.prepareToRestore(
+            messageID: messageID,
+            edge: willExpand ? .top : .bottom
+        )
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            if willExpand {
                 expandedThinkingMessageIDs.insert(messageID)
-            }
-        } else {
-            // 收起时保存这一整条消息的屏幕位置。布局完成后只恢复一次，
-            // 避免逐帧改 contentOffset 导致聊天列表持续向下漂移。
-            scrollAnchorController.prepareToRestore(messageID: messageID)
-            var transaction = Transaction()
-            transaction.animation = nil
-            withTransaction(transaction) {
+            } else {
                 expandedThinkingMessageIDs.remove(messageID)
             }
-            scrollAnchorController.restoreAfterCurrentLayout(messageID: messageID)
         }
+        scrollAnchorController.restoreAfterCurrentLayout(messageID: messageID)
     }
 
     private var pendingAttachmentBar: some View {
@@ -1035,10 +1028,15 @@ private struct StatusBanner: View {
     }
 }
 
-/// 保存一条可见消息的位置快照，并在折叠布局完成后只恢复一次。
+/// 保存一条可见消息的边缘快照，并在折叠布局稳定后恢复。
 /// 这是聊天列表常用的 item snapshot 做法；不要在动画每一帧修正 contentOffset。
 @MainActor
 private final class ChatScrollAnchorController: ObservableObject {
+    enum AnchorEdge: Equatable {
+        case top
+        case bottom
+    }
+
     private final class WeakAnchor {
         weak var view: UIView?
 
@@ -1048,15 +1046,17 @@ private final class ChatScrollAnchorController: ObservableObject {
     }
 
     private struct PendingRestore {
+        let token: UUID
         let messageID: String
-        let viewportMaxY: CGFloat
-        let expiresAt: CFTimeInterval
+        let edge: AnchorEdge
+        let viewportCoordinate: CGFloat
+        var attempts: Int
     }
 
     private weak var scrollView: UIScrollView?
     private var anchors: [String: WeakAnchor] = [:]
     private var pendingRestore: PendingRestore?
-    private var restoreScheduled = false
+    private var scheduledToken: UUID?
 
     func register(_ anchor: UIView, messageID: String) {
         anchors[messageID] = WeakAnchor(anchor)
@@ -1066,7 +1066,7 @@ private final class ChatScrollAnchorController: ObservableObject {
         }
     }
 
-    func prepareToRestore(messageID: String) {
+    func prepareToRestore(messageID: String, edge: AnchorEdge) {
         cancelPreservation()
         guard
             let anchor = anchors[messageID]?.view,
@@ -1074,10 +1074,13 @@ private final class ChatScrollAnchorController: ObservableObject {
         else { return }
 
         resolveScrollView(from: anchor)
+        let boundsInViewport = anchor.convert(anchor.bounds, to: nil)
         pendingRestore = PendingRestore(
+            token: UUID(),
             messageID: messageID,
-            viewportMaxY: anchor.convert(anchor.bounds, to: nil).maxY,
-            expiresAt: CACurrentMediaTime() + 0.5
+            edge: edge,
+            viewportCoordinate: edge == .top ? boundsInViewport.minY : boundsInViewport.maxY,
+            attempts: 0
         )
     }
 
@@ -1093,40 +1096,55 @@ private final class ChatScrollAnchorController: ObservableObject {
 
     func cancelPreservation() {
         pendingRestore = nil
-        restoreScheduled = false
+        scheduledToken = nil
     }
 
     private func scheduleRestore(messageID: String) {
-        guard !restoreScheduled else { return }
-        restoreScheduled = true
+        guard let pendingRestore, pendingRestore.messageID == messageID else { return }
+        let token = pendingRestore.token
+        guard scheduledToken != token else { return }
+        scheduledToken = token
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.restoreScheduled = false
-            self.restoreOnce(messageID: messageID)
+            guard self.scheduledToken == token else { return }
+            self.scheduledToken = nil
+            self.restoreOnce(token: token)
         }
     }
 
-    private func restoreOnce(messageID: String) {
+    private func restoreOnce(token: UUID) {
         guard
-            let pendingRestore,
-            pendingRestore.messageID == messageID,
-            let anchor = anchors[messageID]?.view,
+            var pendingRestore,
+            pendingRestore.token == token,
+            let anchor = anchors[pendingRestore.messageID]?.view,
             let scrollView,
             anchor.window != nil,
             !scrollView.isTracking,
             !scrollView.isDragging,
             !scrollView.isDecelerating
         else {
-            cancelPreservation()
+            if self.pendingRestore?.token == token {
+                cancelPreservation()
+            }
             return
         }
 
         scrollView.layoutIfNeeded()
-        let currentViewportMaxY = anchor.convert(anchor.bounds, to: nil).maxY
-        let delta = currentViewportMaxY - pendingRestore.viewportMaxY
+        let boundsInViewport = anchor.convert(anchor.bounds, to: nil)
+        let currentCoordinate = pendingRestore.edge == .top
+            ? boundsInViewport.minY
+            : boundsInViewport.maxY
+        let delta = currentCoordinate - pendingRestore.viewportCoordinate
         guard abs(delta) > 0.5 else {
-            if CACurrentMediaTime() >= pendingRestore.expiresAt {
+            pendingRestore.attempts += 1
+            self.pendingRestore = pendingRestore
+            if pendingRestore.attempts >= 3 {
                 cancelPreservation()
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) { [weak self] in
+                    guard self?.pendingRestore?.token == token else { return }
+                    self?.scheduleRestore(messageID: pendingRestore.messageID)
+                }
             }
             return
         }
