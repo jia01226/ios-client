@@ -18,6 +18,8 @@ struct ChatView: View {
     @StateObject private var recentPhotos = RecentPhotosStore()
     @StateObject private var scrollAnchorController = ChatScrollAnchorController()
     @State private var draft = ""
+    /// Thinking 展开/收起后的短窗：期间自动滚底一律禁行，防两套滚动打架闪屏。
+    @State private var suppressAutoScrollUntil: Date = .distantPast
     @FocusState private var inputFocused: Bool
     @State private var settingsOpen = false
     @State private var attachmentsOpen = false
@@ -217,7 +219,10 @@ struct ChatView: View {
                 .padding(.horizontal, theme.metric.pagePadding)
                 .padding(.bottom, theme.metric.gapL)
             }
-            .defaultScrollAnchor(.bottom)
+            // 不用 defaultScrollAnchor(.bottom)：它在内容变高时自动贴底，会和
+            // Thinking 展开的锚定恢复抢方向盘（两帧各拽一次＝她报的"点开最后会闪"）。
+            // 初始定位靠 onAppear 的 scrollTo，流式/新消息跟随靠下面两个 onChange——
+            // 滚动只留这一套显式控制者。
             .scrollContentBackground(.hidden)
             .scrollDismissesKeyboard(.interactively)
             .contentShape(Rectangle())
@@ -226,10 +231,21 @@ struct ChatView: View {
                 if attachmentsOpen { attachmentsOpen = false }
             }
             .onChange(of: vm.messages.last?.id) { _, _ in
+                guard Date.now >= suppressAutoScrollUntil else { return }
                 scrollToBottom(proxy, animated: true)
             }
             .onChange(of: vm.streamRevision) { _, _ in
+                // Thinking 展开/收起后的短窗内不跟滚——锚定恢复期间谁都不许抢方向盘，
+                // 消息纹丝不动（她要的：被输入框遮住没关系，不许跳）。
+                guard Date.now >= suppressAutoScrollUntil else { return }
                 scrollToBottom(proxy, animated: false)
+            }
+            .onChange(of: inputFocused) { _, focused in
+                // 像微信/QQ：点输入框弹键盘，消息自动跟上去贴底。
+                guard focused else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    scrollToBottom(proxy, animated: true)
+                }
             }
             .onChange(of: highlightedMessageID) { _, value in
                 guard let value else { return }
@@ -391,6 +407,9 @@ struct ChatView: View {
 
     private func toggleThinking(for messageID: String) {
         let willExpand = !expandedThinkingMessageIDs.contains(messageID)
+        // 展开/收起后的 0.8 秒内，新消息/流式刷新一律不自动滚底，
+        // 让锚定恢复独占滚动位置——治"点开思考链最后屏幕闪一下"。
+        suppressAutoScrollUntil = Date.now.addingTimeInterval(0.8)
         // 展开固定消息顶部，让上方记录不动、内容只向下长；
         // 收起只固定当前视口，不把聊天拉回展开前的位置。
         scrollAnchorController.prepareToRestore(
