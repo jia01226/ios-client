@@ -35,8 +35,8 @@ struct ChatView: View {
     /// 键盘出现到完全收回期间，由同一条事务负责把最新消息贴住可视区底部。
     /// 不能在 focus / didShow 各滚一次，否则两套终点会造成闪跳。
     @State private var keyboardFollowsLatest = false
-    @State private var keyboardScrollPosition: String?
     @State private var keyboardTopY: CGFloat = .greatestFiniteMagnitude
+    @State private var keyboardAnimationDuration: TimeInterval = 0.25
 
     var body: some View {
         Group {
@@ -225,7 +225,6 @@ struct ChatView: View {
                         .frame(height: 1)
                         .id("chat-bottom")
                 }
-                .scrollTargetLayout()
                 .padding(.horizontal, theme.metric.pagePadding)
                 .padding(.bottom, theme.metric.gapL)
             }
@@ -234,7 +233,6 @@ struct ChatView: View {
             // 初始定位靠 onAppear 的 scrollTo，流式/新消息跟随靠下面两个 onChange——
             // 滚动只留这一套显式控制者。
             .scrollContentBackground(.hidden)
-            .scrollPosition(id: $keyboardScrollPosition, anchor: .bottom)
             .scrollDismissesKeyboard(.interactively)
             .contentShape(Rectangle())
             .onTapGesture {
@@ -263,6 +261,21 @@ struct ChatView: View {
                     scrollAnchorController.cancelPreservation()
                 }
             }
+            .onChange(of: keyboardTopY) { _, _ in
+                guard keyboardFollowsLatest else { return }
+                // 外层先按键盘真实遮挡量完成一轮布局，再让同一个 proxy 计算
+                // 新视口的底部。直接绑定 scrollPosition 会沿用旧视口的结果。
+                DispatchQueue.main.async {
+                    guard keyboardFollowsLatest else { return }
+                    if reduceMotion {
+                        proxy.scrollTo("chat-bottom", anchor: .bottom)
+                    } else {
+                        withAnimation(.easeOut(duration: keyboardAnimationDuration)) {
+                            proxy.scrollTo("chat-bottom", anchor: .bottom)
+                        }
+                    }
+                }
+            }
             .onReceive(
                 NotificationCenter.default.publisher(
                     for: UIResponder.keyboardWillChangeFrameNotification
@@ -277,11 +290,6 @@ struct ChatView: View {
             ) { _ in
                 keyboardTopY = .greatestFiniteMagnitude
                 keyboardFollowsLatest = false
-                DispatchQueue.main.async {
-                    if !inputFocused {
-                        keyboardScrollPosition = nil
-                    }
-                }
             }
             .onChange(of: highlightedMessageID) { _, value in
                 guard let value else { return }
@@ -317,11 +325,7 @@ struct ChatView: View {
         let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey]
             as? TimeInterval ?? 0
         let keyboardIsHiding = endFrame.minY >= UIScreen.main.bounds.maxY
-        if !keyboardIsHiding {
-            // 旧的 bottom 绑定是在键盘出现前的视口里算出来的。先释放，等新的
-            // 遮挡高度完成一轮布局后重新绑定，才能把最新消息移到键盘上方。
-            keyboardScrollPosition = nil
-        }
+        keyboardAnimationDuration = duration
         withAnimation(reduceMotion ? nil : .easeOut(duration: duration)) {
             keyboardTopY = keyboardIsHiding ? .greatestFiniteMagnitude : endFrame.minY
         }
@@ -333,14 +337,7 @@ struct ChatView: View {
         // 点 + 时面板只是盖在原视口上，键盘收起不能顺手搬动聊天记录。
         // 普通点空白收键盘则继续贴住最新消息，避免底部留下整块空白。
         if keyboardIsHiding, attachmentsOpen {
-            keyboardScrollPosition = nil
-        } else {
-            DispatchQueue.main.async {
-                guard keyboardFollowsLatest || inputFocused else { return }
-                withAnimation(reduceMotion ? nil : .easeOut(duration: duration)) {
-                    keyboardScrollPosition = "chat-bottom"
-                }
-            }
+            keyboardFollowsLatest = false
         }
     }
 
@@ -348,7 +345,6 @@ struct ChatView: View {
         HStack(spacing: theme.metric.gapS) {
             Button {
                 keyboardFollowsLatest = false
-                keyboardScrollPosition = nil
                 inputFocused = false
                 if reduceMotion {
                     attachmentsOpen.toggle()
