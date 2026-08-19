@@ -317,6 +317,11 @@ struct ChatView: View {
         let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey]
             as? TimeInterval ?? 0
         let keyboardIsHiding = endFrame.minY >= UIScreen.main.bounds.maxY
+        if !keyboardIsHiding {
+            // 旧的 bottom 绑定是在键盘出现前的视口里算出来的。先释放，等新的
+            // 遮挡高度完成一轮布局后重新绑定，才能把最新消息移到键盘上方。
+            keyboardScrollPosition = nil
+        }
         withAnimation(reduceMotion ? nil : .easeOut(duration: duration)) {
             keyboardTopY = keyboardIsHiding ? .greatestFiniteMagnitude : endFrame.minY
         }
@@ -330,8 +335,11 @@ struct ChatView: View {
         if keyboardIsHiding, attachmentsOpen {
             keyboardScrollPosition = nil
         } else {
-            withAnimation(reduceMotion ? nil : .easeOut(duration: duration)) {
-                keyboardScrollPosition = "chat-bottom"
+            DispatchQueue.main.async {
+                guard keyboardFollowsLatest || inputFocused else { return }
+                withAnimation(reduceMotion ? nil : .easeOut(duration: duration)) {
+                    keyboardScrollPosition = "chat-bottom"
+                }
             }
         }
     }
@@ -1795,7 +1803,7 @@ final class ChatViewModel: ObservableObject {
                 Message(
                     id: "ui-test-reply-streaming-assistant",
                     sender: .ke,
-                    text: "",
+                    text: "第一句先来到屏幕上，",
                     time: .now,
                     isStreaming: true,
                     deliveryState: .sending
@@ -1901,11 +1909,13 @@ final class ChatViewModel: ObservableObject {
     private func runUITestReplyStream() async {
         let messageID = "ui-test-reply-streaming-assistant"
         let chunks = [
-            "第一句先来到屏幕上，",
             "第二句接着流进同一个气泡，",
             "最后一句再慢慢说完。"
         ]
 
+        // UI 自动化接管应用需要几秒；先保留明确的“只到第一段”窗口，
+        // 再继续追加，以核验正文没有在启动阶段一次性完成。
+        try? await Task.sleep(nanoseconds: 7_000_000_000)
         for chunk in chunks {
             try? await Task.sleep(nanoseconds: 420_000_000)
             updateMessage(id: messageID) { $0.text += chunk }

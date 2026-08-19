@@ -64,7 +64,7 @@ final class ThinkingInteractionTests: XCTestCase {
                 "最后一句再慢慢说完。"
             )
         ).firstMatch
-        XCTAssertTrue(completedReply.waitForExistence(timeout: 3))
+        XCTAssertTrue(completedReply.waitForExistence(timeout: 10))
         attachScreenshot(named: "07-reply-streaming-finished")
     }
 
