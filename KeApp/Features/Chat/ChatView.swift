@@ -35,6 +35,7 @@ struct ChatView: View {
     /// 键盘出现到完全收回期间，由同一条事务负责把最新消息贴住可视区底部。
     /// 不能在 focus / didShow 各滚一次，否则两套终点会造成闪跳。
     @State private var keyboardFollowsLatest = false
+    @State private var keyboardScrollPosition: String?
 
     var body: some View {
         Group {
@@ -220,6 +221,7 @@ struct ChatView: View {
                         .frame(height: 1)
                         .id("chat-bottom")
                 }
+                .scrollTargetLayout()
                 .padding(.horizontal, theme.metric.pagePadding)
                 .padding(.bottom, theme.metric.gapL)
             }
@@ -228,6 +230,7 @@ struct ChatView: View {
             // 初始定位靠 onAppear 的 scrollTo，流式/新消息跟随靠下面两个 onChange——
             // 滚动只留这一套显式控制者。
             .scrollContentBackground(.hidden)
+            .scrollPosition(id: $keyboardScrollPosition, anchor: .bottom)
             .scrollDismissesKeyboard(.interactively)
             .contentShape(Rectangle())
             .onTapGesture {
@@ -284,6 +287,11 @@ struct ChatView: View {
                     scrollAnchorController.stopFollowingBottom()
                 }
                 keyboardFollowsLatest = false
+                DispatchQueue.main.async {
+                    if !inputFocused {
+                        keyboardScrollPosition = nil
+                    }
+                }
             }
             .onChange(of: highlightedMessageID) { _, value in
                 guard let value else { return }
@@ -323,6 +331,9 @@ struct ChatView: View {
         if keyboardIsHiding, attachmentsOpen {
             scrollAnchorController.stopFollowingBottom()
         } else {
+            withAnimation(reduceMotion ? nil : .easeOut(duration: duration)) {
+                keyboardScrollPosition = "chat-bottom"
+            }
             scrollAnchorController.followBottomAlongsideKeyboard(duration: duration)
         }
     }
@@ -331,6 +342,7 @@ struct ChatView: View {
         HStack(spacing: theme.metric.gapS) {
             Button {
                 keyboardFollowsLatest = false
+                keyboardScrollPosition = nil
                 scrollAnchorController.stopFollowingBottom()
                 inputFocused = false
                 if reduceMotion {
