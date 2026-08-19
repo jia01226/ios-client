@@ -36,6 +36,7 @@ struct ChatView: View {
     /// 不能在 focus / didShow 各滚一次，否则两套终点会造成闪跳。
     @State private var keyboardFollowsLatest = false
     @State private var keyboardScrollPosition: String?
+    @State private var keyboardTopY: CGFloat = .greatestFiniteMagnitude
 
     var body: some View {
         Group {
@@ -61,34 +62,37 @@ struct ChatView: View {
     }
 
     private var chatContent: some View {
-        ZStack(alignment: .trailing) {
-            VStack(spacing: 0) {
-                header
-                if let status = vm.statusText {
-                    StatusBanner(text: status)
-                        .padding(.horizontal, theme.metric.pagePadding)
-                        .padding(.bottom, theme.metric.gapS)
-                }
-                messageList
-                    .overlay(alignment: .bottom) {
-                        if attachmentsOpen { attachmentTray }
+        GeometryReader { geometry in
+            ZStack(alignment: .trailing) {
+                VStack(spacing: 0) {
+                    header
+                    if let status = vm.statusText {
+                        StatusBanner(text: status)
+                            .padding(.horizontal, theme.metric.pagePadding)
+                            .padding(.bottom, theme.metric.gapS)
                     }
-                if vm.isUploading || !vm.pendingAttachments.isEmpty || vm.uploadError != nil {
-                    pendingAttachmentBar
+                    messageList
+                        .overlay(alignment: .bottom) {
+                            if attachmentsOpen { attachmentTray }
+                        }
+                    if vm.isUploading || !vm.pendingAttachments.isEmpty || vm.uploadError != nil {
+                        pendingAttachmentBar
+                    }
+                    inputBar
                 }
-                inputBar
-            }
 
-            if settingsOpen {
-                theme.color.glassShadow.opacity(theme.glass.scrimOpacity)
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture { closeTransientPanels() }
-                    .transition(.opacity)
+                if settingsOpen {
+                    theme.color.glassShadow.opacity(theme.glass.scrimOpacity)
+                        .ignoresSafeArea()
+                        .contentShape(Rectangle())
+                        .onTapGesture { closeTransientPanels() }
+                        .transition(.opacity)
 
-                settingsDrawer
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    settingsDrawer
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
             }
+            .padding(.bottom, max(0, geometry.frame(in: .global).maxY - keyboardTopY))
         }
         .animation(.easeOut(duration: 0.22), value: settingsOpen)
         .fileImporter(
@@ -268,24 +272,10 @@ struct ChatView: View {
             }
             .onReceive(
                 NotificationCenter.default.publisher(
-                    for: UIResponder.keyboardDidShowNotification
-                )
-            ) { _ in
-                guard keyboardFollowsLatest else { return }
-                // didShow 比 SwiftUI 最后一帧 safe-area 布局略早；继续跟一小段，
-                // 等真实可视高度稳定后再停，避免“原本就在底部”时仍被压住。
-                scrollAnchorController.followBottomAlongsideKeyboard(duration: 0.16)
-            }
-            .onReceive(
-                NotificationCenter.default.publisher(
                     for: UIResponder.keyboardDidHideNotification
                 )
             ) { _ in
-                if keyboardFollowsLatest, !attachmentsOpen {
-                    scrollAnchorController.followBottomAlongsideKeyboard(duration: 0.16)
-                } else {
-                    scrollAnchorController.stopFollowingBottom()
-                }
+                keyboardTopY = .greatestFiniteMagnitude
                 keyboardFollowsLatest = false
                 DispatchQueue.main.async {
                     if !inputFocused {
@@ -327,6 +317,9 @@ struct ChatView: View {
         let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey]
             as? TimeInterval ?? 0
         let keyboardIsHiding = endFrame.minY >= UIScreen.main.bounds.maxY
+        withAnimation(reduceMotion ? nil : .easeOut(duration: duration)) {
+            keyboardTopY = keyboardIsHiding ? .greatestFiniteMagnitude : endFrame.minY
+        }
         if !keyboardIsHiding {
             keyboardFollowsLatest = true
         }
@@ -335,12 +328,11 @@ struct ChatView: View {
         // 点 + 时面板只是盖在原视口上，键盘收起不能顺手搬动聊天记录。
         // 普通点空白收键盘则继续贴住最新消息，避免底部留下整块空白。
         if keyboardIsHiding, attachmentsOpen {
-            scrollAnchorController.stopFollowingBottom()
+            keyboardScrollPosition = nil
         } else {
             withAnimation(reduceMotion ? nil : .easeOut(duration: duration)) {
                 keyboardScrollPosition = "chat-bottom"
             }
-            scrollAnchorController.followBottomAlongsideKeyboard(duration: duration)
         }
     }
 
@@ -349,7 +341,6 @@ struct ChatView: View {
             Button {
                 keyboardFollowsLatest = false
                 keyboardScrollPosition = nil
-                scrollAnchorController.stopFollowingBottom()
                 inputFocused = false
                 if reduceMotion {
                     attachmentsOpen.toggle()
@@ -1178,8 +1169,6 @@ private final class ChatScrollAnchorController: ObservableObject {
     private var anchors: [String: WeakAnchor] = [:]
     private var pendingRestore: PendingRestore?
     private var scheduledToken: UUID?
-    private var keyboardDisplayLink: CADisplayLink?
-    private var keyboardFollowDeadline: CFTimeInterval = 0
 
     func register(_ anchor: UIView, messageID: String) {
         anchors[messageID] = WeakAnchor(anchor)
@@ -1223,50 +1212,6 @@ private final class ChatScrollAnchorController: ObservableObject {
     func cancelPreservation() {
         pendingRestore = nil
         scheduledToken = nil
-    }
-
-    /// 键盘改变可视高度时，最大 contentOffset 也逐帧变化。只算一次终点会过早，
-    /// 因而在系统动画存续期间逐帧钉住真实底部；没有额外动画，也没有第二次跳转。
-    func followBottomAlongsideKeyboard(duration: TimeInterval) {
-        cancelPreservation()
-        keyboardFollowDeadline = max(
-            keyboardFollowDeadline,
-            CACurrentMediaTime() + max(duration, 0.1) + 0.1
-        )
-        pinToBottom()
-        guard keyboardDisplayLink == nil else { return }
-        let displayLink = CADisplayLink(target: self, selector: #selector(followKeyboardFrame))
-        displayLink.add(to: .main, forMode: .common)
-        keyboardDisplayLink = displayLink
-    }
-
-    func stopFollowingBottom() {
-        keyboardDisplayLink?.invalidate()
-        keyboardDisplayLink = nil
-        keyboardFollowDeadline = 0
-    }
-
-    @objc private func followKeyboardFrame(_ displayLink: CADisplayLink) {
-        pinToBottom()
-        if displayLink.timestamp >= keyboardFollowDeadline {
-            stopFollowingBottom()
-        }
-    }
-
-    private func pinToBottom() {
-        guard let scrollView else { return }
-        scrollView.layoutIfNeeded()
-        let minimumY = -scrollView.adjustedContentInset.top
-        let maximumY = max(
-            minimumY,
-            scrollView.contentSize.height
-                + scrollView.adjustedContentInset.bottom
-                - scrollView.bounds.height
-        )
-        scrollView.setContentOffset(
-            CGPoint(x: scrollView.contentOffset.x, y: maximumY),
-            animated: false
-        )
     }
 
     private func scheduleRestore(messageID: String) {
@@ -1784,6 +1729,7 @@ final class ChatViewModel: ObservableObject {
     private enum UITestFixture: Equatable {
         case thinkingStatic
         case thinkingStreaming
+        case replyStreaming
         case segmentedReply
         case scrollControl
         case thinkingSegmentRace
@@ -1831,6 +1777,26 @@ final class ChatViewModel: ObservableObject {
                     text: "",
                     time: .now,
                     thoughtSummary: "先接住她这句话。",
+                    isStreaming: true,
+                    deliveryState: .sending
+                )
+            ]
+        } else if arguments.contains("-ui-test-reply-streaming") {
+            uiTestFixture = .replyStreaming
+            phase = .ready
+            isSending = true
+            messages = [
+                Message(
+                    id: "ui-test-reply-streaming-user",
+                    sender: .me,
+                    text: "一句一句说给我听。",
+                    time: .now
+                ),
+                Message(
+                    id: "ui-test-reply-streaming-assistant",
+                    sender: .ke,
+                    text: "",
+                    time: .now,
                     isStreaming: true,
                     deliveryState: .sending
                 )
@@ -1892,6 +1858,8 @@ final class ChatViewModel: ObservableObject {
         if let uiTestFixture {
             if uiTestFixture == .thinkingStreaming {
                 await runUITestThinkingStream()
+            } else if uiTestFixture == .replyStreaming {
+                await runUITestReplyStream()
             } else if uiTestFixture == .segmentedReply {
                 stageSegments(for: messages[0], reduceMotion: false)
             }
@@ -1923,6 +1891,28 @@ final class ChatViewModel: ObservableObject {
         try? await Task.sleep(nanoseconds: 420_000_000)
         updateMessage(id: messageID) {
             $0.text = "想好了，我会一直用中文把心里的话说给你听。"
+            $0.isStreaming = false
+            $0.deliveryState = .sent
+        }
+        isSending = false
+        streamRevision += 1
+    }
+
+    private func runUITestReplyStream() async {
+        let messageID = "ui-test-reply-streaming-assistant"
+        let chunks = [
+            "第一句先来到屏幕上，",
+            "第二句接着流进同一个气泡，",
+            "最后一句再慢慢说完。"
+        ]
+
+        for chunk in chunks {
+            try? await Task.sleep(nanoseconds: 420_000_000)
+            updateMessage(id: messageID) { $0.text += chunk }
+            streamRevision += 1
+        }
+
+        updateMessage(id: messageID) {
             $0.isStreaming = false
             $0.deliveryState = .sent
         }

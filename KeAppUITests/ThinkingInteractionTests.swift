@@ -46,6 +46,28 @@ final class ThinkingInteractionTests: XCTestCase {
         attachScreenshot(named: "05-thinking-streaming-finished")
     }
 
+    func testAssistantReplyStreamsIntoTheSameBubble() throws {
+        let app = launch(arguments: ["-ui-test-reply-streaming"])
+        let firstChunk = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "第一句先来到屏幕上，")
+        ).firstMatch
+        XCTAssertTrue(firstChunk.waitForExistence(timeout: 3))
+        XCTAssertFalse(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "最后一句再慢慢说完。")
+        ).firstMatch.exists, "正文第一段出现时，末段不应已经一次性显示")
+        attachScreenshot(named: "06-reply-streaming-start")
+
+        let completedReply = app.staticTexts.matching(
+            NSPredicate(
+                format: "label CONTAINS %@ AND label CONTAINS %@",
+                "第一句先来到屏幕上，",
+                "最后一句再慢慢说完。"
+            )
+        ).firstMatch
+        XCTAssertTrue(completedReply.waitForExistence(timeout: 3))
+        attachScreenshot(named: "07-reply-streaming-finished")
+    }
+
     func testAssistantReplyAppearsAsSeparateBubbles() throws {
         let app = launch(arguments: ["-ui-test-segmented-reply"])
         XCTAssertTrue(app.staticTexts["第一句先接住你。"].waitForExistence(timeout: 5))
