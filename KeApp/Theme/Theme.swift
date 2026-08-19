@@ -152,7 +152,9 @@ struct Metrics {
     let tabMinimumHeight: CGFloat = 54
     let messageSideReserve: CGFloat = 44
     let bubbleMaxWidth: CGFloat = 318
-    let wideMessageCharacterThreshold: Int = 20
+    // 她 08-19 报的"气泡顶到右边字在左边":20 字太低,中文一句话就超,
+    // 大半消息被误判成宽泡(全宽背景+短文字=空旷)。回 56——宽泡只留给真正的长段落。
+    let wideMessageCharacterThreshold: Int = 56
     let wideMessageLineThreshold: Int = 3
     let bubbleHorizontalPadding: CGFloat = 16
     let bubbleVerticalPadding: CGFloat = 12
