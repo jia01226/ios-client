@@ -161,7 +161,6 @@ struct Metrics {
     let thinkingLineGap: CGFloat = 12
     let thinkingLineWidth: CGFloat = 1
     let thinkingHorizontalPadding: CGFloat = 2
-    let thinkingStreamingMaxHeight: CGFloat = 118
     let glassStrokeWidth: CGFloat = 0.8
     let glassShadowRadius: CGFloat = 12
     let glassShadowY: CGFloat = 6

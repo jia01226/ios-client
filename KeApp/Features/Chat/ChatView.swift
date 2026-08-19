@@ -32,6 +32,9 @@ struct ChatView: View {
     @State private var showingDeleteConfirmation = false
     @State private var highlightedMessageID: String?
     @State private var expandedThinkingMessageIDs: Set<String> = []
+    /// 键盘出现到完全收回期间，由同一条事务负责把最新消息贴住可视区底部。
+    /// 不能在 focus / didShow 各滚一次，否则两套终点会造成闪跳。
+    @State private var keyboardFollowsLatest = false
 
     var body: some View {
         Group {
@@ -87,7 +90,6 @@ struct ChatView: View {
             }
         }
         .animation(.easeOut(duration: 0.22), value: settingsOpen)
-        .animation(.easeOut(duration: 0.18), value: attachmentsOpen)
         .fileImporter(
             isPresented: $importingFile,
             allowedContentTypes: [.item],
@@ -247,23 +249,19 @@ struct ChatView: View {
                 scrollToBottom(proxy, animated: false)
             }
             .onChange(of: inputFocused) { _, focused in
-                // 像微信/QQ：点输入框弹键盘，消息自动跟上去贴底。
-                guard focused else { return }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    scrollToBottom(proxy, animated: true)
+                // 聚焦只转交滚动所有权；真正移动与系统键盘的 frame 动画同步进行。
+                if focused {
+                    keyboardFollowsLatest = true
+                    attachmentsOpen = false
+                    scrollAnchorController.cancelPreservation()
                 }
             }
             .onReceive(
                 NotificationCenter.default.publisher(
-                    for: UIResponder.keyboardDidShowNotification
+                    for: UIResponder.keyboardWillChangeFrameNotification
                 )
-            ) { _ in
-                // Focus 变化发生在键盘动画之前；等系统确认键盘已就位，再按缩小后的
-                // 可视高度做一次无动画校准，保证最新消息不会被键盘压住。
-                guard inputFocused else { return }
-                DispatchQueue.main.async {
-                    scrollToBottom(proxy, animated: false)
-                }
+            ) { notification in
+                followLatestAlongsideKeyboard(notification, proxy: proxy)
             }
             .onChange(of: highlightedMessageID) { _, value in
                 guard let value else { return }
@@ -289,11 +287,74 @@ struct ChatView: View {
         }
     }
 
+    private func followLatestAlongsideKeyboard(
+        _ notification: Notification,
+        proxy: ScrollViewProxy
+    ) {
+        guard keyboardFollowsLatest || inputFocused else { return }
+        guard let endFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect
+        else { return }
+
+        let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey]
+            as? TimeInterval ?? 0
+        let curveRawValue = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey]
+            as? Int ?? UIView.AnimationCurve.easeInOut.rawValue
+        let curve = UIView.AnimationCurve(rawValue: curveRawValue) ?? .easeInOut
+        let keyboardIsHiding = endFrame.minY >= UIScreen.main.bounds.maxY
+
+        // 点 + 时面板只是盖在原视口上，键盘收起不能顺手搬动聊天记录。
+        // 普通点空白收键盘则继续贴住最新消息，避免底部留下整块空白。
+        if !keyboardIsHiding || !attachmentsOpen {
+            let animation = reduceMotion ? nil : keyboardAnimation(curve: curve, duration: duration)
+            DispatchQueue.main.async {
+                if let animation {
+                    withAnimation(animation) {
+                        proxy.scrollTo("chat-bottom", anchor: .bottom)
+                    }
+                } else {
+                    proxy.scrollTo("chat-bottom", anchor: .bottom)
+                }
+            }
+        }
+
+        if keyboardIsHiding {
+            DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+                if !inputFocused {
+                    keyboardFollowsLatest = false
+                }
+            }
+        }
+    }
+
+    private func keyboardAnimation(
+        curve: UIView.AnimationCurve,
+        duration: TimeInterval
+    ) -> Animation {
+        switch curve {
+        case .easeIn:
+            return .easeIn(duration: duration)
+        case .easeOut:
+            return .easeOut(duration: duration)
+        case .linear:
+            return .linear(duration: duration)
+        case .easeInOut:
+            return .easeInOut(duration: duration)
+        @unknown default:
+            return .easeInOut(duration: duration)
+        }
+    }
+
     private var inputBar: some View {
         HStack(spacing: theme.metric.gapS) {
             Button {
                 inputFocused = false
-                attachmentsOpen.toggle()
+                if reduceMotion {
+                    attachmentsOpen.toggle()
+                } else {
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        attachmentsOpen.toggle()
+                    }
+                }
             } label: {
                 Image(systemName: attachmentsOpen ? "xmark" : "plus")
                     .font(theme.font.composerIcon)
@@ -398,11 +459,13 @@ struct ChatView: View {
                         }
                     }
                 }
+                .frame(height: theme.metric.recentPhotoSize)
             }
         }
         .padding(theme.metric.gapM)
         .background(CrystalSurface(cornerRadius: theme.metric.radiusAttachmentTray, strength: 1.08))
         .padding(.horizontal, theme.metric.pagePadding)
+        .fixedSize(horizontal: false, vertical: true)
         .accessibilityIdentifier("attachment-tray")
         .transition(.move(edge: .bottom).combined(with: .opacity))
         .task {
@@ -1281,10 +1344,10 @@ private struct MessageUnitLayout: Layout {
         guard includesThinking, subviews.count > 1 else { return bubbleSize }
 
         let thinkingSize = subviews[0].sizeThatFits(
-            ProposedViewSize(width: bubbleSize.width, height: nil)
+            ProposedViewSize(width: proposal.width, height: nil)
         )
         return CGSize(
-            width: bubbleSize.width,
+            width: max(thinkingSize.width, bubbleSize.width),
             height: thinkingSize.height + spacing + bubbleSize.height
         )
     }
@@ -1397,11 +1460,11 @@ private struct MessageRow: View {
                 .padding(.horizontal, theme.metric.gapXS)
             }
             .frame(
-                maxWidth: usesWideKeLayout ? .infinity : nil,
+                maxWidth: usesFullWidthKeRow ? .infinity : nil,
                 alignment: message.sender == .ke ? .leading : .trailing
             )
 
-            if message.sender == .ke && !usesWideKeLayout {
+            if message.sender == .ke && !usesFullWidthKeRow {
                 Spacer(minLength: theme.metric.messageSideReserve)
             }
         }
@@ -1442,48 +1505,26 @@ private struct MessageRow: View {
             }
     }
 
-    private var hasEnglishThinkingSource: Bool {
-        guard let raw = message.thoughtSummaryRaw else { return false }
-        return !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
     private func thoughtCard(summary: String?, note: String?) -> some View {
         VStack(alignment: .leading, spacing: theme.metric.gapS) {
-            HStack(spacing: theme.metric.gapS) {
-                Button(action: onThinkingToggle) {
-                    HStack(spacing: theme.metric.gapS) {
-                        Text("Thinking")
-                        Image(systemName: isThinkingExpanded ? "chevron.up" : "chevron.down")
-                            .font(theme.font.thinkingChevron)
-                    }
-                    .font(theme.font.thinking)
-                    .foregroundStyle(theme.color.textSecondary)
+            Button(action: onThinkingToggle) {
+                HStack(spacing: theme.metric.gapS) {
+                    Text("Thinking")
+                    Image(systemName: isThinkingExpanded ? "chevron.up" : "chevron.down")
+                        .font(theme.font.thinkingChevron)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(isThinkingExpanded ? "收起思考" : "展开思考")
-                .accessibilityValue(isThinkingExpanded ? "已展开" : "已收起")
-
-                if hasEnglishThinkingSource {
-                    Text("原文为英文")
-                        .font(theme.font.caption)
-                        .foregroundStyle(theme.color.textSecondary)
-                }
+                .font(theme.font.thinking)
+                .foregroundStyle(theme.color.textSecondary)
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isThinkingExpanded ? "收起思考" : "展开思考")
+            .accessibilityValue(isThinkingExpanded ? "已展开" : "已收起")
 
             if isThinkingExpanded {
                 // 不挂 .transition：展开/收起本来就走无动画事务（toggleThinking 里
                 // transaction.animation = nil），而 transition 会在流式期间列表高频
                 // 重建时被误触发，opacity 反复重播就是她报的"点开频闪"。
-                Group {
-                    if message.isStreaming {
-                        ScrollView {
-                            thinkingTextStack(summary: summary, note: note)
-                        }
-                        .frame(maxHeight: theme.metric.thinkingStreamingMaxHeight)
-                    } else {
-                        thinkingTextStack(summary: summary, note: note)
-                    }
-                }
+                thinkingTextStack(summary: summary, note: note)
             }
         }
         .padding(.leading, theme.metric.thinkingLineGap + theme.metric.thinkingLineWidth)
@@ -1557,17 +1598,17 @@ private struct MessageRow: View {
                     .multilineTextAlignment(.leading)
             }
         }
-            .padding(.horizontal, theme.metric.bubbleHorizontalPadding)
-            .padding(.vertical, theme.metric.bubbleVerticalPadding)
-            .background(CrystalSurface(
-                cornerRadius: CGFloat(theme.bubbleCornerRadius),
-                strength: message.sender == .ke ? 0.92 : 1.08,
-                usesChatControls: true
-            ))
-            .frame(
-                maxWidth: isWideBubble(text) ? .infinity : theme.metric.bubbleMaxWidth,
-                alignment: message.sender == .ke ? .leading : .trailing
-            )
+        .padding(.horizontal, theme.metric.bubbleHorizontalPadding)
+        .padding(.vertical, theme.metric.bubbleVerticalPadding)
+        .frame(
+            maxWidth: isWideBubble(text) ? .infinity : theme.metric.bubbleMaxWidth,
+            alignment: message.sender == .ke ? .leading : .trailing
+        )
+        .background(CrystalSurface(
+            cornerRadius: CGFloat(theme.bubbleCornerRadius),
+            strength: message.sender == .ke ? 0.92 : 1.08,
+            usesChatControls: true
+        ))
     }
 
     private var visibleSegments: [String] {
@@ -1608,6 +1649,10 @@ private struct MessageRow: View {
     private var usesWideKeLayout: Bool {
         guard message.sender == .ke else { return false }
         return message.bubbleSegments.contains(where: isWideBubble)
+    }
+
+    private var usesFullWidthKeRow: Bool {
+        message.sender == .ke && (hasThinkingContent || usesWideKeLayout)
     }
 
     private func isWideBubble(_ text: String?) -> Bool {

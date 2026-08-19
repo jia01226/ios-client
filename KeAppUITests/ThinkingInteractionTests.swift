@@ -9,7 +9,7 @@ final class ThinkingInteractionTests: XCTestCase {
         let app = launch(arguments: ["-ui-test-thinking-static"])
         let expand = app.buttons["展开思考"]
         XCTAssertTrue(expand.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["原文为英文"].exists)
+        XCTAssertFalse(app.staticTexts["原文为英文"].exists)
         XCTAssertFalse(app.staticTexts["Hold her words first, then answer gently."].exists)
         attachScreenshot(named: "01-thinking-collapsed")
 
@@ -95,19 +95,41 @@ final class ThinkingInteractionTests: XCTestCase {
         let app = launch(arguments: ["-ui-test-scroll-control"])
         let latest = app.staticTexts["这是最新一条回复。"]
         XCTAssertTrue(latest.waitForExistence(timeout: 5))
+        let restingY = latest.frame.minY
         let input = app.descendants(matching: .any)["chat-composer"]
         XCTAssertTrue(input.waitForExistence(timeout: 2))
 
+        for cycle in 1...2 {
+            input.tap()
+            let keyboard = app.keyboards.firstMatch
+            XCTAssertTrue(keyboard.waitForExistence(timeout: 2))
+            XCTAssertLessThan(latest.frame.maxY, keyboard.frame.minY)
+            attachScreenshot(named: "09-keyboard-shown-\(cycle)")
+
+            latest.tap()
+            XCTAssertTrue(keyboard.waitForNonExistence(timeout: 2))
+            XCTAssertTrue(latest.isHittable)
+            XCTAssertLessThan(abs(latest.frame.minY - restingY), 3)
+            attachScreenshot(named: "10-keyboard-dismissed-\(cycle)")
+        }
+    }
+
+    func testComposerReturnsFromHistoryToLatestMessage() throws {
+        let app = launch(arguments: ["-ui-test-scroll-control"])
+        let latest = app.staticTexts["这是最新一条回复。"]
+        XCTAssertTrue(latest.waitForExistence(timeout: 5))
+
+        app.swipeDown(velocity: .fast)
+        XCTAssertFalse(latest.isHittable)
+
+        let input = app.descendants(matching: .any)["chat-composer"]
         input.tap()
         let keyboard = app.keyboards.firstMatch
         XCTAssertTrue(keyboard.waitForExistence(timeout: 2))
-        XCTAssertLessThan(latest.frame.maxY, keyboard.frame.minY)
-        attachScreenshot(named: "09-keyboard-shown")
-
-        latest.tap()
-        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 2))
+        XCTAssertTrue(latest.waitForExistence(timeout: 2))
         XCTAssertTrue(latest.isHittable)
-        attachScreenshot(named: "10-keyboard-dismissed")
+        XCTAssertLessThan(latest.frame.maxY, keyboard.frame.minY)
+        attachScreenshot(named: "11-history-to-latest")
     }
 
     func testAttachmentTrayOverlaysWithoutMovingMessages() throws {
@@ -125,7 +147,8 @@ final class ThinkingInteractionTests: XCTestCase {
         let tray = app.descendants(matching: .any)["attachment-tray"]
         XCTAssertTrue(tray.waitForExistence(timeout: 2))
         XCTAssertLessThan(abs(latest.frame.minY - originalY), 3)
-        attachScreenshot(named: "11-attachment-tray-overlay")
+        XCTAssertLessThan(tray.frame.height, 240, "附件面板只应占按钮和一排缩略图的高度")
+        attachScreenshot(named: "12-attachment-tray-overlay")
     }
 
     private func launch(arguments: [String]) -> XCUIApplication {
