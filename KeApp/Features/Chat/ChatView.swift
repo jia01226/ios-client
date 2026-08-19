@@ -1224,6 +1224,14 @@ private final class ChatScrollAnchorController: ObservableObject {
 
     func followBottomAlongsideKeyboard(duration: TimeInterval) {
         cancelPreservation()
+        if scrollView == nil,
+           let mountedAnchor = anchors.values
+               .compactMap(\.view)
+               .first(where: { $0.window != nil }) {
+            // 首次 register 可能发生在 UIView 还没挂进 SwiftUI 层级时；
+            // 键盘不触发消息重建，所以要在真正使用前从已挂载探针再解析一次。
+            resolveScrollView(from: mountedAnchor)
+        }
         keyboardFollowDeadline = max(
             keyboardFollowDeadline,
             CACurrentMediaTime() + max(duration, 0.1) + 0.1
