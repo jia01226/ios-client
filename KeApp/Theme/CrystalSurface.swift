@@ -98,6 +98,19 @@ private struct BackdropBlur: UIViewRepresentable {
             ? .systemUltraThinMaterialDark
             : .systemUltraThinMaterialLight
 
+#if DEBUG
+        // UIVisualEffectView 的暂停动画器会让 XCUITest 把每次点击误判成
+        // “仍在动画”，固定空等约一分钟。测试只需要静态材质；聊天本身的
+        // 键盘、滚动和折叠动画仍保持开启，真机路径完全不受影响。
+        if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("-ui-test-") }) {
+            context.coordinator.animator?.stopAnimation(true)
+            context.coordinator.animator = nil
+            context.coordinator.styleRawValue = style.rawValue
+            view.effect = UIBlurEffect(style: style)
+            return
+        }
+#endif
+
         if context.coordinator.animator == nil
             || context.coordinator.styleRawValue != style.rawValue {
             context.coordinator.animator?.stopAnimation(true)
