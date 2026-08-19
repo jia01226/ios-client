@@ -221,11 +221,12 @@ struct ChatView: View {
                     }
 
                     Color.clear
-                        .frame(height: 1)
+                        // 底部留白属于滚动目标本身；若把 gapL 做成栈外 padding，
+                        // SwiftUI 的 scrollTo 与 UIKit 最大 offset 会相差这一段高度。
+                        .frame(height: theme.metric.gapL)
                         .id("chat-bottom")
                 }
                 .padding(.horizontal, theme.metric.pagePadding)
-                .padding(.bottom, theme.metric.gapL)
             }
             // 不用 defaultScrollAnchor(.bottom)：它在内容变高时自动贴底，会和
             // Thinking 展开的锚定恢复抢方向盘（两帧各拽一次＝她报的"点开最后会闪"）。
