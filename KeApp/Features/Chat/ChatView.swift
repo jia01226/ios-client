@@ -261,7 +261,27 @@ struct ChatView: View {
                     for: UIResponder.keyboardWillChangeFrameNotification
                 )
             ) { notification in
-                followLatestAlongsideKeyboard(notification, proxy: proxy)
+                followLatestAlongsideKeyboard(notification)
+            }
+            .onReceive(
+                NotificationCenter.default.publisher(
+                    for: UIResponder.keyboardDidShowNotification
+                )
+            ) { _ in
+                guard keyboardFollowsLatest else { return }
+                scrollAnchorController.finishFollowingBottom()
+            }
+            .onReceive(
+                NotificationCenter.default.publisher(
+                    for: UIResponder.keyboardDidHideNotification
+                )
+            ) { _ in
+                if keyboardFollowsLatest, !attachmentsOpen {
+                    scrollAnchorController.finishFollowingBottom()
+                } else {
+                    scrollAnchorController.stopFollowingBottom()
+                }
+                keyboardFollowsLatest = false
             }
             .onChange(of: highlightedMessageID) { _, value in
                 guard let value else { return }
@@ -287,66 +307,29 @@ struct ChatView: View {
         }
     }
 
-    private func followLatestAlongsideKeyboard(
-        _ notification: Notification,
-        proxy: ScrollViewProxy
-    ) {
+    private func followLatestAlongsideKeyboard(_ notification: Notification) {
         guard keyboardFollowsLatest || inputFocused else { return }
         guard let endFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect
         else { return }
 
         let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey]
             as? TimeInterval ?? 0
-        let curveRawValue = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey]
-            as? Int ?? UIView.AnimationCurve.easeInOut.rawValue
-        let curve = UIView.AnimationCurve(rawValue: curveRawValue) ?? .easeInOut
         let keyboardIsHiding = endFrame.minY >= UIScreen.main.bounds.maxY
 
         // 点 + 时面板只是盖在原视口上，键盘收起不能顺手搬动聊天记录。
         // 普通点空白收键盘则继续贴住最新消息，避免底部留下整块空白。
-        if !keyboardIsHiding || !attachmentsOpen {
-            let animation = reduceMotion ? nil : keyboardAnimation(curve: curve, duration: duration)
-            DispatchQueue.main.async {
-                if let animation {
-                    withAnimation(animation) {
-                        proxy.scrollTo("chat-bottom", anchor: .bottom)
-                    }
-                } else {
-                    proxy.scrollTo("chat-bottom", anchor: .bottom)
-                }
-            }
-        }
-
-        if keyboardIsHiding {
-            DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
-                if !inputFocused {
-                    keyboardFollowsLatest = false
-                }
-            }
-        }
-    }
-
-    private func keyboardAnimation(
-        curve: UIView.AnimationCurve,
-        duration: TimeInterval
-    ) -> Animation {
-        switch curve {
-        case .easeIn:
-            return .easeIn(duration: duration)
-        case .easeOut:
-            return .easeOut(duration: duration)
-        case .linear:
-            return .linear(duration: duration)
-        case .easeInOut:
-            return .easeInOut(duration: duration)
-        @unknown default:
-            return .easeInOut(duration: duration)
+        if keyboardIsHiding, attachmentsOpen {
+            scrollAnchorController.stopFollowingBottom()
+        } else {
+            scrollAnchorController.followBottomAlongsideKeyboard(duration: duration)
         }
     }
 
     private var inputBar: some View {
         HStack(spacing: theme.metric.gapS) {
             Button {
+                keyboardFollowsLatest = false
+                scrollAnchorController.stopFollowingBottom()
                 inputFocused = false
                 if reduceMotion {
                     attachmentsOpen.toggle()
@@ -463,10 +446,13 @@ struct ChatView: View {
             }
         }
         .padding(theme.metric.gapM)
-        .background(CrystalSurface(cornerRadius: theme.metric.radiusAttachmentTray, strength: 1.08))
+        .background(
+            CrystalSurface(cornerRadius: theme.metric.radiusAttachmentTray, strength: 1.08)
+                .accessibilityElement()
+                .accessibilityIdentifier("attachment-tray")
+        )
         .padding(.horizontal, theme.metric.pagePadding)
         .fixedSize(horizontal: false, vertical: true)
-        .accessibilityIdentifier("attachment-tray")
         .transition(.move(edge: .bottom).combined(with: .opacity))
         .task {
 #if DEBUG
@@ -1172,6 +1158,8 @@ private final class ChatScrollAnchorController: ObservableObject {
     private var anchors: [String: WeakAnchor] = [:]
     private var pendingRestore: PendingRestore?
     private var scheduledToken: UUID?
+    private var keyboardDisplayLink: CADisplayLink?
+    private var keyboardFollowDeadline: CFTimeInterval = 0
 
     func register(_ anchor: UIView, messageID: String) {
         anchors[messageID] = WeakAnchor(anchor)
@@ -1215,6 +1203,55 @@ private final class ChatScrollAnchorController: ObservableObject {
     func cancelPreservation() {
         pendingRestore = nil
         scheduledToken = nil
+    }
+
+    /// 键盘改变可视高度时，最大 contentOffset 也逐帧变化。只算一次终点会过早，
+    /// 因而在系统动画存续期间逐帧钉住真实底部；没有额外动画，也没有第二次跳转。
+    func followBottomAlongsideKeyboard(duration: TimeInterval) {
+        cancelPreservation()
+        keyboardFollowDeadline = max(
+            keyboardFollowDeadline,
+            CACurrentMediaTime() + max(duration, 0.1) + 0.1
+        )
+        pinToBottom()
+        guard keyboardDisplayLink == nil else { return }
+        let displayLink = CADisplayLink(target: self, selector: #selector(followKeyboardFrame))
+        displayLink.add(to: .main, forMode: .common)
+        keyboardDisplayLink = displayLink
+    }
+
+    func finishFollowingBottom() {
+        pinToBottom()
+        stopFollowingBottom()
+    }
+
+    func stopFollowingBottom() {
+        keyboardDisplayLink?.invalidate()
+        keyboardDisplayLink = nil
+        keyboardFollowDeadline = 0
+    }
+
+    @objc private func followKeyboardFrame(_ displayLink: CADisplayLink) {
+        pinToBottom()
+        if displayLink.timestamp >= keyboardFollowDeadline {
+            stopFollowingBottom()
+        }
+    }
+
+    private func pinToBottom() {
+        guard let scrollView else { return }
+        scrollView.layoutIfNeeded()
+        let minimumY = -scrollView.adjustedContentInset.top
+        let maximumY = max(
+            minimumY,
+            scrollView.contentSize.height
+                + scrollView.adjustedContentInset.bottom
+                - scrollView.bounds.height
+        )
+        scrollView.setContentOffset(
+            CGPoint(x: scrollView.contentOffset.x, y: maximumY),
+            animated: false
+        )
     }
 
     private func scheduleRestore(messageID: String) {

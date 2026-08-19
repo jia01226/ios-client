@@ -119,8 +119,11 @@ final class ThinkingInteractionTests: XCTestCase {
         let latest = app.staticTexts["这是最新一条回复。"]
         XCTAssertTrue(latest.waitForExistence(timeout: 5))
 
-        app.swipeDown(velocity: .fast)
-        XCTAssertFalse(latest.isHittable)
+        let messageList = app.scrollViews.firstMatch
+        XCTAssertTrue(messageList.waitForExistence(timeout: 2))
+        messageList.swipeDown(velocity: .fast)
+        messageList.swipeDown(velocity: .fast)
+        XCTAssertTrue(app.staticTexts["前面的消息 1"].isHittable)
 
         let input = app.descendants(matching: .any)["chat-composer"]
         input.tap()
