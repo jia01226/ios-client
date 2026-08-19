@@ -269,7 +269,9 @@ struct ChatView: View {
                 )
             ) { _ in
                 guard keyboardFollowsLatest else { return }
-                scrollAnchorController.finishFollowingBottom()
+                // didShow 比 SwiftUI 最后一帧 safe-area 布局略早；继续跟一小段，
+                // 等真实可视高度稳定后再停，避免“原本就在底部”时仍被压住。
+                scrollAnchorController.followBottomAlongsideKeyboard(duration: 0.16)
             }
             .onReceive(
                 NotificationCenter.default.publisher(
@@ -277,7 +279,7 @@ struct ChatView: View {
                 )
             ) { _ in
                 if keyboardFollowsLatest, !attachmentsOpen {
-                    scrollAnchorController.finishFollowingBottom()
+                    scrollAnchorController.followBottomAlongsideKeyboard(duration: 0.16)
                 } else {
                     scrollAnchorController.stopFollowingBottom()
                 }
@@ -1220,11 +1222,6 @@ private final class ChatScrollAnchorController: ObservableObject {
         keyboardDisplayLink = displayLink
     }
 
-    func finishFollowingBottom() {
-        pinToBottom()
-        stopFollowingBottom()
-    }
-
     func stopFollowingBottom() {
         keyboardDisplayLink?.invalidate()
         keyboardDisplayLink = nil
@@ -1615,7 +1612,26 @@ private struct MessageRow: View {
         )
     }
 
+    @ViewBuilder
     private func bubbleSurface(text: String?, includesAttachments: Bool) -> some View {
+        if isWideBubble(text) {
+            bubbleContent(text: text, includesAttachments: includesAttachments)
+                .frame(
+                    maxWidth: .infinity,
+                    alignment: message.sender == .ke ? .leading : .trailing
+                )
+                .background(bubbleBackground)
+        } else {
+            bubbleContent(text: text, includesAttachments: includesAttachments)
+                .background(bubbleBackground)
+                .frame(
+                    maxWidth: theme.metric.bubbleMaxWidth,
+                    alignment: message.sender == .ke ? .leading : .trailing
+                )
+        }
+    }
+
+    private func bubbleContent(text: String?, includesAttachments: Bool) -> some View {
         VStack(
             alignment: message.sender == .ke ? .leading : .trailing,
             spacing: theme.metric.gapS
@@ -1637,15 +1653,14 @@ private struct MessageRow: View {
         }
         .padding(.horizontal, theme.metric.bubbleHorizontalPadding)
         .padding(.vertical, theme.metric.bubbleVerticalPadding)
-        .frame(
-            maxWidth: isWideBubble(text) ? .infinity : theme.metric.bubbleMaxWidth,
-            alignment: message.sender == .ke ? .leading : .trailing
-        )
-        .background(CrystalSurface(
+    }
+
+    private var bubbleBackground: some View {
+        CrystalSurface(
             cornerRadius: CGFloat(theme.bubbleCornerRadius),
             strength: message.sender == .ke ? 0.92 : 1.08,
             usesChatControls: true
-        ))
+        )
     }
 
     private var visibleSegments: [String] {

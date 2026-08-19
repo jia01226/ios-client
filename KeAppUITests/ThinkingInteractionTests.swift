@@ -103,8 +103,8 @@ final class ThinkingInteractionTests: XCTestCase {
             input.tap()
             let keyboard = app.keyboards.firstMatch
             XCTAssertTrue(keyboard.waitForExistence(timeout: 2))
-            XCTAssertLessThan(latest.frame.maxY, keyboard.frame.minY)
             attachScreenshot(named: "09-keyboard-shown-\(cycle)")
+            XCTAssertLessThan(latest.frame.maxY, keyboard.frame.minY)
 
             latest.tap()
             XCTAssertTrue(keyboard.waitForNonExistence(timeout: 2))

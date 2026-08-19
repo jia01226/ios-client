@@ -152,7 +152,7 @@ struct Metrics {
     let tabMinimumHeight: CGFloat = 54
     let messageSideReserve: CGFloat = 44
     let bubbleMaxWidth: CGFloat = 318
-    let wideMessageCharacterThreshold: Int = 56
+    let wideMessageCharacterThreshold: Int = 20
     let wideMessageLineThreshold: Int = 3
     let bubbleHorizontalPadding: CGFloat = 16
     let bubbleVerticalPadding: CGFloat = 12
