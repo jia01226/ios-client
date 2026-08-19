@@ -318,13 +318,19 @@ struct ChatView: View {
     }
 
     private func followLatestAlongsideKeyboard(_ notification: Notification) {
-        guard keyboardFollowsLatest || inputFocused else { return }
+        // UIKit 的 keyboardWillChangeFrame 偶尔早于 SwiftUI FocusState 更新。
+        // 聊天页没有打开设置抽屉时，键盘“正在出现”本身就是输入框接管的可靠信号。
+        guard !settingsOpen else { return }
         guard let endFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect
         else { return }
 
         let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey]
             as? TimeInterval ?? 0
         let keyboardIsHiding = endFrame.minY >= UIScreen.main.bounds.maxY
+        if !keyboardIsHiding {
+            keyboardFollowsLatest = true
+        }
+        guard keyboardFollowsLatest || inputFocused else { return }
 
         // 点 + 时面板只是盖在原视口上，键盘收起不能顺手搬动聊天记录。
         // 普通点空白收键盘则继续贴住最新消息，避免底部留下整块空白。
