@@ -69,6 +69,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: love.jiagude.ke.tests
         GENERATE_INFOPLIST_FILE: true
         CODE_SIGN_STYLE: Automatic
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/柯.app/柯"
+        BUNDLE_LOADER: "$(TEST_HOST)"
     dependencies:
       - target: KeApp
 
