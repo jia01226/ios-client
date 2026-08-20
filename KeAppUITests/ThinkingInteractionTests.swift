@@ -205,6 +205,8 @@ final class ThinkingInteractionTests: XCTestCase {
         expand.tap()
         let collapse = app.buttons["收起思考"]
         XCTAssertTrue(collapse.waitForExistence(timeout: 2))
+        let composer = app.descendants(matching: .any)["chat-composer"]
+        XCTAssertTrue(composer.exists && composer.isHittable)
 
         var returnLatencies: [TimeInterval] = []
         for cycle in 1...4 {
@@ -217,21 +219,14 @@ final class ThinkingInteractionTests: XCTestCase {
                 XCTAssertTrue(chatButton.exists)
                 let startedAt = Date()
                 chatButton.tap()
-                // Thinking 展开时会按产品要求固定标题，最新正文可能被推到
-                // 视口外；正文不可点击不等于聊天页空白。用仍应停在视口内的
-                // 收起按钮判断页面已经恢复，同时另验消息数据没有丢失。
-                let chatReadyAndInteractive = XCTNSPredicateExpectation(
-                    predicate: NSPredicate { object, _ in
-                        guard let element = object as? XCUIElement else { return false }
-                        return element.exists && element.isHittable
-                    },
-                    object: collapse
+
+                // tap() 返回时系统已经等到界面空闲；此刻同步检查比一秒轮询
+                // 更严格，也不会把 XCTest 的轮询间隔误算成 App 延迟。
+                XCTAssertTrue(
+                    composer.exists && composer.isHittable,
+                    "第 \(cycle) 轮从 \(destination) 返回聊天时输入区不可交互"
                 )
-                XCTAssertEqual(
-                    XCTWaiter.wait(for: [chatReadyAndInteractive], timeout: 1),
-                    .completed,
-                    "第 \(cycle) 轮从 \(destination) 返回聊天时出现空白"
-                )
+                XCTAssertTrue(collapse.exists, "切 Tab 后 Thinking 展开状态不应丢失")
                 XCTAssertTrue(latest.exists, "切 Tab 后最新消息数据不应丢失")
                 returnLatencies.append(Date().timeIntervalSince(startedAt))
             }
