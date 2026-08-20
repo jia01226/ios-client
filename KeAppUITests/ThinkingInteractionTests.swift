@@ -57,6 +57,10 @@ final class ThinkingInteractionTests: XCTestCase {
         ).firstMatch.exists, "正文第一段出现时，末段不应已经一次性显示")
         attachScreenshot(named: "06-reply-streaming-start")
 
+        let continueStream = app.buttons["继续测试流式回复"]
+        XCTAssertTrue(continueStream.waitForExistence(timeout: 2))
+        continueStream.tap()
+
         let completedReply = app.staticTexts.matching(
             NSPredicate(
                 format: "label CONTAINS %@ AND label CONTAINS %@",

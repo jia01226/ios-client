@@ -91,6 +91,30 @@ struct ChatView: View {
                     settingsDrawer
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
+
+#if DEBUG
+                if vm.replyStreamTriggerAvailable {
+                    VStack {
+                        HStack {
+                            Button {
+                                Task { await vm.startReplyStreamForUITest() }
+                            } label: {
+                                Color.clear
+                                    .frame(
+                                        width: theme.metric.touchTarget,
+                                        height: theme.metric.touchTarget
+                                    )
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("继续测试流式回复")
+                            .accessibilityIdentifier("ui-test-reply-stream-trigger")
+                            Spacer()
+                        }
+                        Spacer()
+                    }
+                }
+#endif
             }
             .padding(.bottom, max(0, geometry.frame(in: .global).maxY - keyboardTopY))
         }
@@ -1934,6 +1958,8 @@ final class ChatViewModel: ObservableObject {
     }
 
 #if DEBUG
+    @Published private(set) var replyStreamTriggerAvailable = false
+
     private enum UITestFixture: Equatable {
         case thinkingStatic
         case thinkingStreaming
@@ -1991,6 +2017,7 @@ final class ChatViewModel: ObservableObject {
             ]
         } else if arguments.contains("-ui-test-reply-streaming") {
             uiTestFixture = .replyStreaming
+            replyStreamTriggerAvailable = true
             phase = .ready
             isSending = true
             messages = [
@@ -2066,8 +2093,6 @@ final class ChatViewModel: ObservableObject {
         if let uiTestFixture {
             if uiTestFixture == .thinkingStreaming {
                 await runUITestThinkingStream()
-            } else if uiTestFixture == .replyStreaming {
-                await runUITestReplyStream()
             } else if uiTestFixture == .segmentedReply {
                 stageSegments(for: messages[0], reduceMotion: false)
             }
@@ -2113,9 +2138,6 @@ final class ChatViewModel: ObservableObject {
             "最后一句再慢慢说完。"
         ]
 
-        // UI 自动化接管应用需要几秒；先保留明确的“只到第一段”窗口，
-        // 再继续追加，以核验正文没有在启动阶段一次性完成。
-        try? await Task.sleep(nanoseconds: 7_000_000_000)
         for chunk in chunks {
             try? await Task.sleep(nanoseconds: 420_000_000)
             updateMessage(id: messageID) { $0.text += chunk }
@@ -2128,6 +2150,13 @@ final class ChatViewModel: ObservableObject {
         }
         isSending = false
         streamRevision += 1
+    }
+
+    func startReplyStreamForUITest() async {
+        guard uiTestFixture == .replyStreaming,
+              replyStreamTriggerAvailable else { return }
+        replyStreamTriggerAvailable = false
+        await runUITestReplyStream()
     }
 
     func didToggleThinkingForUITest(messageID: String) {
