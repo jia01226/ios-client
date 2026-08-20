@@ -195,6 +195,46 @@ final class ThinkingInteractionTests: XCTestCase {
         attachScreenshot(named: "13-tab-return-preserves-chat")
     }
 
+    func testRepeatedTabSwitchingNeverShowsBlankChat() throws {
+        let app = launch(arguments: ["-ui-test-scroll-control"])
+        let latest = app.staticTexts["这是最新一条回复。"]
+        XCTAssertTrue(latest.waitForExistence(timeout: 5))
+
+        let expand = app.buttons["展开思考"]
+        XCTAssertTrue(expand.waitForExistence(timeout: 2))
+        expand.tap()
+        let collapse = app.buttons["收起思考"]
+        XCTAssertTrue(collapse.waitForExistence(timeout: 2))
+
+        var returnLatencies: [TimeInterval] = []
+        for cycle in 1...4 {
+            for destination in ["我们", "玩", "回忆"] {
+                let destinationButton = app.buttons[destination]
+                XCTAssertTrue(destinationButton.waitForExistence(timeout: 1))
+                destinationButton.tap()
+
+                let chatButton = app.buttons["柯"]
+                XCTAssertTrue(chatButton.waitForExistence(timeout: 1))
+                let startedAt = Date()
+                chatButton.tap()
+                XCTAssertTrue(
+                    latest.waitForExistence(timeout: 1),
+                    "第 \(cycle) 轮从 \(destination) 返回聊天时出现空白"
+                )
+                XCTAssertTrue(latest.isHittable)
+                XCTAssertTrue(collapse.exists, "切 Tab 后 Thinking 展开状态不应丢失")
+                returnLatencies.append(Date().timeIntervalSince(startedAt))
+            }
+        }
+
+        XCTAssertLessThan(
+            returnLatencies.max() ?? 0,
+            1,
+            "常驻聊天层返回后应在一秒内恢复可交互"
+        )
+        attachScreenshot(named: "14-repeated-tab-switching-stable")
+    }
+
     private func launch(arguments: [String]) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = arguments
