@@ -219,16 +219,16 @@ final class ThinkingInteractionTests: XCTestCase {
                 XCTAssertTrue(chatButton.exists)
                 let startedAt = Date()
                 chatButton.tap()
+                returnLatencies.append(Date().timeIntervalSince(startedAt))
 
                 // tap() 返回时系统已经等到界面空闲；此刻同步检查比一秒轮询
-                // 更严格，也不会把 XCTest 的轮询间隔误算成 App 延迟。
+                // 更严格，也不会把后续三次 XCTest 查询误算成 App 切页延迟。
                 XCTAssertTrue(
                     composer.exists && composer.isHittable,
                     "第 \(cycle) 轮从 \(destination) 返回聊天时输入区不可交互"
                 )
                 XCTAssertTrue(collapse.exists, "切 Tab 后 Thinking 展开状态不应丢失")
                 XCTAssertTrue(latest.exists, "切 Tab 后最新消息数据不应丢失")
-                returnLatencies.append(Date().timeIntervalSince(startedAt))
             }
         }
 
