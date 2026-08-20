@@ -210,18 +210,25 @@ final class ThinkingInteractionTests: XCTestCase {
         for cycle in 1...4 {
             for destination in ["我们", "玩", "回忆"] {
                 let destinationButton = app.buttons[destination]
-                XCTAssertTrue(destinationButton.waitForExistence(timeout: 1))
+                XCTAssertTrue(destinationButton.exists)
                 destinationButton.tap()
 
                 let chatButton = app.buttons["柯"]
-                XCTAssertTrue(chatButton.waitForExistence(timeout: 1))
+                XCTAssertTrue(chatButton.exists)
                 let startedAt = Date()
                 chatButton.tap()
-                XCTAssertTrue(
-                    latest.waitForExistence(timeout: 1),
+                let visibleAndInteractive = XCTNSPredicateExpectation(
+                    predicate: NSPredicate { object, _ in
+                        guard let element = object as? XCUIElement else { return false }
+                        return element.exists && element.isHittable
+                    },
+                    object: latest
+                )
+                XCTAssertEqual(
+                    XCTWaiter.wait(for: [visibleAndInteractive], timeout: 1),
+                    .completed,
                     "第 \(cycle) 轮从 \(destination) 返回聊天时出现空白"
                 )
-                XCTAssertTrue(latest.isHittable)
                 XCTAssertTrue(collapse.exists, "切 Tab 后 Thinking 展开状态不应丢失")
                 returnLatencies.append(Date().timeIntervalSince(startedAt))
             }
