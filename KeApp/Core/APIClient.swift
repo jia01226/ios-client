@@ -622,13 +622,14 @@ actor APIClient {
     }
 }
 
-private struct UploadResponse: Decodable {
+struct UploadResponse: Decodable {
     let url: String
     let name: String
-    let kind: String
+    let kind: String?
 
     var attachment: ChatAttachment {
-        ChatAttachment(url: url, name: name, kind: kind)
+        // 后端契约只保证 url + name；老响应没有 kind 时交给扩展名识别。
+        ChatAttachment(url: url, name: name, kind: kind ?? "")
     }
 }
 

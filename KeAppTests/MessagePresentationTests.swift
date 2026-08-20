@@ -51,4 +51,12 @@ final class MessagePresentationTests: XCTestCase {
 
         XCTAssertTrue(attachment.isImage)
     }
+
+    func testUploadResponseAcceptsBackendContractWithoutKind() throws {
+        let data = Data(#"{"url":"/uploads/example.jpg","name":"照片.jpg"}"#.utf8)
+        let response = try JSONDecoder().decode(UploadResponse.self, from: data)
+
+        XCTAssertEqual(response.attachment.url, "/uploads/example.jpg")
+        XCTAssertTrue(response.attachment.isImage)
+    }
 }

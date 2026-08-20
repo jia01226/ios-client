@@ -2301,12 +2301,19 @@ final class ChatViewModel: ObservableObject {
     func addPhotoAttachment(data: Data, fileName: String, mimeType: String) async {
         let allowed = ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp"]
         let ext = URL(fileURLWithPath: fileName).pathExtension.lowercased()
-        if allowed.contains(ext) {
+
+        // 动图保留原文件；普通照片统一缩边并转成 JPEG。相册和系统照片选择器
+        // 经常给出四五千万像素的 HEIC/JPEG，直接上传会长时间占着转圈状态。
+        if ext == "gif" {
             await addAttachment(data: data, fileName: fileName, mimeType: mimeType)
             return
         }
         guard let image = UIImage(data: data),
               let jpeg = image.chatUploadJPEGData() else {
+            if allowed.contains(ext) {
+                await addAttachment(data: data, fileName: fileName, mimeType: mimeType)
+                return
+            }
             reportUploadFailure("这张照片的格式暂时不能发送。")
             return
         }
