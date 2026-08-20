@@ -20,17 +20,20 @@ struct RootTabView: View {
         ZStack {
             AppAtmosphere()
 
-            // 四个页面保持在稳定的视图树里。之前用 switch 会在切 Tab 时销毁
-            // ChatView 及其 StateObject，重新进聊天就可能正好撞上历史请求/缓存竞态，
-            // 出现整页空白，必须再切一次才能恢复。
-            UsView()
-                .tabLayer(isActive: selection == .us)
-            ChatView()
-                .tabLayer(isActive: selection == .ke)
-            PlayView()
-                .tabLayer(isActive: selection == .play)
-            MemoriesView()
-                .tabLayer(isActive: selection == .memories)
+            // 由系统 TabView 管四个顶层页面的生命周期和可见层级：已经访问过的
+            // ChatView 会保留状态，同时只有当前页面参与命中测试和主要渲染。
+            // 之前的透明 ZStack 会让四棵重视图树一起合成，快速切换时偶发卡住。
+            TabView(selection: $selection) {
+                UsView()
+                    .tag(Tab.us)
+                ChatView()
+                    .tag(Tab.ke)
+                PlayView()
+                    .tag(Tab.play)
+                MemoriesView()
+                    .tag(Tab.memories)
+            }
+            .toolbar(.hidden, for: .tabBar)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             crystalTabBar
@@ -67,17 +70,6 @@ struct RootTabView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-}
-
-private extension View {
-    func tabLayer(isActive: Bool) -> some View {
-        frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.clear)
-            .opacity(isActive ? 1 : 0)
-            .allowsHitTesting(isActive)
-            .accessibilityHidden(!isActive)
-            .zIndex(isActive ? 1 : 0)
     }
 }
 
