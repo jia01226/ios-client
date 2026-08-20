@@ -47,6 +47,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: love.jiagude.ke
         PRODUCT_NAME: 柯
+        PRODUCT_MODULE_NAME: KeApp
         TARGETED_DEVICE_FAMILY: "1"
         SUPPORTS_MACCATALYST: false
         CODE_SIGN_STYLE: Automatic
