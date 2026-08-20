@@ -217,19 +217,22 @@ final class ThinkingInteractionTests: XCTestCase {
                 XCTAssertTrue(chatButton.exists)
                 let startedAt = Date()
                 chatButton.tap()
-                let visibleAndInteractive = XCTNSPredicateExpectation(
+                // Thinking 展开时会按产品要求固定标题，最新正文可能被推到
+                // 视口外；正文不可点击不等于聊天页空白。用仍应停在视口内的
+                // 收起按钮判断页面已经恢复，同时另验消息数据没有丢失。
+                let chatReadyAndInteractive = XCTNSPredicateExpectation(
                     predicate: NSPredicate { object, _ in
                         guard let element = object as? XCUIElement else { return false }
                         return element.exists && element.isHittable
                     },
-                    object: latest
+                    object: collapse
                 )
                 XCTAssertEqual(
-                    XCTWaiter.wait(for: [visibleAndInteractive], timeout: 1),
+                    XCTWaiter.wait(for: [chatReadyAndInteractive], timeout: 1),
                     .completed,
                     "第 \(cycle) 轮从 \(destination) 返回聊天时出现空白"
                 )
-                XCTAssertTrue(collapse.exists, "切 Tab 后 Thinking 展开状态不应丢失")
+                XCTAssertTrue(latest.exists, "切 Tab 后最新消息数据不应丢失")
                 returnLatencies.append(Date().timeIntervalSince(startedAt))
             }
         }
