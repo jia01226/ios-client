@@ -36,6 +36,7 @@ struct ChatView: View {
     /// 不能在 focus / didShow 各滚一次，否则两套终点会造成闪跳。
     @State private var keyboardFollowsLatest = false
     @State private var keyboardTopY: CGFloat = .greatestFiniteMagnitude
+    @State private var previewedImage: ChatAttachment?
 
     var body: some View {
         Group {
@@ -105,7 +106,10 @@ struct ChatView: View {
         }
         .sheet(isPresented: $showingCamera) {
             CameraPicker { image in
-                guard let data = image.jpegData(compressionQuality: 0.88) else { return }
+                guard let data = image.chatUploadJPEGData() else {
+                    vm.reportUploadFailure("这张照片没有读取成功，请重新拍一次。")
+                    return
+                }
                 Task {
                     await vm.addAttachment(
                         data: data,
@@ -115,6 +119,11 @@ struct ChatView: View {
                 }
             }
             .ignoresSafeArea()
+        }
+        .fullScreenCover(item: $previewedImage) { attachment in
+            AttachmentImageViewer(attachment: attachment) {
+                previewedImage = nil
+            }
         }
     }
 
@@ -215,6 +224,9 @@ struct ChatView: View {
                             scrollAnchorController: scrollAnchorController,
                             onThinkingToggle: {
                                 toggleThinking(for: message.id)
+                            },
+                            onAttachmentTap: { attachment in
+                                previewedImage = attachment
                             }
                         )
                             .id(message.id)
@@ -435,7 +447,10 @@ struct ChatView: View {
                         ForEach(recentPhotos.photos) { photo in
                             Button {
                                 Task {
-                                    guard let value = await recentPhotos.imageData(for: photo.id) else { return }
+                                    guard let value = await recentPhotos.imageData(for: photo.id) else {
+                                        vm.reportUploadFailure("这张照片没有读取成功，请再选一次。")
+                                        return
+                                    }
                                     await vm.addPhotoAttachment(
                                         data: value.data,
                                         fileName: value.fileName,
@@ -487,7 +502,10 @@ struct ChatView: View {
             pickedPhotos = []
             Task {
                 for item in items {
-                    guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
+                    guard let data = try? await item.loadTransferable(type: Data.self) else {
+                        vm.reportUploadFailure("有一张照片没有读取成功，请再选一次。")
+                        continue
+                    }
                     let type = item.supportedContentTypes.first ?? .jpeg
                     let ext = type.preferredFilenameExtension ?? "jpg"
                     await vm.addPhotoAttachment(
@@ -532,7 +550,7 @@ struct ChatView: View {
                 if vm.isUploading {
                     HStack(spacing: theme.metric.gapXS) {
                         ProgressView().controlSize(.small)
-                        Text("正在上传…")
+                        Text(vm.uploadingFileName.map { "正在上传 \($0)…" } ?? "正在上传…")
                     }
                     .font(theme.font.caption)
                     .foregroundStyle(theme.color.textSecondary)
@@ -540,8 +558,21 @@ struct ChatView: View {
 
                 ForEach(vm.pendingAttachments) { attachment in
                     HStack(spacing: theme.metric.gapXS) {
-                        Image(systemName: attachment.isImage ? "photo" : "doc")
-                        Text(attachment.name).lineLimit(1)
+                        if attachment.isImage {
+                            Button {
+                                previewedImage = attachment
+                            } label: {
+                                HStack(spacing: theme.metric.gapXS) {
+                                    Image(systemName: "photo")
+                                    Text(attachment.name).lineLimit(1)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("预览待发送图片 \(attachment.name)")
+                        } else {
+                            Image(systemName: "doc")
+                            Text(attachment.name).lineLimit(1)
+                        }
                         Button {
                             vm.removePendingAttachment(attachment)
                         } label: {
@@ -562,9 +593,19 @@ struct ChatView: View {
                 }
 
                 if let error = vm.uploadError {
-                    Text(error)
-                        .font(theme.font.caption)
-                        .foregroundStyle(theme.color.textSecondary)
+                    HStack(spacing: theme.metric.gapS) {
+                        Text(error)
+                            .font(theme.font.caption)
+                            .foregroundStyle(theme.color.textSecondary)
+                        if vm.canRetryUpload {
+                            Button("重试") {
+                                Task { await vm.retryLastUpload() }
+                            }
+                            .buttonStyle(.borderless)
+                            .font(theme.font.caption)
+                            .foregroundStyle(theme.effectiveAccent)
+                        }
+                    }
                 }
             }
             .padding(.horizontal, theme.metric.pagePadding)
@@ -1447,6 +1488,7 @@ private struct MessageRow: View {
     let visibleSegmentCount: Int?
     let scrollAnchorController: ChatScrollAnchorController
     let onThinkingToggle: () -> Void
+    let onAttachmentTap: (ChatAttachment) -> Void
     @State private var copied = false
 
     var body: some View {
@@ -1696,18 +1738,23 @@ private struct MessageRow: View {
 
     @ViewBuilder
     private func attachmentView(_ attachment: ChatAttachment) -> some View {
-        if attachment.isImage,
-           let url = URL(string: attachment.url, relativeTo: AppConfiguration.apiBaseURL) {
-            AsyncImage(url: url) { image in
-                image
-                    .resizable()
-                    .scaledToFill()
-            } placeholder: {
-                ProgressView().controlSize(.small)
+        if attachment.isImage {
+            Button {
+                onAttachmentTap(attachment)
+            } label: {
+                AuthenticatedAttachmentImage(
+                    attachment: attachment,
+                    contentMode: .fill
+                )
+                .frame(maxWidth: .infinity)
+                .frame(height: theme.metric.messageImageHeight)
+                .clipShape(RoundedRectangle(
+                    cornerRadius: theme.metric.radiusChip,
+                    style: .continuous
+                ))
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: theme.metric.messageImageHeight)
-            .clipShape(RoundedRectangle(cornerRadius: theme.metric.radiusChip, style: .continuous))
+            .buttonStyle(.plain)
+            .accessibilityLabel("打开图片 \(attachment.name.isEmpty ? "预览" : attachment.name)")
         } else {
             HStack(spacing: theme.metric.gapS) {
                 Image(systemName: "doc")
@@ -1737,6 +1784,99 @@ private struct MessageRow: View {
         ).count
         return text.count >= theme.metric.wideMessageCharacterThreshold
             || visibleLineCount >= theme.metric.wideMessageLineThreshold
+    }
+}
+
+private struct AuthenticatedAttachmentImage: View {
+    @EnvironmentObject private var theme: Theme
+    let attachment: ChatAttachment
+    let contentMode: ContentMode
+    @State private var image: UIImage?
+    @State private var didFail = false
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: contentMode)
+            } else if didFail {
+                VStack(spacing: theme.metric.gapS) {
+                    Image(systemName: "photo.badge.exclamationmark")
+                        .font(theme.font.attachmentIcon)
+                    Text("图片没有加载出来")
+                        .font(theme.font.caption)
+                }
+                .foregroundStyle(theme.color.textSecondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(theme.color.card.opacity(theme.glass.fixedSurfaceTintOpacity))
+            } else {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(theme.effectiveAccent)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .task(id: attachment.url) {
+            image = nil
+            didFail = false
+            do {
+                let data = try await APIClient.shared.fetchAttachmentData(at: attachment.url)
+                guard let loaded = UIImage(data: data) else {
+                    didFail = true
+                    return
+                }
+                image = loaded
+            } catch is CancellationError {
+                return
+            } catch {
+                didFail = true
+            }
+        }
+    }
+}
+
+private struct AttachmentImageViewer: View {
+    @EnvironmentObject private var theme: Theme
+    let attachment: ChatAttachment
+    let dismiss: () -> Void
+
+    var body: some View {
+        ZStack {
+            theme.color.glassShadow
+                .ignoresSafeArea()
+
+            AuthenticatedAttachmentImage(
+                attachment: attachment,
+                contentMode: .fit
+            )
+            .padding(theme.metric.pagePadding)
+
+            VStack {
+                HStack {
+                    Spacer()
+                    Button(action: dismiss) {
+                        Image(systemName: "xmark")
+                            .font(theme.font.composerIcon)
+                            .foregroundStyle(theme.color.textOnAccent)
+                            .frame(
+                                width: theme.metric.touchTarget,
+                                height: theme.metric.touchTarget
+                            )
+                            .background(CrystalSurface(
+                                cornerRadius: theme.metric.radiusChip,
+                                strength: 1.1,
+                                usesChatControls: true
+                            ))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("关闭图片")
+                }
+                Spacer()
+            }
+            .padding(theme.metric.pagePadding)
+        }
+        .statusBarHidden()
     }
 }
 
@@ -1771,7 +1911,9 @@ final class ChatViewModel: ObservableObject {
     @Published var deleteError: String?
     @Published var pendingAttachments: [ChatAttachment] = []
     @Published var isUploading = false
+    @Published var uploadingFileName: String?
     @Published var uploadError: String?
+    @Published var canRetryUpload = false
     @Published private var visibleSegmentCounts: [String: Int] = [:]
 
     private let api = APIClient.shared
@@ -1783,6 +1925,13 @@ final class ChatViewModel: ObservableObject {
     private var activeStreamClientID: String?
     private var recoveryProbeID: UUID?
     private var segmentRevealTasks: [String: Task<Void, Never>] = [:]
+    private var failedUpload: AttachmentUploadPayload?
+
+    private struct AttachmentUploadPayload {
+        let data: Data
+        let fileName: String
+        let mimeType: String
+    }
 
 #if DEBUG
     private enum UITestFixture: Equatable {
@@ -2003,7 +2152,7 @@ final class ChatViewModel: ObservableObject {
         do {
             try await api.login(passcode: passcode)
             let active = try await api.activeSession()
-            sessionID = active.id
+            prepareForSession(active.id)
             selectedModel = active.model
             phase = .ready
             CompanionPermissionCoordinator.shared.sessionDidBecomeReady()
@@ -2090,26 +2239,63 @@ final class ChatViewModel: ObservableObject {
     }
 
     func addAttachment(data: Data, fileName: String, mimeType: String) async {
-        guard !isUploading, pendingAttachments.count < 9 else { return }
-        guard data.count < 29 * 1024 * 1024 else {
-            uploadError = "文件需要小于 29MB。"
+        guard !isUploading else {
+            reportUploadFailure("上一份附件还在上传，请等它完成。")
             return
         }
+        guard pendingAttachments.count < 9 else {
+            reportUploadFailure("一次最多发送 9 个附件。")
+            return
+        }
+        guard data.count < 29 * 1024 * 1024 else {
+            reportUploadFailure("文件需要小于 29MB。")
+            return
+        }
+        let payload = AttachmentUploadPayload(
+            data: data,
+            fileName: fileName,
+            mimeType: mimeType
+        )
+        failedUpload = nil
+        canRetryUpload = false
+        await upload(payload)
+    }
+
+    private func upload(_ payload: AttachmentUploadPayload) async {
         isUploading = true
+        uploadingFileName = payload.fileName
         uploadError = nil
-        defer { isUploading = false }
+        defer {
+            isUploading = false
+            uploadingFileName = nil
+        }
         do {
             let uploaded = try await api.uploadAttachment(
-                data: data,
-                fileName: fileName,
-                mimeType: mimeType
+                data: payload.data,
+                fileName: payload.fileName,
+                mimeType: payload.mimeType
             )
             if !pendingAttachments.contains(where: { $0.url == uploaded.url }) {
                 pendingAttachments.append(uploaded)
             }
+            failedUpload = nil
+            canRetryUpload = false
         } catch {
+            failedUpload = payload
+            canRetryUpload = true
             uploadError = error.localizedDescription
         }
+    }
+
+    func retryLastUpload() async {
+        guard !isUploading, let failedUpload else { return }
+        canRetryUpload = false
+        await upload(failedUpload)
+    }
+
+    func reportUploadFailure(_ message: String) {
+        uploadError = message
+        canRetryUpload = failedUpload != nil
     }
 
     func addPhotoAttachment(data: Data, fileName: String, mimeType: String) async {
@@ -2120,8 +2306,8 @@ final class ChatViewModel: ObservableObject {
             return
         }
         guard let image = UIImage(data: data),
-              let jpeg = image.jpegData(compressionQuality: 0.88) else {
-            uploadError = "这张照片的格式暂时不能发送。"
+              let jpeg = image.chatUploadJPEGData() else {
+            reportUploadFailure("这张照片的格式暂时不能发送。")
             return
         }
         await addAttachment(
@@ -2137,11 +2323,11 @@ final class ChatViewModel: ObservableObject {
         do {
             let values = try url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
             guard values.isRegularFile == true else {
-                uploadError = "这个项目不是可以发送的文件。"
+                reportUploadFailure("这个项目不是可以发送的文件。")
                 return
             }
             guard (values.fileSize ?? 0) < 29 * 1024 * 1024 else {
-                uploadError = "文件需要小于 29MB。"
+                reportUploadFailure("文件需要小于 29MB。")
                 return
             }
             let data = try Data(contentsOf: url, options: .mappedIfSafe)
@@ -2152,13 +2338,13 @@ final class ChatViewModel: ObservableObject {
                 mimeType: type?.preferredMIMEType ?? "application/octet-stream"
             )
         } catch {
-            uploadError = "没有读取到这个文件。"
+            reportUploadFailure("没有读取到这个文件。")
         }
     }
 
     func removePendingAttachment(_ attachment: ChatAttachment) {
         pendingAttachments.removeAll { $0.id == attachment.id }
-        if pendingAttachments.isEmpty { uploadError = nil }
+        if pendingAttachments.isEmpty, failedUpload == nil { uploadError = nil }
     }
 
     func loadModels(force: Bool = false) async {
@@ -2275,7 +2461,7 @@ final class ChatViewModel: ObservableObject {
 
     private func connect() async {
         if let snapshot = await cache.loadLatest() {
-            sessionID = snapshot.sessionID
+            prepareForSession(snapshot.sessionID)
             messages = snapshot.messages
             isShowingCachedMessages = true
             phase = .ready
@@ -2284,7 +2470,7 @@ final class ChatViewModel: ObservableObject {
 
         do {
             let active = try await api.activeSession()
-            sessionID = active.id
+            prepareForSession(active.id)
             selectedModel = active.model
             CompanionPermissionCoordinator.shared.sessionDidBecomeReady()
             await loadCache(sessionID: active.id)
@@ -2324,11 +2510,6 @@ final class ChatViewModel: ObservableObject {
         do {
             let remote = try await api.fetchMessages(sessionID: sessionID)
             guard self.sessionID == sessionID else { return }
-            if remote.isEmpty, messages.contains(where: { $0.serverID != nil }) {
-                isShowingCachedMessages = true
-                statusText = "服务器这次返回了空记录，先保留手机里的聊天。"
-                return
-            }
             let withThinking = preserveLocalThinking(in: remote)
             let merged = mergeRemoteHistory(withThinking)
             messages = merged
@@ -2575,7 +2756,6 @@ final class ChatViewModel: ObservableObject {
                 )
                 guard !Task.isCancelled else { return }
                 visibleSegmentCounts[key] = count
-                streamRevision += 1
             }
             visibleSegmentCounts.removeValue(forKey: key)
             segmentRevealTasks[key] = nil
@@ -2585,6 +2765,25 @@ final class ChatViewModel: ObservableObject {
     private func updateMessage(id: String, mutate: (inout Message) -> Void) {
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
         mutate(&messages[index])
+    }
+
+    private func prepareForSession(_ newSessionID: Int) {
+        guard sessionID != newSessionID else { return }
+        for task in segmentRevealTasks.values { task.cancel() }
+        segmentRevealTasks.removeAll()
+        visibleSegmentCounts.removeAll()
+        messages.removeAll()
+        searchCorpus.removeAll()
+        historyLoadFailed = false
+        isLoadingHistory = false
+        isShowingCachedMessages = false
+        statusText = nil
+        activeJobID = nil
+        recoveringJobID = nil
+        recoveryProbeID = nil
+        activeStreamClientID = nil
+        isSending = false
+        sessionID = newSessionID
     }
 
     private func preserveLocalThinking(in remote: [Message]) -> [Message] {

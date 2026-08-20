@@ -9,6 +9,7 @@ enum APIError: LocalizedError {
     case invalidResponse
     case decoding(Error)
     case transport(Error)
+    case uploadTimedOut
     case streamClosed
     case serverMessage(String)
 
@@ -26,6 +27,8 @@ enum APIError: LocalizedError {
             return "聊天记录没有解析成功"
         case .transport:
             return "网络没有接稳"
+        case .uploadTimedOut:
+            return "图片上传等得太久了，请点重试。"
         case .streamClosed:
             return "回复流中途断开"
         case let .serverMessage(message):
@@ -115,6 +118,7 @@ private struct RemoteMessage: Decodable {
     let thinkSummary: String?
     let thoughtNote: String?
     let thinkSummaryRaw: String?
+    let sceneMode: String?
     let attachments: [ChatAttachment]?
 
     enum CodingKeys: String, CodingKey {
@@ -123,6 +127,7 @@ private struct RemoteMessage: Decodable {
         case thinkSummary = "think_summary"
         case thoughtNote = "thought_note"
         case thinkSummaryRaw = "think_summary_raw"
+        case sceneMode = "scene_mode"
         case attachments
     }
 
@@ -138,6 +143,7 @@ private struct RemoteMessage: Decodable {
             thoughtSummary: thinkSummary?.nilIfBlank,
             thoughtNote: thoughtNote?.nilIfBlank,
             thoughtSummaryRaw: thinkSummaryRaw?.nilIfBlank,
+            sceneMode: sceneMode?.nilIfBlank,
             attachments: attachments,
             isStreaming: false,
             deliveryState: .sent
@@ -319,12 +325,30 @@ actor APIClient {
         body.appendMultipart("\r\n--\(boundary)--\r\n")
         request.httpBody = body
 
-        let (responseData, _) = try await perform(request)
+        let (responseData, _) = try await perform(request, timeout: 60)
         do {
             return try decoder.decode(UploadResponse.self, from: responseData).attachment
         } catch {
             throw APIError.decoding(error)
         }
+    }
+
+    /// 图片地址受与聊天接口相同的登录保护，不能交给没有明确鉴权语义的图片视图直取。
+    func fetchAttachmentData(at rawURL: String) async throws -> Data {
+        guard let url = URL(string: rawURL, relativeTo: baseURL)?.absoluteURL,
+              url.scheme == baseURL.scheme,
+              url.host == baseURL.host else {
+            throw APIError.badURL
+        }
+        var request = URLRequest(url: url)
+        request.cachePolicy = .returnCacheDataElseLoad
+        if let cookies = HTTPCookieStorage.shared.cookies(for: url), !cookies.isEmpty {
+            for (field, value) in HTTPCookie.requestHeaderFields(with: cookies) {
+                request.setValue(value, forHTTPHeaderField: field)
+            }
+        }
+        let (data, _) = try await perform(request, timeout: 30)
+        return data
     }
 
     func activeJobs(sessionID: Int) async throws -> [ActiveChatJob] {
@@ -499,9 +523,35 @@ actor APIClient {
         return request
     }
 
-    private func perform(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+    private func perform(
+        _ request: URLRequest,
+        timeout: TimeInterval? = nil
+    ) async throws -> (Data, HTTPURLResponse) {
         do {
-            let (data, response) = try await session.data(for: request)
+            let payload: (Data, URLResponse)
+            if let timeout {
+                payload = try await withThrowingTaskGroup(
+                    of: (Data, URLResponse).self
+                ) { group in
+                    defer { group.cancelAll() }
+                    group.addTask { [session] in
+                        try await session.data(for: request)
+                    }
+                    group.addTask {
+                        try await Task.sleep(
+                            nanoseconds: UInt64(timeout * 1_000_000_000)
+                        )
+                        throw APIError.uploadTimedOut
+                    }
+                    guard let first = try await group.next() else {
+                        throw APIError.invalidResponse
+                    }
+                    return first
+                }
+            } else {
+                payload = try await session.data(for: request)
+            }
+            let (data, response) = payload
             guard let http = response as? HTTPURLResponse else {
                 throw APIError.invalidResponse
             }

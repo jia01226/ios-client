@@ -20,20 +20,17 @@ struct RootTabView: View {
         ZStack {
             AppAtmosphere()
 
-            Group {
-                switch selection {
-                case .us:
-                    UsView()
-                case .ke:
-                    ChatView()
-                case .play:
-                    PlayView()
-                case .memories:
-                    MemoriesView()
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.clear)
+            // 四个页面保持在稳定的视图树里。之前用 switch 会在切 Tab 时销毁
+            // ChatView 及其 StateObject，重新进聊天就可能正好撞上历史请求/缓存竞态，
+            // 出现整页空白，必须再切一次才能恢复。
+            UsView()
+                .tabLayer(isActive: selection == .us)
+            ChatView()
+                .tabLayer(isActive: selection == .ke)
+            PlayView()
+                .tabLayer(isActive: selection == .play)
+            MemoriesView()
+                .tabLayer(isActive: selection == .memories)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             crystalTabBar
@@ -57,7 +54,7 @@ struct RootTabView: View {
 
     private func tabButton(_ tab: Tab, label: String) -> some View {
         Button {
-            withAnimation(.easeOut(duration: 0.18)) { selection = tab }
+            selection = tab
         } label: {
             VStack(spacing: 1) {
                 NavArtwork(tab: tab, selected: selection == tab)
@@ -70,6 +67,17 @@ struct RootTabView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+private extension View {
+    func tabLayer(isActive: Bool) -> some View {
+        frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.clear)
+            .opacity(isActive ? 1 : 0)
+            .allowsHitTesting(isActive)
+            .accessibilityHidden(!isActive)
+            .zIndex(isActive ? 1 : 0)
     }
 }
 

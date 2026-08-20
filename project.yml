@@ -56,7 +56,21 @@ targets:
     scheme:
       gatherCoverageData: false
       testTargets:
+        - KeAppTests
         - KeAppUITests
+
+  KeAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: KeAppTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: love.jiagude.ke.tests
+        GENERATE_INFOPLIST_FILE: true
+        CODE_SIGN_STYLE: Automatic
+    dependencies:
+      - target: KeApp
 
   KeAppUITests:
     type: bundle.ui-testing

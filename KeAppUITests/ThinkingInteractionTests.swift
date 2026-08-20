@@ -176,6 +176,25 @@ final class ThinkingInteractionTests: XCTestCase {
         attachScreenshot(named: "12-attachment-tray-overlay")
     }
 
+    func testSwitchingTabsPreservesChatInteractionState() throws {
+        let app = launch(arguments: ["-ui-test-scroll-control"])
+        let expand = app.buttons["展开思考"]
+        XCTAssertTrue(expand.waitForExistence(timeout: 5))
+        expand.tap()
+        XCTAssertTrue(app.buttons["收起思考"].waitForExistence(timeout: 2))
+
+        app.buttons["我们"].tap()
+        XCTAssertTrue(app.buttons["柯"].waitForExistence(timeout: 2))
+        app.buttons["柯"].tap()
+
+        XCTAssertTrue(
+            app.buttons["收起思考"].waitForExistence(timeout: 2),
+            "切 Tab 后聊天页不应被销毁重建"
+        )
+        XCTAssertTrue(app.staticTexts["这是最新一条回复。"].exists)
+        attachScreenshot(named: "13-tab-return-preserves-chat")
+    }
+
     private func launch(arguments: [String]) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = arguments

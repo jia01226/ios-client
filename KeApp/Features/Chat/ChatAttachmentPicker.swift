@@ -3,6 +3,30 @@ import Photos
 import UIKit
 import UniformTypeIdentifiers
 
+private enum ChatAttachmentEncodingPolicy {
+    static let maximumImageDimension: CGFloat = 2560
+    static let jpegQuality: CGFloat = 0.84
+}
+
+extension UIImage {
+    /// 相机原图常有四五千万像素；聊天上传保留清晰度即可，先收至合理边长，
+    /// 避免大图长时间占着上传状态，看起来像一直在转。
+    func chatUploadJPEGData() -> Data? {
+        let longest = max(size.width, size.height)
+        guard longest > ChatAttachmentEncodingPolicy.maximumImageDimension else {
+            return jpegData(compressionQuality: ChatAttachmentEncodingPolicy.jpegQuality)
+        }
+        let scale = ChatAttachmentEncodingPolicy.maximumImageDimension / longest
+        let target = CGSize(width: size.width * scale, height: size.height * scale)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let resized = UIGraphicsImageRenderer(size: target, format: format).image { _ in
+            draw(in: CGRect(origin: .zero, size: target))
+        }
+        return resized.jpegData(compressionQuality: ChatAttachmentEncodingPolicy.jpegQuality)
+    }
+}
+
 struct RecentPhoto: Identifiable {
     let id: String
     let thumbnail: UIImage

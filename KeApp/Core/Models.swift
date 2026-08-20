@@ -33,6 +33,10 @@ struct Message: Identifiable, Hashable, Codable, Sendable {
     /// 历史消息中非空表示 `thoughtSummary` 是中文译文；英文原文只作来源留档，不渲染。
     var thoughtSummaryRaw: String? = nil
 
+    /// 服务端生成这条消息时所在的场景。当前已确认的值是 `bedroom`；
+    /// 它只影响正文怎样呈现，不在客户端推断或改变场景。
+    var sceneMode: String? = nil
+
     /// 聊天附件只保存服务器返回的相对地址与展示名称；文件本体仍以 VPS 为准。
     var attachments: [ChatAttachment]? = nil
 
@@ -88,6 +92,14 @@ extension Message {
             }
         }
         appendCurrentSegment()
+
+        // 卧室回复本来就是连续场景；长篇回复也应保持完整阅读节奏。
+        // 日常短句才按空行拆成真人连发的小气泡。这里使用正文结构判断，
+        // 不靠“深聊/做爱”等关键词猜用户正在谈什么。
+        if keepsLongFormTogether(segments) {
+            let value = normalized.trimmingCharacters(in: .whitespacesAndNewlines)
+            return value.isEmpty ? [] : [value]
+        }
         return segments
     }
 
@@ -95,6 +107,24 @@ extension Message {
     var bubbleRevealKey: String {
         serverID.map { "server-\($0)" } ?? id
     }
+
+    private func keepsLongFormTogether(_ segments: [String]) -> Bool {
+        guard segments.count > 1 else { return false }
+        if sceneMode?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "bedroom" {
+            return true
+        }
+
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let longestParagraph = segments.map(\.count).max() ?? 0
+        return trimmed.count >= ChatPresentationPolicy.longFormCharacterThreshold
+            || longestParagraph >= ChatPresentationPolicy.longParagraphCharacterThreshold
+    }
+}
+
+private enum ChatPresentationPolicy {
+    /// 长篇与长段落属于连续阅读内容；数值只决定语义呈现，不是界面尺寸。
+    static let longFormCharacterThreshold = 180
+    static let longParagraphCharacterThreshold = 96
 }
 
 struct ChatAttachment: Identifiable, Hashable, Codable, Sendable {
@@ -103,7 +133,14 @@ struct ChatAttachment: Identifiable, Hashable, Codable, Sendable {
     let kind: String
 
     var id: String { url }
-    var isImage: Bool { kind == "image" }
+    var isImage: Bool {
+        if kind.lowercased() == "image" { return true }
+        let candidate = name.isEmpty ? url : name
+        let ext = URL(fileURLWithPath: candidate.components(separatedBy: "?").first ?? candidate)
+            .pathExtension
+            .lowercased()
+        return ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp"].contains(ext)
+    }
 }
 
 /// 柯回复时附带的状态信号。
