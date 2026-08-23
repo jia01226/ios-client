@@ -199,9 +199,22 @@ actor APIClient {
     private let baseURL = AppConfiguration.apiBaseURL
     private let session: URLSession
     private let decoder = JSONDecoder()
+    private let houseKeyCookies: HouseKeyCookieStore
 
     private init() {
         HTTPCookieStorage.shared.cookieAcceptPolicy = .always
+        let houseKeyCookies = HouseKeyCookieStore()
+        // 已经在认领期拿到 Cookie 的旧安装，升级后第一次启动就先抄进 Keychain；
+        // 若 Cookie 罐已被系统清空，再从 Keychain 恢复。
+        houseKeyCookies.persistCookie(
+            from: HTTPCookieStorage.shared,
+            for: AppConfiguration.apiBaseURL
+        )
+        houseKeyCookies.restoreCookie(
+            into: HTTPCookieStorage.shared,
+            for: AppConfiguration.apiBaseURL
+        )
+        self.houseKeyCookies = houseKeyCookies
         let configuration = URLSessionConfiguration.default
         configuration.httpCookieStorage = HTTPCookieStorage.shared
         configuration.httpShouldSetCookies = true
@@ -555,6 +568,12 @@ actor APIClient {
             guard let http = response as? HTTPURLResponse else {
                 throw APIError.invalidResponse
             }
+            // Set-Cookie 由 URLSession 先放进共享 Cookie 罐；无论本次业务状态码如何，
+            // 只要认领期发来了 ke_home，就立即持久化，下一次重装也能恢复。
+            houseKeyCookies.persistCookie(
+                from: HTTPCookieStorage.shared,
+                for: baseURL
+            )
             if http.statusCode == 401 { throw APIError.unauthorized }
             guard 200...299 ~= http.statusCode else {
                 let message = Self.errorMessage(from: data)
