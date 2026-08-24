@@ -60,6 +60,8 @@ jobs:
           APP=$(find "$HOME/Library/Developer/Xcode/DerivedData" \
             -path '*/Build/Products/Debug-iphonesimulator/柯.app' | head -1)
           test -d "$APP"
+          xcrun simctl boot "$SIMULATOR_ID" 2>/dev/null || true
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
           xcrun simctl install "$SIMULATOR_ID" "$APP"
           xcrun simctl launch --terminate-running-process "$SIMULATOR_ID" \
             love.jiagude.ke -ui-test-notice-split
