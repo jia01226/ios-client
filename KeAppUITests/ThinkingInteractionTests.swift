@@ -83,6 +83,28 @@ final class ThinkingInteractionTests: XCTestCase {
         attachScreenshot(named: "06-segmented-reply")
     }
 
+    func testFallbackNoticeKeepsStreamingAndMapsThreeMessageIDs() throws {
+        let app = launch(arguments: ["-ui-test-notice-split"])
+        let notice = app.descendants(matching: .any)["chat-stream-notice"]
+        XCTAssertTrue(notice.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["第一条先接住你。"].exists)
+
+        XCTAssertTrue(app.staticTexts["第二条从小路继续送过来。"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["第三条也完整到了。"].waitForExistence(timeout: 3))
+        XCTAssertTrue(notice.exists, "系统提示出现后，后续正文不应被截断或替换")
+
+        for serverID in [4209, 4210, 4211] {
+            XCTAssertTrue(
+                app.descendants(matching: .any)["chat-message-server-\(serverID)"].exists,
+                "三个气泡必须分别绑定 done 事件给出的三个服务端 id"
+            )
+        }
+        XCTAssertFalse(app.staticTexts[
+            "第一条先接住你。\n第二条从小路继续送过来。\n第三条也完整到了。"
+        ].exists)
+        attachScreenshot(named: "07-fallback-notice-three-bubbles")
+    }
+
     func testLatestThinkingTitleDoesNotFlickerOrJump() throws {
         let app = launch(arguments: ["-ui-test-scroll-control"])
         let expand = app.buttons["展开思考"]

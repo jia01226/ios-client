@@ -63,68 +63,13 @@ struct Message: Identifiable, Hashable, Codable, Sendable {
 }
 
 extension Message {
-    /// 后端仍保存一条完整消息；这里只把柯的正文按空行切成显示气泡。
-    /// 单换行保留在同一气泡里，连续空行不会产生空气泡。
+    /// 一条服务端消息就是一个气泡。实时分条只认 SSE 的 `split` 协议，
+    /// 历史记录由后端直接返回独立消息；客户端不再按空行、标点或长度猜测。
     var bubbleSegments: [String] {
-        guard sender == .ke, !isStreaming else {
-            let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            return value.isEmpty ? [] : [text]
-        }
-
-        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n")
-        var segments: [String] = []
-        var currentLines: [String] = []
-
-        func appendCurrentSegment() {
-            let value = currentLines
-                .joined(separator: "\n")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            if !value.isEmpty { segments.append(value) }
-            currentLines.removeAll(keepingCapacity: true)
-        }
-
-        for line in normalized.split(separator: "\n", omittingEmptySubsequences: false) {
-            let value = String(line)
-            if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                appendCurrentSegment()
-            } else {
-                currentLines.append(value)
-            }
-        }
-        appendCurrentSegment()
-
-        // 卧室回复本来就是连续场景；长篇回复也应保持完整阅读节奏。
-        // 日常短句才按空行拆成真人连发的小气泡。这里使用正文结构判断，
-        // 不靠“深聊/做爱”等关键词猜用户正在谈什么。
-        if keepsLongFormTogether(segments) {
-            let value = normalized.trimmingCharacters(in: .whitespacesAndNewlines)
-            return value.isEmpty ? [] : [value]
-        }
-        return segments
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? [] : [text]
     }
 
-    /// 本地流式气泡与历史记录会换 id，serverID 让分条进度能跨刷新延续。
-    var bubbleRevealKey: String {
-        serverID.map { "server-\($0)" } ?? id
-    }
-
-    private func keepsLongFormTogether(_ segments: [String]) -> Bool {
-        guard segments.count > 1 else { return false }
-        if sceneMode?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "bedroom" {
-            return true
-        }
-
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let longestParagraph = segments.map(\.count).max() ?? 0
-        return trimmed.count >= ChatPresentationPolicy.longFormCharacterThreshold
-            || longestParagraph >= ChatPresentationPolicy.longParagraphCharacterThreshold
-    }
-}
-
-private enum ChatPresentationPolicy {
-    /// 长篇与长段落属于连续阅读内容；数值只决定语义呈现，不是界面尺寸。
-    static let longFormCharacterThreshold = 180
-    static let longParagraphCharacterThreshold = 96
 }
 
 struct ChatAttachment: Identifiable, Hashable, Codable, Sendable {

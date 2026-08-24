@@ -45,12 +45,36 @@ jobs:
           print(iphones[0])
           ')
           echo "使用模拟器 $SIMULATOR_ID"
+          echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
           xcodebuild test \
             -project KeApp.xcodeproj \
             -scheme KeApp \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
             -resultBundlePath "$RUNNER_TEMP/ChatSimulator.xcresult" \
             CODE_SIGNING_ALLOWED=NO
+
+      - name: 截取小路提示与三气泡画面
+        if: success()
+        run: |
+          set -euo pipefail
+          APP=$(find "$HOME/Library/Developer/Xcode/DerivedData" \
+            -path '*/Build/Products/Debug-iphonesimulator/柯.app' | head -1)
+          test -d "$APP"
+          xcrun simctl install "$SIMULATOR_ID" "$APP"
+          xcrun simctl launch --terminate-running-process "$SIMULATOR_ID" \
+            love.jiagude.ke -ui-test-notice-split
+          sleep 2
+          xcrun simctl io "$SIMULATOR_ID" screenshot \
+            "$RUNNER_TEMP/notice-split-three-bubbles.png"
+
+      - name: 上传界面截图
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChatSimulator-screenshots
+          path: ${{ runner.temp }}/notice-split-three-bubbles.png
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: 上传模拟器核验记录
         if: always()

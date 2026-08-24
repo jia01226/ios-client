@@ -42,12 +42,18 @@ struct ActiveChatJob: Decodable, Identifiable, Sendable {
     let status: String
 }
 
-enum ChatStreamEvent: Sendable {
+enum ChatStreamEvent: Sendable, Equatable {
     case receipt(userMessageID: Int?, jobID: String?, bedroom: Bool?)
+    case notice(String)
     case text(String)
+    case split
     case thinkingDelta(String)
     case thoughtNote(String)
-    case completed(assistantMessageID: Int?, bedroom: Bool?)
+    case completed(
+        assistantMessageID: Int?,
+        assistantMessageIDs: [Int],
+        bedroom: Bool?
+    )
     case serverError(String)
 }
 
@@ -587,7 +593,7 @@ actor APIClient {
         }
     }
 
-    private static func parseStreamPayload(_ data: String) throws -> [ChatStreamEvent] {
+    static func parseStreamPayload(_ data: String) throws -> [ChatStreamEvent] {
         guard let raw = data.data(using: .utf8),
               let object = try JSONSerialization.jsonObject(with: raw) as? [String: Any] else {
             throw APIError.invalidResponse
@@ -604,6 +610,9 @@ actor APIClient {
                 bedroom: bedroom
             ))
         }
+        if let value = object["notice"] as? String, !value.isEmpty {
+            events.append(.notice(value))
+        }
         if let value = object["thinking_summary_delta"] as? String, !value.isEmpty {
             events.append(.thinkingDelta(value))
         }
@@ -613,12 +622,16 @@ actor APIClient {
         if let value = object["t"] as? String, !value.isEmpty {
             events.append(.text(value))
         }
+        if object["split"] as? Bool == true {
+            events.append(.split)
+        }
         if let value = object["error"] as? String, !value.isEmpty {
             events.append(.serverError(value))
         }
         if object["done"] as? Bool == true {
             events.append(.completed(
                 assistantMessageID: number(object["assistant_message_id"]),
+                assistantMessageIDs: numbers(object["assistant_message_ids"]),
                 bedroom: bedroom
             ))
         }
@@ -630,6 +643,11 @@ actor APIClient {
         if let value = value as? NSNumber { return value.intValue }
         if let value = value as? String { return Int(value) }
         return nil
+    }
+
+    private static func numbers(_ value: Any?) -> [Int] {
+        guard let values = value as? [Any] else { return [] }
+        return values.compactMap { number($0) }
     }
 
     private static func errorMessage(from data: Data) -> String {

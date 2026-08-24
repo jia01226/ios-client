@@ -2,7 +2,7 @@ import XCTest
 @testable import KeApp
 
 final class MessagePresentationTests: XCTestCase {
-    func testDailyReplyKeepsSeparateBubbles() {
+    func testClientNeverSplitsReplyWithoutServerSplitEvent() {
         let message = Message(
             id: "daily",
             sender: .ke,
@@ -10,10 +10,7 @@ final class MessagePresentationTests: XCTestCase {
             time: .now
         )
 
-        XCTAssertEqual(
-            message.bubbleSegments,
-            ["先过来。", "让我抱一下。", "再慢慢说。"]
-        )
+        XCTAssertEqual(message.bubbleSegments, [message.text])
     }
 
     func testLongReplyStaysInOneBubble() {

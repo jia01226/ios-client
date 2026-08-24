@@ -47,6 +47,8 @@ struct Palette {
     let bubbleKeText: Color
     let bubbleMe: Color        // 她说的话
     let bubbleMeText: Color
+    let systemNoticeSurface: Color
+    let systemNoticeText: Color
 
     // 水晶玻璃：页面只使用这些令牌，不在组件里写颜色。
     let glassTint: Color
@@ -82,6 +84,8 @@ extension Palette {
         bubbleKeText:  Color(hex: 0x4C4056),
         bubbleMe:      Color(hex: 0xF3E4D2),
         bubbleMeText:  Color(hex: 0x4C4056),
+        systemNoticeSurface: Color(hex: 0x817A86).opacity(0.13),
+        systemNoticeText: Color(hex: 0x625B69),
 
         glassTint:       Color.white,
         glassTintStrong: Color.white.opacity(0.17),
@@ -111,6 +115,8 @@ extension Palette {
         bubbleKeText:  Color(hex: 0xF4F1EA),
         bubbleMe:      Color(hex: 0x3A2E52),
         bubbleMeText:  Color(hex: 0xF4F1EA),
+        systemNoticeSurface: Color.white.opacity(0.12),
+        systemNoticeText: Color(hex: 0xC2C7D9),
 
         glassTint:       Color.white,
         glassTintStrong: Color.white.opacity(0.10),
@@ -163,6 +169,8 @@ struct Metrics {
     let thinkingLineGap: CGFloat = 12
     let thinkingLineWidth: CGFloat = 1
     let thinkingHorizontalPadding: CGFloat = 2
+    let systemNoticeHorizontalPadding: CGFloat = 14
+    let systemNoticeVerticalPadding: CGFloat = 7
     let glassStrokeWidth: CGFloat = 0.8
     let glassShadowRadius: CGFloat = 12
     let glassShadowY: CGFloat = 6
@@ -194,6 +202,7 @@ struct Typo {
     let copyIcon    = Font.system(size: 11, weight: .regular)
     let receiptIcon = Font.system(size: 10, weight: .semibold)
     let thinkingChevron = Font.system(size: 10, weight: .medium)
+    let systemNotice = Font.system(size: 13, weight: .regular)
     let unavailableIcon = Font.system(size: 28, weight: .medium)
     let memorySparkleIcon = Font.system(size: 12, weight: .regular)
     let disclosureIcon = Font.system(size: 13, weight: .regular)
@@ -227,7 +236,6 @@ struct GlassTokens {
 struct MotionTokens {
     let thinkingResponse: Double = 0.30
     let thinkingDampingFraction: Double = 1.0
-    let splitBubbleInterval: Double = 0.40
 }
 
 // MARK: - 对外的门面

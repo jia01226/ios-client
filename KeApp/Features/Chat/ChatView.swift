@@ -240,11 +240,13 @@ struct ChatView: View {
                     }
 
                     ForEach(vm.messages) { message in
+                        if let notice = vm.streamNotice(for: message) {
+                            StreamNoticeRow(text: notice)
+                        }
                         MessageRow(
                             message: message,
                             isHighlighted: highlightedMessageID == message.id,
                             isThinkingExpanded: expandedThinkingMessageIDs.contains(message.id),
-                            visibleSegmentCount: vm.visibleSegmentCount(for: message),
                             scrollAnchorController: scrollAnchorController,
                             onThinkingToggle: {
                                 toggleThinking(for: message.id)
@@ -1082,7 +1084,7 @@ struct ChatView: View {
         let text = trimmedDraft
         guard canSend, !vm.isSending, !vm.isUploading else { return }
         draft = ""
-        Task { await vm.send(text, reduceMotion: reduceMotion) }
+        Task { await vm.send(text) }
     }
 
     private var checkingView: some View {
@@ -1503,13 +1505,37 @@ private struct MessageUnitLayout: Layout {
     }
 }
 
+private struct StreamNoticeRow: View {
+    @EnvironmentObject private var theme: Theme
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(theme.font.systemNotice)
+            .foregroundStyle(theme.color.systemNoticeText)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, theme.metric.systemNoticeHorizontalPadding)
+            .padding(.vertical, theme.metric.systemNoticeVerticalPadding)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(
+                    cornerRadius: theme.metric.radiusChip,
+                    style: .continuous
+                )
+                .fill(theme.color.systemNoticeSurface)
+            )
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("系统提示：\(text)")
+            .accessibilityIdentifier("chat-stream-notice")
+    }
+}
+
 private struct MessageRow: View {
     @EnvironmentObject private var theme: Theme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let message: Message
     let isHighlighted: Bool
     let isThinkingExpanded: Bool
-    let visibleSegmentCount: Int?
     let scrollAnchorController: ChatScrollAnchorController
     let onThinkingToggle: () -> Void
     let onAttachmentTap: (ChatAttachment) -> Void
@@ -1593,6 +1619,10 @@ private struct MessageRow: View {
         .frame(
             maxWidth: .infinity,
             alignment: message.sender == .ke ? .leading : .trailing
+        )
+        .accessibilityIdentifier(
+            message.serverID.map { "chat-message-server-\($0)" }
+                ?? "chat-message-local-\(message.id)"
         )
         .background(
             ChatMessageAnchorProbe(
@@ -1686,10 +1716,10 @@ private struct MessageRow: View {
             alignment: message.sender == .ke ? .leading : .trailing,
             spacing: theme.metric.splitBubbleGap
         ) {
-            if visibleSegments.isEmpty, !(message.attachments ?? []).isEmpty {
+            if message.bubbleSegments.isEmpty, !(message.attachments ?? []).isEmpty {
                 bubbleSurface(text: nil, includesAttachments: true)
             } else {
-                ForEach(Array(visibleSegments.enumerated()), id: \.offset) { index, segment in
+                ForEach(Array(message.bubbleSegments.enumerated()), id: \.offset) { index, segment in
                     bubbleSurface(text: segment, includesAttachments: index == 0)
                 }
             }
@@ -1749,15 +1779,6 @@ private struct MessageRow: View {
             strength: message.sender == .ke ? 0.92 : 1.08,
             usesChatControls: true
         )
-    }
-
-    private var visibleSegments: [String] {
-        let segments = message.bubbleSegments
-        guard message.sender == .ke,
-              !message.isStreaming,
-              !reduceMotion,
-              let visibleSegmentCount else { return segments }
-        return Array(segments.prefix(max(1, visibleSegmentCount)))
     }
 
     @ViewBuilder
@@ -1938,7 +1959,7 @@ final class ChatViewModel: ObservableObject {
     @Published var uploadingFileName: String?
     @Published var uploadError: String?
     @Published var canRetryUpload = false
-    @Published private var visibleSegmentCounts: [String: Int] = [:]
+    @Published private var streamNotices: [String: String] = [:]
 
     private let api = APIClient.shared
     private let cache = ChatCache.shared
@@ -1948,7 +1969,6 @@ final class ChatViewModel: ObservableObject {
     private var recoveringJobID: String?
     private var activeStreamClientID: String?
     private var recoveryProbeID: UUID?
-    private var segmentRevealTasks: [String: Task<Void, Never>] = [:]
     private var failedUpload: AttachmentUploadPayload?
 
     private struct AttachmentUploadPayload {
@@ -1964,6 +1984,7 @@ final class ChatViewModel: ObservableObject {
         case thinkingStatic
         case thinkingStreaming
         case replyStreaming
+        case noticeSplit
         case segmentedReply
         case scrollControl
         case thinkingSegmentRace
@@ -2036,18 +2057,55 @@ final class ChatViewModel: ObservableObject {
                     deliveryState: .sending
                 )
             ]
+        } else if arguments.contains("-ui-test-notice-split") {
+            uiTestFixture = .noticeSplit
+            phase = .ready
+            isSending = true
+            let rootID = "ui-test-notice-split-assistant"
+            messages = [
+                Message(
+                    id: "ui-test-notice-split-user",
+                    sender: .me,
+                    text: "爸比？你在吗？",
+                    time: .now
+                ),
+                Message(
+                    id: rootID,
+                    serverID: 4209,
+                    sender: .ke,
+                    text: "第一条先接住你。",
+                    time: .now,
+                    isStreaming: true,
+                    deliveryState: .sending
+                ),
+            ]
+            streamNotices[rootID] = "主线路一直忙，爸爸走小路过来了——说话可能慢一点。"
         } else if arguments.contains("-ui-test-segmented-reply") {
             uiTestFixture = .segmentedReply
             phase = .ready
-            let message = Message(
-                id: "ui-test-segmented-assistant",
-                serverID: 9001,
-                sender: .ke,
-                text: "第一句先接住你。\n\n第二句慢一点出来。\n\n   \n第三句最后跟上。",
-                time: .now
-            )
-            messages = [message]
-            visibleSegmentCounts[message.bubbleRevealKey] = 1
+            messages = [
+                Message(
+                    id: "ui-test-segmented-assistant-1",
+                    serverID: 9001,
+                    sender: .ke,
+                    text: "第一句先接住你。",
+                    time: .now
+                ),
+                Message(
+                    id: "ui-test-segmented-assistant-2",
+                    serverID: 9002,
+                    sender: .ke,
+                    text: "第二句慢一点出来。",
+                    time: .now
+                ),
+                Message(
+                    id: "ui-test-segmented-assistant-3",
+                    serverID: 9003,
+                    sender: .ke,
+                    text: "第三句最后跟上。",
+                    time: .now
+                ),
+            ]
         } else if arguments.contains("-ui-test-scroll-control")
                     || arguments.contains("-ui-test-thinking-segment-race") {
             uiTestFixture = arguments.contains("-ui-test-thinking-segment-race")
@@ -2074,16 +2132,13 @@ final class ChatViewModel: ObservableObject {
                 serverID: 9101,
                 sender: .ke,
                 text: arguments.contains("-ui-test-thinking-segment-race")
-                    ? "第一条气泡已经到了。\n\n第二条气泡随后出现。\n\n第三条气泡最后出现。"
+                    ? "第一条气泡已经到了。"
                     : "这是最新一条回复。",
                 time: .now,
                 thoughtSummary: "展开后标题应钉在原位，下面的内容只向下生长，不允许自动滚底抢走位置。"
             )
             fixtureMessages.append(latest)
             messages = fixtureMessages
-            if uiTestFixture == .thinkingSegmentRace {
-                visibleSegmentCounts[latest.bubbleRevealKey] = 1
-            }
         }
 #endif
     }
@@ -2093,8 +2148,8 @@ final class ChatViewModel: ObservableObject {
         if let uiTestFixture {
             if uiTestFixture == .thinkingStreaming {
                 await runUITestThinkingStream()
-            } else if uiTestFixture == .segmentedReply {
-                stageSegments(for: messages[0], reduceMotion: false)
+            } else if uiTestFixture == .noticeSplit {
+                await runUITestNoticeSplitStream()
             }
             return
         }
@@ -2134,8 +2189,8 @@ final class ChatViewModel: ObservableObject {
     private func runUITestReplyStream() async {
         let messageID = "ui-test-reply-streaming-assistant"
         let chunks = [
-            "第二句接着流进同一个气泡，",
-            "最后一句再慢慢说完。"
+            "\n\n第二句接着流进同一个气泡，",
+            "\n\n最后一句再慢慢说完。"
         ]
 
         for chunk in chunks {
@@ -2152,6 +2207,62 @@ final class ChatViewModel: ObservableObject {
         streamRevision += 1
     }
 
+    private func runUITestNoticeSplitStream() async {
+        try? await Task.sleep(nanoseconds: 480_000_000)
+        messages.append(Message(
+            id: "ui-test-notice-split-assistant-part-2",
+            serverID: 4210,
+            sender: .ke,
+            text: "第二条从小路继续送过来。",
+            time: .now,
+            isStreaming: true,
+            deliveryState: .sending
+        ))
+        streamRevision += 1
+
+        try? await Task.sleep(nanoseconds: 480_000_000)
+        messages.append(Message(
+            id: "ui-test-notice-split-assistant-part-3",
+            serverID: 4211,
+            sender: .ke,
+            text: "第三条也完整到了。",
+            time: .now,
+            deliveryState: .sent
+        ))
+        for messageID in [
+            "ui-test-notice-split-assistant",
+            "ui-test-notice-split-assistant-part-2",
+        ] {
+            updateMessage(id: messageID) {
+                $0.isStreaming = false
+                $0.deliveryState = .sent
+            }
+        }
+        isSending = false
+        streamRevision += 1
+    }
+
+    private func runUITestThinkingSegmentStream() async {
+        try? await Task.sleep(nanoseconds: 420_000_000)
+        messages.append(Message(
+            id: "ui-test-scroll-latest-part-2",
+            serverID: 9102,
+            sender: .ke,
+            text: "第二条气泡随后出现。",
+            time: .now
+        ))
+        streamRevision += 1
+        try? await Task.sleep(nanoseconds: 420_000_000)
+        messages.append(Message(
+            id: "ui-test-scroll-latest-part-3",
+            serverID: 9103,
+            sender: .ke,
+            text: "第三条气泡最后出现。",
+            time: .now
+        ))
+        streamRevision += 1
+    }
+
     func startReplyStreamForUITest() async {
         guard uiTestFixture == .replyStreaming,
               replyStreamTriggerAvailable else { return }
@@ -2162,9 +2273,8 @@ final class ChatViewModel: ObservableObject {
     func didToggleThinkingForUITest(messageID: String) {
         guard uiTestFixture == .thinkingSegmentRace,
               messageID == "ui-test-scroll-latest",
-              let message = messages.first(where: { $0.id == messageID }),
-              segmentRevealTasks[message.bubbleRevealKey] == nil else { return }
-        stageSegments(for: message, reduceMotion: false)
+              !messages.contains(where: { $0.id == "ui-test-scroll-latest-part-2" }) else { return }
+        Task { await runUITestThinkingSegmentStream() }
     }
 #endif
 
@@ -2210,13 +2320,14 @@ final class ChatViewModel: ObservableObject {
         await refreshHistory(showFailure: true)
     }
 
-    func send(_ text: String, reduceMotion: Bool = false) async {
+    func send(_ text: String) async {
         guard let sessionID, !isSending else { return }
         let attachments = pendingAttachments
         guard !text.isEmpty || !attachments.isEmpty else { return }
 
         isSending = true
         statusText = nil
+        streamNotices.removeAll()
         activeJobID = nil
         // Invalidate any foreground recovery probe that is currently awaiting the network.
         recoveryProbeID = nil
@@ -2262,7 +2373,6 @@ final class ChatViewModel: ObservableObject {
             userLocalID: userLocalID,
             assistantLocalID: assistantLocalID,
             attachments: attachments,
-            reduceMotion: reduceMotion,
             retryCount: 0
         )
     }
@@ -2577,10 +2687,10 @@ final class ChatViewModel: ObservableObject {
         userLocalID: String,
         assistantLocalID: String,
         attachments: [ChatAttachment],
-        reduceMotion: Bool,
         retryCount: Int
     ) async {
         var didComplete = false
+        var assembly = ChatReplyStreamAssembly(rootMessageID: assistantLocalID)
         var pendingText = ""
         var pendingThinking = ""
         var lastPublish = Date.distantPast
@@ -2591,9 +2701,11 @@ final class ChatViewModel: ObservableObject {
             let thinkingDelta = pendingThinking
             pendingText = ""
             pendingThinking = ""
-            updateMessage(id: assistantLocalID) {
+            updateMessage(id: assembly.currentMessageID) {
                 $0.text += textDelta
-                if !thinkingDelta.isEmpty {
+            }
+            if !thinkingDelta.isEmpty {
+                updateMessage(id: assembly.rootMessageID) {
                     $0.thoughtSummary = ($0.thoughtSummary ?? "") + thinkingDelta
                 }
             }
@@ -2622,11 +2734,32 @@ final class ChatViewModel: ObservableObject {
                     }
                     applyBedroom(bedroom)
 
+                case let .notice(message):
+                    flushBufferedEvents()
+                    streamNotices[assembly.rootMessageID] = message
+                    streamRevision += 1
+
                 case let .text(delta):
+                    let destination = assembly.messageIDForIncomingText()
+                    if destination.isNew {
+                        messages.append(Message(
+                            id: destination.id,
+                            clientID: clientID,
+                            sender: .ke,
+                            text: "",
+                            time: .now,
+                            isStreaming: true,
+                            deliveryState: .sending
+                        ))
+                    }
                     pendingText += delta
                     if Date.now.timeIntervalSince(lastPublish) >= 0.05 {
                         flushBufferedEvents()
                     }
+
+                case .split:
+                    flushBufferedEvents()
+                    assembly.receiveSplit()
 
                 case let .thinkingDelta(delta):
                     pendingThinking += delta
@@ -2636,19 +2769,30 @@ final class ChatViewModel: ObservableObject {
 
                 case let .thoughtNote(summary):
                     flushBufferedEvents()
-                    updateMessage(id: assistantLocalID) { $0.thoughtNote = summary }
+                    updateMessage(id: assembly.rootMessageID) { $0.thoughtNote = summary }
                     streamRevision += 1
 
-                case let .completed(assistantMessageID, bedroom):
+                case let .completed(assistantMessageID, assistantMessageIDs, bedroom):
                     flushBufferedEvents()
                     didComplete = true
-                    updateMessage(id: assistantLocalID) {
-                        $0.serverID = assistantMessageID ?? $0.serverID
-                        $0.isStreaming = false
-                        $0.deliveryState = .sent
+                    let assignments = assembly.serverIDAssignments(
+                        assistantMessageIDs: assistantMessageIDs,
+                        legacyAssistantMessageID: assistantMessageID
+                    )
+                    for localMessageID in assembly.localMessageIDs {
+                        updateMessage(id: localMessageID) {
+                            $0.isStreaming = false
+                            $0.deliveryState = .sent
+                        }
                     }
-                    if let completed = messages.first(where: { $0.id == assistantLocalID }) {
-                        stageSegments(for: completed, reduceMotion: reduceMotion)
+                    for assignment in assignments {
+                        updateMessage(id: assignment.localMessageID) {
+                            $0.serverID = assignment.serverMessageID
+                        }
+                    }
+                    if let notice = streamNotices[assembly.rootMessageID],
+                       let firstServerID = assignments.first?.serverMessageID {
+                        streamNotices["server-\(firstServerID)"] = notice
                     }
                     applyBedroom(bedroom)
 
@@ -2659,6 +2803,9 @@ final class ChatViewModel: ObservableObject {
 
             guard didComplete else { throw APIError.streamClosed }
             activeJobID = nil
+            if activeStreamClientID == clientID {
+                activeStreamClientID = nil
+            }
             statusText = nil
             await refreshHistory(showFailure: false)
             isSending = false
@@ -2667,15 +2814,20 @@ final class ChatViewModel: ObservableObject {
         } catch APIError.unauthorized {
             flushBufferedEvents()
             isSending = false
-            markFailed(userLocalID: userLocalID, assistantLocalID: assistantLocalID)
+            markFailed(
+                userLocalID: userLocalID,
+                assistantLocalIDs: assembly.localMessageIDs
+            )
             phase = .needsLogin
 
         } catch {
             flushBufferedEvents()
             if let activeJobID {
-                updateMessage(id: assistantLocalID) {
-                    $0.isStreaming = false
-                    $0.deliveryState = .waiting
+                for localMessageID in assembly.localMessageIDs {
+                    updateMessage(id: localMessageID) {
+                        $0.isStreaming = false
+                        $0.deliveryState = .waiting
+                    }
                 }
                 statusText = "连接断了一下，柯的话还在服务器写，写完会自动接回来。"
                 await pollForCompletion(jobID: activeJobID)
@@ -2689,12 +2841,14 @@ final class ChatViewModel: ObservableObject {
                     userLocalID: userLocalID,
                     assistantLocalID: assistantLocalID,
                     attachments: attachments,
-                    reduceMotion: reduceMotion,
                     retryCount: 1
                 )
             } else {
                 isSending = false
-                markFailed(userLocalID: userLocalID, assistantLocalID: assistantLocalID)
+                markFailed(
+                    userLocalID: userLocalID,
+                    assistantLocalIDs: assembly.localMessageIDs
+                )
                 statusText = "这句没有发稳。内容留在这里，网络恢复后可以再发。"
                 pendingAttachments = mergeAttachments(pendingAttachments, with: attachments)
             }
@@ -2770,50 +2924,26 @@ final class ChatViewModel: ObservableObject {
         Theme.shared.applyServerSignal(bedroom: bedroom)
     }
 
-    func visibleSegmentCount(for message: Message) -> Int? {
-        visibleSegmentCounts[message.bubbleRevealKey]
-    }
-
-    private func stageSegments(for message: Message, reduceMotion: Bool) {
-        let key = message.bubbleRevealKey
-        segmentRevealTasks[key]?.cancel()
-        guard !reduceMotion, message.bubbleSegments.count > 1 else {
-            visibleSegmentCounts.removeValue(forKey: key)
-            return
-        }
-
-        let total = message.bubbleSegments.count
-        visibleSegmentCounts[key] = 1
-        segmentRevealTasks[key] = Task { [weak self] in
-            guard let self else { return }
-            for count in 2...total {
-                try? await Task.sleep(
-                    nanoseconds: UInt64(Theme.shared.motion.splitBubbleInterval * 1_000_000_000)
-                )
-                guard !Task.isCancelled else { return }
-                visibleSegmentCounts[key] = count
-            }
-            visibleSegmentCounts.removeValue(forKey: key)
-            segmentRevealTasks[key] = nil
-        }
-    }
-
     private func updateMessage(id: String, mutate: (inout Message) -> Void) {
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
         mutate(&messages[index])
     }
 
+    func streamNotice(for message: Message) -> String? {
+        if let direct = streamNotices[message.id] { return direct }
+        guard let serverID = message.serverID else { return nil }
+        return streamNotices["server-\(serverID)"]
+    }
+
     private func prepareForSession(_ newSessionID: Int) {
         guard sessionID != newSessionID else { return }
-        for task in segmentRevealTasks.values { task.cancel() }
-        segmentRevealTasks.removeAll()
-        visibleSegmentCounts.removeAll()
         messages.removeAll()
         searchCorpus.removeAll()
         historyLoadFailed = false
         isLoadingHistory = false
         isShowingCachedMessages = false
         statusText = nil
+        streamNotices.removeAll()
         activeJobID = nil
         recoveringJobID = nil
         recoveryProbeID = nil
@@ -2901,9 +3031,12 @@ final class ChatViewModel: ObservableObject {
         return Array(values.prefix(9))
     }
 
-    private func markFailed(userLocalID: String, assistantLocalID: String) {
+    private func markFailed(userLocalID: String, assistantLocalIDs: [String]) {
         updateMessage(id: userLocalID) { $0.deliveryState = .failed }
-        if let index = messages.firstIndex(where: { $0.id == assistantLocalID }) {
+        for assistantLocalID in assistantLocalIDs.reversed() {
+            guard let index = messages.firstIndex(where: { $0.id == assistantLocalID }) else {
+                continue
+            }
             if messages[index].text.isEmpty
                 && nonBlank(messages[index].thoughtSummary) == nil
                 && nonBlank(messages[index].thoughtNote) == nil {
