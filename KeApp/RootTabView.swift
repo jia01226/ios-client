@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // 底部四个 tab —— 她 2026-08-14 18:45 自己定的。
 //
@@ -11,6 +12,7 @@ struct RootTabView: View {
 
     @EnvironmentObject private var theme: Theme
     @State private var selection: Tab = .ke   // 默认落在聊天页
+    @State private var keyboardIsVisible = false
 
     enum Tab: Hashable {
         case us, ke, play, memories
@@ -36,7 +38,23 @@ struct RootTabView: View {
             .toolbar(.hidden, for: .tabBar)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            crystalTabBar
+            if !keyboardIsVisible {
+                crystalTabBar
+            }
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: UIResponder.keyboardWillShowNotification
+            )
+        ) { _ in
+            keyboardIsVisible = true
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: UIResponder.keyboardDidHideNotification
+            )
+        ) { _ in
+            keyboardIsVisible = false
         }
     }
 

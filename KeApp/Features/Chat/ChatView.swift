@@ -29,10 +29,6 @@ struct ChatView: View {
     @State private var showingDeleteConfirmation = false
     @State private var highlightedMessageID: String?
     @State private var presentedThinkingMessageID: String?
-    /// 键盘出现到完全收回期间，由同一条事务负责把最新消息贴住可视区底部。
-    /// 不能在 focus / didShow 各滚一次，否则两套终点会造成闪跳。
-    @State private var keyboardFollowsLatest = false
-    @State private var keyboardTopY: CGFloat = .greatestFiniteMagnitude
     @State private var previewedImage: ChatAttachment?
 
     var body: some View {
@@ -59,7 +55,7 @@ struct ChatView: View {
     }
 
     private var chatContent: some View {
-        GeometryReader { geometry in
+        GeometryReader { _ in
             ZStack(alignment: .trailing) {
                 VStack(spacing: 0) {
                     header
@@ -113,7 +109,6 @@ struct ChatView: View {
                 }
 #endif
             }
-            .padding(.bottom, max(0, geometry.frame(in: .global).maxY - keyboardTopY))
         }
         .animation(.easeOut(duration: 0.22), value: settingsOpen)
         .fileImporter(
@@ -244,24 +239,8 @@ struct ChatView: View {
         }
         .onChange(of: inputFocused) { _, focused in
             if focused {
-                keyboardFollowsLatest = true
                 attachmentsOpen = false
             }
-        }
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: UIResponder.keyboardWillChangeFrameNotification
-            )
-        ) { notification in
-            followLatestAlongsideKeyboard(notification)
-        }
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: UIResponder.keyboardDidHideNotification
-            )
-        ) { _ in
-            keyboardTopY = .greatestFiniteMagnitude
-            keyboardFollowsLatest = false
         }
     }
 
@@ -303,35 +282,9 @@ struct ChatView: View {
         }
     }
 
-    private func followLatestAlongsideKeyboard(_ notification: Notification) {
-        // UIKit 的 keyboardWillChangeFrame 偶尔早于 SwiftUI FocusState 更新。
-        // 聊天页没有打开设置抽屉时，键盘“正在出现”本身就是输入框接管的可靠信号。
-        guard !settingsOpen else { return }
-        guard let endFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect
-        else { return }
-
-        let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey]
-            as? TimeInterval ?? 0
-        let keyboardIsHiding = endFrame.minY >= UIScreen.main.bounds.maxY
-        withAnimation(reduceMotion ? nil : .easeOut(duration: duration)) {
-            keyboardTopY = keyboardIsHiding ? .greatestFiniteMagnitude : endFrame.minY
-        }
-        if !keyboardIsHiding {
-            keyboardFollowsLatest = true
-        }
-        guard keyboardFollowsLatest || inputFocused else { return }
-
-        // 点 + 时面板只是盖在原视口上，键盘收起不能顺手搬动聊天记录。
-        // 聊天位置由 ChatLayout 随可见高度统一恢复。
-        if keyboardIsHiding, attachmentsOpen {
-            keyboardFollowsLatest = false
-        }
-    }
-
     private var inputBar: some View {
         HStack(spacing: theme.metric.gapS) {
             Button {
-                keyboardFollowsLatest = false
                 inputFocused = false
                 if reduceMotion {
                     attachmentsOpen.toggle()
