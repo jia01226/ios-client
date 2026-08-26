@@ -205,7 +205,7 @@ final class ChatScrollAnchorController: ObservableObject {
     }
 }
 
-private final class ChatMessageAnchorView: UIView {
+final class ChatMessageAnchorView: UIView {
     weak var controller: ChatScrollAnchorController?
     var messageID = ""
 
@@ -289,4 +289,3 @@ struct MessageUnitLayout: Layout {
         )
     }
 }
-
