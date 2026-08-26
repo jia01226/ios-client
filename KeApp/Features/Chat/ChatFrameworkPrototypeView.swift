@@ -97,6 +97,11 @@ private final class ChatLayoutPrototypeController: UIViewController,
     UICollectionViewDataSource,
     ChatLayoutDelegate
 {
+    private enum PreservedEdge {
+        case top
+        case bottom
+    }
+
     private typealias Cell = UICollectionViewCell
 
     private let chatLayout = CollectionViewChatLayout()
@@ -215,15 +220,23 @@ private final class ChatLayoutPrototypeController: UIViewController,
             return (!old.isThinkingExpanded && new.isThinkingExpanded)
                 || (old.isThinkingExpanded && new.isThinkingExpanded && old.text != new.text)
         }
+        let shouldKeepMessageBottom = changedIndexes.contains { index in
+            oldMessages[index].isThinkingExpanded && !newMessages[index].isThinkingExpanded
+        }
         let anchorIndexPath = IndexPath(item: changedIndexes.last ?? 0, section: 0)
-        let anchorY = shouldKeepMessageTop
-            ? collectionView.layoutAttributesForItem(at: anchorIndexPath).map {
-                $0.frame.minY - collectionView.contentOffset.y
+        let preservedEdge: PreservedEdge? = shouldKeepMessageTop
+            ? .top
+            : (shouldKeepMessageBottom ? .bottom : nil)
+        let anchorY = collectionView.layoutAttributesForItem(at: anchorIndexPath).flatMap {
+            switch preservedEdge {
+            case .top:
+                return $0.frame.minY - collectionView.contentOffset.y
+            case .bottom:
+                return $0.frame.maxY - collectionView.contentOffset.y
+            case nil:
+                return nil
             }
-            : nil
-        let bottomSnapshot = shouldKeepMessageTop
-            ? nil
-            : chatLayout.getContentOffsetSnapshot(from: .bottom)
+        }
 
         collectionView.performBatchUpdates {
             collectionView.reloadItems(
@@ -232,15 +245,17 @@ private final class ChatLayoutPrototypeController: UIViewController,
         } completion: { [weak self] _ in
             guard let self else { return }
             self.collectionView.layoutIfNeeded()
-            if let bottomSnapshot {
-                self.chatLayout.restoreContentOffset(with: bottomSnapshot)
-                return
-            }
-            guard let anchorY else { return }
+            guard let anchorY, let preservedEdge else { return }
             guard let attributes = self.collectionView.layoutAttributesForItem(at: anchorIndexPath) else {
                 return
             }
-            let currentY = attributes.frame.minY - self.collectionView.contentOffset.y
+            let currentY: CGFloat
+            switch preservedEdge {
+            case .top:
+                currentY = attributes.frame.minY - self.collectionView.contentOffset.y
+            case .bottom:
+                currentY = attributes.frame.maxY - self.collectionView.contentOffset.y
+            }
             self.collectionView.contentOffset.y += currentY - anchorY
         }
     }
