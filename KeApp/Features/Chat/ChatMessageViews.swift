@@ -176,6 +176,7 @@ struct MessageRow: View {
             } else {
                 ForEach(Array(visibleSegments.enumerated()), id: \.offset) { index, segment in
                     bubbleSurface(text: segment, includesAttachments: index == 0)
+                        .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("message-bubble-\(message.id)-\(index)")
                 }
             }

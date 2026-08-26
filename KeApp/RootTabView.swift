@@ -39,6 +39,7 @@ struct RootTabView: View {
 
                 if !keyboardIsVisible {
                     crystalTabBar
+                        .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("root-tab-bar")
                 }
             }
