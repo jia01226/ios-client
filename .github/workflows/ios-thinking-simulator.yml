@@ -52,6 +52,24 @@ jobs:
             -resultBundlePath "$RUNNER_TEMP/ChatSimulator.xcresult" \
             CODE_SIGNING_ALLOWED=NO
 
+      - name: 导出 UI 核验截图
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ChatSimulator-screenshots"
+          xcrun xcresulttool export attachments \
+            --path "$RUNNER_TEMP/ChatSimulator.xcresult" \
+            --output-path "$RUNNER_TEMP/ChatSimulator-screenshots"
+          test -n "$(find "$RUNNER_TEMP/ChatSimulator-screenshots" -type f -name '*.png' -print -quit)"
+
+      - name: 上传 UI 核验截图
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChatSimulator-screenshots
+          path: ${{ runner.temp }}/ChatSimulator-screenshots
+          retention-days: 14
+
       - name: 上传模拟器核验记录
         if: always()
         uses: actions/upload-artifact@v4
