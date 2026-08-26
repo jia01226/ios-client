@@ -19,7 +19,8 @@ packages:
     exactVersion: 0.1.8
   ExyteChat:
     url: https://github.com/exyte/Chat.git
-    exactVersion: 3.2.12
+    # 3.1.2 起要求 Swift tools 6.1；当前签名流水线固定 Xcode 16.2。
+    exactVersion: 3.1.1
 
 targets:
   KeApp:
