@@ -5,7 +5,7 @@ final class ChatFrameworkPrototypeTests: XCTestCase {
         continueAfterFailure = false
     }
 
-    func testExyteThinkingAndStreamingKeepTheTitleStable() throws {
+    func testChatLayoutThinkingStreamingAndCollapseUseTheRightAnchors() throws {
         let app = launchPrototype()
         let expand = app.buttons["展开原型思考"]
         XCTAssertTrue(expand.waitForExistence(timeout: 8))
@@ -23,10 +23,18 @@ final class ChatFrameworkPrototypeTests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(streamed.waitForExistence(timeout: 4))
         XCTAssertLessThan(abs(collapse.frame.minY - originalY), 3)
+
+        let latestReply = app.descendants(matching: .any)["framework-latest-reply"]
+        XCTAssertTrue(latestReply.waitForExistence(timeout: 3))
+        let replyBottomBeforeCollapse = latestReply.frame.maxY
+        collapse.tap()
+        XCTAssertTrue(app.buttons["展开原型思考"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.staticTexts["先把她这句话接稳，再决定该怎样回答。"].exists)
+        XCTAssertLessThan(abs(latestReply.frame.maxY - replyBottomBeforeCollapse), 3)
         attachScreenshot(named: "framework-thinking-streaming")
     }
 
-    func testExyteKeyboardKeepsLatestReplyVisible() throws {
+    func testChatLayoutKeyboardKeepsLatestReplyVisible() throws {
         let app = launchPrototype()
         let latest = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "这是最新一条原型回复。")

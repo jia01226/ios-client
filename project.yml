@@ -17,14 +17,10 @@ packages:
   EventSource:
     url: https://github.com/Recouse/EventSource.git
     exactVersion: 0.1.8
-  ExyteChat:
-    url: https://github.com/exyte/Chat.git
-    # 3.1.2 起要求 Swift tools 6.1；当前签名流水线固定 Xcode 16.2。
-    exactVersion: 3.1.1
-  ExyteMediaPicker:
-    url: https://github.com/exyte/MediaPicker.git
-    # Chat 3.1.1 的宽松依赖会误升到已移除旧 API 的版本，原型必须钉死。
-    exactVersion: 3.3.0
+  ChatLayout:
+    url: https://github.com/ekazaev/ChatLayout.git
+    # 2.2 起需要 Swift tools 6.1；2.1.0 兼容当前 Xcode 16.2，且零三方依赖。
+    exactVersion: 2.1.0
 
 targets:
   KeApp:
@@ -62,7 +58,7 @@ targets:
         CODE_SIGN_ENTITLEMENTS: KeApp/KeApp.entitlements
     dependencies:
       - package: EventSource
-      - package: ExyteChat
+      - package: ChatLayout
     scheme:
       gatherCoverageData: false
       testTargets:
