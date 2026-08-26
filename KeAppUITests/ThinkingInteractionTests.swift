@@ -145,7 +145,7 @@ final class ThinkingInteractionTests: XCTestCase {
         let latest = app.staticTexts["这是最新一条回复。"]
         XCTAssertTrue(latest.waitForExistence(timeout: 5))
 
-        let messageList = app.scrollViews.firstMatch
+        let messageList = app.collectionViews["chat-timeline"]
         XCTAssertTrue(messageList.waitForExistence(timeout: 2))
         messageList.swipeDown(velocity: .fast)
         messageList.swipeDown(velocity: .fast)

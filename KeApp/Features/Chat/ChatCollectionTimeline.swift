@@ -119,6 +119,7 @@ final class ChatCollectionTimelineController: UIViewController,
         collectionView.keyboardDismissMode = .interactive
         collectionView.selfSizingInvalidation = .enabled
         collectionView.isPrefetchingEnabled = false
+        collectionView.accessibilityIdentifier = "chat-timeline"
         collectionView.dataSource = self
         collectionView.register(
             UICollectionViewCell.self,
@@ -211,7 +212,7 @@ final class ChatCollectionTimelineController: UIViewController,
         }
 
         if shouldFollowKeyboard {
-            scrollToLatest(animated: false)
+            followLatestAfterKeyboardLayout()
         }
         if oldHighlightedMessageID != newHighlightedMessageID,
            let newHighlightedMessageID,
@@ -246,11 +247,27 @@ final class ChatCollectionTimelineController: UIViewController,
             return nil
         }
         let anchorIndexPath = anchorIndex.map { IndexPath(item: $0, section: 0) }
-        let anchorY = anchorIndexPath.flatMap { indexPath in
+        let positionSnapshot = anchorIndexPath.flatMap { indexPath in
             collectionView.layoutAttributesForItem(at: indexPath).flatMap { attributes in
                 switch preservedEdge {
-                case .top: return attributes.frame.minY - collectionView.contentOffset.y
-                case .bottom: return attributes.frame.maxY - collectionView.contentOffset.y
+                case .top:
+                    return ChatLayoutPositionSnapshot(
+                        indexPath: indexPath,
+                        kind: .cell,
+                        edge: .top,
+                        offset: attributes.frame.minY
+                            - chatLayout.visibleBounds.minY
+                            - chatLayout.settings.additionalInsets.top
+                    )
+                case .bottom:
+                    return ChatLayoutPositionSnapshot(
+                        indexPath: indexPath,
+                        kind: .cell,
+                        edge: .bottom,
+                        offset: chatLayout.visibleBounds.maxY
+                            - attributes.frame.maxY
+                            - chatLayout.settings.additionalInsets.bottom
+                    )
                 case nil: return nil
                 }
             }
@@ -264,15 +281,29 @@ final class ChatCollectionTimelineController: UIViewController,
             } completion: { [weak self] _ in
                 guard let self else { return }
                 self.collectionView.layoutIfNeeded()
-                if let anchorIndexPath, let anchorY, let preservedEdge,
-                   let attributes = self.collectionView.layoutAttributesForItem(at: anchorIndexPath) {
-                    let currentY: CGFloat = preservedEdge == .top
-                        ? attributes.frame.minY - self.collectionView.contentOffset.y
-                        : attributes.frame.maxY - self.collectionView.contentOffset.y
-                    self.collectionView.contentOffset.y += currentY - anchorY
+                if let positionSnapshot {
+                    self.chatLayout.restoreContentOffset(with: positionSnapshot)
+                    // UIHostingConfiguration 的最终自适应高度会晚一个布局周期到达。
+                    // 同一份官方快照再确认一次，避免 Thinking 标题在下一帧漂动。
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self else { return }
+                        self.chatLayout.restoreContentOffset(with: positionSnapshot)
+                    }
                 } else if followLatest {
                     self.scrollToLatest(animated: false)
                 }
+            }
+        }
+    }
+
+    private func followLatestAfterKeyboardLayout() {
+        scrollToLatest(animated: false)
+        for delay in [0.05, 0.25] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, self.inputFocused else { return }
+                self.chatLayout.invalidateLayout()
+                self.collectionView.layoutIfNeeded()
+                self.scrollToLatest(animated: false)
             }
         }
     }
