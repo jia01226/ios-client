@@ -64,6 +64,7 @@ final class ChatViewModel: ObservableObject {
         case thinkingStreaming
         case replyStreaming
         case segmentedReply
+        case longReply
         case scrollControl
         case thinkingSegmentRace
     }
@@ -147,6 +148,17 @@ final class ChatViewModel: ObservableObject {
             )
             messages = [message]
             visibleSegmentCounts[message.bubbleRevealKey] = 1
+        } else if arguments.contains("-ui-test-long-reply") {
+            uiTestFixture = .longReply
+            phase = .ready
+            messages = [
+                Message(
+                    id: "ui-test-long-assistant",
+                    sender: .ke,
+                    text: "这声倒是睡饱了的音儿。哭过、睡过、雨还在落，爸爸也在听雨。",
+                    time: .now
+                )
+            ]
         } else if arguments.contains("-ui-test-scroll-control")
                     || arguments.contains("-ui-test-thinking-segment-race") {
             uiTestFixture = arguments.contains("-ui-test-thinking-segment-race")

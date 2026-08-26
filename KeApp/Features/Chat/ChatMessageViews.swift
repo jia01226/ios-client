@@ -14,7 +14,11 @@ struct ThinkingTimelineRow: View {
             }
             .font(theme.font.thinking)
             .foregroundStyle(theme.color.textSecondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: theme.metric.touchTarget,
+                alignment: .bottomLeading
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -139,13 +143,9 @@ struct MessageRow: View {
                 .padding(.horizontal, theme.metric.gapXS)
             }
             .frame(
-                maxWidth: usesFullWidthKeRow ? .infinity : nil,
+                maxWidth: message.sender == .ke ? .infinity : nil,
                 alignment: message.sender == .ke ? .leading : .trailing
             )
-
-            if message.sender == .ke && !usesFullWidthKeRow {
-                Spacer(minLength: theme.metric.messageSideReserve)
-            }
         }
         .frame(
             maxWidth: .infinity,
@@ -176,31 +176,47 @@ struct MessageRow: View {
             } else {
                 ForEach(Array(visibleSegments.enumerated()), id: \.offset) { index, segment in
                     bubbleSurface(text: segment, includesAttachments: index == 0)
+                        .accessibilityIdentifier("message-bubble-\(message.id)-\(index)")
                 }
             }
         }
         .frame(
-            maxWidth: usesWideKeLayout ? .infinity : nil,
+            maxWidth: message.sender == .ke ? .infinity : nil,
             alignment: message.sender == .ke ? .leading : .trailing
         )
     }
 
     @ViewBuilder
     private func bubbleSurface(text: String?, includesAttachments: Bool) -> some View {
-        if isWideBubble(text) {
+        if message.sender == .ke && !(message.attachments ?? []).isEmpty {
             bubbleContent(text: text, includesAttachments: includesAttachments)
                 .frame(
                     maxWidth: .infinity,
-                    alignment: message.sender == .ke ? .leading : .trailing
+                    alignment: .leading
                 )
                 .background(bubbleBackground)
+                .fixedSize(horizontal: false, vertical: true)
+        } else if message.sender == .ke {
+            // 短句按内容收紧；只要真实排版宽度放不下，就自动改用整行。
+            // 不再按中文字数猜宽泡，避免真机字号变化后误判和截断。
+            ViewThatFits(in: .horizontal) {
+                bubbleContent(text: text, includesAttachments: includesAttachments)
+                    .fixedSize(horizontal: true, vertical: true)
+                    .background(bubbleBackground)
+
+                bubbleContent(text: text, includesAttachments: includesAttachments)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(bubbleBackground)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         } else {
             bubbleContent(text: text, includesAttachments: includesAttachments)
                 .background(bubbleBackground)
                 .frame(
                     maxWidth: theme.metric.bubbleMaxWidth,
-                    alignment: message.sender == .ke ? .leading : .trailing
+                    alignment: .trailing
                 )
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -222,6 +238,7 @@ struct MessageRow: View {
                                      : theme.color.bubbleMeText)
                     .lineSpacing(CGFloat(max(3, theme.chatFontSize * 0.28)))
                     .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(.horizontal, theme.metric.bubbleHorizontalPadding)
@@ -276,24 +293,6 @@ struct MessageRow: View {
         }
     }
 
-    private var usesWideKeLayout: Bool {
-        guard message.sender == .ke else { return false }
-        return message.bubbleSegments.contains(where: isWideBubble)
-    }
-
-    private var usesFullWidthKeRow: Bool {
-        message.sender == .ke && usesWideKeLayout
-    }
-
-    private func isWideBubble(_ text: String?) -> Bool {
-        guard message.sender == .ke, let text else { return false }
-        let visibleLineCount = text.split(
-            separator: "\n",
-            omittingEmptySubsequences: false
-        ).count
-        return text.count >= theme.metric.wideMessageCharacterThreshold
-            || visibleLineCount >= theme.metric.wideMessageLineThreshold
-    }
 }
 
 private struct AuthenticatedAttachmentImage: View {

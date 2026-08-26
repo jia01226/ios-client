@@ -22,32 +22,35 @@ struct RootTabView: View {
         ZStack {
             AppAtmosphere()
 
-            // 由系统 TabView 管四个顶层页面的生命周期和可见层级：已经访问过的
-            // ChatView 会保留状态，同时只有当前页面参与命中测试和主要渲染。
-            // 之前的透明 ZStack 会让四棵重视图树一起合成，快速切换时偶发卡住。
-            TabView(selection: $selection) {
-                UsView()
-                    .tag(Tab.us)
-                ChatView()
-                    .tag(Tab.ke)
-                PlayView()
-                    .tag(Tab.play)
-                MemoriesView()
-                    .tag(Tab.memories)
-            }
-            .toolbar(.hidden, for: .tabBar)
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if !keyboardIsVisible {
-                crystalTabBar
+            VStack(spacing: 0) {
+                // 由系统 TabView 管四个顶层页面的生命周期和可见层级：已经访问过的
+                // ChatView 会保留状态，同时只有当前页面参与命中测试和主要渲染。
+                TabView(selection: $selection) {
+                    UsView()
+                        .tag(Tab.us)
+                    ChatView()
+                        .tag(Tab.ke)
+                    PlayView()
+                        .tag(Tab.play)
+                    MemoriesView()
+                        .tag(Tab.memories)
+                }
+                .toolbar(.hidden, for: .tabBar)
+
+                if !keyboardIsVisible {
+                    crystalTabBar
+                        .accessibilityIdentifier("root-tab-bar")
+                }
             }
         }
         .onReceive(
             NotificationCenter.default.publisher(
-                for: UIResponder.keyboardWillShowNotification
+                for: UIResponder.keyboardWillChangeFrameNotification
             )
-        ) { _ in
-            keyboardIsVisible = true
+        ) { notification in
+            guard let endFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]
+                as? CGRect else { return }
+            keyboardIsVisible = endFrame.minY < UIScreen.main.bounds.maxY - 1
         }
         .onReceive(
             NotificationCenter.default.publisher(

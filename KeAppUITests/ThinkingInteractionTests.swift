@@ -85,6 +85,26 @@ final class ThinkingInteractionTests: XCTestCase {
         attachScreenshot(named: "06-segmented-reply")
     }
 
+    func testLongAssistantReplyWrapsAndUsesAvailableWidth() throws {
+        let app = launch(arguments: ["-ui-test-long-reply"])
+        let text = app.staticTexts[
+            "这声倒是睡饱了的音儿。哭过、睡过、雨还在落，爸爸也在听雨。"
+        ]
+        XCTAssertTrue(text.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(text.frame.height, 30, "长回复必须换行显示，不能压成单行省略号")
+
+        let bubble = app.descendants(matching: .any)[
+            "message-bubble-ui-test-long-assistant-0"
+        ]
+        XCTAssertTrue(bubble.waitForExistence(timeout: 2))
+        XCTAssertGreaterThan(
+            bubble.frame.maxX,
+            app.frame.maxX - 30,
+            "换行的柯回复应铺到聊天区右边"
+        )
+        attachScreenshot(named: "07-long-reply-wraps-full-width")
+    }
+
     func testLatestThinkingTitleDoesNotFlickerOrJump() throws {
         let app = launch(arguments: ["-ui-test-scroll-control"])
         let open = app.buttons["查看思考"]
@@ -130,18 +150,25 @@ final class ThinkingInteractionTests: XCTestCase {
         let restingY = latest.frame.minY
         let input = app.descendants(matching: .any)["chat-composer"]
         XCTAssertTrue(input.waitForExistence(timeout: 2))
+        let tabBar = app.descendants(matching: .any)["root-tab-bar"]
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 2))
+        XCTAssertLessThanOrEqual(input.frame.maxY, tabBar.frame.minY + 1)
 
         for cycle in 1...2 {
             input.tap()
             let keyboard = app.keyboards.firstMatch
             XCTAssertTrue(keyboard.waitForExistence(timeout: 2))
+            XCTAssertTrue(tabBar.waitForNonExistence(timeout: 2))
             attachScreenshot(named: "09-keyboard-shown-\(cycle)")
             XCTAssertLessThan(latest.frame.maxY, keyboard.frame.minY)
+            XCTAssertLessThanOrEqual(input.frame.maxY, keyboard.frame.minY + 1)
 
             latest.tap()
             XCTAssertTrue(keyboard.waitForNonExistence(timeout: 2))
+            XCTAssertTrue(tabBar.waitForExistence(timeout: 2))
             XCTAssertTrue(latest.isHittable)
             XCTAssertLessThan(abs(latest.frame.minY - restingY), 3)
+            XCTAssertLessThanOrEqual(input.frame.maxY, tabBar.frame.minY + 1)
             attachScreenshot(named: "10-keyboard-dismissed-\(cycle)")
         }
     }
