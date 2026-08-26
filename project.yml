@@ -17,6 +17,9 @@ packages:
   EventSource:
     url: https://github.com/Recouse/EventSource.git
     exactVersion: 0.1.8
+  ExyteChat:
+    url: https://github.com/exyte/Chat.git
+    exactVersion: 3.2.12
 
 targets:
   KeApp:
@@ -54,6 +57,7 @@ targets:
         CODE_SIGN_ENTITLEMENTS: KeApp/KeApp.entitlements
     dependencies:
       - package: EventSource
+      - package: ExyteChat
     scheme:
       gatherCoverageData: false
       testTargets:

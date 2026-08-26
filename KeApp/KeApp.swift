@@ -11,11 +11,24 @@ struct KeApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootTabView()
+            appRoot
                 .environmentObject(theme)
                 .preferredColorScheme(theme.skin == .night ? .dark : .light)
                 .tint(theme.effectiveAccent)
         }
+    }
+
+    @ViewBuilder
+    private var appRoot: some View {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-chat-framework-prototype") {
+            ChatFrameworkPrototypeView()
+        } else {
+            RootTabView()
+        }
+#else
+        RootTabView()
+#endif
     }
 }
 
