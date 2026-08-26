@@ -300,7 +300,7 @@ final class ChatCollectionTimelineController: UIViewController,
 
     private func followLatestAfterKeyboardLayout() {
         scrollToLatest(animated: false)
-        for delay in [0.05, 0.25] {
+        for delay in [0.05, 0.25, 0.45] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 guard let self else { return }
                 self.chatLayout.invalidateLayout()
@@ -331,9 +331,21 @@ final class ChatCollectionTimelineController: UIViewController,
 
     private func scrollToLatest(animated: Bool) {
         guard !items.isEmpty else { return }
-        collectionView.scrollToItem(
-            at: IndexPath(item: items.count - 1, section: 0),
-            at: .bottom,
+        chatLayout.invalidateLayout()
+        collectionView.layoutIfNeeded()
+
+        // ChatLayout 官方示例也直接按布局的 contentSize 算底部偏移。
+        // 从很远的历史位置 scrollToItem 时，末尾自适应气泡尚未测量，
+        // 只能先滚到 Thinking 标题；直接钉内容底部后，末尾 cell 会被实例化，
+        // keepContentOffsetAtBottomOnBatchUpdates 再接住随后的自适应高度修正。
+        let bottomY = max(
+            -collectionView.adjustedContentInset.top,
+            chatLayout.collectionViewContentSize.height
+                - collectionView.bounds.height
+                + collectionView.adjustedContentInset.bottom
+        )
+        collectionView.setContentOffset(
+            CGPoint(x: collectionView.contentOffset.x, y: bottomY),
             animated: animated
         )
     }
