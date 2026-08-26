@@ -107,6 +107,7 @@ private final class ChatLayoutPrototypeController: UIViewController,
     private var messages: [ChatFrameworkPrototypeMessage]
     private var onThinkingToggle: (String) -> Void
     private var didScrollToLatest = false
+    private var lastTimelineHeight: CGFloat = 0
 
     init(
         messages: [ChatFrameworkPrototypeMessage],
@@ -163,6 +164,33 @@ private final class ChatLayoutPrototypeController: UIViewController,
         }
     }
 
+    override func viewDidLayoutSubviews() {
+        let previousHeight = lastTimelineHeight
+        let previousMaximumOffset = max(
+            -collectionView.adjustedContentInset.top,
+            collectionView.contentSize.height
+                - previousHeight
+                + collectionView.adjustedContentInset.bottom
+        )
+        let wasFollowingLatest = previousHeight > 0
+            && collectionView.contentOffset.y >= previousMaximumOffset - 8
+
+        super.viewDidLayoutSubviews()
+        let currentHeight = collectionView.bounds.height
+        lastTimelineHeight = currentHeight
+        guard wasFollowingLatest,
+              abs(currentHeight - previousHeight) > 0.5,
+              !messages.isEmpty else { return }
+
+        chatLayout.invalidateLayout()
+        collectionView.layoutIfNeeded()
+        collectionView.scrollToItem(
+            at: IndexPath(item: messages.count - 1, section: 0),
+            at: .bottom,
+            animated: false
+        )
+    }
+
     func update(
         messages newMessages: [ChatFrameworkPrototypeMessage],
         onThinkingToggle: @escaping (String) -> Void
@@ -193,14 +221,22 @@ private final class ChatLayoutPrototypeController: UIViewController,
                 $0.frame.minY - collectionView.contentOffset.y
             }
             : nil
+        let bottomSnapshot = shouldKeepMessageTop
+            ? nil
+            : chatLayout.getContentOffsetSnapshot(from: .bottom)
 
         collectionView.performBatchUpdates {
             collectionView.reloadItems(
                 at: changedIndexes.map { IndexPath(item: $0, section: 0) }
             )
         } completion: { [weak self] _ in
-            guard let self, let anchorY else { return }
+            guard let self else { return }
             self.collectionView.layoutIfNeeded()
+            if let bottomSnapshot {
+                self.chatLayout.restoreContentOffset(with: bottomSnapshot)
+                return
+            }
+            guard let anchorY else { return }
             guard let attributes = self.collectionView.layoutAttributesForItem(at: anchorIndexPath) else {
                 return
             }
