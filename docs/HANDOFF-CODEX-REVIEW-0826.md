@@ -6,7 +6,7 @@
 
 - 仓库：`jia01226/ios-client`
 - 审核分支：`codex/chat-refactor-0826`
-- 功能代码终点：`8c1ba482e89232287e8af5488e7acec6d762b2ba`
+- 功能代码终点：`4d5fb0a9d90ba2ee30de2521b07a38ae75988219`
 - 对比起点：`a26ae85a27910e30b230db70fc3b943dfcc1f339`
 - 当前阶段：代码已提交并推送，尚未合并、打包、部署或安装。
 - 审核通过后仍先停下，把结论交给佳佳；是否合并和打包由佳佳决定。
@@ -23,8 +23,8 @@ C:\Users\甜崽小慢\Documents\ios-client-chat-refactor
 git fetch origin
 git status --short
 git rev-parse HEAD
-git diff --check a26ae85a27910e30b230db70fc3b943dfcc1f339..8c1ba482e89232287e8af5488e7acec6d762b2ba
-git diff --stat a26ae85a27910e30b230db70fc3b943dfcc1f339..8c1ba482e89232287e8af5488e7acec6d762b2ba
+git diff --check a26ae85a27910e30b230db70fc3b943dfcc1f339..4d5fb0a9d90ba2ee30de2521b07a38ae75988219
+git diff --stat a26ae85a27910e30b230db70fc3b943dfcc1f339..4d5fb0a9d90ba2ee30de2521b07a38ae75988219
 ```
 
 若本地工作树正在被别的窗口使用，不要切它的分支；另建一个 detached worktree 审查：
@@ -54,6 +54,7 @@ git worktree add ..\ios-client-review-0826 --detach origin/codex/chat-refactor-0
 4. 从较远的历史位置点击输入框时，最终消息完整出现在键盘上方。
 5. 打开附件面板时只覆盖已有聊天，不推动消息位置。
 6. 连续切换底部 Tab 后，聊天不能出现空白页或卡死。
+7. 柯的长回复必须完整换行，不出现省略号；需要换行的气泡使用聊天区可用宽度并顶到右边。
 
 ## 代码结构变化
 
@@ -69,6 +70,7 @@ git worktree add ..\ios-client-review-0826 --detach origin/codex/chat-refactor-0
   - 这是本轮最需要挑剔检查的文件。
 - `KeApp/Features/Chat/ChatMessageViews.swift`
   - 承接气泡、Thinking 固定入口和 Thinking Sheet。
+  - 短回复按内容收紧；真实排版宽度放不下时自动换成整行气泡，不再按字符数猜宽度。
 - `KeApp/Features/Chat/ChatStatusViews.swift`
   - 承接加载、离线、空状态等状态视图。
 - `KeApp/RootTabView.swift`
@@ -80,7 +82,7 @@ git worktree add ..\ios-client-review-0826 --detach origin/codex/chat-refactor-0
 - `.github/workflows/ios-thinking-simulator.yml`
   - 手动工作流会运行模拟器测试，并导出截图与 `xcresult`。
 
-分支相对起点共修改 11 个文件：新增约 2162 行，删除约 2039 行。请看实际 diff，不以这个数字判断质量。
+分支相对起点共修改 11 个文件。请看实际 diff，不以行数判断质量。
 
 ## 必查风险
 
@@ -106,21 +108,23 @@ git worktree add ..\ios-client-review-0826 --detach origin/codex/chat-refactor-0
 - Thinking 标题不是现有花体样式，或者被改成中文。
 - 思考正文出现英文标记。
 - Thinking 与气泡间距明显大于约定的 4pt。
+- 长回复显示省略号、文字被截断，或换行后仍在右侧留下不必要的大块空位。
+- 键盘出现后底部 Tab 仍覆盖输入框。
 - VoiceOver 无法知道 Thinking 可点击，或“完成”按钮无法关闭 Sheet。
 
 ## 已有自动化证据
 
-以下三次完整工作流都跑在功能提交 `8c1ba482e89232287e8af5488e7acec6d762b2ba`，且结论为 `success`：
+以下三次完整工作流都跑在功能提交 `4d5fb0a9d90ba2ee30de2521b07a38ae75988219`，且结论为 `success`：
 
-1. <https://github.com/jia01226/ios-client/actions/runs/32937156908>
-2. <https://github.com/jia01226/ios-client/actions/runs/32937538125>
-3. <https://github.com/jia01226/ios-client/actions/runs/32937984534>
+1. <https://github.com/jia01226/ios-client/actions/runs/32945969958>
+2. <https://github.com/jia01226/ios-client/actions/runs/32946598199>
+3. <https://github.com/jia01226/ios-client/actions/runs/32947029480>
 
-每次包含 7 项单元测试与 11 项 UI 测试。截图和 `xcresult` 均已作为工作流 Artifact 上传，保留 14 天。可下载最后一轮证据：
+每次包含 7 项单元测试与 12 项 UI 测试。截图和 `xcresult` 均已作为工作流 Artifact 上传，保留 14 天。可下载最后一轮证据：
 
 ```powershell
-gh run download 32937984534 --repo jia01226/ios-client --name ChatSimulator-screenshots --dir .review-artifacts\screenshots
-gh run download 32937984534 --repo jia01226/ios-client --name ChatSimulator-xcresult --dir .review-artifacts\xcresult
+gh run download 32947029480 --repo jia01226/ios-client --name ChatSimulator-screenshots --dir .review-artifacts\screenshots
+gh run download 32947029480 --repo jia01226/ios-client --name ChatSimulator-xcresult --dir .review-artifacts\xcresult
 ```
 
 已有自动化通过不等于审核通过。请至少亲眼看以下截图状态：
@@ -129,6 +133,7 @@ gh run download 32937984534 --repo jia01226/ios-client --name ChatSimulator-xcre
 - 流式思考在 Sheet 内更新。
 - 分条气泡到达时底层时间线不移动。
 - 键盘出现和收起各两轮。
+- 长回复完整换行并使用聊天区可用宽度。
 - 附件面板覆盖时间线。
 - 连续 12 次切 Tab 后聊天不空白。
 
@@ -176,4 +181,3 @@ gh workflow run ios-thinking-simulator.yml --repo jia01226/ios-client --ref code
 - 不合并到 `main`。
 - 不打包、不部署、不安装。
 - 不借审核之名顺手增加功能或改变已经确认的 UI。
-
