@@ -16,7 +16,6 @@ struct ChatView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var vm = ChatViewModel()
     @StateObject private var recentPhotos = RecentPhotosStore()
-    @StateObject private var scrollAnchorController = ChatScrollAnchorController()
     @State private var draft = ""
     /// Thinking 展开/收起后的短窗：期间自动滚底一律禁行，防两套滚动打架闪屏。
     @State private var suppressAutoScrollUntil: Date = .distantPast
@@ -203,149 +202,94 @@ struct ChatView: View {
     }
 
     private var messageList: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: theme.metric.gapM) {
-                    if vm.messages.isEmpty {
-                        if vm.isLoadingHistory {
-                            VStack(spacing: theme.metric.gapM) {
-                                ProgressView()
-                                    .tint(theme.effectiveAccent)
-                                Text("正在接回聊天记录…")
-                                    .font(theme.font.body)
-                                    .foregroundStyle(theme.color.textSecondary)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, theme.metric.gapXL)
-                        } else if vm.historyLoadFailed {
-                            VStack(spacing: theme.metric.gapM) {
-                                Text("聊天记录这次没有接上。")
-                                    .font(theme.font.body)
-                                    .foregroundStyle(theme.color.textSecondary)
-                                Button("重新加载聊天记录") {
-                                    Task { await vm.retryHistory() }
-                                }
-                                .buttonStyle(.bordered)
-                                .tint(theme.effectiveAccent)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, theme.metric.gapXL)
-                        } else {
-                            Text("这里还没有聊天记录。\n想说什么，就从下面开始。")
-                                .font(theme.font.body)
-                                .foregroundStyle(theme.color.textSecondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.top, theme.metric.gapXL)
-                        }
-                    }
-
-                    ForEach(vm.messages) { message in
-                        MessageRow(
+        Group {
+            if vm.messages.isEmpty {
+                emptyTimeline
+            } else {
+                ChatCollectionTimeline(
+                    items: vm.messages.map { message in
+                        ChatTimelineItem(
                             message: message,
                             isHighlighted: highlightedMessageID == message.id,
                             isThinkingExpanded: expandedThinkingMessageIDs.contains(message.id),
-                            visibleSegmentCount: vm.visibleSegmentCount(for: message),
-                            scrollAnchorController: scrollAnchorController,
-                            onThinkingToggle: {
-                                toggleThinking(for: message.id)
-                            },
-                            onAttachmentTap: { attachment in
-                                previewedImage = attachment
-                            }
+                            visibleSegmentCount: vm.visibleSegmentCount(for: message)
                         )
-                            .id(message.id)
+                    },
+                    streamRevision: vm.streamRevision,
+                    suppressAutoScrollUntil: suppressAutoScrollUntil,
+                    inputFocused: inputFocused,
+                    highlightedMessageID: highlightedMessageID,
+                    onThinkingToggle: { messageID in
+                        toggleThinking(for: messageID)
+                    },
+                    onAttachmentTap: { attachment in
+                        previewedImage = attachment
+                    },
+                    onBackgroundTap: {
+                        inputFocused = false
+                        if attachmentsOpen { attachmentsOpen = false }
                     }
-
-                    Color.clear
-                        // 底部留白属于滚动目标本身；若把 gapL 做成栈外 padding，
-                        // SwiftUI 的 scrollTo 与 UIKit 最大 offset 会相差这一段高度。
-                        .frame(height: theme.metric.gapL)
-                        .id("chat-bottom")
-                }
-                .padding(.horizontal, theme.metric.pagePadding)
-            }
-            // 不用 defaultScrollAnchor(.bottom)：它在内容变高时自动贴底，会和
-            // Thinking 展开的锚定恢复抢方向盘（两帧各拽一次＝她报的"点开最后会闪"）。
-            // 初始定位靠 onAppear 的 scrollTo，流式/新消息跟随靠下面两个 onChange——
-            // 滚动只留这一套显式控制者。
-            .scrollContentBackground(.hidden)
-            .scrollDismissesKeyboard(.interactively)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                inputFocused = false
-                if attachmentsOpen { attachmentsOpen = false }
-            }
-            .onChange(of: vm.messages.last?.id) { _, _ in
-                // 展开 Thinking 时，当前视口属于用户；下面即使继续收到分条消息，
-                // 也只让内容向下生长，不把已经展开的标题和上方消息拖走。
-                guard expandedThinkingMessageIDs.isEmpty else { return }
-                guard Date.now >= suppressAutoScrollUntil else { return }
-                scrollToBottom(proxy, animated: true)
-            }
-            .onChange(of: vm.streamRevision) { _, _ in
-                // Thinking 展开/收起后的短窗内不跟滚——锚定恢复期间谁都不许抢方向盘，
-                // 消息纹丝不动（她要的：被输入框遮住没关系，不许跳）。
-                guard expandedThinkingMessageIDs.isEmpty else { return }
-                guard Date.now >= suppressAutoScrollUntil else { return }
-                scrollToBottom(proxy, animated: false)
-            }
-            .onChange(of: inputFocused) { _, focused in
-                // 聚焦只转交滚动所有权；真正移动与系统键盘的 frame 动画同步进行。
-                if focused {
-                    keyboardFollowsLatest = true
-                    attachmentsOpen = false
-                    scrollAnchorController.cancelPreservation()
-                }
-            }
-            .onReceive(
-                NotificationCenter.default.publisher(
-                    for: UIResponder.keyboardWillChangeFrameNotification
                 )
-            ) { notification in
-                followLatestAlongsideKeyboard(notification)
             }
-            .onReceive(
-                NotificationCenter.default.publisher(
-                    for: UIResponder.keyboardDidShowNotification
-                )
-            ) { _ in
-                guard keyboardFollowsLatest else { return }
-                scrollAnchorController.followBottomAlongsideKeyboard(duration: 0.16)
+        }
+        .onChange(of: inputFocused) { _, focused in
+            if focused {
+                keyboardFollowsLatest = true
+                attachmentsOpen = false
             }
-            .onReceive(
-                NotificationCenter.default.publisher(
-                    for: UIResponder.keyboardDidHideNotification
-                )
-            ) { _ in
-                keyboardTopY = .greatestFiniteMagnitude
-                if keyboardFollowsLatest, !attachmentsOpen {
-                    scrollAnchorController.followBottomAlongsideKeyboard(duration: 0.16)
-                } else {
-                    scrollAnchorController.stopFollowingBottom()
-                }
-                keyboardFollowsLatest = false
-            }
-            .onChange(of: highlightedMessageID) { _, value in
-                guard let value else { return }
-                withAnimation(.easeOut(duration: 0.22)) {
-                    proxy.scrollTo(value, anchor: .center)
-                }
-            }
-            .onAppear {
-                DispatchQueue.main.async {
-                    proxy.scrollTo("chat-bottom", anchor: .bottom)
-                }
-            }
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: UIResponder.keyboardWillChangeFrameNotification
+            )
+        ) { notification in
+            followLatestAlongsideKeyboard(notification)
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: UIResponder.keyboardDidHideNotification
+            )
+        ) { _ in
+            keyboardTopY = .greatestFiniteMagnitude
+            keyboardFollowsLatest = false
         }
     }
 
-    private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool) {
-        if animated {
-            withAnimation(.easeOut(duration: 0.2)) {
-                proxy.scrollTo("chat-bottom", anchor: .bottom)
+    @ViewBuilder
+    private var emptyTimeline: some View {
+        if vm.isLoadingHistory {
+            VStack(spacing: theme.metric.gapM) {
+                ProgressView()
+                    .tint(theme.effectiveAccent)
+                Text("正在接回聊天记录…")
+                    .font(theme.font.body)
+                    .foregroundStyle(theme.color.textSecondary)
             }
+            .frame(maxWidth: .infinity)
+            .padding(.top, theme.metric.gapXL)
+            .frame(maxHeight: .infinity, alignment: .top)
+        } else if vm.historyLoadFailed {
+            VStack(spacing: theme.metric.gapM) {
+                Text("聊天记录这次没有接上。")
+                    .font(theme.font.body)
+                    .foregroundStyle(theme.color.textSecondary)
+                Button("重新加载聊天记录") {
+                    Task { await vm.retryHistory() }
+                }
+                .buttonStyle(.bordered)
+                .tint(theme.effectiveAccent)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, theme.metric.gapXL)
+            .frame(maxHeight: .infinity, alignment: .top)
         } else {
-            proxy.scrollTo("chat-bottom", anchor: .bottom)
+            Text("这里还没有聊天记录。\n想说什么，就从下面开始。")
+                .font(theme.font.body)
+                .foregroundStyle(theme.color.textSecondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .padding(.top, theme.metric.gapXL)
+                .frame(maxHeight: .infinity, alignment: .top)
         }
     }
 
@@ -368,14 +312,9 @@ struct ChatView: View {
         guard keyboardFollowsLatest || inputFocused else { return }
 
         // 点 + 时面板只是盖在原视口上，键盘收起不能顺手搬动聊天记录。
-        // 普通点空白收键盘则继续贴住最新消息，避免底部留下整块空白。
+        // 聊天位置由 ChatLayout 随可见高度统一恢复。
         if keyboardIsHiding, attachmentsOpen {
             keyboardFollowsLatest = false
-            scrollAnchorController.stopFollowingBottom()
-        } else {
-            // SwiftUI 正在改变实际可视高度；逐帧读取新的最大 offset，保证
-            // “原本就在底部”时也会跟着键盘抬起，而不是被误判为无需滚动。
-            scrollAnchorController.followBottomAlongsideKeyboard(duration: duration)
         }
     }
 
@@ -383,7 +322,6 @@ struct ChatView: View {
         HStack(spacing: theme.metric.gapS) {
             Button {
                 keyboardFollowsLatest = false
-                scrollAnchorController.stopFollowingBottom()
                 inputFocused = false
                 if reduceMotion {
                     attachmentsOpen.toggle()
@@ -547,12 +485,7 @@ struct ChatView: View {
         // 展开/收起后的 0.8 秒内，新消息/流式刷新一律不自动滚底，
         // 让锚定恢复独占滚动位置——治"点开思考链最后屏幕闪一下"。
         suppressAutoScrollUntil = Date.now.addingTimeInterval(0.8)
-        // 展开固定消息顶部，让上方记录不动、内容只向下长；
-        // 收起只固定当前视口，不把聊天拉回展开前的位置。
-        scrollAnchorController.prepareToRestore(
-            messageID: messageID,
-            edge: willExpand ? .top : .viewport
-        )
+        // ChatLayout 更新时按用户定的方向恢复：展开/流式钉顶部，收起钉正文底部。
         var transaction = Transaction()
         transaction.animation = nil
         withTransaction(transaction) {
@@ -562,7 +495,6 @@ struct ChatView: View {
                 expandedThinkingMessageIDs.remove(messageID)
             }
         }
-        scrollAnchorController.restoreAfterCurrentLayout(messageID: messageID)
 #if DEBUG
         vm.didToggleThinkingForUITest(messageID: messageID)
 #endif

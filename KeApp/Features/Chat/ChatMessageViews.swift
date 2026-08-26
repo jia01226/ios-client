@@ -8,7 +8,6 @@ struct MessageRow: View {
     let isHighlighted: Bool
     let isThinkingExpanded: Bool
     let visibleSegmentCount: Int?
-    let scrollAnchorController: ChatScrollAnchorController
     let onThinkingToggle: () -> Void
     let onAttachmentTap: (ChatAttachment) -> Void
     @State private var copied = false
@@ -91,12 +90,6 @@ struct MessageRow: View {
         .frame(
             maxWidth: .infinity,
             alignment: message.sender == .ke ? .leading : .trailing
-        )
-        .background(
-            ChatMessageAnchorProbe(
-                messageID: message.id,
-                controller: scrollAnchorController
-            )
         )
         .overlay {
             if isHighlighted {
@@ -401,4 +394,3 @@ struct AttachmentImageViewer: View {
         .statusBarHidden()
     }
 }
-
