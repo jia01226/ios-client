@@ -24,7 +24,7 @@ final class ChatFrameworkPrototypeTests: XCTestCase {
         XCTAssertTrue(streamed.waitForExistence(timeout: 4))
         XCTAssertLessThan(abs(collapse.frame.minY - originalY), 3)
 
-        let latestReply = app.descendants(matching: .any)["framework-latest-reply"]
+        let latestReply = app.staticTexts["framework-latest-reply"]
         XCTAssertTrue(latestReply.waitForExistence(timeout: 3))
         let replyBottomBeforeCollapse = latestReply.frame.maxY
         collapse.tap()
@@ -36,9 +36,7 @@ final class ChatFrameworkPrototypeTests: XCTestCase {
 
     func testChatLayoutKeyboardKeepsLatestReplyVisible() throws {
         let app = launchPrototype()
-        let latest = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "这是最新一条原型回复。")
-        ).firstMatch
+        let latest = app.staticTexts["framework-latest-reply"]
         XCTAssertTrue(latest.waitForExistence(timeout: 8))
 
         let composer = app.descendants(matching: .any)["framework-composer"]

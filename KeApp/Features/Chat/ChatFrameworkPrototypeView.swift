@@ -148,15 +148,19 @@ private final class ChatLayoutPrototypeController: UIViewController,
         ])
     }
 
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
         guard !didScrollToLatest, !messages.isEmpty else { return }
-        didScrollToLatest = true
-        collectionView.scrollToItem(
-            at: IndexPath(item: messages.count - 1, section: 0),
-            at: .bottom,
-            animated: false
-        )
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.didScrollToLatest, !self.messages.isEmpty else { return }
+            self.collectionView.layoutIfNeeded()
+            self.collectionView.scrollToItem(
+                at: IndexPath(item: self.messages.count - 1, section: 0),
+                at: .bottom,
+                animated: false
+            )
+            self.didScrollToLatest = true
+        }
     }
 
     func update(
