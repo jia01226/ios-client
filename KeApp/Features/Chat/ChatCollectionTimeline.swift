@@ -109,7 +109,9 @@ final class ChatCollectionTimelineController: UIViewController,
             bottom: theme.metric.gapL,
             right: theme.metric.pagePadding
         )
-        chatLayout.keepContentOffsetAtBottomOnBatchUpdates = true
+        // 新消息与普通流式由本控制器显式跟底；Thinking 展开期间如果再让布局
+        // 自动补偿底部，它会和标题快照各推一次，最终稳定在错误的 7~8pt 落点。
+        chatLayout.keepContentOffsetAtBottomOnBatchUpdates = false
         chatLayout.keepContentAtBottomOfVisibleArea = true
         chatLayout.processOnlyVisibleItemsOnAnimatedBatchUpdates = false
         chatLayout.supportSelfSizingInvalidation = true
@@ -137,6 +139,13 @@ final class ChatCollectionTimelineController: UIViewController,
         let tap = UITapGestureRecognizer(target: self, action: #selector(didTapTimeline))
         tap.cancelsTouchesInView = false
         collectionView.addGestureRecognizer(tap)
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(keyboardWillChangeFrame(_:)),
+            name: UIResponder.keyboardWillChangeFrameNotification,
+            object: nil
+        )
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -300,12 +309,21 @@ final class ChatCollectionTimelineController: UIViewController,
         scrollToLatest(animated: false)
         for delay in [0.05, 0.25] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                guard let self, self.inputFocused else { return }
+                guard let self else { return }
                 self.chatLayout.invalidateLayout()
                 self.collectionView.layoutIfNeeded()
                 self.scrollToLatest(animated: false)
             }
         }
+    }
+
+    @objc private func keyboardWillChangeFrame(_ notification: Notification) {
+        guard let endFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]
+            as? CGRect,
+              endFrame.minY < UIScreen.main.bounds.maxY else { return }
+        // UIKit 通知比 SwiftUI FocusState 稳定：即使用户从历史位置点输入框，
+        // 也要等系统确定键盘终点后，把最新消息带回可见区。
+        followLatestAfterKeyboardLayout()
     }
 
     private func scrollToLatestIfNeeded() {
