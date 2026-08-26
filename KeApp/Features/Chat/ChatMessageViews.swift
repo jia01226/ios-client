@@ -1,0 +1,404 @@
+import SwiftUI
+import UIKit
+
+struct MessageRow: View {
+    @EnvironmentObject private var theme: Theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let message: Message
+    let isHighlighted: Bool
+    let isThinkingExpanded: Bool
+    let visibleSegmentCount: Int?
+    let scrollAnchorController: ChatScrollAnchorController
+    let onThinkingToggle: () -> Void
+    let onAttachmentTap: (ChatAttachment) -> Void
+    @State private var copied = false
+
+    var body: some View {
+        HStack(spacing: 0) {
+            if message.sender == .me { Spacer(minLength: theme.metric.messageSideReserve) }
+
+            VStack(
+                alignment: message.sender == .ke ? .leading : .trailing,
+                spacing: theme.metric.gapXS
+            ) {
+                if hasBubbleContent {
+                    MessageUnitLayout(
+                        includesThinking: message.sender == .ke && hasThinkingContent,
+                        spacing: theme.metric.thinkingBubbleGap
+                    ) {
+                        if message.sender == .ke, hasThinkingContent {
+                            thoughtCard(
+                                summary: message.thoughtSummary,
+                                note: message.thoughtNote
+                            )
+                        }
+                        bubbleStack
+                    }
+                } else if message.sender == .ke, hasThinkingContent {
+                    thoughtCard(
+                        summary: message.thoughtSummary,
+                        note: message.thoughtNote
+                    )
+                }
+
+                HStack(spacing: theme.metric.gapS) {
+                    Text(message.time.formatted(date: .omitted, time: .shortened))
+
+                    if let label = message.deliveryState.label {
+                        Text(label)
+                    }
+
+                    if !message.text.isEmpty {
+                        Button {
+                            UIPasteboard.general.string = message.text
+                            copied = true
+                            Task {
+                                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                                copied = false
+                            }
+                        } label: {
+                            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                                .font(theme.font.copyIcon)
+                                .frame(width: 24, height: 24)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(copied ? theme.effectiveAccent : theme.color.textSecondary)
+                    }
+
+                    if message.sender == .me && message.deliveryState == .sent {
+                        HStack(spacing: -4) {
+                            Image(systemName: "checkmark")
+                            Image(systemName: "checkmark")
+                        }
+                        .font(theme.font.receiptIcon)
+                        .foregroundStyle(theme.effectiveAccent)
+                    }
+                }
+                .font(theme.font.caption)
+                .foregroundStyle(theme.color.textSecondary)
+                .padding(.horizontal, theme.metric.gapXS)
+            }
+            .frame(
+                maxWidth: usesFullWidthKeRow ? .infinity : nil,
+                alignment: message.sender == .ke ? .leading : .trailing
+            )
+
+            if message.sender == .ke && !usesFullWidthKeRow {
+                Spacer(minLength: theme.metric.messageSideReserve)
+            }
+        }
+        .frame(
+            maxWidth: .infinity,
+            alignment: message.sender == .ke ? .leading : .trailing
+        )
+        .background(
+            ChatMessageAnchorProbe(
+                messageID: message.id,
+                controller: scrollAnchorController
+            )
+        )
+        .overlay {
+            if isHighlighted {
+                RoundedRectangle(cornerRadius: CGFloat(theme.bubbleCornerRadius), style: .continuous)
+                    .stroke(theme.effectiveAccent.opacity(0.72), lineWidth: 1.2)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    private var hasThinkingContent: Bool {
+        !thinkingSections.isEmpty
+    }
+
+    private var hasBubbleContent: Bool {
+        !message.text.isEmpty || !(message.attachments ?? []).isEmpty
+    }
+
+    private var thinkingSections: [String] {
+        [message.thoughtSummary, message.thoughtNote]
+            .compactMap { value in
+                guard let value else { return nil }
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : trimmed
+            }
+    }
+
+    private func thoughtCard(summary: String?, note: String?) -> some View {
+        VStack(alignment: .leading, spacing: theme.metric.gapS) {
+            Button(action: onThinkingToggle) {
+                HStack(spacing: theme.metric.gapS) {
+                    Text("Thinking")
+                    Image(systemName: isThinkingExpanded ? "chevron.up" : "chevron.down")
+                        .font(theme.font.thinkingChevron)
+                }
+                .font(theme.font.thinking)
+                .foregroundStyle(theme.color.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isThinkingExpanded ? "收起思考" : "展开思考")
+            .accessibilityValue(isThinkingExpanded ? "已展开" : "已收起")
+
+            if isThinkingExpanded {
+                // 不挂 .transition：展开/收起本来就走无动画事务（toggleThinking 里
+                // transaction.animation = nil），而 transition 会在流式期间列表高频
+                // 重建时被误触发，opacity 反复重播就是她报的"点开频闪"。
+                thinkingTextStack(summary: summary, note: note)
+            }
+        }
+        .padding(.leading, theme.metric.thinkingLineGap + theme.metric.thinkingLineWidth)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(theme.color.accentSoft.opacity(theme.glass.thinkingLineOpacity))
+                .frame(width: theme.metric.thinkingLineWidth)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, theme.metric.thinkingHorizontalPadding)
+    }
+
+    private func thinkingTextStack(summary: String?, note: String?) -> some View {
+        let sections = [summary, note]
+            .compactMap { value -> String? in
+                guard let value else { return nil }
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : trimmed
+            }
+        return VStack(alignment: .leading, spacing: theme.metric.gapS) {
+            ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
+                thoughtText(section)
+            }
+        }
+    }
+
+    private func thoughtText(_ summary: String) -> some View {
+        Text(summary)
+            .font(theme.font.thinkingBody)
+            .foregroundStyle(theme.color.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var bubbleStack: some View {
+        VStack(
+            alignment: message.sender == .ke ? .leading : .trailing,
+            spacing: theme.metric.splitBubbleGap
+        ) {
+            if visibleSegments.isEmpty, !(message.attachments ?? []).isEmpty {
+                bubbleSurface(text: nil, includesAttachments: true)
+            } else {
+                ForEach(Array(visibleSegments.enumerated()), id: \.offset) { index, segment in
+                    bubbleSurface(text: segment, includesAttachments: index == 0)
+                }
+            }
+        }
+        .frame(
+            maxWidth: usesWideKeLayout ? .infinity : nil,
+            alignment: message.sender == .ke ? .leading : .trailing
+        )
+    }
+
+    @ViewBuilder
+    private func bubbleSurface(text: String?, includesAttachments: Bool) -> some View {
+        if isWideBubble(text) {
+            bubbleContent(text: text, includesAttachments: includesAttachments)
+                .frame(
+                    maxWidth: .infinity,
+                    alignment: message.sender == .ke ? .leading : .trailing
+                )
+                .background(bubbleBackground)
+        } else {
+            bubbleContent(text: text, includesAttachments: includesAttachments)
+                .background(bubbleBackground)
+                .frame(
+                    maxWidth: theme.metric.bubbleMaxWidth,
+                    alignment: message.sender == .ke ? .leading : .trailing
+                )
+        }
+    }
+
+    private func bubbleContent(text: String?, includesAttachments: Bool) -> some View {
+        VStack(
+            alignment: message.sender == .ke ? .leading : .trailing,
+            spacing: theme.metric.gapS
+        ) {
+            if includesAttachments {
+                ForEach(message.attachments ?? []) { attachment in
+                    attachmentView(attachment)
+                }
+            }
+            if let text, !text.isEmpty {
+                Text(text)
+                    .font(theme.font.bubble)
+                    .foregroundStyle(message.sender == .ke
+                                     ? theme.color.bubbleKeText
+                                     : theme.color.bubbleMeText)
+                    .lineSpacing(CGFloat(max(3, theme.chatFontSize * 0.28)))
+                    .multilineTextAlignment(.leading)
+            }
+        }
+        .padding(.horizontal, theme.metric.bubbleHorizontalPadding)
+        .padding(.vertical, theme.metric.bubbleVerticalPadding)
+    }
+
+    private var bubbleBackground: some View {
+        CrystalSurface(
+            cornerRadius: CGFloat(theme.bubbleCornerRadius),
+            strength: message.sender == .ke ? 0.92 : 1.08,
+            usesChatControls: true
+        )
+    }
+
+    private var visibleSegments: [String] {
+        let segments = message.bubbleSegments
+        guard message.sender == .ke,
+              !message.isStreaming,
+              !reduceMotion,
+              let visibleSegmentCount else { return segments }
+        return Array(segments.prefix(max(1, visibleSegmentCount)))
+    }
+
+    @ViewBuilder
+    private func attachmentView(_ attachment: ChatAttachment) -> some View {
+        if attachment.isImage {
+            Button {
+                onAttachmentTap(attachment)
+            } label: {
+                AuthenticatedAttachmentImage(
+                    attachment: attachment,
+                    contentMode: .fill
+                )
+                .frame(maxWidth: .infinity)
+                .frame(height: theme.metric.messageImageHeight)
+                .clipShape(RoundedRectangle(
+                    cornerRadius: theme.metric.radiusChip,
+                    style: .continuous
+                ))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("打开图片 \(attachment.name.isEmpty ? "预览" : attachment.name)")
+        } else {
+            HStack(spacing: theme.metric.gapS) {
+                Image(systemName: "doc")
+                Text(attachment.name.isEmpty ? "文件" : attachment.name)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+            }
+            .font(theme.font.caption)
+            .foregroundStyle(theme.color.textSecondary)
+        }
+    }
+
+    private var usesWideKeLayout: Bool {
+        guard message.sender == .ke else { return false }
+        return message.bubbleSegments.contains(where: isWideBubble)
+    }
+
+    private var usesFullWidthKeRow: Bool {
+        message.sender == .ke && (hasThinkingContent || usesWideKeLayout)
+    }
+
+    private func isWideBubble(_ text: String?) -> Bool {
+        guard message.sender == .ke, let text else { return false }
+        let visibleLineCount = text.split(
+            separator: "\n",
+            omittingEmptySubsequences: false
+        ).count
+        return text.count >= theme.metric.wideMessageCharacterThreshold
+            || visibleLineCount >= theme.metric.wideMessageLineThreshold
+    }
+}
+
+private struct AuthenticatedAttachmentImage: View {
+    @EnvironmentObject private var theme: Theme
+    let attachment: ChatAttachment
+    let contentMode: ContentMode
+    @State private var image: UIImage?
+    @State private var didFail = false
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: contentMode)
+            } else if didFail {
+                VStack(spacing: theme.metric.gapS) {
+                    Image(systemName: "photo.badge.exclamationmark")
+                        .font(theme.font.attachmentIcon)
+                    Text("图片没有加载出来")
+                        .font(theme.font.caption)
+                }
+                .foregroundStyle(theme.color.textSecondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(theme.color.card.opacity(theme.glass.fixedSurfaceTintOpacity))
+            } else {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(theme.effectiveAccent)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .task(id: attachment.url) {
+            image = nil
+            didFail = false
+            do {
+                let data = try await APIClient.shared.fetchAttachmentData(at: attachment.url)
+                guard let loaded = UIImage(data: data) else {
+                    didFail = true
+                    return
+                }
+                image = loaded
+            } catch is CancellationError {
+                return
+            } catch {
+                didFail = true
+            }
+        }
+    }
+}
+
+struct AttachmentImageViewer: View {
+    @EnvironmentObject private var theme: Theme
+    let attachment: ChatAttachment
+    let dismiss: () -> Void
+
+    var body: some View {
+        ZStack {
+            theme.color.glassShadow
+                .ignoresSafeArea()
+
+            AuthenticatedAttachmentImage(
+                attachment: attachment,
+                contentMode: .fit
+            )
+            .padding(theme.metric.pagePadding)
+
+            VStack {
+                HStack {
+                    Spacer()
+                    Button(action: dismiss) {
+                        Image(systemName: "xmark")
+                            .font(theme.font.composerIcon)
+                            .foregroundStyle(theme.color.textOnAccent)
+                            .frame(
+                                width: theme.metric.touchTarget,
+                                height: theme.metric.touchTarget
+                            )
+                            .background(CrystalSurface(
+                                cornerRadius: theme.metric.radiusChip,
+                                strength: 1.1,
+                                usesChatControls: true
+                            ))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("关闭图片")
+                }
+                Spacer()
+            }
+            .padding(theme.metric.pagePadding)
+        }
+        .statusBarHidden()
+    }
+}
+
