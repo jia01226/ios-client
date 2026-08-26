@@ -45,7 +45,7 @@ final class ChatFrameworkPrototypeTests: XCTestCase {
 
     private func launchPrototype() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-chat-framework-prototype"]
+        app.launchArguments = ["-ui-test-chat-framework-prototype"]
         app.launch()
         return app
     }

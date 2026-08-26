@@ -3,7 +3,7 @@ import ExyteChat
 import SwiftUI
 
 /// 隔离验证成熟聊天框架是否能承住柯现有的三种高风险交互。
-/// 只在 UI 测试传入 `-chat-framework-prototype` 时出现，不进入正式 App 路径。
+/// 只在 UI 测试传入 `-ui-test-chat-framework-prototype` 时出现，不进入正式 App 路径。
 struct ChatFrameworkPrototypeView: View {
     @EnvironmentObject private var theme: Theme
     @State private var messages = Self.makeMessages()

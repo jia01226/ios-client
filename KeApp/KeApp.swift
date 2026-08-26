@@ -21,7 +21,7 @@ struct KeApp: App {
     @ViewBuilder
     private var appRoot: some View {
 #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("-chat-framework-prototype") {
+        if ProcessInfo.processInfo.arguments.contains("-ui-test-chat-framework-prototype") {
             ChatFrameworkPrototypeView()
         } else {
             RootTabView()

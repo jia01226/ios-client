@@ -21,6 +21,10 @@ packages:
     url: https://github.com/exyte/Chat.git
     # 3.1.2 起要求 Swift tools 6.1；当前签名流水线固定 Xcode 16.2。
     exactVersion: 3.1.1
+  ExyteMediaPicker:
+    url: https://github.com/exyte/MediaPicker.git
+    # Chat 3.1.1 的宽松依赖会误升到已移除旧 API 的版本，原型必须钉死。
+    exactVersion: 3.3.0
 
 targets:
   KeApp:
