@@ -50,6 +50,19 @@ struct ChatTimelineItem: Identifiable, Equatable {
     }
 }
 
+enum ChatTimelineFollowPolicy {
+    static func shouldFollowLatest(
+        timelineChanged: Bool,
+        wasNearLatest: Bool,
+        appendedOwnMessage: Bool,
+        mayAutoFollow: Bool
+    ) -> Bool {
+        mayAutoFollow
+            && timelineChanged
+            && (wasNearLatest || appendedOwnMessage)
+    }
+}
+
 struct ChatCollectionTimeline: UIViewControllerRepresentable {
     let items: [ChatTimelineItem]
     let streamRevision: Int
@@ -91,6 +104,7 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable {
 
 final class ChatCollectionTimelineController: UIViewController,
     UICollectionViewDataSource,
+    UICollectionViewDelegate,
     ChatLayoutDelegate
 {
     private let chatLayout = CollectionViewChatLayout()
@@ -107,6 +121,7 @@ final class ChatCollectionTimelineController: UIViewController,
     private var onBackgroundTap: () -> Void
     private var didScrollToLatest = false
     private var lastTimelineHeight: CGFloat = 0
+    private var pendingFollowLatestAfterLayout = false
 
     init(
         items: [ChatTimelineItem],
@@ -155,6 +170,7 @@ final class ChatCollectionTimelineController: UIViewController,
         collectionView.isPrefetchingEnabled = false
         collectionView.accessibilityIdentifier = "chat-timeline"
         collectionView.dataSource = self
+        collectionView.delegate = self
         collectionView.register(
             UICollectionViewCell.self,
             forCellWithReuseIdentifier: "ChatTimelineCell"
@@ -199,6 +215,15 @@ final class ChatCollectionTimelineController: UIViewController,
         super.viewDidLayoutSubviews()
         let currentHeight = collectionView.bounds.height
         lastTimelineHeight = currentHeight
+
+        if pendingFollowLatestAfterLayout, !items.isEmpty {
+            pendingFollowLatestAfterLayout = false
+            chatLayout.invalidateLayout()
+            collectionView.layoutIfNeeded()
+            scrollToLatest(animated: false)
+            return
+        }
+
         guard wasFollowingLatest,
               abs(currentHeight - previousHeight) > 0.5,
               !items.isEmpty else { return }
@@ -223,24 +248,41 @@ final class ChatCollectionTimelineController: UIViewController,
         self.onBackgroundTap = onBackgroundTap
 
         let oldItems = items
-        let oldLastID = oldItems.last?.id
         let oldStreamRevision = streamRevision
-        let oldInputFocused = inputFocused
         let oldHighlightedMessageID = highlightedMessageID
+        let wasNearLatest = isNearLatest
         items = newItems
         streamRevision = newStreamRevision
         inputFocused = newInputFocused
         highlightedMessageID = newHighlightedMessageID
 
         let mayAutoFollow = Date.now >= suppressAutoScrollUntil
-        let shouldFollowNewMessage = oldLastID != newItems.last?.id && mayAutoFollow
-        let shouldFollowStream = oldStreamRevision != newStreamRevision && mayAutoFollow
-        let shouldFollowLatest = shouldFollowNewMessage || shouldFollowStream
-        let shouldFollowKeyboard = !oldInputFocused && newInputFocused
+        let oldIDs = oldItems.map(\.id)
+        let newIDs = newItems.map(\.id)
+        let appendedItems = newIDs.starts(with: oldIDs)
+            ? Array(newItems.dropFirst(oldItems.count))
+            : []
+        let oldIDSet = Set(oldIDs)
+        let retainedNewIDs = newIDs.filter { oldIDSet.contains($0) }
+        let insertedIndexes = newIDs.indices.filter { !oldIDSet.contains(newIDs[$0]) }
+        let isInsertionOnly = retainedNewIDs == oldIDs && !insertedIndexes.isEmpty
+        let appendedOwnMessage = appendedItems.contains { $0.message.sender == .me }
+        let timelineChanged = oldIDs != newIDs || oldStreamRevision != newStreamRevision
+        let shouldFollowLatest = ChatTimelineFollowPolicy.shouldFollowLatest(
+            timelineChanged: timelineChanged,
+            wasNearLatest: wasNearLatest,
+            appendedOwnMessage: appendedOwnMessage,
+            mayAutoFollow: mayAutoFollow
+        )
 
-        let hasStableIdentity = oldItems.map(\.id) == newItems.map(\.id)
+        let hasStableIdentity = oldIDs == newIDs
         if hasStableIdentity {
             reloadChangedItems(from: oldItems, followLatest: shouldFollowLatest)
+        } else if isInsertionOnly {
+            insertItems(
+                at: insertedIndexes,
+                followLatest: shouldFollowLatest
+            )
         } else {
             let snapshot = shouldFollowLatest
                 ? nil
@@ -248,15 +290,12 @@ final class ChatCollectionTimelineController: UIViewController,
             collectionView.reloadData()
             collectionView.layoutIfNeeded()
             if shouldFollowLatest {
-                scrollToLatest(animated: true)
+                scrollToLatest(animated: false)
             } else if let snapshot {
                 chatLayout.restoreContentOffset(with: snapshot)
             }
         }
 
-        if shouldFollowKeyboard {
-            followLatestAfterKeyboardLayout()
-        }
         if oldHighlightedMessageID != newHighlightedMessageID,
            let newHighlightedMessageID,
            let index = newItems.firstIndex(where: {
@@ -267,6 +306,38 @@ final class ChatCollectionTimelineController: UIViewController,
                 at: .centeredVertically,
                 animated: true
             )
+        }
+    }
+
+    private var isNearLatest: Bool {
+        guard collectionView.bounds.height > 0 else { return true }
+        let maximumOffset = max(
+            -collectionView.adjustedContentInset.top,
+            chatLayout.collectionViewContentSize.height
+                - collectionView.bounds.height
+                + collectionView.adjustedContentInset.bottom
+        )
+        return collectionView.contentOffset.y >= maximumOffset - Theme.shared.metric.touchTarget
+    }
+
+    private func insertItems(at indexes: [Int], followLatest: Bool) {
+        let positionSnapshot = followLatest
+            ? nil
+            : chatLayout.getContentOffsetSnapshot(from: .top)
+        let paths = indexes.map { IndexPath(item: $0, section: 0) }
+
+        UIView.performWithoutAnimation {
+            collectionView.performBatchUpdates {
+                collectionView.insertItems(at: paths)
+            } completion: { [weak self] _ in
+                guard let self else { return }
+                self.collectionView.layoutIfNeeded()
+                if let positionSnapshot {
+                    self.chatLayout.restoreContentOffset(with: positionSnapshot)
+                } else if followLatest {
+                    self.scrollToLatest(animated: false)
+                }
+            }
         }
     }
 
@@ -298,16 +369,9 @@ final class ChatCollectionTimelineController: UIViewController,
         }
     }
 
-    private func followLatestAfterKeyboardLayout() {
-        scrollToLatest(animated: false)
-        for delay in [0.05, 0.25, 0.45] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                guard let self else { return }
-                self.chatLayout.invalidateLayout()
-                self.collectionView.layoutIfNeeded()
-                self.scrollToLatest(animated: false)
-            }
-        }
+    private func requestFollowLatestAfterLayout() {
+        pendingFollowLatestAfterLayout = true
+        view.setNeedsLayout()
     }
 
     @objc private func keyboardWillChangeFrame(_ notification: Notification) {
@@ -316,7 +380,7 @@ final class ChatCollectionTimelineController: UIViewController,
               endFrame.minY < UIScreen.main.bounds.maxY else { return }
         // UIKit 通知比 SwiftUI FocusState 稳定：即使用户从历史位置点输入框，
         // 也要等系统确定键盘终点后，把最新消息带回可见区。
-        followLatestAfterKeyboardLayout()
+        requestFollowLatestAfterLayout()
     }
 
     private func scrollToLatestIfNeeded() {

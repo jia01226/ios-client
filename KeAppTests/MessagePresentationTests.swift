@@ -2,6 +2,33 @@ import XCTest
 @testable import KeApp
 
 final class MessagePresentationTests: XCTestCase {
+    func testTimelineDoesNotStealScrollForIncomingStreamWhileReadingHistory() {
+        XCTAssertFalse(ChatTimelineFollowPolicy.shouldFollowLatest(
+            timelineChanged: true,
+            wasNearLatest: false,
+            appendedOwnMessage: false,
+            mayAutoFollow: true
+        ))
+    }
+
+    func testTimelineFollowsOwnNewMessageWithoutAnimatedFullReload() {
+        XCTAssertTrue(ChatTimelineFollowPolicy.shouldFollowLatest(
+            timelineChanged: true,
+            wasNearLatest: false,
+            appendedOwnMessage: true,
+            mayAutoFollow: true
+        ))
+    }
+
+    func testThinkingSheetTemporarilyOwnsTheAnchor() {
+        XCTAssertFalse(ChatTimelineFollowPolicy.shouldFollowLatest(
+            timelineChanged: true,
+            wasNearLatest: true,
+            appendedOwnMessage: true,
+            mayAutoFollow: false
+        ))
+    }
+
     func testDailyReplyKeepsSeparateBubbles() {
         let message = Message(
             id: "daily",

@@ -67,6 +67,7 @@ final class ChatViewModel: ObservableObject {
         case longReply
         case scrollControl
         case thinkingSegmentRace
+        case sendStability
     }
 
     private var uiTestFixture: UITestFixture?
@@ -90,7 +91,7 @@ final class ChatViewModel: ObservableObject {
                     sender: .ke,
                     text: "我先把你的话接稳，再慢慢说给你听。",
                     time: .now,
-                    thoughtSummary: "先在心里把她这句话接住，再确认怎样回应才不会让她落空。",
+                    thoughtSummary: "心口软了一下。她是在确认我还在不在，我不想让她落空。",
                     thoughtSummaryRaw: "Hold her words first, then answer gently."
                 )
             ]
@@ -110,7 +111,7 @@ final class ChatViewModel: ObservableObject {
                     sender: .ke,
                     text: "",
                     time: .now,
-                    thoughtSummary: "先接住她这句话。",
+                    thoughtSummary: "她还在这里等我。",
                     isStreaming: true,
                     deliveryState: .sending
                 )
@@ -160,10 +161,16 @@ final class ChatViewModel: ObservableObject {
                 )
             ]
         } else if arguments.contains("-ui-test-scroll-control")
+                    || arguments.contains("-ui-test-send-stability")
                     || arguments.contains("-ui-test-thinking-segment-race") {
-            uiTestFixture = arguments.contains("-ui-test-thinking-segment-race")
-                ? .thinkingSegmentRace
-                : .scrollControl
+            if arguments.contains("-ui-test-thinking-segment-race") {
+                uiTestFixture = .thinkingSegmentRace
+            } else if arguments.contains("-ui-test-send-stability") {
+                uiTestFixture = .sendStability
+                sessionID = 1
+            } else {
+                uiTestFixture = .scrollControl
+            }
             phase = .ready
             var fixtureMessages: [Message] = []
             for index in 0..<7 {
@@ -188,7 +195,7 @@ final class ChatViewModel: ObservableObject {
                     ? "第一条气泡已经到了。\n\n第二条气泡随后出现。\n\n第三条气泡最后出现。"
                     : "这是最新一条回复。",
                 time: .now,
-                thoughtSummary: "展开后标题应钉在原位，下面的内容只向下生长，不允许自动滚底抢走位置。"
+                thoughtSummary: "她点开时不该被屏幕拽着跑。看着那一跳，我自己都烦。"
             )
             fixtureMessages.append(latest)
             messages = fixtureMessages
@@ -219,9 +226,9 @@ final class ChatViewModel: ObservableObject {
     private func runUITestThinkingStream() async {
         let messageID = "ui-test-streaming-assistant"
         let chunks = [
-            "先分清她真正担心的地方，",
-            "再把回答收得温柔一点。",
-            "最后确认每句话都只用中文。"
+            "她这句等得很轻，",
+            "越轻越像是在怕我没听见。",
+            "心里那一下是真的软了。"
         ]
 
         for chunk in chunks {
@@ -276,6 +283,21 @@ final class ChatViewModel: ObservableObject {
               let message = messages.first(where: { $0.id == messageID }),
               segmentRevealTasks[message.bubbleRevealKey] == nil else { return }
         stageSegments(for: message, reduceMotion: false)
+    }
+
+    private func runUITestSendStream(messageID: String) async {
+        let chunks = ["爸爸收到了。", "这次屏幕不会再乱跳。"]
+        for chunk in chunks {
+            try? await Task.sleep(nanoseconds: 360_000_000)
+            updateMessage(id: messageID) { $0.text += chunk }
+            streamRevision += 1
+        }
+        updateMessage(id: messageID) {
+            $0.isStreaming = false
+            $0.deliveryState = .sent
+        }
+        isSending = false
+        streamRevision += 1
     }
 #endif
 
@@ -365,6 +387,13 @@ final class ChatViewModel: ObservableObject {
                 deliveryState: .sending
             )
         )
+
+#if DEBUG
+        if uiTestFixture == .sendStability {
+            await runUITestSendStream(messageID: assistantLocalID)
+            return
+        }
+#endif
 
         await performSend(
             text: text,

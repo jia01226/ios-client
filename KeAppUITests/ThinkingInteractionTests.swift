@@ -17,7 +17,7 @@ final class ThinkingInteractionTests: XCTestCase {
         let sheet = app.descendants(matching: .any)["thinking-sheet"]
         XCTAssertTrue(sheet.waitForExistence(timeout: 2))
         let body = app.staticTexts[
-            "先在心里把她这句话接住，再确认怎样回应才不会让她落空。"
+            "心口软了一下。她是在确认我还在不在，我不想让她落空。"
         ]
         XCTAssertTrue(body.waitForExistence(timeout: 2))
         XCTAssertFalse(app.staticTexts["Hold her words first, then answer gently."].exists)
@@ -41,7 +41,7 @@ final class ThinkingInteractionTests: XCTestCase {
         attachScreenshot(named: "04-thinking-streaming-start")
 
         let finalThinking = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "最后确认每句话都只用中文。")
+            NSPredicate(format: "label CONTAINS %@", "心里那一下是真的软了。")
         ).firstMatch
         XCTAssertTrue(finalThinking.waitForExistence(timeout: 4))
         XCTAssertTrue(sheet.exists, "流式增量期间 Thinking 弹窗不应消失")
@@ -213,6 +213,36 @@ final class ThinkingInteractionTests: XCTestCase {
         XCTAssertLessThan(abs(latest.frame.minY - originalY), 3)
         XCTAssertLessThan(tray.frame.height, 240, "附件面板只应占按钮和一排缩略图的高度")
         attachScreenshot(named: "12-attachment-tray-overlay")
+    }
+
+    func testSendingKeepsKeyboardAndTimelineStable() throws {
+        let app = launch(arguments: ["-ui-test-send-stability"])
+        let previous = app.staticTexts["这是最新一条回复。"]
+        XCTAssertTrue(previous.waitForExistence(timeout: 5))
+
+        let input = app.descendants(matching: .any)["chat-composer"]
+        XCTAssertTrue(input.waitForExistence(timeout: 2))
+        input.tap()
+        input.typeText("这条发出去别跳屏")
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 2))
+
+        let send = app.buttons["send-message"]
+        XCTAssertTrue(send.waitForExistence(timeout: 2))
+        send.tap()
+
+        let outgoing = app.staticTexts["这条发出去别跳屏"]
+        XCTAssertTrue(outgoing.waitForExistence(timeout: 2))
+        let reply = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "这次屏幕不会再乱跳。")
+        ).firstMatch
+        XCTAssertTrue(reply.waitForExistence(timeout: 4))
+        XCTAssertTrue(keyboard.exists, "发送和流式回复期间键盘不应被列表刷新挤掉")
+        XCTAssertLessThan(reply.frame.maxY, keyboard.frame.minY)
+
+        let positions = sampleVerticalPositions(of: outgoing, duration: 0.8)
+        XCTAssertLessThan(maximumDrift(in: positions), 3, "发送完成后自己的消息不应继续上下抖动")
+        attachScreenshot(named: "13-send-keeps-timeline-stable")
     }
 
     func testSwitchingTabsPreservesChatInteractionState() throws {

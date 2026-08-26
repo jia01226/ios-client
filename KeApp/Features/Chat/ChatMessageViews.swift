@@ -24,10 +24,13 @@ struct ThinkingTimelineRow: View {
         .buttonStyle(.plain)
         .accessibilityLabel("查看思考")
         .padding(.leading, theme.metric.thinkingLineGap + theme.metric.thinkingLineWidth)
-        .overlay(alignment: .leading) {
+        .overlay(alignment: .bottomLeading) {
             Rectangle()
                 .fill(theme.color.accentSoft.opacity(theme.glass.thinkingLineOpacity))
-                .frame(width: theme.metric.thinkingLineWidth)
+                .frame(
+                    width: theme.metric.thinkingLineWidth,
+                    height: theme.metric.thinkingLineHeight
+                )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, theme.metric.thinkingHorizontalPadding)

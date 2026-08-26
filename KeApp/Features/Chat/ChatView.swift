@@ -331,6 +331,8 @@ struct ChatView: View {
             }
             .disabled(!canSend || vm.isSending || vm.isUploading)
             .opacity(!canSend || vm.isSending || vm.isUploading ? 0.45 : 1)
+            .accessibilityLabel("发送消息")
+            .accessibilityIdentifier("send-message")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)

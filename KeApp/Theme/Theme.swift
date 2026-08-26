@@ -158,6 +158,7 @@ struct Metrics {
     let thinkingBubbleGap: CGFloat = 4
     let thinkingLineGap: CGFloat = 12
     let thinkingLineWidth: CGFloat = 1
+    let thinkingLineHeight: CGFloat = 22
     let thinkingHorizontalPadding: CGFloat = 2
     let glassStrokeWidth: CGFloat = 0.8
     let glassShadowRadius: CGFloat = 12
