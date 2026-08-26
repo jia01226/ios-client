@@ -8,6 +8,7 @@ struct MessageRow: View {
     let isHighlighted: Bool
     let isThinkingExpanded: Bool
     let visibleSegmentCount: Int?
+    let anchorRegistry: ChatTimelineAnchorRegistry?
     let onThinkingToggle: () -> Void
     let onAttachmentTap: (ChatAttachment) -> Void
     @State private var copied = false
@@ -99,6 +100,15 @@ struct MessageRow: View {
                     .transition(.opacity)
             }
         }
+        .background {
+            if message.sender == .ke, hasBubbleContent, let anchorRegistry {
+                ChatTimelineAnchorProbe(
+                    messageID: message.id,
+                    kind: .reply,
+                    registry: anchorRegistry
+                )
+            }
+        }
     }
 
     private var hasThinkingContent: Bool {
@@ -132,6 +142,15 @@ struct MessageRow: View {
             .buttonStyle(.plain)
             .accessibilityLabel(isThinkingExpanded ? "收起思考" : "展开思考")
             .accessibilityValue(isThinkingExpanded ? "已展开" : "已收起")
+            .background {
+                if let anchorRegistry {
+                    ChatTimelineAnchorProbe(
+                        messageID: message.id,
+                        kind: .thinkingTitle,
+                        registry: anchorRegistry
+                    )
+                }
+            }
 
             if isThinkingExpanded {
                 // 不挂 .transition：展开/收起本来就走无动画事务（toggleThinking 里
