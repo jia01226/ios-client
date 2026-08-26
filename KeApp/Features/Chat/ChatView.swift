@@ -17,8 +17,6 @@ struct ChatView: View {
     @StateObject private var vm = ChatViewModel()
     @StateObject private var recentPhotos = RecentPhotosStore()
     @State private var draft = ""
-    /// Thinking 展开/收起后的短窗：期间自动滚底一律禁行，防两套滚动打架闪屏。
-    @State private var suppressAutoScrollUntil: Date = .distantPast
     @FocusState private var inputFocused: Bool
     @State private var settingsOpen = false
     @State private var attachmentsOpen = false
@@ -30,7 +28,7 @@ struct ChatView: View {
     @State private var selectedMessageIDs: Set<Int> = []
     @State private var showingDeleteConfirmation = false
     @State private var highlightedMessageID: String?
-    @State private var expandedThinkingMessageIDs: Set<String> = []
+    @State private var presentedThinkingMessageID: String?
     /// 键盘出现到完全收回期间，由同一条事务负责把最新消息贴住可视区底部。
     /// 不能在 focus / didShow 各滚一次，否则两套终点会造成闪跳。
     @State private var keyboardFollowsLatest = false
@@ -143,6 +141,12 @@ struct ChatView: View {
             }
             .ignoresSafeArea()
         }
+        .sheet(isPresented: thinkingSheetPresented) {
+            thinkingSheet
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .presentationContentInteraction(.scrolls)
+        }
         .fullScreenCover(item: $previewedImage) { attachment in
             AttachmentImageViewer(attachment: attachment) {
                 previewedImage = nil
@@ -207,20 +211,26 @@ struct ChatView: View {
                 emptyTimeline
             } else {
                 ChatCollectionTimeline(
-                    items: vm.messages.map { message in
-                        ChatTimelineItem(
+                    items: vm.messages.flatMap { message in
+                        ChatTimelineItem.make(
                             message: message,
                             isHighlighted: highlightedMessageID == message.id,
-                            isThinkingExpanded: expandedThinkingMessageIDs.contains(message.id),
                             visibleSegmentCount: vm.visibleSegmentCount(for: message)
                         )
                     },
                     streamRevision: vm.streamRevision,
-                    suppressAutoScrollUntil: suppressAutoScrollUntil,
+                    suppressAutoScrollUntil: presentedThinkingMessageID == nil
+                        ? .distantPast
+                        : .distantFuture,
                     inputFocused: inputFocused,
                     highlightedMessageID: highlightedMessageID,
-                    onThinkingToggle: { messageID in
-                        toggleThinking(for: messageID)
+                    onThinkingOpen: { messageID in
+                        inputFocused = false
+                        attachmentsOpen = false
+                        presentedThinkingMessageID = messageID
+#if DEBUG
+                        vm.didOpenThinkingForUITest(messageID: messageID)
+#endif
                     },
                     onAttachmentTap: { attachment in
                         previewedImage = attachment
@@ -480,24 +490,23 @@ struct ChatView: View {
         }
     }
 
-    private func toggleThinking(for messageID: String) {
-        let willExpand = !expandedThinkingMessageIDs.contains(messageID)
-        // 展开/收起后的 0.8 秒内，新消息/流式刷新一律不自动滚底，
-        // 让锚定恢复独占滚动位置——治"点开思考链最后屏幕闪一下"。
-        suppressAutoScrollUntil = Date.now.addingTimeInterval(0.8)
-        // ChatLayout 更新时按用户定的方向恢复：展开/流式钉顶部，收起钉正文底部。
-        var transaction = Transaction()
-        transaction.animation = nil
-        withTransaction(transaction) {
-            if willExpand {
-                expandedThinkingMessageIDs.insert(messageID)
-            } else {
-                expandedThinkingMessageIDs.remove(messageID)
+    private var thinkingSheetPresented: Binding<Bool> {
+        Binding(
+            get: { presentedThinkingMessageID != nil },
+            set: { presented in
+                if !presented { presentedThinkingMessageID = nil }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var thinkingSheet: some View {
+        if let messageID = presentedThinkingMessageID,
+           let message = vm.messages.first(where: { $0.id == messageID }) {
+            ThinkingSheetView(message: message) {
+                presentedThinkingMessageID = nil
             }
         }
-#if DEBUG
-        vm.didToggleThinkingForUITest(messageID: messageID)
-#endif
     }
 
     private var pendingAttachmentBar: some View {

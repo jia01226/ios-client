@@ -2,88 +2,51 @@ import ChatLayout
 import SwiftUI
 import UIKit
 
+enum ChatTimelineItemKind: Equatable {
+    case thinking
+    case message
+}
+
 struct ChatTimelineItem: Identifiable, Equatable {
+    let kind: ChatTimelineItemKind
     let message: Message
     let isHighlighted: Bool
-    let isThinkingExpanded: Bool
     let visibleSegmentCount: Int?
 
-    var id: String { message.id }
-}
-
-@MainActor
-final class ChatTimelineAnchorRegistry {
-    enum Kind {
-        case thinkingTitle
-        case reply
+    var id: String {
+        "\(message.id)::\(kind == .thinking ? "thinking" : "message")"
     }
 
-    private final class WeakAnchor {
-        weak var view: UIView?
+    var messageID: String { message.id }
 
-        init(_ view: UIView) {
-            self.view = view
+    static func make(
+        message: Message,
+        isHighlighted: Bool,
+        visibleSegmentCount: Int?
+    ) -> [Self] {
+        var result: [Self] = []
+        if message.sender == .ke, hasThinking(message) {
+            result.append(Self(
+                kind: .thinking,
+                message: message,
+                isHighlighted: false,
+                visibleSegmentCount: nil
+            ))
         }
+        result.append(Self(
+            kind: .message,
+            message: message,
+            isHighlighted: isHighlighted,
+            visibleSegmentCount: visibleSegmentCount
+        ))
+        return result
     }
 
-    private var thinkingTitles: [String: WeakAnchor] = [:]
-    private var replies: [String: WeakAnchor] = [:]
-
-    func register(_ view: UIView, messageID: String, kind: Kind) {
-        switch kind {
-        case .thinkingTitle:
-            thinkingTitles[messageID] = WeakAnchor(view)
-        case .reply:
-            replies[messageID] = WeakAnchor(view)
+    private static func hasThinking(_ message: Message) -> Bool {
+        [message.thoughtSummary, message.thoughtNote].contains { value in
+            guard let value else { return false }
+            return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
-    }
-
-    func viewportY(messageID: String, kind: Kind, edge: ChatLayoutPositionSnapshot.Edge) -> CGFloat? {
-        let view: UIView?
-        switch kind {
-        case .thinkingTitle:
-            view = thinkingTitles[messageID]?.view
-        case .reply:
-            view = replies[messageID]?.view
-        }
-        guard let view, view.window != nil else { return nil }
-        let frame = view.convert(view.bounds, to: nil)
-        return edge == .top ? frame.minY : frame.maxY
-    }
-}
-
-final class ChatTimelineAnchorView: UIView {
-    weak var registry: ChatTimelineAnchorRegistry?
-    var messageID = ""
-    var kind: ChatTimelineAnchorRegistry.Kind = .thinkingTitle
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        registry?.register(self, messageID: messageID, kind: kind)
-    }
-}
-
-struct ChatTimelineAnchorProbe: UIViewRepresentable {
-    let messageID: String
-    let kind: ChatTimelineAnchorRegistry.Kind
-    let registry: ChatTimelineAnchorRegistry
-
-    func makeUIView(context: Context) -> ChatTimelineAnchorView {
-        let view = ChatTimelineAnchorView(frame: .zero)
-        view.isUserInteractionEnabled = false
-        configure(view)
-        return view
-    }
-
-    func updateUIView(_ view: ChatTimelineAnchorView, context: Context) {
-        configure(view)
-    }
-
-    private func configure(_ view: ChatTimelineAnchorView) {
-        view.registry = registry
-        view.messageID = messageID
-        view.kind = kind
-        registry.register(view, messageID: messageID, kind: kind)
     }
 }
 
@@ -93,7 +56,7 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable {
     let suppressAutoScrollUntil: Date
     let inputFocused: Bool
     let highlightedMessageID: String?
-    let onThinkingToggle: (String) -> Void
+    let onThinkingOpen: (String) -> Void
     let onAttachmentTap: (ChatAttachment) -> Void
     let onBackgroundTap: () -> Void
 
@@ -103,7 +66,7 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable {
             streamRevision: streamRevision,
             inputFocused: inputFocused,
             highlightedMessageID: highlightedMessageID,
-            onThinkingToggle: onThinkingToggle,
+            onThinkingOpen: onThinkingOpen,
             onAttachmentTap: onAttachmentTap,
             onBackgroundTap: onBackgroundTap
         )
@@ -119,7 +82,7 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable {
             suppressAutoScrollUntil: suppressAutoScrollUntil,
             inputFocused: inputFocused,
             highlightedMessageID: highlightedMessageID,
-            onThinkingToggle: onThinkingToggle,
+            onThinkingOpen: onThinkingOpen,
             onAttachmentTap: onAttachmentTap,
             onBackgroundTap: onBackgroundTap
         )
@@ -130,11 +93,6 @@ final class ChatCollectionTimelineController: UIViewController,
     UICollectionViewDataSource,
     ChatLayoutDelegate
 {
-    private enum PreservedEdge: Equatable {
-        case top
-        case bottom
-    }
-
     private let chatLayout = CollectionViewChatLayout()
     private lazy var collectionView = UICollectionView(
         frame: .zero,
@@ -144,19 +102,18 @@ final class ChatCollectionTimelineController: UIViewController,
     private var streamRevision: Int
     private var inputFocused: Bool
     private var highlightedMessageID: String?
-    private var onThinkingToggle: (String) -> Void
+    private var onThinkingOpen: (String) -> Void
     private var onAttachmentTap: (ChatAttachment) -> Void
     private var onBackgroundTap: () -> Void
     private var didScrollToLatest = false
     private var lastTimelineHeight: CGFloat = 0
-    private let anchorRegistry = ChatTimelineAnchorRegistry()
 
     init(
         items: [ChatTimelineItem],
         streamRevision: Int,
         inputFocused: Bool,
         highlightedMessageID: String?,
-        onThinkingToggle: @escaping (String) -> Void,
+        onThinkingOpen: @escaping (String) -> Void,
         onAttachmentTap: @escaping (ChatAttachment) -> Void,
         onBackgroundTap: @escaping () -> Void
     ) {
@@ -164,7 +121,7 @@ final class ChatCollectionTimelineController: UIViewController,
         self.streamRevision = streamRevision
         self.inputFocused = inputFocused
         self.highlightedMessageID = highlightedMessageID
-        self.onThinkingToggle = onThinkingToggle
+        self.onThinkingOpen = onThinkingOpen
         self.onAttachmentTap = onAttachmentTap
         self.onBackgroundTap = onBackgroundTap
         super.init(nibName: nil, bundle: nil)
@@ -257,11 +214,11 @@ final class ChatCollectionTimelineController: UIViewController,
         suppressAutoScrollUntil: Date,
         inputFocused newInputFocused: Bool,
         highlightedMessageID newHighlightedMessageID: String?,
-        onThinkingToggle: @escaping (String) -> Void,
+        onThinkingOpen: @escaping (String) -> Void,
         onAttachmentTap: @escaping (ChatAttachment) -> Void,
         onBackgroundTap: @escaping () -> Void
     ) {
-        self.onThinkingToggle = onThinkingToggle
+        self.onThinkingOpen = onThinkingOpen
         self.onAttachmentTap = onAttachmentTap
         self.onBackgroundTap = onBackgroundTap
 
@@ -275,20 +232,22 @@ final class ChatCollectionTimelineController: UIViewController,
         inputFocused = newInputFocused
         highlightedMessageID = newHighlightedMessageID
 
-        let mayAutoFollow = !newItems.contains(where: \.isThinkingExpanded)
-            && Date.now >= suppressAutoScrollUntil
+        let mayAutoFollow = Date.now >= suppressAutoScrollUntil
         let shouldFollowNewMessage = oldLastID != newItems.last?.id && mayAutoFollow
         let shouldFollowStream = oldStreamRevision != newStreamRevision && mayAutoFollow
+        let shouldFollowLatest = shouldFollowNewMessage || shouldFollowStream
         let shouldFollowKeyboard = !oldInputFocused && newInputFocused
 
         let hasStableIdentity = oldItems.map(\.id) == newItems.map(\.id)
         if hasStableIdentity {
-            reloadChangedItems(from: oldItems, followLatest: shouldFollowNewMessage || shouldFollowStream)
+            reloadChangedItems(from: oldItems, followLatest: shouldFollowLatest)
         } else {
-            let snapshot = chatLayout.getContentOffsetSnapshot(from: .bottom)
+            let snapshot = shouldFollowLatest
+                ? nil
+                : chatLayout.getContentOffsetSnapshot(from: .top)
             collectionView.reloadData()
             collectionView.layoutIfNeeded()
-            if shouldFollowNewMessage {
+            if shouldFollowLatest {
                 scrollToLatest(animated: true)
             } else if let snapshot {
                 chatLayout.restoreContentOffset(with: snapshot)
@@ -300,7 +259,9 @@ final class ChatCollectionTimelineController: UIViewController,
         }
         if oldHighlightedMessageID != newHighlightedMessageID,
            let newHighlightedMessageID,
-           let index = newItems.firstIndex(where: { $0.id == newHighlightedMessageID }) {
+           let index = newItems.firstIndex(where: {
+               $0.messageID == newHighlightedMessageID && $0.kind == .message
+           }) {
             collectionView.scrollToItem(
                 at: IndexPath(item: index, section: 0),
                 at: .centeredVertically,
@@ -316,60 +277,9 @@ final class ChatCollectionTimelineController: UIViewController,
             return
         }
 
-        let anchorIndex = changedIndexes.last { index in
-            let old = oldItems[index]
-            let new = items[index]
-            return old.isThinkingExpanded != new.isThinkingExpanded
-                || (new.isThinkingExpanded && old != new)
-        }
-        let preservedEdge: PreservedEdge? = anchorIndex.flatMap { index in
-            let old = oldItems[index]
-            let new = items[index]
-            if !old.isThinkingExpanded && new.isThinkingExpanded { return .top }
-            if old.isThinkingExpanded && !new.isThinkingExpanded { return .bottom }
-            if old.isThinkingExpanded && new.isThinkingExpanded { return .top }
-            return nil
-        }
-        let anchorIndexPath = anchorIndex.map { IndexPath(item: $0, section: 0) }
-        let messageID = anchorIndex.map { items[$0].id }
-        let visualAnchorKind: ChatTimelineAnchorRegistry.Kind? = preservedEdge.map {
-            $0 == .top ? .thinkingTitle : .reply
-        }
-        let visualAnchorEdge: ChatLayoutPositionSnapshot.Edge? = preservedEdge.map {
-            $0 == .top ? .top : .bottom
-        }
-        let visualAnchorY = messageID.flatMap { messageID in
-            visualAnchorKind.flatMap { kind in
-                visualAnchorEdge.flatMap { edge in
-                    anchorRegistry.viewportY(messageID: messageID, kind: kind, edge: edge)
-                }
-            }
-        }
-        let positionSnapshot = anchorIndexPath.flatMap { indexPath in
-            collectionView.layoutAttributesForItem(at: indexPath).flatMap { attributes in
-                switch preservedEdge {
-                case .top:
-                    return ChatLayoutPositionSnapshot(
-                        indexPath: indexPath,
-                        kind: .cell,
-                        edge: .top,
-                        offset: attributes.frame.minY
-                            - chatLayout.visibleBounds.minY
-                            - chatLayout.settings.additionalInsets.top
-                    )
-                case .bottom:
-                    return ChatLayoutPositionSnapshot(
-                        indexPath: indexPath,
-                        kind: .cell,
-                        edge: .bottom,
-                        offset: chatLayout.visibleBounds.maxY
-                            - attributes.frame.maxY
-                            - chatLayout.settings.additionalInsets.bottom
-                    )
-                case nil: return nil
-                }
-            }
-        }
+        let positionSnapshot = followLatest
+            ? nil
+            : chatLayout.getContentOffsetSnapshot(from: .top)
 
         UIView.performWithoutAnimation {
             collectionView.performBatchUpdates {
@@ -381,43 +291,10 @@ final class ChatCollectionTimelineController: UIViewController,
                 self.collectionView.layoutIfNeeded()
                 if let positionSnapshot {
                     self.chatLayout.restoreContentOffset(with: positionSnapshot)
-                    if let messageID, let visualAnchorKind, let visualAnchorEdge,
-                       let visualAnchorY {
-                        self.restoreVisualAnchor(
-                            messageID: messageID,
-                            kind: visualAnchorKind,
-                            edge: visualAnchorEdge,
-                            viewportY: visualAnchorY,
-                            attemptsRemaining: 3
-                        )
-                    }
                 } else if followLatest {
                     self.scrollToLatest(animated: false)
                 }
             }
-        }
-    }
-
-    private func restoreVisualAnchor(
-        messageID: String,
-        kind: ChatTimelineAnchorRegistry.Kind,
-        edge: ChatLayoutPositionSnapshot.Edge,
-        viewportY: CGFloat,
-        attemptsRemaining: Int
-    ) {
-        collectionView.layoutIfNeeded()
-        if let currentY = anchorRegistry.viewportY(messageID: messageID, kind: kind, edge: edge) {
-            collectionView.contentOffset.y += currentY - viewportY
-        }
-        guard attemptsRemaining > 0 else { return }
-        DispatchQueue.main.async { [weak self] in
-            self?.restoreVisualAnchor(
-                messageID: messageID,
-                kind: kind,
-                edge: edge,
-                viewportY: viewportY,
-                attemptsRemaining: attemptsRemaining - 1
-            )
         }
     }
 
@@ -485,20 +362,23 @@ final class ChatCollectionTimelineController: UIViewController,
         let item = items[indexPath.item]
         cell.backgroundColor = .clear
         cell.contentConfiguration = UIHostingConfiguration {
-            MessageRow(
-                message: item.message,
-                isHighlighted: item.isHighlighted,
-                isThinkingExpanded: item.isThinkingExpanded,
-                visibleSegmentCount: item.visibleSegmentCount,
-                anchorRegistry: anchorRegistry,
-                onThinkingToggle: { [weak self] in
-                    self?.onThinkingToggle(item.id)
-                },
-                onAttachmentTap: { [weak self] attachment in
-                    self?.onAttachmentTap(attachment)
+            switch item.kind {
+            case .thinking:
+                ThinkingTimelineRow { [weak self] in
+                    self?.onThinkingOpen(item.messageID)
                 }
-            )
-            .environmentObject(Theme.shared)
+                .environmentObject(Theme.shared)
+            case .message:
+                MessageRow(
+                    message: item.message,
+                    isHighlighted: item.isHighlighted,
+                    visibleSegmentCount: item.visibleSegmentCount,
+                    onAttachmentTap: { [weak self] attachment in
+                        self?.onAttachmentTap(attachment)
+                    }
+                )
+                .environmentObject(Theme.shared)
+            }
         }
         .margins(.all, 0)
         return cell
@@ -518,4 +398,15 @@ final class ChatCollectionTimelineController: UIViewController,
         at indexPath: IndexPath,
         modifying originalAttributes: ChatLayoutAttributes
     ) {}
+
+    func interItemSpacing(
+        _ chatLayout: CollectionViewChatLayout,
+        of kind: ItemKind,
+        after indexPath: IndexPath
+    ) -> CGFloat? {
+        guard kind == .cell, items.indices.contains(indexPath.item) else { return nil }
+        return items[indexPath.item].kind == .thinking
+            ? Theme.shared.metric.thinkingBubbleGap
+            : nil
+    }
 }

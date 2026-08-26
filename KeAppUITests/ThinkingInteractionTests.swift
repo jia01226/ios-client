@@ -7,42 +7,44 @@ final class ThinkingInteractionTests: XCTestCase {
 
     func testThinkingExpandsAndCollapses() throws {
         let app = launch(arguments: ["-ui-test-thinking-static"])
-        let expand = app.buttons["展开思考"]
-        XCTAssertTrue(expand.waitForExistence(timeout: 5))
+        let open = app.buttons["查看思考"]
+        XCTAssertTrue(open.waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["原文为英文"].exists)
         XCTAssertFalse(app.staticTexts["Hold her words first, then answer gently."].exists)
         attachScreenshot(named: "01-thinking-collapsed")
 
-        expand.tap()
+        open.tap()
+        let sheet = app.descendants(matching: .any)["thinking-sheet"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 2))
         let body = app.staticTexts[
             "先在心里把她这句话接住，再确认怎样回应才不会让她落空。"
         ]
         XCTAssertTrue(body.waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["收起思考"].exists)
         XCTAssertFalse(app.staticTexts["Hold her words first, then answer gently."].exists)
         attachScreenshot(named: "02-thinking-expanded")
 
-        tapVisibleCenter(of: app.buttons["收起思考"], in: app)
+        app.buttons["完成"].tap()
+        XCTAssertTrue(sheet.waitForNonExistence(timeout: 2))
         XCTAssertTrue(body.waitForNonExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["展开思考"].exists)
+        XCTAssertTrue(open.exists)
         attachScreenshot(named: "03-thinking-collapsed-again")
     }
 
     func testThinkingStaysExpandedWhileStreaming() throws {
         let app = launch(arguments: ["-ui-test-thinking-streaming"])
-        let expand = app.buttons["展开思考"]
-        XCTAssertTrue(expand.waitForExistence(timeout: 5))
-        expand.tap()
+        let open = app.buttons["查看思考"]
+        XCTAssertTrue(open.waitForExistence(timeout: 5))
+        open.tap()
 
-        let collapse = app.buttons["收起思考"]
-        XCTAssertTrue(collapse.waitForExistence(timeout: 2))
+        let sheet = app.descendants(matching: .any)["thinking-sheet"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 2))
         attachScreenshot(named: "04-thinking-streaming-start")
 
         let finalThinking = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "最后确认每句话都只用中文。")
         ).firstMatch
         XCTAssertTrue(finalThinking.waitForExistence(timeout: 4))
-        XCTAssertTrue(collapse.exists, "流式增量期间 Thinking 不应消失或自动折叠")
+        XCTAssertTrue(sheet.exists, "流式增量期间 Thinking 弹窗不应消失")
         attachScreenshot(named: "05-thinking-streaming-finished")
     }
 
@@ -85,35 +87,39 @@ final class ThinkingInteractionTests: XCTestCase {
 
     func testLatestThinkingTitleDoesNotFlickerOrJump() throws {
         let app = launch(arguments: ["-ui-test-scroll-control"])
-        let expand = app.buttons["展开思考"]
-        XCTAssertTrue(expand.waitForExistence(timeout: 5))
-        let originalY = expand.frame.minY
+        let open = app.buttons["查看思考"]
+        XCTAssertTrue(open.waitForExistence(timeout: 5))
+        let originalY = open.frame.minY
 
-        expand.tap()
-        let collapse = app.buttons["收起思考"]
-        XCTAssertTrue(collapse.waitForExistence(timeout: 2))
-        let sampledY = sampleVerticalPositions(of: collapse, duration: 1.1)
+        open.tap()
+        let sheet = app.descendants(matching: .any)["thinking-sheet"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 2))
+        let sampledY = sampleVerticalPositions(of: sheet, duration: 1.1)
 
         XCTAssertLessThan(maximumDrift(in: sampledY), 3)
-        XCTAssertLessThan(abs((sampledY.last ?? originalY) - originalY), 3)
+        app.buttons["完成"].tap()
+        XCTAssertTrue(sheet.waitForNonExistence(timeout: 2))
+        XCTAssertLessThan(abs(open.frame.minY - originalY), 3)
         attachScreenshot(named: "07-latest-thinking-stable")
     }
 
     func testThinkingKeepsItsAnchorWhileSplitBubblesArrive() throws {
         let app = launch(arguments: ["-ui-test-thinking-segment-race"])
-        let expand = app.buttons["展开思考"]
-        XCTAssertTrue(expand.waitForExistence(timeout: 5))
-        expand.tap()
+        let open = app.buttons["查看思考"]
+        XCTAssertTrue(open.waitForExistence(timeout: 5))
+        let originalY = open.frame.minY
+        open.tap()
 
-        let collapse = app.buttons["收起思考"]
-        XCTAssertTrue(collapse.waitForExistence(timeout: 2))
-        let originalY = collapse.frame.minY
+        let sheet = app.descendants(matching: .any)["thinking-sheet"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 2))
+        let sampledY = sampleVerticalPositions(of: sheet, duration: 2.6)
+        XCTAssertLessThan(maximumDrift(in: sampledY), 3)
+
+        app.buttons["完成"].tap()
+        XCTAssertTrue(sheet.waitForNonExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["第二条气泡随后出现。"].waitForExistence(timeout: 2))
-        let afterSecondY = collapse.frame.minY
         XCTAssertTrue(app.staticTexts["第三条气泡最后出现。"].waitForExistence(timeout: 2))
-        let afterThirdY = collapse.frame.minY
-
-        XCTAssertLessThan(maximumDrift(in: [originalY, afterSecondY, afterThirdY]), 3)
+        XCTAssertLessThan(abs(open.frame.minY - originalY), 3)
         attachScreenshot(named: "08-thinking-during-segmented-reply")
     }
 
@@ -182,18 +188,21 @@ final class ThinkingInteractionTests: XCTestCase {
 
     func testSwitchingTabsPreservesChatInteractionState() throws {
         let app = launch(arguments: ["-ui-test-scroll-control"])
-        let expand = app.buttons["展开思考"]
-        XCTAssertTrue(expand.waitForExistence(timeout: 5))
-        expand.tap()
-        XCTAssertTrue(app.buttons["收起思考"].waitForExistence(timeout: 2))
+        let open = app.buttons["查看思考"]
+        XCTAssertTrue(open.waitForExistence(timeout: 5))
+        open.tap()
+        let sheet = app.descendants(matching: .any)["thinking-sheet"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 2))
+        app.buttons["完成"].tap()
+        XCTAssertTrue(sheet.waitForNonExistence(timeout: 2))
 
         app.buttons["我们"].tap()
         XCTAssertTrue(app.buttons["柯"].waitForExistence(timeout: 2))
         app.buttons["柯"].tap()
 
         XCTAssertTrue(
-            app.buttons["收起思考"].waitForExistence(timeout: 2),
-            "切 Tab 后聊天页不应被销毁重建"
+            open.waitForExistence(timeout: 2),
+            "切 Tab 后 Thinking 入口不应消失"
         )
         XCTAssertTrue(app.staticTexts["这是最新一条回复。"].exists)
         attachScreenshot(named: "13-tab-return-preserves-chat")
@@ -204,11 +213,8 @@ final class ThinkingInteractionTests: XCTestCase {
         let latest = app.staticTexts["这是最新一条回复。"]
         XCTAssertTrue(latest.waitForExistence(timeout: 5))
 
-        let expand = app.buttons["展开思考"]
-        XCTAssertTrue(expand.waitForExistence(timeout: 2))
-        expand.tap()
-        let collapse = app.buttons["收起思考"]
-        XCTAssertTrue(collapse.waitForExistence(timeout: 2))
+        let open = app.buttons["查看思考"]
+        XCTAssertTrue(open.waitForExistence(timeout: 2))
         let composer = app.descendants(matching: .any)["chat-composer"]
         XCTAssertTrue(composer.exists && composer.isHittable)
 
@@ -231,7 +237,7 @@ final class ThinkingInteractionTests: XCTestCase {
                     composer.exists && composer.isHittable,
                     "第 \(cycle) 轮从 \(destination) 返回聊天时输入区不可交互"
                 )
-                XCTAssertTrue(collapse.exists, "切 Tab 后 Thinking 展开状态不应丢失")
+                XCTAssertTrue(open.exists, "切 Tab 后 Thinking 入口不应丢失")
                 XCTAssertTrue(latest.exists, "切 Tab 后最新消息数据不应丢失")
             }
         }

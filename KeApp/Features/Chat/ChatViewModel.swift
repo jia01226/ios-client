@@ -258,7 +258,7 @@ final class ChatViewModel: ObservableObject {
         await runUITestReplyStream()
     }
 
-    func didToggleThinkingForUITest(messageID: String) {
+    func didOpenThinkingForUITest(messageID: String) {
         guard uiTestFixture == .thinkingSegmentRace,
               messageID == "ui-test-scroll-latest",
               let message = messages.first(where: { $0.id == messageID }),
@@ -1014,4 +1014,3 @@ final class ChatViewModel: ObservableObject {
         }
     }
 }
-

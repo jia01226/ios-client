@@ -59,4 +59,52 @@ final class MessagePresentationTests: XCTestCase {
         XCTAssertEqual(response.attachment.url, "/uploads/example.jpg")
         XCTAssertTrue(response.attachment.isImage)
     }
+
+    func testAssistantThinkingBecomesASeparateTimelineItem() {
+        let message = Message(
+            id: "assistant-with-thinking",
+            sender: .ke,
+            text: "正文",
+            time: .now,
+            thoughtSummary: "真思考",
+            thoughtNote: "小念头"
+        )
+
+        let items = ChatTimelineItem.make(
+            message: message,
+            isHighlighted: false,
+            visibleSegmentCount: nil
+        )
+
+        XCTAssertEqual(items.map(\.kind), [.thinking, .message])
+        XCTAssertEqual(Set(items.map(\.id)).count, 2)
+        XCTAssertEqual(items.map(\.messageID), [message.id, message.id])
+    }
+
+    func testBlankOrUserThinkingDoesNotCreateAnEntry() {
+        let blankAssistant = Message(
+            id: "assistant-with-blank-thinking",
+            sender: .ke,
+            text: "正文",
+            time: .now,
+            thoughtSummary: "  \n "
+        )
+        let user = Message(
+            id: "user-with-thinking",
+            sender: .me,
+            text: "正文",
+            time: .now,
+            thoughtSummary: "不应展示"
+        )
+
+        for message in [blankAssistant, user] {
+            let items = ChatTimelineItem.make(
+                message: message,
+                isHighlighted: false,
+                visibleSegmentCount: nil
+            )
+            XCTAssertEqual(items.count, 1)
+            XCTAssertEqual(items.first?.kind, .message)
+        }
+    }
 }

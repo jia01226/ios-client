@@ -1,15 +1,90 @@
 import SwiftUI
 import UIKit
 
+struct ThinkingTimelineRow: View {
+    @EnvironmentObject private var theme: Theme
+    let onOpen: () -> Void
+
+    var body: some View {
+        Button(action: onOpen) {
+            HStack(spacing: theme.metric.gapS) {
+                Text("Thinking")
+                Image(systemName: "chevron.up")
+                    .font(theme.font.thinkingChevron)
+            }
+            .font(theme.font.thinking)
+            .foregroundStyle(theme.color.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("查看思考")
+        .padding(.leading, theme.metric.thinkingLineGap + theme.metric.thinkingLineWidth)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(theme.color.accentSoft.opacity(theme.glass.thinkingLineOpacity))
+                .frame(width: theme.metric.thinkingLineWidth)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, theme.metric.thinkingHorizontalPadding)
+    }
+}
+
+struct ThinkingSheetView: View {
+    @EnvironmentObject private var theme: Theme
+    let message: Message
+    let onDone: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: theme.metric.gapM) {
+                    ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
+                        Text(section)
+                            .font(theme.font.thinkingBody)
+                            .foregroundStyle(theme.color.textPrimary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.horizontal, theme.metric.pagePadding)
+                .padding(.vertical, theme.metric.gapM)
+            }
+            .scrollContentBackground(.hidden)
+            .background(theme.color.bg)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Thinking")
+                        .font(theme.font.thinking)
+                        .foregroundStyle(theme.color.textPrimary)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成", action: onDone)
+                        .font(theme.font.body)
+                        .foregroundStyle(theme.effectiveAccent)
+                }
+            }
+        }
+        .accessibilityIdentifier("thinking-sheet")
+    }
+
+    private var sections: [String] {
+        [message.thoughtSummary, message.thoughtNote]
+            .compactMap { value in
+                guard let value else { return nil }
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : trimmed
+            }
+    }
+}
+
 struct MessageRow: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let message: Message
     let isHighlighted: Bool
-    let isThinkingExpanded: Bool
     let visibleSegmentCount: Int?
-    let anchorRegistry: ChatTimelineAnchorRegistry?
-    let onThinkingToggle: () -> Void
     let onAttachmentTap: (ChatAttachment) -> Void
     @State private var copied = false
 
@@ -22,23 +97,7 @@ struct MessageRow: View {
                 spacing: theme.metric.gapXS
             ) {
                 if hasBubbleContent {
-                    MessageUnitLayout(
-                        includesThinking: message.sender == .ke && hasThinkingContent,
-                        spacing: theme.metric.thinkingBubbleGap
-                    ) {
-                        if message.sender == .ke, hasThinkingContent {
-                            thoughtCard(
-                                summary: message.thoughtSummary,
-                                note: message.thoughtNote
-                            )
-                        }
-                        bubbleStack
-                    }
-                } else if message.sender == .ke, hasThinkingContent {
-                    thoughtCard(
-                        summary: message.thoughtSummary,
-                        note: message.thoughtNote
-                    )
+                    bubbleStack
                 }
 
                 HStack(spacing: theme.metric.gapS) {
@@ -100,96 +159,12 @@ struct MessageRow: View {
                     .transition(.opacity)
             }
         }
-        .background {
-            if message.sender == .ke, hasBubbleContent, let anchorRegistry {
-                ChatTimelineAnchorProbe(
-                    messageID: message.id,
-                    kind: .reply,
-                    registry: anchorRegistry
-                )
-            }
-        }
-    }
-
-    private var hasThinkingContent: Bool {
-        !thinkingSections.isEmpty
     }
 
     private var hasBubbleContent: Bool {
         !message.text.isEmpty || !(message.attachments ?? []).isEmpty
     }
 
-    private var thinkingSections: [String] {
-        [message.thoughtSummary, message.thoughtNote]
-            .compactMap { value in
-                guard let value else { return nil }
-                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                return trimmed.isEmpty ? nil : trimmed
-            }
-    }
-
-    private func thoughtCard(summary: String?, note: String?) -> some View {
-        VStack(alignment: .leading, spacing: theme.metric.gapS) {
-            Button(action: onThinkingToggle) {
-                HStack(spacing: theme.metric.gapS) {
-                    Text("Thinking")
-                    Image(systemName: isThinkingExpanded ? "chevron.up" : "chevron.down")
-                        .font(theme.font.thinkingChevron)
-                }
-                .font(theme.font.thinking)
-                .foregroundStyle(theme.color.textSecondary)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(isThinkingExpanded ? "收起思考" : "展开思考")
-            .accessibilityValue(isThinkingExpanded ? "已展开" : "已收起")
-            .background {
-                if let anchorRegistry {
-                    ChatTimelineAnchorProbe(
-                        messageID: message.id,
-                        kind: .thinkingTitle,
-                        registry: anchorRegistry
-                    )
-                }
-            }
-
-            if isThinkingExpanded {
-                // 不挂 .transition：展开/收起本来就走无动画事务（toggleThinking 里
-                // transaction.animation = nil），而 transition 会在流式期间列表高频
-                // 重建时被误触发，opacity 反复重播就是她报的"点开频闪"。
-                thinkingTextStack(summary: summary, note: note)
-            }
-        }
-        .padding(.leading, theme.metric.thinkingLineGap + theme.metric.thinkingLineWidth)
-        .overlay(alignment: .leading) {
-            Rectangle()
-                .fill(theme.color.accentSoft.opacity(theme.glass.thinkingLineOpacity))
-                .frame(width: theme.metric.thinkingLineWidth)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, theme.metric.thinkingHorizontalPadding)
-    }
-
-    private func thinkingTextStack(summary: String?, note: String?) -> some View {
-        let sections = [summary, note]
-            .compactMap { value -> String? in
-                guard let value else { return nil }
-                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                return trimmed.isEmpty ? nil : trimmed
-            }
-        return VStack(alignment: .leading, spacing: theme.metric.gapS) {
-            ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
-                thoughtText(section)
-            }
-        }
-    }
-
-    private func thoughtText(_ summary: String) -> some View {
-        Text(summary)
-            .font(theme.font.thinkingBody)
-            .foregroundStyle(theme.color.textSecondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .fixedSize(horizontal: false, vertical: true)
-    }
 
     private var bubbleStack: some View {
         VStack(
@@ -307,7 +282,7 @@ struct MessageRow: View {
     }
 
     private var usesFullWidthKeRow: Bool {
-        message.sender == .ke && (hasThinkingContent || usesWideKeLayout)
+        message.sender == .ke && usesWideKeLayout
     }
 
     private func isWideBubble(_ text: String?) -> Bool {
