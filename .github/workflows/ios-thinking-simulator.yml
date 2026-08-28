@@ -1,4 +1,4 @@
-name: Verify Chat Simulator
+name: Verify iOS Simulator
 
 on:
   workflow_dispatch:
@@ -28,7 +28,7 @@ jobs:
       - name: 生成 Xcode 工程
         run: xcodegen generate --spec project.yml
 
-      - name: 模拟器核验 Thinking 三态与消息分条
+      - name: 模拟器核验聊天与我们页交互
         run: |
           set -euo pipefail
           SIMULATOR_ID=$(xcrun simctl list devices available -j | python3 -c '
@@ -49,31 +49,31 @@ jobs:
             -project KeApp.xcodeproj \
             -scheme KeApp \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
-            -resultBundlePath "$RUNNER_TEMP/ChatSimulator.xcresult" \
+            -resultBundlePath "$RUNNER_TEMP/iOSSimulator.xcresult" \
             CODE_SIGNING_ALLOWED=NO
 
       - name: 导出 UI 核验截图
         if: always()
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/ChatSimulator-screenshots"
+          mkdir -p "$RUNNER_TEMP/iOSSimulator-screenshots"
           xcrun xcresulttool export attachments \
-            --path "$RUNNER_TEMP/ChatSimulator.xcresult" \
-            --output-path "$RUNNER_TEMP/ChatSimulator-screenshots"
-          test -n "$(find "$RUNNER_TEMP/ChatSimulator-screenshots" -type f -name '*.png' -print -quit)"
+            --path "$RUNNER_TEMP/iOSSimulator.xcresult" \
+            --output-path "$RUNNER_TEMP/iOSSimulator-screenshots"
+          test -n "$(find "$RUNNER_TEMP/iOSSimulator-screenshots" -type f -name '*.png' -print -quit)"
 
       - name: 上传 UI 核验截图
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ChatSimulator-screenshots
-          path: ${{ runner.temp }}/ChatSimulator-screenshots
+          name: iOSSimulator-screenshots
+          path: ${{ runner.temp }}/iOSSimulator-screenshots
           retention-days: 14
 
       - name: 上传模拟器核验记录
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ChatSimulator-xcresult
-          path: ${{ runner.temp }}/ChatSimulator.xcresult
+          name: iOSSimulator-xcresult
+          path: ${{ runner.temp }}/iOSSimulator.xcresult
           retention-days: 14
