@@ -322,7 +322,11 @@ final class ThinkingInteractionTests: XCTestCase {
         }
         let claude2 = app.buttons["model-group-claude_2"]
         let claude2Model = app.buttons["model-option-claude2-subscription-opus-5"]
+        let stableBubble = app.descendants(matching: .any)
+            .matching(identifier: "message-bubble-ui-test-model-groups-message-0")
+            .firstMatch
         XCTAssertTrue(claude2Model.waitForExistence(timeout: 2), "当前模型所属分栏应默认展开")
+        XCTAssertTrue(stableBubble.exists, "模型抽屉下方应保留原聊天时间线")
         attachScreenshot(named: "15-model-groups-current-open")
 
         claude2.tap()
@@ -333,12 +337,14 @@ final class ThinkingInteractionTests: XCTestCase {
         let gptModel = app.buttons["model-option-codex-subscription:gpt-5.6-terra"]
         XCTAssertTrue(gptModel.waitForExistence(timeout: 2))
         gptModel.tap()
+        XCTAssertTrue(stableBubble.exists, "切换模型期间不应重建或清空底下的聊天时间线")
 
         let summary = app.descendants(matching: .any)
             .matching(identifier: "selected-model-summary")
             .firstMatch
         XCTAssertTrue(summary.waitForExistence(timeout: 2))
         XCTAssertTrue(summary.label.contains("GPT-5.6 Terra"))
+        XCTAssertTrue(stableBubble.exists, "切换完成后底下的聊天时间线仍应保持原位")
         attachScreenshot(named: "16-model-groups-gpt-selected")
 
         gpt.tap()

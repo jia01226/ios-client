@@ -63,7 +63,7 @@ enum ChatTimelineFollowPolicy {
     }
 }
 
-struct ChatCollectionTimeline: UIViewControllerRepresentable {
+struct ChatCollectionTimeline: UIViewControllerRepresentable, Equatable {
     let items: [ChatTimelineItem]
     let streamRevision: Int
     let suppressAutoScrollUntil: Date
@@ -72,6 +72,18 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable {
     let onThinkingOpen: (String) -> Void
     let onAttachmentTap: (ChatAttachment) -> Void
     let onBackgroundTap: () -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        // ChatViewModel 还承载模型选择、上传和设置状态。那些发布会让父视图
+        // 重算，但不应重新触碰底下的 UIKit 时间线；透明材质在无关更新时
+        // 被重新提交，会在真机上表现为聊天区闪一下。闭包不参与视觉身份，
+        // 真正会改变时间线的输入都在这里逐项比较。
+        lhs.items == rhs.items
+            && lhs.streamRevision == rhs.streamRevision
+            && lhs.suppressAutoScrollUntil == rhs.suppressAutoScrollUntil
+            && lhs.inputFocused == rhs.inputFocused
+            && lhs.highlightedMessageID == rhs.highlightedMessageID
+    }
 
     func makeUIViewController(context: Context) -> ChatCollectionTimelineController {
         ChatCollectionTimelineController(

@@ -236,6 +236,7 @@ struct ChatView: View {
                         if attachmentsOpen { attachmentsOpen = false }
                     }
                 )
+                .equatable()
             }
         }
         .onChange(of: inputFocused) { _, focused in

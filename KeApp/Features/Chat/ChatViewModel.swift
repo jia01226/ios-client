@@ -123,6 +123,14 @@ final class ChatViewModel: ObservableObject {
                     group: "deepseek", family: "deepseek", available: true
                 ),
             ]
+            messages = [
+                Message(
+                    id: "ui-test-model-groups-message",
+                    sender: .ke,
+                    text: "聊天记录保持原位。",
+                    time: .now
+                )
+            ]
         } else if arguments.contains("-ui-test-thinking-static") {
             uiTestFixture = .thinkingStatic
             phase = .ready
@@ -600,6 +608,9 @@ final class ChatViewModel: ObservableObject {
     func selectModel(_ model: String) async {
 #if DEBUG
         if uiTestFixture == .modelGroups {
+            isSelectingModel = true
+            defer { isSelectingModel = false }
+            try? await Task.sleep(nanoseconds: 250_000_000)
             selectedModel = model
             return
         }

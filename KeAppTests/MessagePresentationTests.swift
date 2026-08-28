@@ -2,6 +2,53 @@ import XCTest
 @testable import KeApp
 
 final class MessagePresentationTests: XCTestCase {
+    func testTimelineSkipsUnrelatedModelSelectionPublishes() {
+        let message = Message(
+            id: "stable-during-model-selection",
+            sender: .ke,
+            text: "聊天记录保持原位。",
+            time: .now
+        )
+        let items = ChatTimelineItem.make(
+            message: message,
+            isHighlighted: false,
+            visibleSegmentCount: nil
+        )
+        let original = ChatCollectionTimeline(
+            items: items,
+            streamRevision: 0,
+            suppressAutoScrollUntil: .distantPast,
+            inputFocused: false,
+            highlightedMessageID: nil,
+            onThinkingOpen: { _ in },
+            onAttachmentTap: { _ in },
+            onBackgroundTap: {}
+        )
+        let unrelatedParentRefresh = ChatCollectionTimeline(
+            items: items,
+            streamRevision: 0,
+            suppressAutoScrollUntil: .distantPast,
+            inputFocused: false,
+            highlightedMessageID: nil,
+            onThinkingOpen: { _ in XCTFail("无关刷新不应替换时间线回调") },
+            onAttachmentTap: { _ in XCTFail("无关刷新不应替换时间线回调") },
+            onBackgroundTap: { XCTFail("无关刷新不应替换时间线回调") }
+        )
+        let keyboardRefresh = ChatCollectionTimeline(
+            items: items,
+            streamRevision: 0,
+            suppressAutoScrollUntil: .distantPast,
+            inputFocused: true,
+            highlightedMessageID: nil,
+            onThinkingOpen: { _ in },
+            onAttachmentTap: { _ in },
+            onBackgroundTap: {}
+        )
+
+        XCTAssertEqual(original, unrelatedParentRefresh)
+        XCTAssertNotEqual(original, keyboardRefresh)
+    }
+
     func testTimelineDoesNotStealScrollForIncomingStreamWhileReadingHistory() {
         XCTAssertFalse(ChatTimelineFollowPolicy.shouldFollowLatest(
             timelineChanged: true,
