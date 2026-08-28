@@ -43,6 +43,11 @@ struct RootTabView: View {
                         .accessibilityIdentifier("root-tab-bar")
                 }
             }
+            .background {
+                if selection == .us {
+                    theme.effectiveBackground.ignoresSafeArea()
+                }
+            }
         }
         .onReceive(
             NotificationCenter.default.publisher(
@@ -71,7 +76,20 @@ struct RootTabView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
-        .background(CrystalSurface(cornerRadius: theme.metric.radiusDock, strength: 1.15))
+        .background {
+            if selection == .us {
+                theme.effectiveBackground
+            } else {
+                CrystalSurface(cornerRadius: theme.metric.radiusDock, strength: 1.15)
+            }
+        }
+        .overlay(alignment: .top) {
+            if selection == .us {
+                Rectangle()
+                    .fill(theme.color.separator.opacity(0.72))
+                    .frame(height: 0.5)
+            }
+        }
         .padding(.horizontal, theme.metric.pagePadding)
         .padding(.top, 6)
         .padding(.bottom, 4)

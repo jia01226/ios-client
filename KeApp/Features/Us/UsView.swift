@@ -16,14 +16,15 @@ struct UsView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: theme.metric.gapXL) {
+            LazyVStack(alignment: .leading, spacing: theme.metric.gapM) {
                 pageHeader
 
                 MoonOrbitSelector(
                     events: vm.anniversaries,
                     selectedIndex: $selectedAnniversaryIndex
                 )
-                .frame(height: 344)
+                .frame(height: 300)
+                .clipped()
 
                 if let selectedAnniversary {
                     countdown(for: selectedAnniversary)
@@ -37,7 +38,7 @@ struct UsView: View {
             .padding(.bottom, theme.metric.gapXL)
         }
         .scrollContentBackground(.hidden)
-        .background(Color.clear)
+        .background(theme.effectiveBackground.ignoresSafeArea())
         .onChange(of: vm.anniversaries.map(\.id)) { _, ids in
             guard !ids.isEmpty else {
                 selectedAnniversaryIndex = 0
@@ -48,17 +49,26 @@ struct UsView: View {
     }
 
     private var pageHeader: some View {
-        VStack(alignment: .leading, spacing: theme.metric.gapXS) {
-            Text("我们")
-                .font(.system(.largeTitle, design: .serif, weight: .semibold))
-                .tracking(-0.8)
-                .foregroundStyle(theme.color.textPrimary)
-            Text("月亮替我们记得")
-                .font(.system(.subheadline, design: .serif))
-                .tracking(0.8)
-                .foregroundStyle(theme.color.textSecondary)
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: theme.metric.gapXS) {
+                Text("我们")
+                    .font(.system(size: 38, weight: .regular, design: .serif))
+                    .tracking(1.4)
+                    .foregroundStyle(theme.color.textPrimary)
+                Text("月亮替我们记得")
+                    .font(.system(.subheadline, design: .serif))
+                    .tracking(1.1)
+                    .foregroundStyle(theme.color.textSecondary)
+            }
+
+            Spacer()
+
+            Image(systemName: "plus")
+                .font(.system(size: 21, weight: .light))
+                .foregroundStyle(theme.effectiveAccent)
+                .padding(.top, 8)
+                .accessibilityLabel("添加纪念日")
         }
-        .accessibilityElement(children: .combine)
     }
 
     private var selectedAnniversary: Anniversary? {
@@ -71,7 +81,7 @@ struct UsView: View {
 
         return HStack(alignment: .lastTextBaseline, spacing: theme.metric.gapS) {
             Text("\(days)")
-                .font(.custom("Didot", size: 76, relativeTo: .largeTitle))
+                .font(.custom("Didot", size: 64, relativeTo: .largeTitle))
                 .fontWeight(.regular)
                 .tracking(-2.2)
                 .monospacedDigit()
@@ -114,16 +124,9 @@ struct UsView: View {
                     .accessibilityHidden(true)
 
                 VStack(spacing: 0) {
-                    ForEach(Array(vm.activeReminders.enumerated()), id: \.element.id) { index, reminder in
+                    ForEach(vm.activeReminders) { reminder in
                         ReminderRow(reminder: reminder)
-                            .padding(.vertical, theme.metric.gapM)
-
-                        if index < vm.activeReminders.count - 1 {
-                            Rectangle()
-                                .fill(theme.color.separator.opacity(0.55))
-                                .frame(height: 0.5)
-                                .padding(.leading, 20)
-                        }
+                            .padding(.vertical, theme.metric.gapS)
                     }
                 }
             }
@@ -180,9 +183,9 @@ private struct MoonOrbitSelector: View {
     var body: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
-            let center = CGPoint(x: width - 124, y: 164)
-            let orbitRadius = CGSize(width: 150, height: 142)
-            let moonSize: CGFloat = 248
+            let center = CGPoint(x: width - 36, y: 150)
+            let orbitRadius = CGSize(width: 158, height: 126)
+            let moonSize: CGFloat = 278
 
             ZStack {
                 Ellipse()
@@ -210,26 +213,19 @@ private struct MoonOrbitSelector: View {
                     let relativePosition = CGFloat(index) - orbitalPosition
 
                     if OrbitSelectionMath.isVisible(relativePosition: relativePosition) {
-                        MemoryPlanet(
+                        let position = planetPosition(
+                            relativePosition: relativePosition,
+                            center: center,
+                            radius: orbitRadius
+                        )
+
+                        OrbitEventMarker(
+                            title: event.title,
                             activeProgress: max(0, 1 - abs(relativePosition)),
                             selected: index == selectedIndex
                         )
-                        .position(
-                            planetPosition(
-                                relativePosition: relativePosition,
-                                center: center,
-                                radius: orbitRadius
-                            )
-                        )
+                        .position(x: position.x - 74, y: position.y)
                     }
-                }
-
-                if let selectedEvent {
-                    selectedLabel(
-                        selectedEvent.title,
-                        focusX: center.x - orbitRadius.width,
-                        focusY: center.y
-                    )
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -276,27 +272,6 @@ private struct MoonOrbitSelector: View {
             x: center.x + radius.width * CGFloat(cos(angle)),
             y: center.y - radius.height * CGFloat(sin(angle))
         )
-    }
-
-    private func selectedLabel(_ title: String, focusX: CGFloat, focusY: CGFloat) -> some View {
-        ZStack(alignment: .trailing) {
-            Text(title)
-                .font(.system(.callout, design: .serif, weight: .medium))
-                .tracking(0.3)
-                .lineLimit(1)
-                .minimumScaleFactor(0.78)
-                .foregroundStyle(theme.effectiveAccent)
-                .frame(width: max(84, focusX - 28), alignment: .trailing)
-                .offset(x: -34)
-
-            Rectangle()
-                .fill(theme.effectiveAccent.opacity(0.78))
-                .frame(width: 26, height: 0.8)
-        }
-        .frame(width: max(110, focusX), alignment: .trailing)
-        .position(x: max(55, focusX / 2), y: focusY)
-        .allowsHitTesting(false)
-        .transition(.opacity)
     }
 
     private var dragGesture: some Gesture {
@@ -453,6 +428,36 @@ private struct MemoryPlanet: View {
             .scaleEffect(selected ? 1.04 : 1)
             .animation(.easeOut(duration: 0.14), value: selected)
             .accessibilityHidden(true)
+    }
+}
+
+private struct OrbitEventMarker: View {
+    @EnvironmentObject private var theme: Theme
+    let title: String
+    let activeProgress: CGFloat
+    let selected: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.system(.callout, design: .serif, weight: selected ? .medium : .regular))
+                .tracking(0.25)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+                .foregroundStyle(selected ? theme.effectiveAccent : theme.color.textPrimary)
+                .frame(width: 96, alignment: .trailing)
+
+            if selected {
+                Rectangle()
+                    .fill(theme.effectiveAccent.opacity(0.82))
+                    .frame(width: 22, height: 0.8)
+            }
+
+            MemoryPlanet(activeProgress: activeProgress, selected: selected)
+        }
+        .frame(width: 160, alignment: .trailing)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
