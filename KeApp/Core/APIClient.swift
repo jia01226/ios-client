@@ -81,17 +81,92 @@ struct ChatModelOption: Decodable, Identifiable, Hashable, Sendable {
     let label: String?
     let description: String?
     let group: String?
+    let family: String?
+    let available: Bool?
 
     var displayName: String {
         let value = label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return value.isEmpty ? id : value
     }
+
+    var isAvailable: Bool { available ?? true }
+}
+
+struct ChatModelGroup: Decodable, Identifiable, Hashable, Sendable {
+    let id: String
+    let label: String
+    let available: Bool?
+    let configured: Bool?
+    let message: String?
 }
 
 struct ChatModelCatalog: Decodable, Sendable {
     let models: [String]
     let `default`: String
     let options: [ChatModelOption]
+    let groups: [ChatModelGroup]?
+}
+
+struct ChatModelSection: Identifiable, Hashable, Sendable {
+    let id: String
+    let title: String
+    let options: [ChatModelOption]
+    let isAvailable: Bool
+    let statusMessage: String?
+
+    static let orderedIDs = ["claude_1", "claude_2", "gpt", "deepseek"]
+
+    static func make(
+        options: [ChatModelOption],
+        groups: [ChatModelGroup] = []
+    ) -> [ChatModelSection] {
+        var metadata: [String: ChatModelGroup] = [:]
+        for group in groups {
+            metadata[normalizedGroup(group.id)] = group
+        }
+        let grouped = Dictionary(grouping: options) {
+            normalizedGroup($0.family ?? $0.group ?? $0.provider ?? "")
+        }
+        let titles = [
+            "claude_1": "Claude 1",
+            "claude_2": "Claude 2",
+            "gpt": "GPT",
+            "deepseek": "DPSK",
+        ]
+
+        return orderedIDs.map { id in
+            let rows = grouped[id] ?? []
+            let group = metadata[id]
+            let available = group?.available ?? rows.contains(where: \.isAvailable)
+            let message: String?
+            if rows.isEmpty {
+                message = group?.message ?? "尚未接入"
+            } else if !available {
+                message = group?.message ?? "当前不可用"
+            } else {
+                message = nil
+            }
+            let providedTitle = group?.label.trimmingCharacters(in: .whitespacesAndNewlines)
+            return ChatModelSection(
+                id: id,
+                title: (providedTitle?.isEmpty == false ? providedTitle : nil)
+                    ?? titles[id]
+                    ?? id,
+                options: rows,
+                isAvailable: available,
+                statusMessage: message
+            )
+        }
+    }
+
+    static func normalizedGroup(_ rawValue: String) -> String {
+        let value = rawValue.lowercased().replacingOccurrences(of: "-", with: "_")
+        if value.contains("claude2") || value.contains("claude_2") { return "claude_2" }
+        if value == "claude" || value.contains("claude_subscription") { return "claude_1" }
+        if value.contains("deepseek") || value == "dpsk" { return "deepseek" }
+        if value.contains("codex") || value.contains("gpt") { return "gpt" }
+        return "gpt"
+    }
 }
 
 private struct ChatRequestBody: Encodable {

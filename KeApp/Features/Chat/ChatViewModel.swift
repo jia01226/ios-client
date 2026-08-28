@@ -23,6 +23,7 @@ final class ChatViewModel: ObservableObject {
     @Published var historyLoadFailed = false
     @Published var streamRevision = 0
     @Published var modelOptions: [ChatModelOption] = []
+    @Published var modelGroups: [ChatModelGroup] = []
     @Published var selectedModel: String?
     @Published var isLoadingModels = false
     @Published var isSelectingModel = false
@@ -68,6 +69,7 @@ final class ChatViewModel: ObservableObject {
         case scrollControl
         case thinkingSegmentRace
         case sendStability
+        case modelGroups
     }
 
     private var uiTestFixture: UITestFixture?
@@ -76,7 +78,52 @@ final class ChatViewModel: ObservableObject {
     init() {
 #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
-        if arguments.contains("-ui-test-thinking-static") {
+        if arguments.contains("-ui-test-model-groups") {
+            uiTestFixture = .modelGroups
+            phase = .ready
+            sessionID = 1
+            selectedModel = "claude2-subscription-opus-5"
+            modelGroups = [
+                ChatModelGroup(
+                    id: "claude_1", label: "Claude 1", available: true,
+                    configured: true, message: nil
+                ),
+                ChatModelGroup(
+                    id: "claude_2", label: "Claude 2", available: true,
+                    configured: true, message: nil
+                ),
+                ChatModelGroup(
+                    id: "gpt", label: "GPT", available: true,
+                    configured: true, message: nil
+                ),
+                ChatModelGroup(
+                    id: "deepseek", label: "DPSK", available: true,
+                    configured: true, message: nil
+                ),
+            ]
+            modelOptions = [
+                ChatModelOption(
+                    id: "claude-subscription-opus-5", provider: "claude_subscription",
+                    label: "Opus 5", description: "Claude Max 1 号账号",
+                    group: "claude_subscription", family: "claude_1", available: true
+                ),
+                ChatModelOption(
+                    id: "claude2-subscription-opus-5", provider: "claude_subscription",
+                    label: "Opus 5", description: "Claude Max 2 号账号",
+                    group: "claude_subscription", family: "claude_2", available: true
+                ),
+                ChatModelOption(
+                    id: "codex-subscription:gpt-5.6-terra", provider: "codex_subscription",
+                    label: "GPT-5.6 Terra", description: "ChatGPT 的 Codex 订阅额度",
+                    group: "codex_subscription", family: "gpt", available: true
+                ),
+                ChatModelOption(
+                    id: "deepseek-v4-pro", provider: "deepseek",
+                    label: "V4 Pro", description: "DeepSeek 备用线路，不显示 Thinking",
+                    group: "deepseek", family: "deepseek", available: true
+                ),
+            ]
+        } else if arguments.contains("-ui-test-thinking-static") {
             uiTestFixture = .thinkingStatic
             phase = .ready
             messages = [
@@ -537,10 +584,13 @@ final class ChatViewModel: ObservableObject {
                         provider: nil,
                         label: nil,
                         description: nil,
-                        group: nil
+                        group: nil,
+                        family: nil,
+                        available: true
                     )
                 }
                 : catalog.options
+            modelGroups = catalog.groups ?? []
             if selectedModel == nil { selectedModel = catalog.default }
         } catch {
             modelError = error.localizedDescription
@@ -548,6 +598,12 @@ final class ChatViewModel: ObservableObject {
     }
 
     func selectModel(_ model: String) async {
+#if DEBUG
+        if uiTestFixture == .modelGroups {
+            selectedModel = model
+            return
+        }
+#endif
         guard let sessionID, !isSelectingModel else { return }
         isSelectingModel = true
         modelError = nil

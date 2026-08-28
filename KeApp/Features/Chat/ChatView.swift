@@ -30,6 +30,7 @@ struct ChatView: View {
     @State private var highlightedMessageID: String?
     @State private var presentedThinkingMessageID: String?
     @State private var previewedImage: ChatAttachment?
+    @State private var expandedModelGroups: Set<String> = []
 
     var body: some View {
         Group {
@@ -650,7 +651,10 @@ struct ChatView: View {
             }
             settingsLink("模型选择", icon: "sparkles") {
                 settingsPage = .models
-                Task { await vm.loadModels() }
+                Task {
+                    await vm.loadModels()
+                    expandSelectedModelGroup()
+                }
             }
 
             settingSlider(
@@ -833,41 +837,164 @@ struct ChatView: View {
                 settingsError(error) {
                     Task { await vm.loadModels(force: true) }
                 }
-            } else if vm.modelOptions.isEmpty {
-                settingsHint("服务器没有返回可用模型。")
             } else {
-                ForEach(vm.modelOptions) { option in
-                    Button {
-                        Task { await vm.selectModel(option.id) }
-                    } label: {
-                        HStack(alignment: .top, spacing: theme.metric.gapM) {
-                            VStack(alignment: .leading, spacing: theme.metric.gapXS) {
-                                Text(option.displayName)
-                                    .font(theme.font.body)
-                                    .foregroundStyle(theme.color.textPrimary)
-                                if let description = option.description,
-                                   !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                    Text(description)
-                                        .font(theme.font.caption)
-                                        .foregroundStyle(theme.color.textSecondary)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                            }
-                            Spacer(minLength: theme.metric.gapS)
-                            if vm.selectedModel == option.id {
-                                Image(systemName: "checkmark")
-                                    .foregroundStyle(theme.effectiveAccent)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, minHeight: theme.metric.touchTarget, alignment: .leading)
-                        .contentShape(Rectangle())
+                if let selected = selectedModelOption {
+                    VStack(alignment: .leading, spacing: theme.metric.gapXS) {
+                        Text("当前使用")
+                            .font(theme.font.caption)
+                            .foregroundStyle(theme.color.textSecondary)
+                        Text("\(modelSectionTitle(for: selected)) · \(selected.displayName)")
+                            .font(theme.font.sectionTitle)
+                            .foregroundStyle(theme.color.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(vm.isSelectingModel)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.bottom, theme.metric.gapS)
+                    .accessibilityIdentifier("selected-model-summary")
+                }
+
+                ForEach(modelSections) { section in
+                    modelDisclosure(section)
                 }
             }
         }
         .padding(.top, theme.metric.gapS)
+    }
+
+    private var modelSections: [ChatModelSection] {
+        ChatModelSection.make(options: vm.modelOptions, groups: vm.modelGroups)
+    }
+
+    private var selectedModelOption: ChatModelOption? {
+        vm.modelOptions.first { $0.id == vm.selectedModel }
+    }
+
+    private func modelSectionTitle(for option: ChatModelOption) -> String {
+        let groupID = ChatModelSection.normalizedGroup(
+            option.family ?? option.group ?? option.provider ?? ""
+        )
+        return modelSections.first(where: { $0.id == groupID })?.title ?? "模型"
+    }
+
+    @ViewBuilder
+    private func modelDisclosure(_ section: ChatModelSection) -> some View {
+        let isExpanded = expandedModelGroups.contains(section.id)
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                toggleModelGroup(section.id)
+            } label: {
+                HStack(spacing: theme.metric.gapS) {
+                    VStack(alignment: .leading, spacing: theme.metric.gapXS) {
+                        Text(section.title)
+                            .font(theme.font.sectionTitle)
+                            .foregroundStyle(theme.color.textPrimary)
+                        if let selected = section.options.first(where: { $0.id == vm.selectedModel }) {
+                            Text(selected.displayName)
+                                .font(theme.font.caption)
+                                .foregroundStyle(theme.effectiveAccent)
+                        } else if !section.isAvailable, let message = section.statusMessage {
+                            Text(message)
+                                .font(theme.font.caption)
+                                .foregroundStyle(theme.color.textSecondary)
+                        }
+                    }
+                    Spacer(minLength: theme.metric.gapS)
+                    Image(systemName: "chevron.right")
+                        .font(theme.font.disclosureIcon)
+                        .foregroundStyle(theme.color.textSecondary)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                }
+                .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("model-group-\(section.id)")
+            .accessibilityLabel("\(section.title)，\(isExpanded ? "已展开" : "已折叠")")
+            .accessibilityHint(isExpanded ? "点两下折叠" : "点两下查看模型")
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 0) {
+                    if section.options.isEmpty {
+                        Text(section.statusMessage ?? "暂时没有可选模型")
+                            .font(theme.font.caption)
+                            .foregroundStyle(theme.color.textSecondary)
+                            .frame(
+                                maxWidth: .infinity,
+                                minHeight: theme.metric.touchTarget,
+                                alignment: .leading
+                            )
+                    } else {
+                        ForEach(section.options) { option in
+                            modelOptionRow(option)
+                        }
+                    }
+                }
+                .padding(.leading, theme.metric.gapM)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
+            Rectangle()
+                .fill(theme.color.separator)
+                .frame(height: 0.7)
+        }
+    }
+
+    private func modelOptionRow(_ option: ChatModelOption) -> some View {
+        Button {
+            Task { await vm.selectModel(option.id) }
+        } label: {
+            HStack(alignment: .top, spacing: theme.metric.gapM) {
+                VStack(alignment: .leading, spacing: theme.metric.gapXS) {
+                    Text(option.displayName)
+                        .font(theme.font.body)
+                        .foregroundStyle(theme.color.textPrimary)
+                    if let description = option.description,
+                       !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(description)
+                            .font(theme.font.caption)
+                            .foregroundStyle(theme.color.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer(minLength: theme.metric.gapS)
+                if vm.selectedModel == option.id {
+                    Image(systemName: "checkmark")
+                        .font(theme.font.disclosureIcon)
+                        .foregroundStyle(theme.effectiveAccent)
+                        .accessibilityHidden(true)
+                }
+            }
+            .frame(
+                maxWidth: .infinity,
+                minHeight: theme.metric.touchTarget,
+                alignment: .leading
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(vm.isSelectingModel || !option.isAvailable)
+        .opacity(option.isAvailable ? 1 : 0.45)
+        .accessibilityIdentifier("model-option-\(option.id)")
+        .accessibilityValue(vm.selectedModel == option.id ? "已选择" : "")
+    }
+
+    private func toggleModelGroup(_ id: String) {
+        let animation: Animation? = reduceMotion ? nil : .easeInOut(duration: 0.18)
+        withAnimation(animation) {
+            if expandedModelGroups.contains(id) {
+                expandedModelGroups.remove(id)
+            } else {
+                expandedModelGroups.insert(id)
+            }
+        }
+    }
+
+    private func expandSelectedModelGroup() {
+        guard let option = selectedModelOption else { return }
+        let groupID = ChatModelSection.normalizedGroup(
+            option.family ?? option.group ?? option.provider ?? ""
+        )
+        expandedModelGroups.insert(groupID)
     }
 
     private func searchResultRow(_ message: Message) -> some View {

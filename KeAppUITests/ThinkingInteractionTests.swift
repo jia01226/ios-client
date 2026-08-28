@@ -309,6 +309,40 @@ final class ThinkingInteractionTests: XCTestCase {
         attachScreenshot(named: "14-repeated-tab-switching-stable")
     }
 
+    func testModelFamiliesExpandCollapseAndSelectIndependently() throws {
+        let app = launch(arguments: ["-ui-test-model-groups"])
+        let settings = app.buttons["打开聊天设置"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        settings.tap()
+        XCTAssertTrue(app.buttons["模型选择"].waitForExistence(timeout: 2))
+        app.buttons["模型选择"].tap()
+
+        for id in ["claude_1", "claude_2", "gpt", "deepseek"] {
+            XCTAssertTrue(app.buttons["model-group-\(id)"].waitForExistence(timeout: 2))
+        }
+        let claude2 = app.buttons["model-group-claude_2"]
+        let claude2Model = app.buttons["model-option-claude2-subscription-opus-5"]
+        XCTAssertTrue(claude2Model.waitForExistence(timeout: 2), "当前模型所属分栏应默认展开")
+        attachScreenshot(named: "15-model-groups-current-open")
+
+        claude2.tap()
+        XCTAssertTrue(claude2Model.waitForNonExistence(timeout: 2))
+
+        let gpt = app.buttons["model-group-gpt"]
+        gpt.tap()
+        let gptModel = app.buttons["model-option-codex-subscription:gpt-5.6-terra"]
+        XCTAssertTrue(gptModel.waitForExistence(timeout: 2))
+        gptModel.tap()
+
+        let summary = app.descendants(matching: .any)["selected-model-summary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 2))
+        XCTAssertTrue(summary.label.contains("GPT-5.6 Terra"))
+        attachScreenshot(named: "16-model-groups-gpt-selected")
+
+        gpt.tap()
+        XCTAssertTrue(gptModel.waitForNonExistence(timeout: 2))
+    }
+
     private func launch(arguments: [String]) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = arguments
