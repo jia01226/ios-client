@@ -52,12 +52,12 @@ struct UsView: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: theme.metric.gapXS) {
                 Text("我们")
-                    .font(.system(size: 38, weight: .regular, design: .serif))
-                    .tracking(1.4)
+                    .font(.custom("STSongti-SC-Light", size: 42, relativeTo: .largeTitle))
+                    .tracking(4.2)
                     .foregroundStyle(theme.color.textPrimary)
                 Text("月亮替我们记得")
-                    .font(.system(.subheadline, design: .serif))
-                    .tracking(1.1)
+                    .font(.custom("STSongti-SC-Light", size: 14, relativeTo: .subheadline))
+                    .tracking(2.0)
                     .foregroundStyle(theme.color.textSecondary)
             }
 
@@ -99,7 +99,8 @@ struct UsView: View {
                 )
 
             Text("天后")
-                .font(.system(.body, design: .serif))
+                .font(.custom("STSongti-SC-Light", size: 16, relativeTo: .body))
+                .tracking(1.0)
                 .foregroundStyle(theme.color.textSecondary)
                 .padding(.bottom, 10)
         }
@@ -111,24 +112,24 @@ struct UsView: View {
     private var remindersSection: some View {
         VStack(alignment: .leading, spacing: theme.metric.gapM) {
             Text("柯替你记得")
-                .font(.system(size: 24, weight: .regular, design: .serif))
-                .tracking(0.6)
+                .font(.custom("STSongti-SC-Regular", size: 24, relativeTo: .title2))
+                .tracking(1.8)
                 .foregroundStyle(theme.color.textPrimary)
 
-            ZStack(alignment: .topTrailing) {
+            VStack(spacing: 0) {
+                ForEach(vm.activeReminders) { reminder in
+                    ReminderRow(reminder: reminder)
+                        .padding(.vertical, theme.metric.gapS)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
                 Image("CamelliaMoonlight")
                     .resizable()
                     .scaledToFit()
                     .frame(width: 150)
                     .opacity(0.045)
+                    .allowsHitTesting(false)
                     .accessibilityHidden(true)
-
-                VStack(spacing: 0) {
-                    ForEach(vm.activeReminders) { reminder in
-                        ReminderRow(reminder: reminder)
-                            .padding(.vertical, theme.metric.gapS)
-                    }
-                }
             }
         }
     }
@@ -136,7 +137,8 @@ struct UsView: View {
     private var shiftSection: some View {
         VStack(alignment: .leading, spacing: theme.metric.gapM) {
             Text("这周排班")
-                .font(.system(.title3, design: .serif, weight: .medium))
+                .font(.custom("STSongti-SC-Regular", size: 20, relativeTo: .title3))
+                .tracking(1.0)
                 .foregroundStyle(theme.color.textPrimary)
 
             HStack(spacing: theme.metric.gapS) {
@@ -440,8 +442,14 @@ private struct OrbitEventMarker: View {
     var body: some View {
         HStack(spacing: 8) {
             Text(title)
-                .font(.system(.callout, design: .serif, weight: selected ? .medium : .regular))
-                .tracking(0.25)
+                .font(
+                    .custom(
+                        selected ? "STSongti-SC-Regular" : "STSongti-SC-Light",
+                        size: 16,
+                        relativeTo: .callout
+                    )
+                )
+                .tracking(selected ? 1.1 : 0.8)
                 .lineLimit(1)
                 .minimumScaleFactor(0.78)
                 .foregroundStyle(selected ? theme.effectiveAccent : theme.color.textPrimary)
@@ -468,22 +476,27 @@ private struct ReminderRow: View {
     let reminder: Reminder
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: theme.metric.gapM) {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
             Circle()
                 .fill(theme.effectiveAccent.opacity(0.82))
                 .frame(width: 6, height: 6)
                 .accessibilityHidden(true)
 
             Text(reminder.text)
-                .font(.system(.body, design: .serif))
+                .font(.custom("STSongti-SC-Light", size: 15.5, relativeTo: .body))
+                .tracking(0.45)
+                .lineSpacing(3)
                 .foregroundStyle(theme.color.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(1)
 
             Spacer(minLength: theme.metric.gapS)
 
             Text(timeLabel)
-                .font(theme.font.caption)
+                .font(.custom("STSongti-SC-Light", size: 13, relativeTo: .caption))
+                .tracking(0.5)
                 .foregroundStyle(theme.effectiveAccent)
+                .fixedSize(horizontal: true, vertical: false)
         }
         .accessibilityElement(children: .combine)
     }
