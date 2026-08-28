@@ -111,16 +111,16 @@ struct UsView: View {
     private var remindersSection: some View {
         VStack(alignment: .leading, spacing: theme.metric.gapM) {
             Text("柯替你记得")
-                .font(.system(.title2, design: .serif, weight: .medium))
+                .font(.system(size: 24, weight: .regular, design: .serif))
                 .tracking(0.6)
                 .foregroundStyle(theme.color.textPrimary)
 
-            ZStack(alignment: .trailing) {
+            ZStack(alignment: .topTrailing) {
                 Image("CamelliaMoonlight")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 190)
-                    .opacity(0.075)
+                    .frame(width: 150)
+                    .opacity(0.045)
                     .accessibilityHidden(true)
 
                 VStack(spacing: 0) {
@@ -491,7 +491,16 @@ private struct ReminderRow: View {
     private var timeLabel: String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = Calendar.current.isDateInToday(reminder.dueAt) ? "HH:mm" : "M月d日"
+        formatter.dateFormat = "HH:mm"
+
+        if Calendar.current.isDateInToday(reminder.dueAt) {
+            return "今天 \(formatter.string(from: reminder.dueAt))"
+        }
+        if Calendar.current.isDateInTomorrow(reminder.dueAt) {
+            return "明天 \(formatter.string(from: reminder.dueAt))"
+        }
+
+        formatter.dateFormat = "M月d日"
         return formatter.string(from: reminder.dueAt)
     }
 }
