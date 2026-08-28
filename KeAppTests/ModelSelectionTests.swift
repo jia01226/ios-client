@@ -3,7 +3,8 @@ import XCTest
 
 final class ModelSelectionTests: XCTestCase {
     func testCatalogDecodesFourOrderedProviderGroups() throws {
-        let data = Data(#"{
+        let data = Data(#"""
+        {
           "models":["claude-subscription-opus-5","claude2-subscription-opus-5","codex-subscription:gpt-5.6-terra","deepseek-v4-pro"],
           "default":"claude2-subscription-opus-5",
           "options":[
@@ -18,7 +19,8 @@ final class ModelSelectionTests: XCTestCase {
             {"id":"gpt","label":"GPT","available":true,"configured":true,"message":""},
             {"id":"deepseek","label":"DPSK","available":true,"configured":true,"message":""}
           ]
-        }"#.utf8)
+        }
+        """#.utf8)
 
         let catalog = try JSONDecoder().decode(ChatModelCatalog.self, from: data)
         let sections = ChatModelSection.make(
