@@ -850,6 +850,7 @@ struct ChatView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.bottom, theme.metric.gapS)
+                    .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("selected-model-summary")
                 }
 

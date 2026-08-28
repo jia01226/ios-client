@@ -162,7 +162,8 @@ struct ChatModelSection: Identifiable, Hashable, Sendable {
     static func normalizedGroup(_ rawValue: String) -> String {
         let value = rawValue.lowercased().replacingOccurrences(of: "-", with: "_")
         if value.contains("claude2") || value.contains("claude_2") { return "claude_2" }
-        if value == "claude" || value.contains("claude_subscription") { return "claude_1" }
+        if value == "claude" || value.contains("claude_1")
+            || value.contains("claude_subscription") { return "claude_1" }
         if value.contains("deepseek") || value == "dpsk" { return "deepseek" }
         if value.contains("codex") || value.contains("gpt") { return "gpt" }
         return "gpt"

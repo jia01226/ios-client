@@ -334,7 +334,9 @@ final class ThinkingInteractionTests: XCTestCase {
         XCTAssertTrue(gptModel.waitForExistence(timeout: 2))
         gptModel.tap()
 
-        let summary = app.descendants(matching: .any)["selected-model-summary"]
+        let summary = app.descendants(matching: .any)
+            .matching(identifier: "selected-model-summary")
+            .firstMatch
         XCTAssertTrue(summary.waitForExistence(timeout: 2))
         XCTAssertTrue(summary.label.contains("GPT-5.6 Terra"))
         attachScreenshot(named: "16-model-groups-gpt-selected")
