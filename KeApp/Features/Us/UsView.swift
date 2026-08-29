@@ -15,29 +15,42 @@ struct UsView: View {
     @State private var selectedAnniversaryIndex = 1
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: theme.metric.gapM) {
-                pageHeader
+        GeometryReader { viewport in
+            ScrollView {
+                VStack(alignment: .leading, spacing: theme.metric.gapM) {
+                    pageHeader
+                        .padding(.horizontal, theme.metric.pagePadding)
 
-                MoonOrbitSelector(
-                    events: vm.anniversaries,
-                    selectedIndex: $selectedAnniversaryIndex
-                )
-                .frame(height: 300)
-                .clipped()
+                    MoonOrbitSelector(
+                        events: vm.anniversaries,
+                        selectedIndex: $selectedAnniversaryIndex
+                    )
+                    .frame(height: 372)
+                    .padding(.leading, theme.metric.pagePadding)
+                    .clipped()
 
-                if let selectedAnniversary {
-                    countdown(for: selectedAnniversary)
+                    if let selectedAnniversary {
+                        countdown(for: selectedAnniversary)
+                            .padding(.horizontal, theme.metric.pagePadding)
+                    }
+
+                    remindersSection
+                        .padding(.horizontal, theme.metric.pagePadding)
+
+                    Spacer(minLength: 0)
+
+                    shiftSection
+                        .padding(.horizontal, theme.metric.pagePadding)
                 }
-
-                remindersSection
-                shiftSection
+                .frame(
+                    minHeight: max(0, viewport.size.height - theme.metric.gapM - theme.metric.gapS),
+                    alignment: .top
+                )
+                .padding(.top, theme.metric.gapM)
+                .padding(.bottom, theme.metric.gapS)
             }
-            .padding(.horizontal, theme.metric.pagePadding)
-            .padding(.top, theme.metric.gapM)
-            .padding(.bottom, theme.metric.gapXL)
+            .scrollContentBackground(.hidden)
         }
-        .scrollContentBackground(.hidden)
         .background(theme.effectiveBackground.ignoresSafeArea())
         .onChange(of: vm.anniversaries.map(\.id)) { _, ids in
             guard !ids.isEmpty else {
@@ -185,9 +198,12 @@ private struct MoonOrbitSelector: View {
     var body: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
-            let center = CGPoint(x: width - 36, y: 150)
-            let orbitRadius = CGSize(width: 158, height: 126)
-            let moonSize: CGFloat = 278
+            let center = CGPoint(x: width - 10, y: proxy.size.height / 2)
+            let orbitRadius = CGSize(
+                width: min(224, width * 0.56),
+                height: min(160, proxy.size.height * 0.43)
+            )
+            let moonSize = min(max(width * 1.08, 390), 446)
 
             ZStack {
                 Ellipse()
@@ -397,39 +413,87 @@ enum OrbitSelectionMath {
 
 private struct MemoryPlanet: View {
     @EnvironmentObject private var theme: Theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let activeProgress: CGFloat
     let selected: Bool
 
     var body: some View {
-        let diameter = 12 + 11 * CGFloat(pow(Double(activeProgress), 1.35))
+        let proximity = min(max(activeProgress, 0), 1)
+        let illuminated = CGFloat(pow(Double(proximity), 1.55))
+        let diameter = 14 + 14 * illuminated
 
-        Circle()
-            .fill(
-                RadialGradient(
-                    colors: [
-                        Color.white.opacity(0.96),
-                        theme.color.accentSoft.opacity(0.92),
-                        theme.effectiveAccent.opacity(0.78),
-                        theme.color.textPrimary.opacity(0.46),
-                    ],
-                    center: .topLeading,
-                    startRadius: 0,
-                    endRadius: diameter
+        ZStack {
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color.white.opacity(0.78),
+                            theme.color.accentSoft.opacity(0.48),
+                            theme.effectiveAccent.opacity(0.16),
+                            Color.clear,
+                        ],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: diameter
+                    )
                 )
-            )
-            .overlay {
-                Circle()
-                    .stroke(Color.white.opacity(0.74), lineWidth: 0.7)
-            }
-            .frame(width: diameter, height: diameter)
-            .opacity(0.42 + activeProgress * 0.58)
-            .shadow(
-                color: theme.effectiveAccent.opacity(selected ? 0.42 : 0),
-                radius: selected ? 9 : 0
-            )
-            .scaleEffect(selected ? 1.04 : 1)
-            .animation(.easeOut(duration: 0.14), value: selected)
-            .accessibilityHidden(true)
+                .frame(width: diameter * 2.25, height: diameter * 2.25)
+                .blur(radius: 1.5 + 2.5 * illuminated)
+                .opacity(0.08 + 0.72 * illuminated)
+
+            Image("MemoryPlanet")
+                .resizable()
+                .scaledToFit()
+                .frame(width: diameter, height: diameter)
+                .saturation(0.64 + 0.42 * illuminated)
+                .brightness(-0.10 + 0.19 * illuminated)
+                .contrast(0.94 + 0.10 * illuminated)
+                .opacity(0.56 + 0.44 * proximity)
+                .shadow(
+                    color: theme.color.textPrimary.opacity(0.12 + 0.08 * illuminated),
+                    radius: 2.5,
+                    x: 0,
+                    y: 1.5
+                )
+                .shadow(
+                    color: theme.effectiveAccent.opacity(0.46 * illuminated),
+                    radius: 8 * illuminated,
+                    x: 0,
+                    y: 1
+                )
+
+            AsteroidFlare()
+                .offset(x: -diameter * 0.24, y: -diameter * 0.23)
+                .scaleEffect(0.72 + 0.34 * illuminated)
+                .opacity(selected ? 0.94 : 0.18 * illuminated)
+        }
+        .frame(width: 52, height: 52)
+        .scaleEffect(selected ? 1.06 : 1)
+        .animation(
+            reduceMotion
+                ? .easeOut(duration: 0.14)
+                : .spring(response: 0.34, dampingFraction: 0.86),
+            value: selected
+        )
+        .accessibilityHidden(true)
+    }
+}
+
+private struct AsteroidFlare: View {
+    var body: some View {
+        ZStack {
+            Capsule(style: .continuous)
+                .fill(Color.white.opacity(0.92))
+                .frame(width: 8, height: 0.8)
+            Capsule(style: .continuous)
+                .fill(Color.white.opacity(0.92))
+                .frame(width: 0.8, height: 8)
+            Circle()
+                .fill(Color.white)
+                .frame(width: 2.2, height: 2.2)
+        }
+        .shadow(color: Color.white.opacity(0.72), radius: 2, x: 0, y: 1)
+        .accessibilityHidden(true)
     }
 }
 

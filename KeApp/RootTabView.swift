@@ -90,7 +90,7 @@ struct RootTabView: View {
                     .frame(height: 0.5)
             }
         }
-        .padding(.horizontal, theme.metric.pagePadding)
+        .padding(.horizontal, selection == .us ? 0 : theme.metric.pagePadding)
         .padding(.top, 6)
         .padding(.bottom, 4)
     }
