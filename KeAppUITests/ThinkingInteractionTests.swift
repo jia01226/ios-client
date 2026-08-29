@@ -105,6 +105,50 @@ final class ThinkingInteractionTests: XCTestCase {
         attachScreenshot(named: "07-long-reply-wraps-full-width")
     }
 
+    func testVeryLongReplyKeepsRowsSeparateAndLatestReachable() throws {
+        let app = launch(arguments: ["-ui-test-very-long-reply"])
+        let longText = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "这是长文最后一行")
+        ).firstMatch
+        let userAfterLong = app.staticTexts["这是长文后面的消息。"]
+        let latest = app.staticTexts["这是最底下一条消息。"]
+        let composer = app.descendants(matching: .any)["chat-composer"]
+        let latestThinking = app.descendants(matching: .any)
+            .matching(identifier: "thinking-entry-ui-test-after-long-assistant")
+            .firstMatch
+        let latestBubble = app.descendants(matching: .any)
+            .matching(identifier: "message-bubble-ui-test-after-long-assistant-0")
+            .firstMatch
+
+        XCTAssertTrue(latest.waitForExistence(timeout: 5))
+        XCTAssertTrue(userAfterLong.waitForExistence(timeout: 2))
+        XCTAssertTrue(longText.waitForExistence(timeout: 5))
+        XCTAssertTrue(composer.waitForExistence(timeout: 2))
+        XCTAssertTrue(latestThinking.waitForExistence(timeout: 2))
+        XCTAssertTrue(latestBubble.waitForExistence(timeout: 2))
+
+        XCTAssertLessThanOrEqual(
+            longText.frame.maxY,
+            userAfterLong.frame.minY + 1,
+            "多屏长文的真实高度必须把下一条消息推到下面"
+        )
+        XCTAssertLessThanOrEqual(
+            userAfterLong.frame.maxY,
+            latest.frame.minY + 1,
+            "长文后的消息之间不能重叠"
+        )
+        XCTAssertTrue(latest.isHittable, "列表首次打开必须落在真正的最后一条")
+        XCTAssertLessThan(
+            latest.frame.maxY,
+            composer.frame.minY,
+            "最底消息必须能完整滑到输入框上方"
+        )
+        let thinkingGap = latestBubble.frame.minY - latestThinking.frame.maxY
+        XCTAssertGreaterThanOrEqual(thinkingGap, 0, "Thinking 不能压住所属正文")
+        XCTAssertLessThanOrEqual(thinkingGap, 20, "Thinking 与所属正文之间必须保持固定近距")
+        attachScreenshot(named: "08-very-long-reply-bottom-reachable")
+    }
+
     func testLatestThinkingTitleDoesNotFlickerOrJump() throws {
         let app = launch(arguments: ["-ui-test-scroll-control"])
         let open = app.buttons["查看思考"]

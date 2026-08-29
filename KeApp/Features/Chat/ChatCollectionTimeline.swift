@@ -114,6 +114,42 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable, Equatable {
     }
 }
 
+/// `UIHostingConfiguration` normally relies on UIKit's deferred self-sizing pass.
+/// ChatLayout needs the final height during the same layout pass, otherwise a very
+/// tall wrapped message can keep the 40pt estimate and draw over the following row.
+/// Measure the hosted SwiftUI hierarchy at the exact timeline width before handing
+/// the attributes back to ChatLayout.
+final class ChatTimelineHostingCell: UICollectionViewCell {
+    override func preferredLayoutAttributesFitting(
+        _ layoutAttributes: UICollectionViewLayoutAttributes
+    ) -> UICollectionViewLayoutAttributes {
+        guard let fitted = layoutAttributes.copy() as? ChatLayoutAttributes else {
+            return super.preferredLayoutAttributesFitting(layoutAttributes)
+        }
+
+        let width = fitted.size.width
+        guard width > 0 else { return fitted }
+
+        contentView.setNeedsLayout()
+        contentView.layoutIfNeeded()
+        let measured = contentView.systemLayoutSizeFitting(
+            CGSize(width: width, height: UIView.layoutFittingCompressedSize.height),
+            withHorizontalFittingPriority: .required,
+            verticalFittingPriority: .fittingSizeLevel
+        )
+        fitted.size = CGSize(
+            width: width,
+            height: ceil(max(measured.height, 1))
+        )
+        return fitted
+    }
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        contentConfiguration = nil
+    }
+}
+
 final class ChatCollectionTimelineController: UIViewController,
     UICollectionViewDataSource,
     UICollectionViewDelegate,
@@ -184,7 +220,7 @@ final class ChatCollectionTimelineController: UIViewController,
         collectionView.dataSource = self
         collectionView.delegate = self
         collectionView.register(
-            UICollectionViewCell.self,
+            ChatTimelineHostingCell.self,
             forCellWithReuseIdentifier: "ChatTimelineCell"
         )
         collectionView.translatesAutoresizingMaskIntoConstraints = false
@@ -443,10 +479,13 @@ final class ChatCollectionTimelineController: UIViewController,
         _ collectionView: UICollectionView,
         cellForItemAt indexPath: IndexPath
     ) -> UICollectionViewCell {
-        let cell = collectionView.dequeueReusableCell(
+        guard let cell = collectionView.dequeueReusableCell(
             withReuseIdentifier: "ChatTimelineCell",
             for: indexPath
-        )
+        ) as? ChatTimelineHostingCell else {
+            assertionFailure("Chat timeline registered an unexpected cell type")
+            return UICollectionViewCell()
+        }
         let item = items[indexPath.item]
         cell.backgroundColor = .clear
         cell.contentConfiguration = UIHostingConfiguration {
@@ -456,6 +495,7 @@ final class ChatCollectionTimelineController: UIViewController,
                     self?.onThinkingOpen(item.messageID)
                 }
                 .environmentObject(Theme.shared)
+                .accessibilityIdentifier("thinking-entry-\(item.messageID)")
             case .message:
                 MessageRow(
                     message: item.message,

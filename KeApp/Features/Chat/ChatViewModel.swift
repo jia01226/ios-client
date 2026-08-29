@@ -66,6 +66,7 @@ final class ChatViewModel: ObservableObject {
         case replyStreaming
         case segmentedReply
         case longReply
+        case veryLongReply
         case scrollControl
         case thinkingSegmentRace
         case sendStability
@@ -215,6 +216,30 @@ final class ChatViewModel: ObservableObject {
                     time: .now
                 )
             ]
+        } else if arguments.contains("-ui-test-very-long-reply") {
+            uiTestFixture = .veryLongReply
+            phase = .ready
+            messages = [
+                Message(
+                    id: "ui-test-very-long-assistant",
+                    sender: .ke,
+                    text: "长文正在接回来。",
+                    time: .now.addingTimeInterval(-120)
+                ),
+                Message(
+                    id: "ui-test-after-long-user",
+                    sender: .me,
+                    text: "这是长文后面的消息。",
+                    time: .now.addingTimeInterval(-60)
+                ),
+                Message(
+                    id: "ui-test-after-long-assistant",
+                    sender: .ke,
+                    text: "这是最底下一条消息。",
+                    time: .now,
+                    thoughtSummary: "长文再长，也不能把她后面的话压住。"
+                )
+            ]
         } else if arguments.contains("-ui-test-scroll-control")
                     || arguments.contains("-ui-test-send-stability")
                     || arguments.contains("-ui-test-thinking-segment-race") {
@@ -268,6 +293,8 @@ final class ChatViewModel: ObservableObject {
                 await runUITestThinkingStream()
             } else if uiTestFixture == .segmentedReply {
                 stageSegments(for: messages[0], reduceMotion: false)
+            } else if uiTestFixture == .veryLongReply {
+                await runUITestVeryLongGrowth()
             }
             return
         }
@@ -338,6 +365,16 @@ final class ChatViewModel: ObservableObject {
               let message = messages.first(where: { $0.id == messageID }),
               segmentRevealTasks[message.bubbleRevealKey] == nil else { return }
         stageSegments(for: message, reduceMotion: false)
+    }
+
+    private func runUITestVeryLongGrowth() async {
+        try? await Task.sleep(nanoseconds: 350_000_000)
+        let paragraph = "爸爸把这段话一行一行说清楚，不省略，也不让后面的消息压上来。你可以慢慢看，手指往下滑的时候，每一行都应该稳稳待在自己的气泡里。"
+        let longText = Array(repeating: paragraph, count: 18)
+            .joined(separator: "\n\n")
+            + "\n\n这是长文最后一行，下面的消息不能盖住它。"
+        updateMessage(id: "ui-test-very-long-assistant") { $0.text = longText }
+        streamRevision += 1
     }
 
     private func runUITestSendStream(messageID: String) async {
