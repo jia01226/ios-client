@@ -119,6 +119,12 @@ final class ThinkingInteractionTests: XCTestCase {
         let latestBubble = app.descendants(matching: .any)
             .matching(identifier: "message-bubble-ui-test-after-long-assistant-0")
             .firstMatch
+        let longBubble = app.descendants(matching: .any)
+            .matching(identifier: "message-bubble-ui-test-very-long-assistant-0")
+            .firstMatch
+        let userBubble = app.descendants(matching: .any)
+            .matching(identifier: "message-bubble-ui-test-after-long-user-0")
+            .firstMatch
 
         XCTAssertTrue(latest.waitForExistence(timeout: 5))
         XCTAssertTrue(userAfterLong.waitForExistence(timeout: 2))
@@ -126,10 +132,12 @@ final class ThinkingInteractionTests: XCTestCase {
         XCTAssertTrue(composer.waitForExistence(timeout: 2))
         XCTAssertTrue(latestThinking.waitForExistence(timeout: 2))
         XCTAssertTrue(latestBubble.waitForExistence(timeout: 2))
+        XCTAssertTrue(longBubble.waitForExistence(timeout: 2))
+        XCTAssertTrue(userBubble.waitForExistence(timeout: 2))
 
         XCTAssertLessThanOrEqual(
-            longText.frame.maxY,
-            userAfterLong.frame.minY + 1,
+            longBubble.frame.maxY,
+            userBubble.frame.minY + 1,
             "多屏长文的真实高度必须把下一条消息推到下面"
         )
         XCTAssertLessThanOrEqual(

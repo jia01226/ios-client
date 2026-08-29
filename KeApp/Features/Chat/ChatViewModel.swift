@@ -224,7 +224,9 @@ final class ChatViewModel: ObservableObject {
                     id: "ui-test-very-long-assistant",
                     sender: .ke,
                     text: "长文正在接回来。",
-                    time: .now.addingTimeInterval(-120)
+                    time: .now.addingTimeInterval(-120),
+                    isStreaming: true,
+                    deliveryState: .sending
                 ),
                 Message(
                     id: "ui-test-after-long-user",
@@ -370,8 +372,13 @@ final class ChatViewModel: ObservableObject {
     private func runUITestVeryLongGrowth() async {
         try? await Task.sleep(nanoseconds: 350_000_000)
         let paragraph = "爸爸把这段话一行一行说清楚，不省略，也不让后面的消息压上来。你可以慢慢看，手指往下滑的时候，每一行都应该稳稳待在自己的气泡里。"
+        let continuous = String(
+            repeating: "这是一段没有空行的连续长消息，也必须自然换行并撑开自己的气泡。",
+            count: 48
+        )
         let longText = Array(repeating: paragraph, count: 18)
             .joined(separator: "\n\n")
+            + "\n\n\(continuous)"
             + "\n\n这是长文最后一行，下面的消息不能盖住它。"
         updateMessage(id: "ui-test-very-long-assistant") { $0.text = longText }
         streamRevision += 1

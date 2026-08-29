@@ -130,6 +130,13 @@ final class ChatTimelineHostingCell: UICollectionViewCell {
         let width = fitted.size.width
         guard width > 0 else { return fitted }
 
+        // A reused hosting view may still carry the previous proposal. ViewThatFits
+        // must see today's exact row width before it decides between a compact and
+        // wrapped bubble, otherwise the height can be measured from stale bounds.
+        contentView.bounds.size = CGSize(
+            width: width,
+            height: max(contentView.bounds.height, 1)
+        )
         contentView.setNeedsLayout()
         contentView.layoutIfNeeded()
         let measured = contentView.systemLayoutSizeFitting(
