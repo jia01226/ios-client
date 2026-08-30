@@ -883,6 +883,11 @@ struct ChatView: View {
                             )
                         }
                         .buttonStyle(.plain)
+                        .frame(
+                            width: theme.metric.touchTarget,
+                            height: theme.metric.touchTarget
+                        )
+                        .contentShape(Rectangle())
                         .foregroundStyle(theme.color.textSecondary)
                         .disabled(vm.isLoadingModelQuotas || vm.isLoadingModels)
                         .accessibilityLabel("刷新模型额度")
