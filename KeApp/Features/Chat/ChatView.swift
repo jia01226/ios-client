@@ -653,7 +653,7 @@ struct ChatView: View {
             settingsLink("模型选择", icon: "sparkles") {
                 settingsPage = .models
                 Task {
-                    await vm.loadModels()
+                    await vm.loadModelSettings(force: true)
                     expandSelectedModelGroup()
                 }
             }
@@ -832,27 +832,72 @@ struct ChatView: View {
 
     private var modelSettings: some View {
         VStack(alignment: .leading, spacing: theme.metric.gapM) {
-            if vm.isLoadingModels {
+            if vm.isLoadingModels && vm.modelOptions.isEmpty {
                 settingsProgress("正在读取可用模型…")
-            } else if let error = vm.modelError {
+            } else if let error = vm.modelError, vm.modelOptions.isEmpty {
                 settingsError(error) {
-                    Task { await vm.loadModels(force: true) }
+                    Task { await vm.loadModelSettings(force: true) }
                 }
             } else {
+                if let error = vm.modelError {
+                    Text("模型列表暂时没刷新：\(error)")
+                        .font(.caption)
+                        .foregroundStyle(theme.color.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("model-catalog-error")
+                }
+
                 if let selected = selectedModelOption {
-                    VStack(alignment: .leading, spacing: theme.metric.gapXS) {
-                        Text("当前使用")
-                            .font(theme.font.caption)
-                            .foregroundStyle(theme.color.textSecondary)
-                        Text("\(modelSectionTitle(for: selected)) · \(selected.displayName)")
-                            .font(theme.font.sectionTitle)
-                            .foregroundStyle(theme.color.textPrimary)
-                            .fixedSize(horizontal: false, vertical: true)
+                    HStack(alignment: .top, spacing: theme.metric.gapS) {
+                        VStack(alignment: .leading, spacing: theme.metric.gapXS) {
+                            Text("主线路")
+                                .font(.caption)
+                                .foregroundStyle(theme.color.textSecondary)
+                            Text("\(modelSectionTitle(for: selected)) · \(selected.displayName)")
+                                .font(theme.font.sectionTitle)
+                                .foregroundStyle(theme.color.textPrimary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("selected-model-summary")
+                            if let routeSummary = modelRouteSummary {
+                                Text(routeSummary)
+                                    .font(.caption)
+                                    .foregroundStyle(theme.color.textSecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier("model-route-summary")
+                            }
+                        }
+                        Spacer(minLength: theme.metric.gapS)
+                        Button {
+                            Task { await vm.loadModelSettings(force: true) }
+                        } label: {
+                            Group {
+                                if vm.isLoadingModelQuotas {
+                                    ProgressView()
+                                } else {
+                                    Image(systemName: "arrow.clockwise")
+                                }
+                            }
+                            .frame(
+                                width: theme.metric.touchTarget,
+                                height: theme.metric.touchTarget
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(theme.color.textSecondary)
+                        .disabled(vm.isLoadingModelQuotas || vm.isLoadingModels)
+                        .accessibilityLabel("刷新模型额度")
+                        .accessibilityIdentifier("refresh-model-quotas")
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.bottom, theme.metric.gapS)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityIdentifier("selected-model-summary")
+                }
+
+                if let error = vm.modelQuotaError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(theme.color.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("model-quota-error")
                 }
 
                 ForEach(modelSections) { section in
@@ -881,6 +926,7 @@ struct ChatView: View {
     @ViewBuilder
     private func modelDisclosure(_ section: ChatModelSection) -> some View {
         let isExpanded = expandedModelGroups.contains(section.id)
+        let quotaSummary = modelQuotaSummary(for: section.id)
         VStack(alignment: .leading, spacing: 0) {
             Button {
                 toggleModelGroup(section.id)
@@ -894,6 +940,13 @@ struct ChatView: View {
                             Text(selected.displayName)
                                 .font(theme.font.caption)
                                 .foregroundStyle(theme.effectiveAccent)
+                        }
+                        if let quotaSummary {
+                            Text(quotaSummary)
+                                .font(.caption)
+                                .foregroundStyle(theme.color.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("model-quota-\(section.id)")
                         } else if !section.isAvailable, let message = section.statusMessage {
                             Text(message)
                                 .font(theme.font.caption)
@@ -912,10 +965,14 @@ struct ChatView: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("model-group-\(section.id)")
             .accessibilityLabel("\(section.title)，\(isExpanded ? "已展开" : "已折叠")")
+            .accessibilityValue(quotaSummary ?? "")
             .accessibilityHint(isExpanded ? "点两下折叠" : "点两下查看模型")
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 0) {
+                    if let quota = modelQuotaGroup(for: section.id), !quota.windows.isEmpty {
+                        modelQuotaDetails(quota)
+                    }
                     if section.options.isEmpty {
                         Text(section.statusMessage ?? "暂时没有可选模型")
                             .font(theme.font.caption)
@@ -978,6 +1035,132 @@ struct ChatView: View {
         .opacity(option.isAvailable ? 1 : 0.45)
         .accessibilityIdentifier("model-option-\(option.id)")
         .accessibilityValue(vm.selectedModel == option.id ? "已选择" : "")
+    }
+
+    private var modelRouteSummary: String? {
+        guard vm.modelQuotaError == nil,
+              let selectedModelOption,
+              let catalog = vm.modelQuotaCatalog,
+              let selected = catalog.selectedGroup,
+              let current = catalog.currentRouteGroup,
+              selected != current else { return nil }
+        let selectedOptionGroup = ChatModelSection.normalizedGroup(
+            selectedModelOption.family
+                ?? selectedModelOption.group
+                ?? selectedModelOption.provider
+                ?? ""
+        )
+        guard selectedOptionGroup == ChatModelSection.normalizedGroup(selected) else {
+            return nil
+        }
+        return "当前自动接到 \(modelRouteTitle(current))；\(modelRouteTitle(selected)) 恢复后会自动回来"
+    }
+
+    private func modelRouteTitle(_ id: String) -> String {
+        switch ChatModelSection.normalizedGroup(id) {
+        case "claude_1": return "Claude 1"
+        case "claude_2": return "Claude 2"
+        case "gpt": return "GPT"
+        case "deepseek": return "DPSK"
+        default: return "备用线路"
+        }
+    }
+
+    private func modelQuotaGroup(for id: String) -> ChatModelQuotaGroup? {
+        vm.modelQuotaCatalog?.groups.first {
+            ChatModelSection.normalizedGroup($0.id) == ChatModelSection.normalizedGroup(id)
+        }
+    }
+
+    private func modelQuotaSummary(for id: String) -> String? {
+        let normalized = ChatModelSection.normalizedGroup(id)
+        guard ["claude_1", "claude_2", "gpt"].contains(normalized) else { return nil }
+        guard let quota = modelQuotaGroup(for: normalized) else {
+            if vm.isLoadingModelQuotas { return "正在读取额度…" }
+            if vm.modelQuotaError != nil { return "额度暂时没读到" }
+            return nil
+        }
+
+        let staleSuffix = quota.stale ? " · 上次结果" : ""
+        switch quota.status {
+        case "cooldown":
+            if let reset = modelQuotaResetText(quota.resetAt) {
+                return "额度已用完 · \(reset)\(staleSuffix)"
+            }
+            return "额度已用完\(staleSuffix)"
+        case "not_configured":
+            return "尚未接入"
+        case "unknown":
+            return "额度暂时没读到\(staleSuffix)"
+        default:
+            if let remaining = quota.remainingPercent {
+                let value = Int(min(100, max(0, remaining)).rounded())
+                return "剩余 \(value)%\(staleSuffix)"
+            }
+            return "可用 · 暂无精确比例\(staleSuffix)"
+        }
+    }
+
+    private func modelQuotaDetails(_ quota: ChatModelQuotaGroup) -> some View {
+        VStack(alignment: .leading, spacing: theme.metric.gapS) {
+            ForEach(Array(quota.windows.enumerated()), id: \.offset) { _, window in
+                VStack(alignment: .leading, spacing: theme.metric.gapXS) {
+                    HStack(spacing: theme.metric.gapS) {
+                        Text(modelQuotaWindowLabel(window.windowMinutes))
+                        Spacer(minLength: theme.metric.gapS)
+                        if let remaining = window.remainingPercent {
+                            Text("剩余 \(Int(min(100, max(0, remaining)).rounded()))%")
+                                .monospacedDigit()
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(theme.color.textSecondary)
+
+                    if let remaining = window.remainingPercent {
+                        ProgressView(value: min(100, max(0, remaining)), total: 100)
+                            .tint(theme.effectiveAccent)
+                            .accessibilityLabel(modelQuotaWindowLabel(window.windowMinutes))
+                            .accessibilityValue("剩余 \(Int(remaining.rounded()))%")
+                    }
+
+                    if let reset = modelQuotaResetText(window.resetAt) {
+                        Text(reset)
+                            .font(.caption)
+                            .foregroundStyle(theme.color.textSecondary)
+                    }
+                }
+            }
+        }
+        .padding(.vertical, theme.metric.gapS)
+        .accessibilityIdentifier("model-quota-details-\(quota.id)")
+    }
+
+    private func modelQuotaWindowLabel(_ minutes: Int?) -> String {
+        guard let minutes, minutes > 0 else { return "订阅额度" }
+        if minutes % 10_080 == 0 { return "\(minutes / 10_080 * 7) 天额度" }
+        if minutes % 1_440 == 0 { return "\(minutes / 1_440) 天额度" }
+        if minutes % 60 == 0 { return "\(minutes / 60) 小时额度" }
+        return "\(minutes) 分钟额度"
+    }
+
+    private func modelQuotaResetText(_ epoch: TimeInterval?) -> String? {
+        guard let epoch, epoch > 0 else { return nil }
+        let date = Date(timeIntervalSince1970: epoch)
+        let calendar = Calendar.autoupdatingCurrent
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.timeZone = .autoupdatingCurrent
+
+        if calendar.isDateInToday(date) {
+            formatter.dateFormat = "HH:mm"
+            return "\(formatter.string(from: date)) 恢复"
+        }
+        if calendar.isDateInTomorrow(date) {
+            formatter.dateFormat = "HH:mm"
+            return "明天 \(formatter.string(from: date)) 恢复"
+        }
+        formatter.dateFormat = "M月d日 HH:mm"
+        return "\(formatter.string(from: date)) 恢复"
     }
 
     private func toggleModelGroup(_ id: String) {

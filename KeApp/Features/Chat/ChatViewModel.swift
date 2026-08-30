@@ -24,10 +24,13 @@ final class ChatViewModel: ObservableObject {
     @Published var streamRevision = 0
     @Published var modelOptions: [ChatModelOption] = []
     @Published var modelGroups: [ChatModelGroup] = []
+    @Published var modelQuotaCatalog: ChatModelQuotaCatalog?
     @Published var selectedModel: String?
     @Published var isLoadingModels = false
+    @Published var isLoadingModelQuotas = false
     @Published var isSelectingModel = false
     @Published var modelError: String?
+    @Published var modelQuotaError: String?
     @Published var searchCorpus: [Message] = []
     @Published var isPreparingSearch = false
     @Published var searchError: String?
@@ -50,6 +53,8 @@ final class ChatViewModel: ObservableObject {
     private var recoveryProbeID: UUID?
     private var segmentRevealTasks: [String: Task<Void, Never>] = [:]
     private var failedUpload: AttachmentUploadPayload?
+    private var lastModelQuotaLoad: Date?
+    private var modelQuotaRequestRevision = 0
 
     private struct AttachmentUploadPayload {
         let data: Data
@@ -90,8 +95,8 @@ final class ChatViewModel: ObservableObject {
                     configured: true, message: nil
                 ),
                 ChatModelGroup(
-                    id: "claude_2", label: "Claude 2", available: true,
-                    configured: true, message: nil
+                    id: "claude_2", label: "Claude 2", available: false,
+                    configured: true, message: "额度冷却中"
                 ),
                 ChatModelGroup(
                     id: "gpt", label: "GPT", available: true,
@@ -111,7 +116,7 @@ final class ChatViewModel: ObservableObject {
                 ChatModelOption(
                     id: "claude2-subscription-opus-5", provider: "claude_subscription",
                     label: "Opus 5", description: "Claude Max 2 号账号",
-                    group: "claude_subscription", family: "claude_2", available: true
+                    group: "claude_subscription", family: "claude_2", available: false
                 ),
                 ChatModelOption(
                     id: "codex-subscription:gpt-5.6-terra", provider: "codex_subscription",
@@ -124,6 +129,40 @@ final class ChatViewModel: ObservableObject {
                     group: "deepseek", family: "deepseek", available: true
                 ),
             ]
+            modelQuotaCatalog = ChatModelQuotaCatalog(
+                updatedAt: Date.now.timeIntervalSince1970,
+                selectedGroup: "claude_2",
+                currentRouteGroup: "claude_1",
+                groups: [
+                    ChatModelQuotaGroup(
+                        id: "claude_1", label: "Claude 1", configured: true,
+                        available: true, status: "available", usedPercent: nil,
+                        remainingPercent: nil, resetAt: nil, stale: false,
+                        source: "circuit_breaker", windows: []
+                    ),
+                    ChatModelQuotaGroup(
+                        id: "claude_2", label: "Claude 2", configured: true,
+                        available: false, status: "cooldown", usedPercent: nil,
+                        remainingPercent: nil,
+                        resetAt: Date.now.addingTimeInterval(3_600).timeIntervalSince1970,
+                        stale: false,
+                        source: "circuit_breaker", windows: []
+                    ),
+                    ChatModelQuotaGroup(
+                        id: "gpt", label: "GPT", configured: true,
+                        available: true, status: "available", usedPercent: 4,
+                        remainingPercent: 96, resetAt: Date.now.addingTimeInterval(86_400).timeIntervalSince1970,
+                        stale: false, source: "provider",
+                        windows: [
+                            ChatModelQuotaWindow(
+                                kind: "primary", usedPercent: 4, remainingPercent: 96,
+                                windowMinutes: 10_080,
+                                resetAt: Date.now.addingTimeInterval(86_400).timeIntervalSince1970
+                            )
+                        ]
+                    ),
+                ]
+            )
             messages = [
                 Message(
                     id: "ui-test-model-groups-message",
@@ -623,6 +662,9 @@ final class ChatViewModel: ObservableObject {
     }
 
     func loadModels(force: Bool = false) async {
+#if DEBUG
+        if uiTestFixture == .modelGroups { return }
+#endif
         guard force || modelOptions.isEmpty else { return }
         isLoadingModels = true
         modelError = nil
@@ -649,6 +691,46 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
+    func loadModelSettings(force: Bool = false) async {
+        async let models: Void = loadModels(force: force)
+        async let quotas: Void = loadModelQuotas(force: force)
+        _ = await (models, quotas)
+    }
+
+    func loadModelQuotas(force: Bool = false) async {
+#if DEBUG
+        if uiTestFixture == .modelGroups { return }
+#endif
+        guard let sessionID else { return }
+        if !force,
+           let lastModelQuotaLoad,
+           Date().timeIntervalSince(lastModelQuotaLoad) < 30 {
+            return
+        }
+        guard force || !isLoadingModelQuotas else { return }
+        modelQuotaRequestRevision += 1
+        let requestRevision = modelQuotaRequestRevision
+        isLoadingModelQuotas = true
+        modelQuotaError = nil
+        if force {
+            modelQuotaCatalog = nil
+        }
+        defer {
+            if requestRevision == modelQuotaRequestRevision {
+                isLoadingModelQuotas = false
+            }
+        }
+        do {
+            let catalog = try await api.fetchModelQuotas(sessionID: sessionID)
+            guard requestRevision == modelQuotaRequestRevision else { return }
+            modelQuotaCatalog = catalog
+            lastModelQuotaLoad = Date()
+        } catch {
+            guard requestRevision == modelQuotaRequestRevision else { return }
+            modelQuotaError = "额度暂时没读到，点刷新再试。"
+        }
+    }
+
     func selectModel(_ model: String) async {
 #if DEBUG
         if uiTestFixture == .modelGroups {
@@ -656,6 +738,17 @@ final class ChatViewModel: ObservableObject {
             defer { isSelectingModel = false }
             try? await Task.sleep(nanoseconds: 250_000_000)
             selectedModel = model
+            let groupID = modelOptions.first(where: { $0.id == model }).map {
+                ChatModelSection.normalizedGroup($0.family ?? $0.group ?? $0.provider ?? "")
+            }
+            if let catalog = modelQuotaCatalog {
+                modelQuotaCatalog = ChatModelQuotaCatalog(
+                    updatedAt: catalog.updatedAt,
+                    selectedGroup: groupID,
+                    currentRouteGroup: groupID,
+                    groups: catalog.groups
+                )
+            }
             return
         }
 #endif
@@ -666,6 +759,9 @@ final class ChatViewModel: ObservableObject {
         do {
             let active = try await api.selectModel(sessionID: sessionID, model: model)
             selectedModel = active.model ?? model
+            modelQuotaCatalog = nil
+            modelQuotaError = nil
+            await loadModelQuotas(force: true)
         } catch {
             modelError = error.localizedDescription
         }

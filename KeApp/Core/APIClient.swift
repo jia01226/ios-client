@@ -107,6 +107,35 @@ struct ChatModelCatalog: Decodable, Sendable {
     let groups: [ChatModelGroup]?
 }
 
+struct ChatModelQuotaWindow: Decodable, Hashable, Sendable {
+    let kind: String
+    let usedPercent: Double?
+    let remainingPercent: Double?
+    let windowMinutes: Int?
+    let resetAt: TimeInterval?
+}
+
+struct ChatModelQuotaGroup: Decodable, Identifiable, Hashable, Sendable {
+    let id: String
+    let label: String
+    let configured: Bool
+    let available: Bool
+    let status: String
+    let usedPercent: Double?
+    let remainingPercent: Double?
+    let resetAt: TimeInterval?
+    let stale: Bool
+    let source: String
+    let windows: [ChatModelQuotaWindow]
+}
+
+struct ChatModelQuotaCatalog: Decodable, Hashable, Sendable {
+    let updatedAt: TimeInterval
+    let selectedGroup: String?
+    let currentRouteGroup: String?
+    let groups: [ChatModelQuotaGroup]
+}
+
 struct ChatModelSection: Identifiable, Hashable, Sendable {
     let id: String
     let title: String
@@ -321,6 +350,19 @@ actor APIClient {
         let (data, _) = try await perform(request)
         do {
             return try decoder.decode(ChatModelCatalog.self, from: data)
+        } catch {
+            throw APIError.decoding(error)
+        }
+    }
+
+    func fetchModelQuotas(sessionID: Int) async throws -> ChatModelQuotaCatalog {
+        let request = try makeRequest(
+            path: "/api/model-quotas",
+            queryItems: [URLQueryItem(name: "session_id", value: String(sessionID))]
+        )
+        let (data, _) = try await perform(request)
+        do {
+            return try decoder.decode(ChatModelQuotaCatalog.self, from: data)
         } catch {
             throw APIError.decoding(error)
         }

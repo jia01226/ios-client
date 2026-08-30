@@ -75,4 +75,51 @@ final class ModelSelectionTests: XCTestCase {
         XCTAssertEqual(section.statusMessage, "额度冷却中")
         XCTAssertFalse(section.options[0].isAvailable)
     }
+
+    func testQuotaCatalogKeepsUnknownClaudePercentagesAndProviderGPTWindow() throws {
+        let data = Data(#"""
+        {
+          "updatedAt":1788080000,
+          "selectedGroup":"claude_1",
+          "currentRouteGroup":"claude_2",
+          "groups":[
+            {
+              "id":"claude_1","label":"Claude 1","configured":true,
+              "available":false,"status":"cooldown","usedPercent":null,
+              "remainingPercent":null,"resetAt":1788087600,"stale":false,
+              "source":"circuit_breaker","windows":[]
+            },
+            {
+              "id":"claude_2","label":"Claude 2","configured":true,
+              "available":true,"status":"available","usedPercent":null,
+              "remainingPercent":null,"resetAt":null,"stale":false,
+              "source":"circuit_breaker","windows":[]
+            },
+            {
+              "id":"gpt","label":"GPT","configured":true,
+              "available":true,"status":"available","usedPercent":4,
+              "remainingPercent":96,"resetAt":1788666713,"stale":false,
+              "source":"provider","windows":[
+                {
+                  "kind":"primary","usedPercent":4,"remainingPercent":96,
+                  "windowMinutes":10080,"resetAt":1788666713
+                }
+              ]
+            }
+          ]
+        }
+        """#.utf8)
+
+        let catalog = try JSONDecoder().decode(ChatModelQuotaCatalog.self, from: data)
+
+        XCTAssertEqual(catalog.groups.map(\.id), ["claude_1", "claude_2", "gpt"])
+        XCTAssertEqual(catalog.selectedGroup, "claude_1")
+        XCTAssertEqual(catalog.currentRouteGroup, "claude_2")
+        XCTAssertNil(catalog.groups[0].remainingPercent)
+        XCTAssertEqual(catalog.groups[0].resetAt, 1_788_087_600)
+        XCTAssertEqual(catalog.groups[2].remainingPercent, 96)
+        XCTAssertEqual(catalog.groups[2].windows.first?.windowMinutes, 10_080)
+        XCTAssertEqual(catalog.groups[2].windows.first?.remainingPercent, 96)
+        XCTAssertFalse(catalog.groups.contains { $0.id == "deepseek" })
+    }
 }
