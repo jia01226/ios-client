@@ -185,9 +185,7 @@ private struct MoonOrbitSelector: View {
     @State private var orbitalPosition: CGFloat = 1
     @State private var moonYaw: Double = -0.18
     @State private var moonPitch: Double = -0.08
-    @State private var dragOriginPosition: CGFloat?
     @State private var dragOriginYaw: Double?
-    @State private var dragOriginPitch: Double?
 
     var body: some View {
         GeometryReader { proxy in
@@ -231,24 +229,31 @@ private struct MoonOrbitSelector: View {
                             radius: orbitRadius
                         )
 
-                        OrbitEventMarker(
-                            title: event.title,
-                            activeProgress: max(0, 1 - abs(relativePosition)),
-                            selected: index == selectedIndex
-                        )
+                        Button {
+                            select(index: index)
+                        } label: {
+                            OrbitEventMarker(
+                                title: event.title,
+                                activeProgress: max(0, 1 - abs(relativePosition)),
+                                selected: index == selectedIndex
+                            )
+                        }
+                        .buttonStyle(.plain)
                         .position(x: position.x - 74, y: position.y)
+                        .accessibilityIdentifier("us-orbit-event-\(index)")
+                        .accessibilityLabel(event.title)
                     }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
-            .highPriorityGesture(dragGesture)
+            .simultaneousGesture(dragGesture)
             .sensoryFeedback(.alignment, trigger: selectedIndex)
-            .accessibilityElement(children: .ignore)
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("us-moon-orbit-selector")
             .accessibilityLabel("纪念日月球")
             .accessibilityValue(accessibilityValue)
-            .accessibilityHint("上下滑动切换纪念日，左右滑动旋转月球")
+            .accessibilityHint("轻点小行星切换纪念日，左右滑动旋转月球")
             .accessibilityAdjustableAction { direction in
                 switch direction {
                 case .increment:
@@ -290,49 +295,29 @@ private struct MoonOrbitSelector: View {
         DragGesture(minimumDistance: 6)
             .onChanged { value in
                 guard !events.isEmpty else { return }
+                guard abs(value.translation.width) > abs(value.translation.height) * 1.12 else {
+                    return
+                }
 
-                if dragOriginPosition == nil {
-                    dragOriginPosition = orbitalPosition
+                if dragOriginYaw == nil {
                     dragOriginYaw = moonYaw
-                    dragOriginPitch = moonPitch
                 }
 
-                let startPosition = dragOriginPosition ?? orbitalPosition
                 let startYaw = dragOriginYaw ?? moonYaw
-                let startPitch = dragOriginPitch ?? moonPitch
-
-                let proposed = startPosition - value.translation.height / 112
-                orbitalPosition = rubberBanded(proposed)
                 moonYaw = startYaw + Double(value.translation.width) * 0.009
-                moonPitch = clampedPitch(
-                    startPitch - Double(value.translation.height) * 0.0032
-                )
-
-                let candidate = nearestIndex(to: orbitalPosition)
-                if candidate != selectedIndex {
-                    withAnimation(.easeOut(duration: 0.12)) {
-                        selectedIndex = candidate
-                    }
-                }
             }
             .onEnded { value in
                 guard !events.isEmpty else { return }
 
-                let startPosition = dragOriginPosition ?? orbitalPosition
-                let projectedPosition = startPosition - value.predictedEndTranslation.height / 112
-                let targetIndex = nearestIndex(to: projectedPosition)
-                let projectedYaw = moonYaw
-                    + Double(value.predictedEndTranslation.width - value.translation.width) * 0.003
-
-                selectedIndex = targetIndex
-                withAnimation(settleAnimation) {
-                    orbitalPosition = CGFloat(targetIndex)
-                    moonYaw = projectedYaw
+                if abs(value.translation.width) > abs(value.translation.height) * 1.12 {
+                    let projectedYaw = moonYaw
+                        + Double(value.predictedEndTranslation.width - value.translation.width) * 0.003
+                    withAnimation(settleAnimation) {
+                        moonYaw = projectedYaw
+                    }
                 }
 
-                dragOriginPosition = nil
                 dragOriginYaw = nil
-                dragOriginPitch = nil
             }
     }
 
@@ -340,31 +325,6 @@ private struct MoonOrbitSelector: View {
         reduceMotion
             ? .easeOut(duration: 0.18)
             : .spring(response: 0.42, dampingFraction: 0.84, blendDuration: 0.08)
-    }
-
-    private func nearestIndex(to position: CGFloat) -> Int {
-        OrbitSelectionMath.nearestIndex(position: position, count: events.count)
-    }
-
-    private func rubberBanded(_ position: CGFloat) -> CGFloat {
-        guard !events.isEmpty else { return 0 }
-        let upperBound = CGFloat(events.count - 1)
-
-        if position < 0 {
-            return -rubberBand(distance: -position)
-        }
-        if position > upperBound {
-            return upperBound + rubberBand(distance: position - upperBound)
-        }
-        return position
-    }
-
-    private func rubberBand(distance: CGFloat) -> CGFloat {
-        (distance * 0.38) / (1 + distance * 0.9)
-    }
-
-    private func clampedPitch(_ value: Double) -> Double {
-        min(max(value, -0.72), 0.72)
     }
 
     private func select(index: Int) {
@@ -469,7 +429,6 @@ private struct MemoryPlanet: View {
                 : .spring(response: 0.34, dampingFraction: 0.86),
             value: selected
         )
-        .accessibilityHidden(true)
     }
 }
 
@@ -522,8 +481,6 @@ private struct OrbitEventMarker: View {
             MemoryPlanet(activeProgress: activeProgress, selected: selected)
         }
         .frame(width: 160, alignment: .trailing)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
     }
 }
 

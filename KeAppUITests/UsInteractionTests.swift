@@ -21,12 +21,16 @@ final class UsInteractionTests: XCTestCase {
 
         let remembers = app.descendants(matching: .any)["us-ke-remembers"]
         XCTAssertTrue(remembers.waitForExistence(timeout: 3))
-        app.swipeUp(velocity: .slow)
+        let scrollStart = app.coordinate(withNormalizedOffset: CGVector(dx: 0.50, dy: 0.70))
+        let scrollEnd = app.coordinate(withNormalizedOffset: CGVector(dx: 0.50, dy: 0.30))
+        scrollStart.press(forDuration: 0.05, thenDragTo: scrollEnd)
         attachScreenshot(named: "20b-us-ke-remembers")
 
-        app.swipeDown(velocity: .slow)
+        scrollEnd.press(forDuration: 0.05, thenDragTo: scrollStart)
 
-        moon.swipeDown(velocity: .slow)
+        let myBirthday = app.descendants(matching: .any)["us-orbit-event-0"]
+        XCTAssertTrue(myBirthday.waitForExistence(timeout: 2))
+        myBirthday.tap()
         waitForValue("我的生日", on: moon)
         attachScreenshot(named: "21-us-my-birthday-selected")
 
