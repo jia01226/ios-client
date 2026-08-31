@@ -239,7 +239,7 @@ private struct MoonOrbitSelector: View {
                             )
                         }
                         .buttonStyle(.plain)
-                        .position(x: position.x - 74, y: position.y)
+                        .position(x: position.x - 58, y: position.y)
                         .accessibilityIdentifier("us-orbit-event-\(index)")
                         .accessibilityLabel(event.title)
                     }
@@ -690,15 +690,15 @@ private struct KeRemembersSummary: View {
 
                 VStack(alignment: .leading, spacing: 18) {
                     Text("柯记着")
-                        .font(.custom("STSongti-SC-Regular", size: 22, relativeTo: .title3))
-                        .tracking(2.0)
+                        .font(.custom("STSongti-SC-Light", size: 20, relativeTo: .title3))
+                        .tracking(1.8)
                         .foregroundStyle(theme.color.textPrimary)
 
                     if let nextReminder = reminders.first {
                         HStack(alignment: .center, spacing: 12) {
                             VStack(alignment: .leading, spacing: 10) {
                                 Text(nextReminder.text)
-                                    .font(.custom("STSongti-SC-Light", size: 16.5, relativeTo: .body))
+                                    .font(.custom("STSongti-SC-Regular", size: 17, relativeTo: .body))
                                     .tracking(0.5)
                                     .lineSpacing(4)
                                     .foregroundStyle(theme.color.textPrimary)
@@ -802,6 +802,37 @@ private struct ReminderStarGauze: View {
             let drift = reduceMotion ? 0 : CGFloat(sin(elapsed * 0.22)) * 7
 
             Canvas { context, size in
+                context.drawLayer { mist in
+                    mist.addFilter(.blur(radius: 6))
+
+                    for index in 0..<4 {
+                        let t = CGFloat(index) / 3
+                        let baseY = size.height * (0.22 + t * 0.16)
+                        var ribbon = Path()
+                        ribbon.move(to: CGPoint(x: -36 + drift, y: baseY))
+                        ribbon.addCurve(
+                            to: CGPoint(x: size.width + 34 + drift, y: baseY + 34),
+                            control1: CGPoint(x: size.width * 0.30, y: baseY - 30 + t * 7),
+                            control2: CGPoint(x: size.width * 0.66, y: baseY + 58 - t * 10)
+                        )
+
+                        mist.stroke(
+                            ribbon,
+                            with: .linearGradient(
+                                Gradient(colors: [
+                                    Color.clear,
+                                    Color(red: 0.82, green: 0.75, blue: 0.92).opacity(0.09),
+                                    Color(red: 0.91, green: 0.78, blue: 0.57).opacity(0.105),
+                                    Color.clear,
+                                ]),
+                                startPoint: CGPoint(x: 0, y: baseY),
+                                endPoint: CGPoint(x: size.width, y: baseY + 34)
+                            ),
+                            style: StrokeStyle(lineWidth: 12 - t * 3, lineCap: .round)
+                        )
+                    }
+                }
+
                 for index in 0..<7 {
                     let t = CGFloat(index) / 6
                     let baseY = size.height * (0.38 + t * 0.23)
@@ -818,8 +849,8 @@ private struct ReminderStarGauze: View {
                         : Color(red: 0.86, green: 0.70, blue: 0.42)
                     context.stroke(
                         strand,
-                        with: .color(strandColor.opacity(0.075 - Double(t) * 0.018)),
-                        style: StrokeStyle(lineWidth: 0.48, lineCap: .round)
+                        with: .color(strandColor.opacity(0.13 - Double(t) * 0.025)),
+                        style: StrokeStyle(lineWidth: 0.56, lineCap: .round)
                     )
                 }
 
@@ -845,7 +876,7 @@ private struct ReminderStarGauze: View {
                             width: point.2 * 2,
                             height: point.2 * 2
                         )),
-                        with: .color(color.opacity(0.19))
+                        with: .color(color.opacity(0.28))
                     )
                 }
 
@@ -859,8 +890,8 @@ private struct ReminderStarGauze: View {
                     )
                     context.stroke(
                         Path(ellipseIn: rippleRect),
-                        with: .color(Color(red: 0.81, green: 0.65, blue: 0.39).opacity(0.065)),
-                        style: StrokeStyle(lineWidth: 0.45)
+                        with: .color(Color(red: 0.81, green: 0.65, blue: 0.39).opacity(0.11)),
+                        style: StrokeStyle(lineWidth: 0.5)
                     )
                 }
             }
