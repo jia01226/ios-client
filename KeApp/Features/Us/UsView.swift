@@ -16,42 +16,53 @@ struct UsView: View {
 
     var body: some View {
         GeometryReader { viewport in
-            ScrollView {
-                VStack(alignment: .leading, spacing: theme.metric.gapM) {
-                    pageHeader
-                        .padding(.horizontal, theme.metric.pagePadding)
+            ZStack {
+                theme.effectiveBackground
+                    .ignoresSafeArea()
 
-                    MoonOrbitSelector(
-                        events: vm.anniversaries,
-                        selectedIndex: $selectedAnniversaryIndex
-                    )
-                    .frame(height: 372)
-                    .padding(.leading, theme.metric.pagePadding)
-                    .clipped()
+                UsCosmosBackground(reduceMotion: reduceMotion)
+                    .ignoresSafeArea()
 
-                    if let selectedAnniversary {
-                        countdown(for: selectedAnniversary)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: theme.metric.gapM) {
+                        pageHeader
+                            .padding(.horizontal, theme.metric.pagePadding)
+
+                        MoonOrbitSelector(
+                            events: vm.anniversaries,
+                            selectedIndex: $selectedAnniversaryIndex
+                        )
+                        .frame(height: 372)
+                        .padding(.leading, theme.metric.pagePadding)
+                        .clipped()
+
+                        if let selectedAnniversary {
+                            countdown(for: selectedAnniversary)
+                                .padding(.horizontal, theme.metric.pagePadding)
+                        }
+
+                        Color.clear
+                            .frame(height: 72)
+                            .accessibilityHidden(true)
+
+                        remindersSection
+                            .padding(.horizontal, theme.metric.pagePadding)
+
+                        Spacer(minLength: 0)
+
+                        shiftSection
                             .padding(.horizontal, theme.metric.pagePadding)
                     }
-
-                    remindersSection
-                        .padding(.horizontal, theme.metric.pagePadding)
-
-                    Spacer(minLength: 0)
-
-                    shiftSection
-                        .padding(.horizontal, theme.metric.pagePadding)
+                    .frame(
+                        minHeight: max(0, viewport.size.height - theme.metric.gapM - theme.metric.gapS),
+                        alignment: .top
+                    )
+                    .padding(.top, theme.metric.gapM)
+                    .padding(.bottom, theme.metric.gapS)
                 }
-                .frame(
-                    minHeight: max(0, viewport.size.height - theme.metric.gapM - theme.metric.gapS),
-                    alignment: .top
-                )
-                .padding(.top, theme.metric.gapM)
-                .padding(.bottom, theme.metric.gapS)
+                .scrollContentBackground(.hidden)
             }
-            .scrollContentBackground(.hidden)
         }
-        .background(theme.effectiveBackground.ignoresSafeArea())
         .onChange(of: vm.anniversaries.map(\.id)) { _, ids in
             guard !ids.isEmpty else {
                 selectedAnniversaryIndex = 0
@@ -123,28 +134,11 @@ struct UsView: View {
     }
 
     private var remindersSection: some View {
-        VStack(alignment: .leading, spacing: theme.metric.gapM) {
-            Text("柯替你记得")
-                .font(.custom("STSongti-SC-Regular", size: 24, relativeTo: .title2))
-                .tracking(1.8)
-                .foregroundStyle(theme.color.textPrimary)
-
-            VStack(spacing: 0) {
-                ForEach(vm.activeReminders) { reminder in
-                    ReminderRow(reminder: reminder)
-                        .padding(.vertical, theme.metric.gapS)
-                }
-            }
-            .overlay(alignment: .topTrailing) {
-                Image("CamelliaMoonlight")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 150)
-                    .opacity(0.045)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
-        }
+        KeRemembersSummary(
+            reminders: vm.activeReminders,
+            reduceMotion: reduceMotion
+        )
+        .accessibilityIdentifier("us-ke-remembers")
     }
 
     private var shiftSection: some View {
@@ -533,39 +527,261 @@ private struct OrbitEventMarker: View {
     }
 }
 
-// MARK: - 柯替你记得
+// MARK: - 背景星空
 
-private struct ReminderRow: View {
-    @EnvironmentObject private var theme: Theme
-    let reminder: Reminder
+private struct UsBackgroundStar: Identifiable {
+    let id: Int
+    let x: CGFloat
+    let y: CGFloat
+    let size: CGFloat
+    let phase: CGFloat
+    let speed: CGFloat
+    let peakOpacity: CGFloat
+    let warm: Bool
+    let glint: Bool
+}
+
+private struct UsCosmosBackground: View {
+    let reduceMotion: Bool
+
+    @State private var startedAt = Date()
+
+    private let stars: [UsBackgroundStar] = [
+        .init(id: 0, x: 0.06, y: 0.08, size: 0.8, phase: 0.2, speed: 0.42, peakOpacity: 0.15, warm: false, glint: false),
+        .init(id: 1, x: 0.18, y: 0.16, size: 1.1, phase: 2.4, speed: 0.31, peakOpacity: 0.12, warm: true, glint: false),
+        .init(id: 2, x: 0.42, y: 0.10, size: 1.7, phase: 4.2, speed: 0.27, peakOpacity: 0.18, warm: false, glint: true),
+        .init(id: 3, x: 0.67, y: 0.18, size: 0.9, phase: 1.5, speed: 0.48, peakOpacity: 0.13, warm: true, glint: false),
+        .init(id: 4, x: 0.89, y: 0.25, size: 1.3, phase: 5.3, speed: 0.36, peakOpacity: 0.15, warm: false, glint: false),
+        .init(id: 5, x: 0.11, y: 0.29, size: 1.5, phase: 3.1, speed: 0.52, peakOpacity: 0.16, warm: false, glint: true),
+        .init(id: 6, x: 0.32, y: 0.36, size: 0.7, phase: 0.8, speed: 0.39, peakOpacity: 0.11, warm: true, glint: false),
+        .init(id: 7, x: 0.61, y: 0.33, size: 1.0, phase: 5.8, speed: 0.29, peakOpacity: 0.12, warm: false, glint: false),
+        .init(id: 8, x: 0.82, y: 0.43, size: 1.6, phase: 2.0, speed: 0.25, peakOpacity: 0.18, warm: true, glint: true),
+        .init(id: 9, x: 0.04, y: 0.51, size: 0.8, phase: 4.8, speed: 0.46, peakOpacity: 0.12, warm: true, glint: false),
+        .init(id: 10, x: 0.24, y: 0.58, size: 1.2, phase: 1.1, speed: 0.33, peakOpacity: 0.14, warm: false, glint: false),
+        .init(id: 11, x: 0.49, y: 0.49, size: 0.7, phase: 3.8, speed: 0.54, peakOpacity: 0.10, warm: false, glint: false),
+        .init(id: 12, x: 0.72, y: 0.57, size: 1.4, phase: 0.4, speed: 0.41, peakOpacity: 0.16, warm: true, glint: true),
+        .init(id: 13, x: 0.94, y: 0.63, size: 0.9, phase: 5.0, speed: 0.28, peakOpacity: 0.12, warm: false, glint: false),
+        .init(id: 14, x: 0.14, y: 0.70, size: 1.5, phase: 2.8, speed: 0.47, peakOpacity: 0.16, warm: true, glint: true),
+        .init(id: 15, x: 0.39, y: 0.76, size: 0.8, phase: 1.7, speed: 0.37, peakOpacity: 0.11, warm: false, glint: false),
+        .init(id: 16, x: 0.63, y: 0.69, size: 1.1, phase: 4.5, speed: 0.24, peakOpacity: 0.14, warm: true, glint: false),
+        .init(id: 17, x: 0.86, y: 0.80, size: 1.6, phase: 0.9, speed: 0.45, peakOpacity: 0.17, warm: false, glint: true),
+        .init(id: 18, x: 0.27, y: 0.86, size: 0.9, phase: 3.6, speed: 0.30, peakOpacity: 0.11, warm: false, glint: false),
+        .init(id: 19, x: 0.53, y: 0.91, size: 1.2, phase: 5.5, speed: 0.40, peakOpacity: 0.14, warm: true, glint: false),
+        .init(id: 20, x: 0.76, y: 0.94, size: 0.7, phase: 2.2, speed: 0.51, peakOpacity: 0.10, warm: false, glint: false),
+        .init(id: 21, x: 0.96, y: 0.90, size: 1.4, phase: 1.0, speed: 0.32, peakOpacity: 0.15, warm: true, glint: true),
+    ]
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Circle()
-                .fill(theme.effectiveAccent.opacity(0.82))
-                .frame(width: 6, height: 6)
-                .accessibilityHidden(true)
+        TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: reduceMotion)) { timeline in
+            let elapsed = max(0, timeline.date.timeIntervalSince(startedAt))
+            let time = CGFloat(elapsed)
 
-            Text(reminder.text)
-                .font(.custom("STSongti-SC-Light", size: 15.5, relativeTo: .body))
-                .tracking(0.45)
-                .lineSpacing(3)
-                .foregroundStyle(theme.color.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-                .layoutPriority(1)
+            GeometryReader { _ in
+                ZStack {
+                    Canvas { context, size in
+                        for star in stars {
+                            let wave = 0.5 + 0.5 * sin(time * star.speed + star.phase)
+                            let shimmer = reduceMotion ? 0.22 : wave * wave * wave * wave
+                            let opacity = 0.018 + star.peakOpacity * shimmer
+                            let center = CGPoint(x: size.width * star.x, y: size.height * star.y)
+                            let radius = star.size * (0.72 + 0.34 * shimmer)
 
-            Spacer(minLength: theme.metric.gapS)
+                            let color = star.warm
+                                ? Color(red: 0.82, green: 0.66, blue: 0.38)
+                                : Color(red: 0.69, green: 0.66, blue: 0.87)
 
-            Text(timeLabel)
-                .font(.custom("STSongti-SC-Light", size: 13, relativeTo: .caption))
-                .tracking(0.5)
-                .foregroundStyle(theme.effectiveAccent)
-                .fixedSize(horizontal: true, vertical: false)
+                            context.fill(
+                                Path(ellipseIn: CGRect(
+                                    x: center.x - radius / 2,
+                                    y: center.y - radius / 2,
+                                    width: radius,
+                                    height: radius
+                                )),
+                                with: .color(color.opacity(Double(opacity)))
+                            )
+
+                            if star.glint, shimmer > 0.46 {
+                                var glintPath = Path()
+                                glintPath.move(to: CGPoint(x: center.x - radius * 2.5, y: center.y))
+                                glintPath.addLine(to: CGPoint(x: center.x + radius * 2.5, y: center.y))
+                                glintPath.move(to: CGPoint(x: center.x, y: center.y - radius * 2.5))
+                                glintPath.addLine(to: CGPoint(x: center.x, y: center.y + radius * 2.5))
+                                context.stroke(
+                                    glintPath,
+                                    with: .color(color.opacity(Double(opacity * 0.66))),
+                                    style: StrokeStyle(lineWidth: 0.45, lineCap: .round)
+                                )
+                            }
+                        }
+
+                        if !reduceMotion, let meteor = activeMeteor(elapsed: elapsed) {
+                            let eased = meteor.progress * meteor.progress * (3 - 2 * meteor.progress)
+                            let flare = sin(meteor.progress * .pi)
+                            let head = CGPoint(
+                                x: size.width * (meteor.startX + meteor.travelX * eased),
+                                y: size.height * (meteor.startY + meteor.travelY * eased)
+                            )
+                            let travel = CGVector(
+                                dx: size.width * meteor.travelX,
+                                dy: size.height * meteor.travelY
+                            )
+                            let travelLength = max(1, hypot(travel.dx, travel.dy))
+                            let tailLength = meteor.tailLength * flare
+                            let tail = CGPoint(
+                                x: head.x - travel.dx / travelLength * tailLength,
+                                y: head.y - travel.dy / travelLength * tailLength
+                            )
+
+                            var streak = Path()
+                            streak.move(to: tail)
+                            streak.addLine(to: head)
+                            let meteorColor = meteor.warm
+                                ? Color(red: 0.91, green: 0.73, blue: 0.43)
+                                : Color(red: 0.73, green: 0.69, blue: 0.91)
+
+                            context.stroke(
+                                streak,
+                                with: .linearGradient(
+                                    Gradient(colors: [
+                                        meteorColor.opacity(0),
+                                        meteorColor.opacity(Double(0.18 * flare)),
+                                        Color.white.opacity(Double(0.42 * flare)),
+                                    ]),
+                                    startPoint: tail,
+                                    endPoint: head
+                                ),
+                                style: StrokeStyle(lineWidth: 0.72, lineCap: .round)
+                            )
+                            context.fill(
+                                Path(ellipseIn: CGRect(
+                                    x: head.x - 0.9,
+                                    y: head.y - 0.9,
+                                    width: 1.8,
+                                    height: 1.8
+                                )),
+                                with: .color(Color.white.opacity(Double(0.55 * flare)))
+                            )
+                        }
+                    }
+                }
+            }
         }
-        .accessibilityElement(children: .combine)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
-    private var timeLabel: String {
+    private func meteorState(elapsed: TimeInterval) -> BackgroundMeteorState? {
+        let period: TimeInterval = 18.4
+        let delay: TimeInterval = 3.6
+        let duration: TimeInterval = 1.05
+        let phase = elapsed.truncatingRemainder(dividingBy: period)
+        guard phase >= delay, phase <= delay + duration else { return nil }
+
+        let progress = CGFloat((phase - delay) / duration)
+        let cycle = max(0, Int(elapsed / period)) % 4
+        let lanes: [BackgroundMeteorState] = [
+            .init(progress: progress, startX: 0.08, startY: 0.27, travelX: 0.24, travelY: 0.065, tailLength: 42, warm: false),
+            .init(progress: progress, startX: 0.56, startY: 0.46, travelX: 0.20, travelY: 0.052, tailLength: 34, warm: true),
+            .init(progress: progress, startX: 0.18, startY: 0.66, travelX: 0.27, travelY: 0.075, tailLength: 48, warm: true),
+            .init(progress: progress, startX: 0.63, startY: 0.79, travelX: 0.18, travelY: 0.045, tailLength: 30, warm: false),
+        ]
+        return lanes[cycle]
+    }
+
+    private func activeMeteor(elapsed: TimeInterval) -> BackgroundMeteorState? {
+        if ProcessInfo.processInfo.arguments.contains("-ui-test-us-cosmos-preview") {
+            return BackgroundMeteorState(
+                progress: 0.72,
+                startX: 0.11,
+                startY: 0.58,
+                travelX: 0.23,
+                travelY: 0.06,
+                tailLength: 40,
+                warm: true
+            )
+        }
+        return meteorState(elapsed: elapsed)
+    }
+}
+
+private struct BackgroundMeteorState {
+    let progress: CGFloat
+    let startX: CGFloat
+    let startY: CGFloat
+    let travelX: CGFloat
+    let travelY: CGFloat
+    let tailLength: CGFloat
+    let warm: Bool
+}
+
+// MARK: - 柯记着入口
+
+private struct KeRemembersSummary: View {
+    @EnvironmentObject private var theme: Theme
+    let reminders: [Reminder]
+    let reduceMotion: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            StarDivider()
+                .padding(.bottom, 24)
+
+            ZStack(alignment: .leading) {
+                ReminderStarGauze(reduceMotion: reduceMotion)
+                    .frame(height: 148)
+                    .offset(y: 14)
+
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("柯记着")
+                        .font(.custom("STSongti-SC-Regular", size: 22, relativeTo: .title3))
+                        .tracking(2.0)
+                        .foregroundStyle(theme.color.textPrimary)
+
+                    if let nextReminder = reminders.first {
+                        HStack(alignment: .center, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text(nextReminder.text)
+                                    .font(.custom("STSongti-SC-Light", size: 16.5, relativeTo: .body))
+                                    .tracking(0.5)
+                                    .lineSpacing(4)
+                                    .foregroundStyle(theme.color.textPrimary)
+                                    .fixedSize(horizontal: false, vertical: true)
+
+                                Text(timeLabel(for: nextReminder))
+                                    .font(.custom("STSongti-SC-Light", size: 13.5, relativeTo: .caption))
+                                    .tracking(0.7)
+                                    .foregroundStyle(theme.effectiveAccent)
+                            }
+                            .layoutPriority(1)
+
+                            Spacer(minLength: 8)
+
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 18, weight: .ultraLight))
+                                .foregroundStyle(theme.effectiveAccent)
+                                .frame(width: 44, height: 44)
+                                .accessibilityHidden(true)
+                        }
+                    } else {
+                        Text("暂时没有要记着的事")
+                            .font(.custom("STSongti-SC-Light", size: 15, relativeTo: .body))
+                            .tracking(0.7)
+                            .foregroundStyle(theme.color.textSecondary)
+                    }
+                }
+                .padding(.bottom, 18)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var accessibilityLabel: String {
+        guard let nextReminder = reminders.first else { return "柯记着，暂时没有提醒" }
+        return "柯记着，\(nextReminder.text)，\(timeLabel(for: nextReminder))"
+    }
+
+    private func timeLabel(for reminder: Reminder) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_CN")
         formatter.dateFormat = "HH:mm"
@@ -579,6 +795,128 @@ private struct ReminderRow: View {
 
         formatter.dateFormat = "M月d日"
         return formatter.string(from: reminder.dueAt)
+    }
+}
+
+private struct StarDivider: View {
+    var body: some View {
+        HStack(spacing: 0) {
+            StarDiamond()
+
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.76, green: 0.58, blue: 0.29).opacity(0.64),
+                            Color(red: 0.76, green: 0.58, blue: 0.29).opacity(0.18),
+                            Color.clear,
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(height: 0.65)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+private struct StarDiamond: View {
+    var body: some View {
+        ZStack {
+            Capsule(style: .continuous)
+                .frame(width: 10, height: 0.7)
+            Capsule(style: .continuous)
+                .frame(width: 0.7, height: 10)
+        }
+        .foregroundStyle(Color(red: 0.76, green: 0.58, blue: 0.29).opacity(0.78))
+        .frame(width: 12, height: 12)
+    }
+}
+
+private struct ReminderStarGauze: View {
+    let reduceMotion: Bool
+
+    @State private var startedAt = Date()
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 20.0, paused: reduceMotion)) { timeline in
+            let elapsed = max(0, timeline.date.timeIntervalSince(startedAt))
+            let drift = reduceMotion ? 0 : CGFloat(sin(elapsed * 0.22)) * 7
+
+            Canvas { context, size in
+                for index in 0..<7 {
+                    let t = CGFloat(index) / 6
+                    let baseY = size.height * (0.38 + t * 0.23)
+                    var strand = Path()
+                    strand.move(to: CGPoint(x: -24 + drift, y: baseY + 9 * t))
+                    strand.addCurve(
+                        to: CGPoint(x: size.width + 22 + drift, y: baseY - 7 * t),
+                        control1: CGPoint(x: size.width * 0.28, y: baseY - 27 + t * 8),
+                        control2: CGPoint(x: size.width * 0.69, y: baseY + 31 - t * 9)
+                    )
+
+                    let strandColor = index.isMultiple(of: 2)
+                        ? Color(red: 0.77, green: 0.70, blue: 0.91)
+                        : Color(red: 0.86, green: 0.70, blue: 0.42)
+                    context.stroke(
+                        strand,
+                        with: .color(strandColor.opacity(0.075 - Double(t) * 0.018)),
+                        style: StrokeStyle(lineWidth: 0.48, lineCap: .round)
+                    )
+                }
+
+                let points: [(CGFloat, CGFloat, CGFloat, Bool)] = [
+                    (0.08, 0.41, 0.8, true), (0.17, 0.55, 0.55, false),
+                    (0.29, 0.36, 0.7, false), (0.41, 0.61, 0.6, true),
+                    (0.54, 0.45, 0.85, false), (0.63, 0.57, 0.55, true),
+                    (0.76, 0.39, 0.72, false), (0.86, 0.53, 0.65, true),
+                    (0.94, 0.43, 0.5, false),
+                ]
+                for point in points {
+                    let center = CGPoint(
+                        x: size.width * point.0 + drift * point.1,
+                        y: size.height * point.1
+                    )
+                    let color = point.3
+                        ? Color(red: 0.86, green: 0.70, blue: 0.42)
+                        : Color(red: 0.76, green: 0.70, blue: 0.91)
+                    context.fill(
+                        Path(ellipseIn: CGRect(
+                            x: center.x - point.2,
+                            y: center.y - point.2,
+                            width: point.2 * 2,
+                            height: point.2 * 2
+                        )),
+                        with: .color(color.opacity(0.19))
+                    )
+                }
+
+                for index in 0..<3 {
+                    let inset = CGFloat(index) * 8
+                    let rippleRect = CGRect(
+                        x: size.width * 0.70 - inset / 2,
+                        y: size.height * 0.59 - inset / 4,
+                        width: size.width * 0.22 + inset,
+                        height: 9 + inset / 2
+                    )
+                    context.stroke(
+                        Path(ellipseIn: rippleRect),
+                        with: .color(Color(red: 0.81, green: 0.65, blue: 0.39).opacity(0.065)),
+                        style: StrokeStyle(lineWidth: 0.45)
+                    )
+                }
+            }
+        }
+        .mask(
+            LinearGradient(
+                colors: [.clear, .white, .white, .clear],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        )
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 

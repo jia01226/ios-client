@@ -7,7 +7,7 @@ final class UsInteractionTests: XCTestCase {
 
     func testMoonOrbitSelectionRotationAndTabRoundTrip() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-ui-test-scroll-control"]
+        app.launchArguments = ["-ui-test-scroll-control", "-ui-test-us-cosmos-preview"]
         app.launch()
 
         let usTab = app.buttons["我们"]
@@ -18,6 +18,13 @@ final class UsInteractionTests: XCTestCase {
         XCTAssertTrue(moon.waitForExistence(timeout: 3))
         XCTAssertEqual(moon.value as? String, "我们的纪念日")
         attachScreenshot(named: "20-us-default-anniversary")
+
+        let remembers = app.descendants(matching: .any)["us-ke-remembers"]
+        XCTAssertTrue(remembers.waitForExistence(timeout: 3))
+        app.swipeUp(velocity: .slow)
+        attachScreenshot(named: "20b-us-ke-remembers")
+
+        app.swipeDown(velocity: .slow)
 
         moon.swipeDown(velocity: .slow)
         waitForValue("我的生日", on: moon)
