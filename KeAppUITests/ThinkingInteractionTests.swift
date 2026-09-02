@@ -8,7 +8,7 @@ final class ThinkingInteractionTests: XCTestCase {
         XCTAssertTrue(banner.waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["reply-failure-retry"].exists)
         XCTAssertTrue(app.staticTexts["线路还是没有接稳，柯没有生成完整回复。"].exists)
-        add(XCTAttachment(screenshot: app.screenshot()))
+        attachScreenshot(named: "17-reply-failure")
     }
 
     override func setUpWithError() throws {
