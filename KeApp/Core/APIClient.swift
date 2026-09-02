@@ -40,6 +40,20 @@ enum APIError: LocalizedError {
 struct ActiveChatJob: Decodable, Identifiable, Sendable {
     let id: String
     let status: String
+    let clientMessageID: String?
+    let userMessageID: Int?
+    let assistantMessageID: Int?
+    let error: String?
+    let retryable: Bool?
+    let nextRetryAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, status, error, retryable
+        case clientMessageID = "client_msg_id"
+        case userMessageID = "user_message_id"
+        case assistantMessageID = "assistant_message_id"
+        case nextRetryAt = "next_retry_at"
+    }
 }
 
 enum ChatStreamEvent: Sendable {
@@ -47,7 +61,14 @@ enum ChatStreamEvent: Sendable {
     case text(String)
     case thinkingDelta(String)
     case thoughtNote(String)
-    case completed(assistantMessageID: Int?, bedroom: Bool?)
+    case completed(
+        assistantMessageID: Int?,
+        bedroom: Bool?,
+        status: String?,
+        error: String?,
+        retryable: Bool,
+        retryScheduled: Bool
+    )
     case serverError(String)
 }
 
@@ -469,14 +490,34 @@ actor APIClient {
         return data
     }
 
-    func activeJobs(sessionID: Int) async throws -> [ActiveChatJob] {
+    func activeJobs(
+        sessionID: Int,
+        includeRecentFailures: Bool = false
+    ) async throws -> [ActiveChatJob] {
+        var queryItems = [URLQueryItem(name: "session_id", value: String(sessionID))]
+        if includeRecentFailures {
+            queryItems.append(URLQueryItem(name: "include_recent_failed", value: "1"))
+        }
         let request = try makeRequest(
             path: "/api/chat/jobs",
-            queryItems: [URLQueryItem(name: "session_id", value: String(sessionID))]
+            queryItems: queryItems
         )
         let (data, _) = try await perform(request)
         do {
             return try decoder.decode([ActiveChatJob].self, from: data)
+        } catch {
+            throw APIError.decoding(error)
+        }
+    }
+
+    func chatJob(id: String, sessionID: Int) async throws -> ActiveChatJob {
+        let request = try makeRequest(
+            path: "/api/chat/jobs/\(id)",
+            queryItems: [URLQueryItem(name: "session_id", value: String(sessionID))]
+        )
+        let (data, _) = try await perform(request)
+        do {
+            return try decoder.decode(ActiveChatJob.self, from: data)
         } catch {
             throw APIError.decoding(error)
         }
@@ -718,7 +759,11 @@ actor APIClient {
         if object["done"] as? Bool == true {
             events.append(.completed(
                 assistantMessageID: number(object["assistant_message_id"]),
-                bedroom: bedroom
+                bedroom: bedroom,
+                status: object["status"] as? String,
+                error: object["error"] as? String,
+                retryable: object["retryable"] as? Bool ?? false,
+                retryScheduled: object["retry_scheduled"] as? Bool ?? false
             ))
         }
         return events

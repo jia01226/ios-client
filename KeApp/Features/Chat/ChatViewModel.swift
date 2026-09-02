@@ -12,6 +12,14 @@ final class ChatViewModel: ObservableObject {
         case unavailable(String)
     }
 
+    struct ReplyFailure: Equatable, Sendable {
+        let jobID: String
+        let clientMessageID: String
+        let userMessageID: Int?
+        let message: String
+        let canRetry: Bool
+    }
+
     @Published var phase: Phase = .checking
     @Published var messages: [Message] = []
     @Published var statusText: String?
@@ -41,6 +49,7 @@ final class ChatViewModel: ObservableObject {
     @Published var uploadingFileName: String?
     @Published var uploadError: String?
     @Published var canRetryUpload = false
+    @Published var replyFailure: ReplyFailure?
     @Published private var visibleSegmentCounts: [String: Int] = [:]
 
     private let api = APIClient.shared
@@ -76,6 +85,7 @@ final class ChatViewModel: ObservableObject {
         case thinkingSegmentRace
         case sendStability
         case modelGroups
+        case replyFailure
     }
 
     private var uiTestFixture: UITestFixture?
@@ -84,7 +94,28 @@ final class ChatViewModel: ObservableObject {
     init() {
 #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
-        if arguments.contains("-ui-test-model-groups") {
+        if arguments.contains("-ui-test-reply-failure") {
+            uiTestFixture = .replyFailure
+            phase = .ready
+            sessionID = 1
+            messages = [
+                Message(
+                    id: "ui-test-failed-user",
+                    serverID: 42,
+                    clientID: "ios-ui-test-failed",
+                    sender: .me,
+                    text: "爸比？",
+                    time: .now
+                )
+            ]
+            replyFailure = ReplyFailure(
+                jobID: "ui-test-failed-job",
+                clientMessageID: "ios-ui-test-failed",
+                userMessageID: 42,
+                message: "线路还是没有接稳，柯没有生成完整回复。",
+                canRetry: true
+            )
+        } else if arguments.contains("-ui-test-model-groups") {
             uiTestFixture = .modelGroups
             phase = .ready
             sessionID = 1
@@ -488,6 +519,7 @@ final class ChatViewModel: ObservableObject {
 
         isSending = true
         statusText = nil
+        replyFailure = nil
         activeJobID = nil
         // Invalidate any foreground recovery probe that is currently awaiting the network.
         recoveryProbeID = nil
@@ -928,6 +960,11 @@ final class ChatViewModel: ObservableObject {
         retryCount: Int
     ) async {
         var didComplete = false
+        var completionStatus: String?
+        var completionError: String?
+        var completionRetryable = false
+        var retryScheduled = false
+        var serverErrorMessage: String?
         var pendingText = ""
         var pendingThinking = ""
         var lastPublish = Date.distantPast
@@ -986,27 +1023,96 @@ final class ChatViewModel: ObservableObject {
                     updateMessage(id: assistantLocalID) { $0.thoughtNote = summary }
                     streamRevision += 1
 
-                case let .completed(assistantMessageID, bedroom):
+                case let .completed(
+                    assistantMessageID,
+                    bedroom,
+                    status,
+                    error,
+                    retryable,
+                    scheduled
+                ):
                     flushBufferedEvents()
                     didComplete = true
-                    updateMessage(id: assistantLocalID) {
-                        $0.serverID = assistantMessageID ?? $0.serverID
-                        $0.isStreaming = false
-                        $0.deliveryState = .sent
-                    }
-                    if let completed = messages.first(where: { $0.id == assistantLocalID }) {
-                        stageSegments(for: completed, reduceMotion: reduceMotion)
+                    completionStatus = status ?? (assistantMessageID == nil ? "error" : "done")
+                    completionError = error ?? serverErrorMessage
+                    completionRetryable = retryable
+                    retryScheduled = scheduled
+                    if assistantMessageID != nil {
+                        updateMessage(id: assistantLocalID) {
+                            $0.serverID = assistantMessageID ?? $0.serverID
+                            $0.isStreaming = false
+                            $0.deliveryState = .sent
+                        }
+                        if let completed = messages.first(where: { $0.id == assistantLocalID }) {
+                            stageSegments(for: completed, reduceMotion: reduceMotion)
+                        }
+                    } else {
+                        updateMessage(id: assistantLocalID) {
+                            $0.isStreaming = false
+                            $0.deliveryState = scheduled ? .waiting : .failed
+                        }
                     }
                     applyBedroom(bedroom)
 
                 case let .serverError(message):
-                    throw APIError.serverMessage(message)
+                    // 服务端随后还会给出最终任务状态。先记下原因，不能在这里提前
+                    // 抛错，否则 waiting_retry / retryable 会被旧逻辑吞掉。
+                    serverErrorMessage = message
                 }
             }
 
             guard didComplete else { throw APIError.streamClosed }
+            if completionStatus == "waiting_retry" || retryScheduled {
+                updateMessage(id: assistantLocalID) {
+                    $0.isStreaming = false
+                    $0.deliveryState = .waiting
+                }
+                statusText = "线路忙，服务器会自动再接一次。退出 App 也没关系。"
+                if let activeJobID {
+                    await pollForCompletion(
+                        jobID: activeJobID,
+                        fallbackClientID: clientID,
+                        fallbackUserMessageID: messages.first(where: { $0.id == userLocalID })?.serverID,
+                        assistantLocalID: assistantLocalID
+                    )
+                } else {
+                    isSending = false
+                    markReplyFailed(
+                        jobID: "",
+                        clientMessageID: clientID,
+                        userMessageID: messages.first(where: { $0.id == userLocalID })?.serverID,
+                        assistantLocalID: assistantLocalID,
+                        message: completionError ?? "线路没有接稳，柯还没生成完整回复。",
+                        retryable: false
+                    )
+                }
+                return
+            }
+            if completionStatus == "error" {
+                if let activeJobID {
+                    await pollForCompletion(
+                        jobID: activeJobID,
+                        fallbackClientID: clientID,
+                        fallbackUserMessageID: messages.first(where: { $0.id == userLocalID })?.serverID,
+                        assistantLocalID: assistantLocalID
+                    )
+                } else {
+                    isSending = false
+                    statusText = nil
+                    markReplyFailed(
+                        jobID: "",
+                        clientMessageID: clientID,
+                        userMessageID: messages.first(where: { $0.id == userLocalID })?.serverID,
+                        assistantLocalID: assistantLocalID,
+                        message: completionError ?? "线路没有接稳，柯还没生成完整回复。",
+                        retryable: completionRetryable
+                    )
+                }
+                return
+            }
             activeJobID = nil
             statusText = nil
+            replyFailure = nil
             await refreshHistory(showFailure: false)
             isSending = false
             CompanionPermissionCoordinator.shared.conversationDidComplete()
@@ -1025,7 +1131,12 @@ final class ChatViewModel: ObservableObject {
                     $0.deliveryState = .waiting
                 }
                 statusText = "连接断了一下，柯的话还在服务器写，写完会自动接回来。"
-                await pollForCompletion(jobID: activeJobID)
+                await pollForCompletion(
+                    jobID: activeJobID,
+                    fallbackClientID: clientID,
+                    fallbackUserMessageID: messages.first(where: { $0.id == userLocalID })?.serverID,
+                    assistantLocalID: assistantLocalID
+                )
             } else if retryCount == 0 {
                 statusText = "连接断了一下，正在用同一条消息接回…"
                 try? await Task.sleep(nanoseconds: 800_000_000)
@@ -1048,6 +1159,56 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
+    func retryFailedReply(reduceMotion: Bool = false) async {
+        guard let sessionID,
+              let failure = replyFailure,
+              failure.canRetry,
+              !isSending,
+              !failure.jobID.isEmpty,
+              !failure.clientMessageID.isEmpty else { return }
+
+        let userLocalID = messages.first(where: {
+            failure.userMessageID != nil && $0.serverID == failure.userMessageID
+        })?.id ?? "user-retry-\(failure.jobID)"
+        let assistantLocalID = "assistant-retry-\(failure.jobID)"
+        if !messages.contains(where: { $0.id == assistantLocalID }) {
+            messages.append(Message(
+                id: assistantLocalID,
+                clientID: failure.clientMessageID,
+                sender: .ke,
+                text: "",
+                time: .now,
+                isStreaming: true,
+                deliveryState: .sending
+            ))
+        }
+
+        isSending = true
+        statusText = "正在接回刚才那条，不会重复发送你的消息。"
+        replyFailure = nil
+        activeJobID = failure.jobID
+        activeStreamClientID = failure.clientMessageID
+        defer {
+            if activeStreamClientID == failure.clientMessageID {
+                activeStreamClientID = nil
+            }
+        }
+        await performSend(
+            text: "",
+            sessionID: sessionID,
+            clientID: failure.clientMessageID,
+            userLocalID: userLocalID,
+            assistantLocalID: assistantLocalID,
+            attachments: [],
+            reduceMotion: reduceMotion,
+            retryCount: 0
+        )
+    }
+
+    func dismissReplyFailure() {
+        replyFailure = nil
+    }
+
     private func recoverActiveJobsIfNeeded() async {
         guard let sessionID,
               recoveringJobID == nil,
@@ -1061,7 +1222,10 @@ final class ChatViewModel: ObservableObject {
             }
         }
         do {
-            let jobs = try await api.activeJobs(sessionID: sessionID)
+            let jobs = try await api.activeJobs(
+                sessionID: sessionID,
+                includeRecentFailures: true
+            )
             // send() may have started while activeJobs was in flight. A stale probe
             // must never clear its state or start a second polling owner.
             guard recoveryProbeID == probeID,
@@ -1070,9 +1234,21 @@ final class ChatViewModel: ObservableObject {
                 isSending = false
                 return
             }
+            if job.status == "error" {
+                isSending = false
+                statusText = nil
+                presentReplyFailure(job)
+                return
+            }
             isSending = true
-            statusText = "柯还有一句话在写，写完会自动接回来。"
-            await pollForCompletion(jobID: job.id)
+            statusText = job.status == "waiting_retry"
+                ? "线路忙，服务器会自动再接一次。退出 App 也没关系。"
+                : "柯还有一句话在写，写完会自动接回来。"
+            await pollForCompletion(
+                jobID: job.id,
+                fallbackClientID: job.clientMessageID ?? "",
+                fallbackUserMessageID: job.userMessageID
+            )
         } catch APIError.unauthorized {
             phase = .needsLogin
         } catch {
@@ -1080,7 +1256,12 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    private func pollForCompletion(jobID: String) async {
+    private func pollForCompletion(
+        jobID: String,
+        fallbackClientID: String = "",
+        fallbackUserMessageID: Int? = nil,
+        assistantLocalID: String? = nil
+    ) async {
         guard let sessionID, recoveringJobID == nil else { return }
         recoveringJobID = jobID
         defer {
@@ -1091,12 +1272,32 @@ final class ChatViewModel: ObservableObject {
         for _ in 0..<150 {
             if Task.isCancelled { break }
             do {
-                let jobs = try await api.activeJobs(sessionID: sessionID)
-                if !jobs.contains(where: { $0.id == jobID }) {
+                let job = try await api.chatJob(id: jobID, sessionID: sessionID)
+                switch job.status {
+                case "done":
                     await refreshHistory(showFailure: true)
                     isSending = false
                     statusText = nil
+                    replyFailure = nil
+                    CompanionPermissionCoordinator.shared.conversationDidComplete()
                     return
+                case "waiting_retry":
+                    statusText = "线路忙，服务器会自动再接一次。退出 App 也没关系。"
+                case "error":
+                    await refreshHistory(showFailure: false)
+                    isSending = false
+                    statusText = nil
+                    if let assistantLocalID {
+                        removeEmptyAssistant(id: assistantLocalID)
+                    }
+                    presentReplyFailure(
+                        job,
+                        fallbackClientID: fallbackClientID,
+                        fallbackUserMessageID: fallbackUserMessageID
+                    )
+                    return
+                default:
+                    statusText = "柯还有一句话在写，写完会自动接回来。"
                 }
             } catch APIError.unauthorized {
                 isSending = false
@@ -1246,6 +1447,53 @@ final class ChatViewModel: ObservableObject {
             values.append(attachment)
         }
         return Array(values.prefix(9))
+    }
+
+    private func presentReplyFailure(
+        _ job: ActiveChatJob,
+        fallbackClientID: String = "",
+        fallbackUserMessageID: Int? = nil
+    ) {
+        let message = job.error?.trimmingCharacters(in: .whitespacesAndNewlines)
+        replyFailure = ReplyFailure(
+            jobID: job.id,
+            clientMessageID: job.clientMessageID ?? fallbackClientID,
+            userMessageID: job.userMessageID ?? fallbackUserMessageID,
+            message: (message?.isEmpty == false)
+                ? message!
+                : "线路没有接稳，柯还没生成完整回复。",
+            canRetry: job.retryable ?? false
+        )
+    }
+
+    private func markReplyFailed(
+        jobID: String,
+        clientMessageID: String,
+        userMessageID: Int?,
+        assistantLocalID: String,
+        message: String,
+        retryable: Bool
+    ) {
+        removeEmptyAssistant(id: assistantLocalID)
+        replyFailure = ReplyFailure(
+            jobID: jobID,
+            clientMessageID: clientMessageID,
+            userMessageID: userMessageID,
+            message: message,
+            canRetry: retryable && !jobID.isEmpty && !clientMessageID.isEmpty
+        )
+    }
+
+    private func removeEmptyAssistant(id: String) {
+        guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
+        if messages[index].text.isEmpty
+            && nonBlank(messages[index].thoughtSummary) == nil
+            && nonBlank(messages[index].thoughtNote) == nil {
+            messages.remove(at: index)
+        } else {
+            messages[index].isStreaming = false
+            messages[index].deliveryState = .failed
+        }
     }
 
     private func markFailed(userLocalID: String, assistantLocalID: String) {

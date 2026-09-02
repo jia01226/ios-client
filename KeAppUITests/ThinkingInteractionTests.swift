@@ -1,6 +1,16 @@
 import XCTest
 
 final class ThinkingInteractionTests: XCTestCase {
+    func testReplyFailureIsVisibleAndRecoverable() {
+        let app = launch(arguments: ["-ui-test-reply-failure"])
+        let banner = app.otherElements["reply-failure-banner"]
+
+        XCTAssertTrue(banner.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["reply-failure-retry"].exists)
+        XCTAssertTrue(app.staticTexts["线路还是没有接稳，柯没有生成完整回复。"].exists)
+        add(XCTAttachment(screenshot: app.screenshot()))
+    }
+
     override func setUpWithError() throws {
         continueAfterFailure = false
     }

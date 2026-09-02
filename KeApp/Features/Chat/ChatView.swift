@@ -65,6 +65,19 @@ struct ChatView: View {
                             .padding(.horizontal, theme.metric.pagePadding)
                             .padding(.bottom, theme.metric.gapS)
                     }
+                    if let failure = vm.replyFailure {
+                        ReplyFailureBanner(
+                            failure: failure,
+                            retry: {
+                                Task {
+                                    await vm.retryFailedReply(reduceMotion: reduceMotion)
+                                }
+                            },
+                            dismiss: vm.dismissReplyFailure
+                        )
+                        .padding(.horizontal, theme.metric.pagePadding)
+                        .padding(.bottom, theme.metric.gapS)
+                    }
                     messageList
                         .overlay(alignment: .bottom) {
                             if attachmentsOpen { attachmentTray }
@@ -348,7 +361,11 @@ struct ChatView: View {
             HStack(spacing: theme.metric.gapM) {
                 attachmentButton(title: "拍照", systemImage: "camera") {
                     attachmentsOpen = false
-                    showingCamera = UIImagePickerController.isSourceTypeAvailable(.camera)
+                    if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                        showingCamera = true
+                    } else {
+                        vm.reportUploadFailure("这台设备现在没有可用的相机。")
+                    }
                 }
 
                 PhotosPicker(

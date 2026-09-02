@@ -134,6 +134,28 @@ final class MessagePresentationTests: XCTestCase {
         XCTAssertTrue(response.attachment.isImage)
     }
 
+    func testWaitingChatJobDecodesRecoveryFields() throws {
+        let data = Data(#"""
+        {
+          "id":"job-1",
+          "status":"waiting_retry",
+          "client_msg_id":"ios-message-1",
+          "user_message_id":42,
+          "assistant_message_id":0,
+          "error":"线路忙了一下，服务器会自动再接一次。",
+          "retryable":true,
+          "next_retry_at":"2026-09-02 14:30:00"
+        }
+        """#.utf8)
+
+        let job = try JSONDecoder().decode(ActiveChatJob.self, from: data)
+
+        XCTAssertEqual(job.status, "waiting_retry")
+        XCTAssertEqual(job.clientMessageID, "ios-message-1")
+        XCTAssertEqual(job.userMessageID, 42)
+        XCTAssertTrue(job.retryable == true)
+    }
+
     func testAssistantThinkingBecomesASeparateTimelineItem() {
         let message = Message(
             id: "assistant-with-thinking",

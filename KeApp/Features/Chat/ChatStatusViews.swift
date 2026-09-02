@@ -96,5 +96,60 @@ struct StatusBanner: View {
     }
 }
 
+struct ReplyFailureBanner: View {
+    @EnvironmentObject private var theme: Theme
+    let failure: ChatViewModel.ReplyFailure
+    let retry: () -> Void
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: theme.metric.gapS) {
+            Image(systemName: "exclamationmark.circle")
+                .font(theme.font.body)
+                .foregroundStyle(theme.effectiveAccent)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: theme.metric.gapXS) {
+                Text(failure.message)
+                    .font(theme.font.caption)
+                    .foregroundStyle(theme.color.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if failure.canRetry {
+                    Button("重试这条回复", action: retry)
+                        .buttonStyle(.plain)
+                        .font(theme.font.caption)
+                        .foregroundStyle(theme.effectiveAccent)
+                        .frame(minHeight: theme.metric.touchTarget, alignment: .leading)
+                        .accessibilityIdentifier("reply-failure-retry")
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            Button(action: dismiss) {
+                Image(systemName: "xmark")
+                    .frame(
+                        width: theme.metric.touchTarget,
+                        height: theme.metric.touchTarget,
+                        alignment: .topTrailing
+                    )
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(theme.color.textSecondary)
+            .accessibilityLabel("收起回复失败提示")
+        }
+        .padding(.leading, theme.metric.gapM)
+        .padding(.trailing, theme.metric.gapXS)
+        .padding(.vertical, theme.metric.gapS)
+        .background(
+            RoundedRectangle(cornerRadius: theme.metric.radiusBubble, style: .continuous)
+                .fill(theme.color.card)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("reply-failure-banner")
+    }
+}
+
 /// 保存一条可见消息的边缘快照，并在折叠布局稳定后恢复。
 /// 这是聊天列表常用的 item snapshot 做法；不要在动画每一帧修正 contentOffset。
