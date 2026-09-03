@@ -1023,6 +1023,19 @@ final class ChatViewModel: ObservableObject {
                     updateMessage(id: assistantLocalID) { $0.thoughtNote = summary }
                     streamRevision += 1
 
+                case let .toolRun(toolRun):
+                    flushBufferedEvents()
+                    updateMessage(id: assistantLocalID) { message in
+                        var runs = message.toolRuns ?? []
+                        if let index = runs.firstIndex(where: { $0.id == toolRun.id }) {
+                            runs[index] = toolRun
+                        } else {
+                            runs.append(toolRun)
+                        }
+                        message.toolRuns = runs
+                    }
+                    streamRevision += 1
+
                 case let .completed(
                     assistantMessageID,
                     bedroom,

@@ -61,6 +61,7 @@ enum ChatStreamEvent: Sendable {
     case text(String)
     case thinkingDelta(String)
     case thoughtNote(String)
+    case toolRun(ChatToolRun)
     case completed(
         assistantMessageID: Int?,
         bedroom: Bool?,
@@ -246,6 +247,7 @@ private struct RemoteMessage: Decodable {
     let thinkSummaryRaw: String?
     let sceneMode: String?
     let attachments: [ChatAttachment]?
+    let toolRuns: [ChatToolRun]?
 
     enum CodingKeys: String, CodingKey {
         case id, author, content
@@ -255,6 +257,7 @@ private struct RemoteMessage: Decodable {
         case thinkSummaryRaw = "think_summary_raw"
         case sceneMode = "scene_mode"
         case attachments
+        case toolRuns = "tool_runs"
     }
 
     func appMessage() -> Message {
@@ -271,6 +274,7 @@ private struct RemoteMessage: Decodable {
             thoughtSummaryRaw: thinkSummaryRaw?.nilIfBlank,
             sceneMode: sceneMode?.nilIfBlank,
             attachments: attachments,
+            toolRuns: toolRuns,
             isStreaming: false,
             deliveryState: .sent
         )
@@ -727,7 +731,7 @@ actor APIClient {
         }
     }
 
-    private static func parseStreamPayload(_ data: String) throws -> [ChatStreamEvent] {
+    static func parseStreamPayload(_ data: String) throws -> [ChatStreamEvent] {
         guard let raw = data.data(using: .utf8),
               let object = try JSONSerialization.jsonObject(with: raw) as? [String: Any] else {
             throw APIError.invalidResponse
@@ -749,6 +753,11 @@ actor APIClient {
         }
         if let value = object["think_summary"] as? String, !value.isEmpty {
             events.append(.thoughtNote(value))
+        }
+        if let value = object["tool_run"] as? [String: Any],
+           let encoded = try? JSONSerialization.data(withJSONObject: value),
+           let toolRun = try? JSONDecoder().decode(ChatToolRun.self, from: encoded) {
+            events.append(.toolRun(toolRun))
         }
         if let value = object["t"] as? String, !value.isEmpty {
             events.append(.text(value))

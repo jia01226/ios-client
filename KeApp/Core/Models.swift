@@ -7,6 +7,37 @@ import Foundation
 
 // MARK: - 聊天
 
+/// 聊天里一项可见的工具执行状态。
+/// 这里只承接服务器已经脱敏的摘要，不保存工具原始参数、检索原文或密钥。
+struct ChatToolRun: Identifiable, Hashable, Codable, Sendable {
+    let id: String
+    let name: String
+    let title: String
+    let status: String
+    let detail: String
+    let scheduledFor: String?
+    let retryable: Bool
+    let createdAt: String?
+    let updatedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, title, status, detail, retryable
+        case scheduledFor = "scheduled_for"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    enum State: String, Sendable {
+        case running
+        case succeeded
+        case failed
+        case awaitingApproval = "awaiting_approval"
+        case unknown
+    }
+
+    var state: State { State(rawValue: status.lowercased()) ?? .unknown }
+}
+
 struct Message: Identifiable, Hashable, Codable, Sendable {
     enum Sender: String, Codable, Sendable {
         case ke   // 柯
@@ -39,6 +70,9 @@ struct Message: Identifiable, Hashable, Codable, Sendable {
 
     /// 聊天附件只保存服务器返回的相对地址与展示名称；文件本体仍以 VPS 为准。
     var attachments: [ChatAttachment]? = nil
+
+    /// 服务器脱敏后的工具轨迹。卡片单独显示，不混进柯的正文。
+    var toolRuns: [ChatToolRun]? = nil
 
     /// 流式回复时，这条还没写完
     var isStreaming: Bool = false

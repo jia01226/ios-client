@@ -37,6 +37,160 @@ struct ThinkingTimelineRow: View {
     }
 }
 
+/// Thinking 与正文之间的轻量工具卡。默认只露出一行状态，点按后才显示详情。
+struct ChatToolStatusRow: View {
+    @EnvironmentObject private var theme: Theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let toolRun: ChatToolRun
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Button {
+                if reduceMotion {
+                    isExpanded.toggle()
+                } else {
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        isExpanded.toggle()
+                    }
+                }
+            } label: {
+                HStack(spacing: theme.metric.gapS) {
+                    statusIcon
+                        .frame(width: theme.metric.gapL, height: theme.metric.gapL)
+
+                    VStack(alignment: .leading, spacing: theme.metric.gapXS) {
+                        Text(toolRun.title.isEmpty ? "柯正在处理" : toolRun.title)
+                            .font(theme.font.caption.weight(.medium))
+                            .foregroundStyle(theme.color.textPrimary)
+                            .lineLimit(1)
+
+                        Text(compactStatus)
+                            .font(theme.font.caption)
+                            .foregroundStyle(theme.color.textSecondary)
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: theme.metric.gapS)
+
+                    Image(systemName: "chevron.down")
+                        .font(theme.font.disclosureIcon)
+                        .foregroundStyle(theme.color.textSecondary)
+                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                        .accessibilityHidden(true)
+                }
+                .padding(.horizontal, theme.metric.gapM)
+                .frame(minHeight: theme.metric.touchTarget)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(accessibilityLabel)
+
+            if isExpanded {
+                Rectangle()
+                    .fill(theme.color.separator)
+                    .frame(height: theme.metric.thinkingLineWidth)
+                    .padding(.horizontal, theme.metric.gapM)
+
+                VStack(alignment: .leading, spacing: theme.metric.gapS) {
+                    Text(detailText)
+                        .font(theme.font.caption)
+                        .foregroundStyle(theme.color.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let scheduledText {
+                        Label(scheduledText, systemImage: "clock")
+                            .font(theme.font.caption)
+                            .foregroundStyle(theme.color.textSecondary)
+                    }
+
+                    if toolRun.state == .failed, toolRun.retryable {
+                        Text("可以让柯再试一次")
+                            .font(theme.font.caption)
+                            .foregroundStyle(theme.effectiveAccent)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, theme.metric.gapM)
+                .padding(.top, theme.metric.gapS)
+                .padding(.bottom, theme.metric.gapM)
+                .transition(.opacity)
+            }
+        }
+        .frame(maxWidth: theme.metric.bubbleMaxWidth)
+        .background(
+            CrystalSurface(
+                cornerRadius: theme.metric.radiusChip,
+                strength: 0.76,
+                usesChatControls: true
+            )
+        )
+        .frame(maxWidth: .infinity, alignment: .center)
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private var statusIcon: some View {
+        switch toolRun.state {
+        case .running:
+            ProgressView()
+                .controlSize(.small)
+                .tint(theme.effectiveAccent)
+                .accessibilityHidden(true)
+        case .succeeded:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(theme.effectiveAccent)
+                .accessibilityHidden(true)
+        case .failed:
+            Image(systemName: "exclamationmark.circle")
+                .foregroundStyle(theme.effectiveAccent)
+                .accessibilityHidden(true)
+        case .awaitingApproval:
+            Image(systemName: "hand.raised")
+                .foregroundStyle(theme.effectiveAccent)
+                .accessibilityHidden(true)
+        case .unknown:
+            Image(systemName: "ellipsis.circle")
+                .foregroundStyle(theme.color.textSecondary)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var compactStatus: String {
+        switch toolRun.state {
+        case .running: return "正在处理"
+        case .succeeded: return "已完成"
+        case .failed: return "没有完成"
+        case .awaitingApproval: return "等你确认"
+        case .unknown: return "状态待确认"
+        }
+    }
+
+    private var detailText: String {
+        let detail = toolRun.detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !detail.isEmpty { return detail }
+        switch toolRun.state {
+        case .running: return "柯正在处理这件事。"
+        case .succeeded: return "这件事已经处理好了。"
+        case .failed: return "这次没有处理成功。"
+        case .awaitingApproval: return "继续之前需要你确认。"
+        case .unknown: return "服务器还没有给出完整状态。"
+        }
+    }
+
+    private var scheduledText: String? {
+        guard let value = toolRun.scheduledFor?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else { return nil }
+        return "预计 \(value.replacingOccurrences(of: "T", with: " "))"
+    }
+
+    private var accessibilityLabel: String {
+        let action = isExpanded ? "点按收起详情" : "点按展开详情"
+        return "\(toolRun.title)，\(compactStatus)，\(action)"
+    }
+}
+
 struct ThinkingSheetView: View {
     @EnvironmentObject private var theme: Theme
     let message: Message

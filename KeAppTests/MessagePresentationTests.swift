@@ -156,6 +156,19 @@ final class MessagePresentationTests: XCTestCase {
         XCTAssertTrue(job.retryable == true)
     }
 
+    func testToolRunStreamEventDecodesThePublicContract() throws {
+        let payload = #"{"tool_run":{"id":"history-1","name":"search_chat_history","title":"翻找聊天记录","status":"succeeded","detail":"找到 2 处相关原话","scheduled_for":null,"retryable":false,"created_at":"2026-09-03 20:10:00","updated_at":"2026-09-03 20:10:01"}}"#
+        let events = try APIClient.parseStreamPayload(payload)
+
+        guard case let .toolRun(run) = events.first else {
+            return XCTFail("应该解析出工具状态事件")
+        }
+        XCTAssertEqual(run.id, "history-1")
+        XCTAssertEqual(run.name, "search_chat_history")
+        XCTAssertEqual(run.state, .succeeded)
+        XCTAssertEqual(run.detail, "找到 2 处相关原话")
+    }
+
     func testAssistantThinkingBecomesASeparateTimelineItem() {
         let message = Message(
             id: "assistant-with-thinking",
@@ -175,6 +188,67 @@ final class MessagePresentationTests: XCTestCase {
         XCTAssertEqual(items.map(\.kind), [.thinking, .message])
         XCTAssertEqual(Set(items.map(\.id)).count, 2)
         XCTAssertEqual(items.map(\.messageID), [message.id, message.id])
+    }
+
+    func testAssistantToolRunSitsBetweenThinkingAndReply() {
+        let run = ChatToolRun(
+            id: "history-1",
+            name: "search_chat_history",
+            title: "翻找聊天记录",
+            status: "succeeded",
+            detail: "找到 2 处相关原话",
+            scheduledFor: nil,
+            retryable: false,
+            createdAt: nil,
+            updatedAt: nil
+        )
+        let message = Message(
+            id: "assistant-with-tool",
+            sender: .ke,
+            text: "找到了，下午你确实提过第三颗扣子。",
+            time: .now,
+            thoughtSummary: "先去翻原话。",
+            toolRuns: [run]
+        )
+
+        let items = ChatTimelineItem.make(
+            message: message,
+            isHighlighted: false,
+            visibleSegmentCount: nil
+        )
+
+        XCTAssertEqual(items.map(\.kind), [.thinking, .tool(run.id), .message])
+        XCTAssertEqual(items[1].toolRun, run)
+        XCTAssertEqual(Set(items.map(\.id)).count, 3)
+    }
+
+    func testPendingToolRunAnchoredToUserAppearsAfterTheirBubble() {
+        let run = ChatToolRun(
+            id: "followup-1",
+            name: "schedule_followup",
+            title: "安排稍后来找你",
+            status: "running",
+            detail: "主动消息 · 正在交给后台",
+            scheduledFor: "2026-09-03 21:30:00",
+            retryable: false,
+            createdAt: nil,
+            updatedAt: nil
+        )
+        let message = Message(
+            id: "user-with-pending-tool",
+            sender: .me,
+            text: "一会儿记得来找我。",
+            time: .now,
+            toolRuns: [run]
+        )
+
+        let items = ChatTimelineItem.make(
+            message: message,
+            isHighlighted: false,
+            visibleSegmentCount: nil
+        )
+
+        XCTAssertEqual(items.map(\.kind), [.message, .tool(run.id)])
     }
 
     func testBlankOrUserThinkingDoesNotCreateAnEntry() {

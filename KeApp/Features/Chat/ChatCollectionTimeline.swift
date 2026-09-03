@@ -4,6 +4,7 @@ import UIKit
 
 enum ChatTimelineItemKind: Equatable {
     case thinking
+    case tool(String)
     case message
 }
 
@@ -14,10 +15,22 @@ struct ChatTimelineItem: Identifiable, Equatable {
     let visibleSegmentCount: Int?
 
     var id: String {
-        "\(message.id)::\(kind == .thinking ? "thinking" : "message")"
+        switch kind {
+        case .thinking:
+            return "\(message.id)::thinking"
+        case let .tool(toolRunID):
+            return "\(message.id)::tool::\(toolRunID)"
+        case .message:
+            return "\(message.id)::message"
+        }
     }
 
     var messageID: String { message.id }
+
+    var toolRun: ChatToolRun? {
+        guard case let .tool(toolRunID) = kind else { return nil }
+        return message.toolRuns?.first(where: { $0.id == toolRunID })
+    }
 
     static func make(
         message: Message,
@@ -33,13 +46,42 @@ struct ChatTimelineItem: Identifiable, Equatable {
                 visibleSegmentCount: nil
             ))
         }
-        result.append(Self(
+        if message.sender == .me {
+            result.append(messageItem(
+                message: message,
+                isHighlighted: isHighlighted,
+                visibleSegmentCount: visibleSegmentCount
+            ))
+        }
+        for toolRun in message.toolRuns ?? [] where !toolRun.id.isEmpty {
+            result.append(Self(
+                kind: .tool(toolRun.id),
+                message: message,
+                isHighlighted: false,
+                visibleSegmentCount: nil
+            ))
+        }
+        if message.sender == .ke {
+            result.append(messageItem(
+                message: message,
+                isHighlighted: isHighlighted,
+                visibleSegmentCount: visibleSegmentCount
+            ))
+        }
+        return result
+    }
+
+    private static func messageItem(
+        message: Message,
+        isHighlighted: Bool,
+        visibleSegmentCount: Int?
+    ) -> Self {
+        Self(
             kind: .message,
             message: message,
             isHighlighted: isHighlighted,
             visibleSegmentCount: visibleSegmentCount
-        ))
-        return result
+        )
     }
 
     private static func hasThinking(_ message: Message) -> Bool {
@@ -503,6 +545,12 @@ final class ChatCollectionTimelineController: UIViewController,
                 }
                 .environmentObject(Theme.shared)
                 .accessibilityIdentifier("thinking-entry-\(item.messageID)")
+            case .tool:
+                if let toolRun = item.toolRun {
+                    ChatToolStatusRow(toolRun: toolRun)
+                        .environmentObject(Theme.shared)
+                        .accessibilityIdentifier("chat-tool-run-\(toolRun.id)")
+                }
             case .message:
                 MessageRow(
                     message: item.message,
@@ -540,8 +588,13 @@ final class ChatCollectionTimelineController: UIViewController,
         after indexPath: IndexPath
     ) -> CGFloat? {
         guard kind == .cell, items.indices.contains(indexPath.item) else { return nil }
-        return items[indexPath.item].kind == .thinking
-            ? Theme.shared.metric.thinkingBubbleGap
-            : nil
+        switch items[indexPath.item].kind {
+        case .thinking:
+            return Theme.shared.metric.thinkingBubbleGap
+        case .tool:
+            return Theme.shared.metric.gapS
+        case .message:
+            return nil
+        }
     }
 }
