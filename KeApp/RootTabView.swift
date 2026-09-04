@@ -1,11 +1,6 @@
 import SwiftUI
 import UIKit
 
-// 底部四个 tab —— 她 2026-08-14 18:45 自己定的。
-//
-// 顺序也是她定的：我们 / 柯 / 玩 / 回忆
-// 「不喜欢点开太多的 tag，划上划下的」→ 层级要浅，宁可横着多一格。
-
 struct RootTabView: View {
 
     @EnvironmentObject private var theme: Theme
@@ -13,7 +8,7 @@ struct RootTabView: View {
     @State private var keyboardIsVisible = false
 
     enum Tab: Hashable {
-        case us, ke, play, memories
+        case us, ke, play, memories, jiajia
     }
 
     var body: some View {
@@ -21,9 +16,9 @@ struct RootTabView: View {
             AppAtmosphere()
 
             VStack(spacing: 0) {
-                // 由系统 TabView 管四个顶层页面的生命周期和可见层级：已经访问过的
+                // 由系统 TabView 管顶层页面的生命周期和可见层级：已经访问过的
                 // ChatView 会保留状态，同时只有当前页面参与命中测试和主要渲染。
-                // 栏可见性从页面向上交给 TabView，四个页面都需声明隐藏系统栏。
+                // 栏可见性从页面向上交给 TabView，每个页面都需声明隐藏系统栏。
                 TabView(selection: $selection) {
                     UsView()
                         .toolbar(.hidden, for: .tabBar)
@@ -37,6 +32,9 @@ struct RootTabView: View {
                     MemoriesView()
                         .toolbar(.hidden, for: .tabBar)
                         .tag(Tab.memories)
+                    JiajiaView()
+                        .toolbar(.hidden, for: .tabBar)
+                        .tag(Tab.jiajia)
                 }
 
                 if !keyboardIsVisible {
@@ -75,6 +73,7 @@ struct RootTabView: View {
             tabButton(.ke, label: "柯")
             tabButton(.play, label: "玩")
             tabButton(.memories, label: "回忆")
+            tabButton(.jiajia, label: "佳佳")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
@@ -120,7 +119,7 @@ private struct NavArtwork: View {
     let selected: Bool
 
     var body: some View {
-        Image(assetName)
+        artwork
             .resizable()
             .scaledToFit()
             .padding(1)
@@ -129,16 +128,18 @@ private struct NavArtwork: View {
         .accessibilityHidden(true)
     }
 
-    private var assetName: String {
+    private var artwork: Image {
         switch (tab, selected) {
-        case (.us, false): return "NavUsIdle"
-        case (.us, true): return "NavUsSelected"
-        case (.ke, false): return "NavKeIdle"
-        case (.ke, true): return "NavKeSelected"
-        case (.play, false): return "NavPlayIdle"
-        case (.play, true): return "NavPlaySelected"
-        case (.memories, false): return "NavMemoryIdle"
-        case (.memories, true): return "NavMemorySelected"
+        case (.us, false): return Image("NavUsIdle")
+        case (.us, true): return Image("NavUsSelected")
+        case (.ke, false): return Image("NavKeIdle")
+        case (.ke, true): return Image("NavKeSelected")
+        case (.play, false): return Image("NavPlayIdle")
+        case (.play, true): return Image("NavPlaySelected")
+        case (.memories, false): return Image("NavMemoryIdle")
+        case (.memories, true): return Image("NavMemorySelected")
+        case (.jiajia, false): return Image(systemName: "person.crop.circle")
+        case (.jiajia, true): return Image(systemName: "person.crop.circle.fill")
         }
     }
 }

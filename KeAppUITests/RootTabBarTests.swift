@@ -14,7 +14,7 @@ final class RootTabBarTests: XCTestCase {
             .matching(identifier: "root-tab-bar").firstMatch
         XCTAssertTrue(customBar.waitForExistence(timeout: 5))
 
-        for destination in ["柯", "我们", "玩", "回忆", "柯"] {
+        for destination in ["柯", "我们", "玩", "回忆", "佳佳", "柯"] {
             customBar.buttons[destination].tap()
             XCTAssertTrue(customBar.isHittable)
             XCTAssertTrue(
