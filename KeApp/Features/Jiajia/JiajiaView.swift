@@ -32,7 +32,7 @@ struct JiajiaView: View {
                             .frame(minHeight: theme.metric.touchTarget)
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(theme.effectiveAccent)
+                    .foregroundStyle(theme.color.textPrimary)
                     .accessibilityIdentifier("jiajia-edit-notes")
                 }
                 .padding(theme.metric.gapL)
