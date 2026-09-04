@@ -5,8 +5,6 @@ import UIKit
 //
 // 顺序也是她定的：我们 / 柯 / 玩 / 回忆
 // 「不喜欢点开太多的 tag，划上划下的」→ 层级要浅，宁可横着多一格。
-//
-// ⚠️ 别自作主张加第五个。
 
 struct RootTabView: View {
 
@@ -25,17 +23,21 @@ struct RootTabView: View {
             VStack(spacing: 0) {
                 // 由系统 TabView 管四个顶层页面的生命周期和可见层级：已经访问过的
                 // ChatView 会保留状态，同时只有当前页面参与命中测试和主要渲染。
+                // 栏可见性从页面向上交给 TabView，四个页面都需声明隐藏系统栏。
                 TabView(selection: $selection) {
                     UsView()
+                        .toolbar(.hidden, for: .tabBar)
                         .tag(Tab.us)
                     ChatView()
+                        .toolbar(.hidden, for: .tabBar)
                         .tag(Tab.ke)
                     PlayView()
+                        .toolbar(.hidden, for: .tabBar)
                         .tag(Tab.play)
                     MemoriesView()
+                        .toolbar(.hidden, for: .tabBar)
                         .tag(Tab.memories)
                 }
-                .toolbar(.hidden, for: .tabBar)
 
                 if !keyboardIsVisible {
                     crystalTabBar
