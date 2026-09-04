@@ -20,9 +20,11 @@ final class MessagePresentationTests: XCTestCase {
             suppressAutoScrollUntil: .distantPast,
             inputFocused: false,
             highlightedMessageID: nil,
+            scrollToLatestRequest: 0,
             onThinkingOpen: { _ in },
             onAttachmentTap: { _ in },
-            onBackgroundTap: {}
+            onBackgroundTap: {},
+            onScrollToLatestVisibilityChanged: { _ in }
         )
         let unrelatedParentRefresh = ChatCollectionTimeline(
             items: items,
@@ -30,9 +32,13 @@ final class MessagePresentationTests: XCTestCase {
             suppressAutoScrollUntil: .distantPast,
             inputFocused: false,
             highlightedMessageID: nil,
+            scrollToLatestRequest: 0,
             onThinkingOpen: { _ in XCTFail("无关刷新不应替换时间线回调") },
             onAttachmentTap: { _ in XCTFail("无关刷新不应替换时间线回调") },
-            onBackgroundTap: { XCTFail("无关刷新不应替换时间线回调") }
+            onBackgroundTap: { XCTFail("无关刷新不应替换时间线回调") },
+            onScrollToLatestVisibilityChanged: { _ in
+                XCTFail("无关刷新不应替换时间线回调")
+            }
         )
         let keyboardRefresh = ChatCollectionTimeline(
             items: items,
@@ -40,9 +46,11 @@ final class MessagePresentationTests: XCTestCase {
             suppressAutoScrollUntil: .distantPast,
             inputFocused: true,
             highlightedMessageID: nil,
+            scrollToLatestRequest: 0,
             onThinkingOpen: { _ in },
             onAttachmentTap: { _ in },
-            onBackgroundTap: {}
+            onBackgroundTap: {},
+            onScrollToLatestVisibilityChanged: { _ in }
         )
 
         XCTAssertEqual(original, unrelatedParentRefresh)
@@ -52,7 +60,7 @@ final class MessagePresentationTests: XCTestCase {
     func testTimelineDoesNotStealScrollForIncomingStreamWhileReadingHistory() {
         XCTAssertFalse(ChatTimelineFollowPolicy.shouldFollowLatest(
             timelineChanged: true,
-            wasNearLatest: false,
+            wasFollowingLatest: false,
             appendedOwnMessage: false,
             mayAutoFollow: true
         ))
@@ -61,7 +69,7 @@ final class MessagePresentationTests: XCTestCase {
     func testTimelineFollowsOwnNewMessageWithoutAnimatedFullReload() {
         XCTAssertTrue(ChatTimelineFollowPolicy.shouldFollowLatest(
             timelineChanged: true,
-            wasNearLatest: false,
+            wasFollowingLatest: false,
             appendedOwnMessage: true,
             mayAutoFollow: true
         ))
@@ -70,9 +78,29 @@ final class MessagePresentationTests: XCTestCase {
     func testThinkingSheetTemporarilyOwnsTheAnchor() {
         XCTAssertFalse(ChatTimelineFollowPolicy.shouldFollowLatest(
             timelineChanged: true,
-            wasNearLatest: true,
+            wasFollowingLatest: true,
             appendedOwnMessage: true,
             mayAutoFollow: false
+        ))
+    }
+
+    func testTimelineKeepsFollowingDuringTransientSelfSizingDrift() {
+        XCTAssertTrue(ChatTimelineFollowPolicy.shouldFollowLatest(
+            timelineChanged: true,
+            wasFollowingLatest: true,
+            appendedOwnMessage: false,
+            mayAutoFollow: true
+        ))
+    }
+
+    func testScrollToLatestControlOnlyAppearsAfterLeavingBottomArea() {
+        XCTAssertFalse(ChatTimelineScrollControlPolicy.shouldShow(
+            distanceFromLatest: 95,
+            revealDistance: 96
+        ))
+        XCTAssertTrue(ChatTimelineScrollControlPolicy.shouldShow(
+            distanceFromLatest: 97,
+            revealDistance: 96
         ))
     }
 

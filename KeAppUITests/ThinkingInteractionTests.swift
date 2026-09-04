@@ -258,6 +258,30 @@ final class ThinkingInteractionTests: XCTestCase {
         attachScreenshot(named: "11-history-to-latest")
     }
 
+    func testScrollToLatestControlOnlyAppearsWhileReadingHistory() throws {
+        let app = launch(arguments: ["-ui-test-scroll-control"])
+        let latest = app.staticTexts["这是最新一条回复。"]
+        XCTAssertTrue(latest.waitForExistence(timeout: 5))
+
+        let jump = app.buttons["scroll-to-latest"]
+        XCTAssertFalse(jump.exists, "停在最新消息时不应占着屏幕")
+
+        let messageList = app.collectionViews["chat-timeline"]
+        XCTAssertTrue(messageList.waitForExistence(timeout: 2))
+        messageList.swipeDown(velocity: .fast)
+        messageList.swipeDown(velocity: .fast)
+
+        XCTAssertTrue(jump.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["前面的消息 1"].isHittable)
+        attachScreenshot(named: "11-scroll-to-latest-visible")
+
+        jump.tap()
+        XCTAssertTrue(latest.waitForExistence(timeout: 2))
+        XCTAssertTrue(latest.isHittable)
+        XCTAssertTrue(jump.waitForNonExistence(timeout: 2))
+        attachScreenshot(named: "12-scroll-to-latest-hidden")
+    }
+
     func testAttachmentTrayOverlaysWithoutMovingMessages() throws {
         let app = launch(arguments: [
             "-ui-test-scroll-control",

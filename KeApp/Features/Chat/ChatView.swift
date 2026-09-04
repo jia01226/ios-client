@@ -31,6 +31,8 @@ struct ChatView: View {
     @State private var presentedThinkingMessageID: String?
     @State private var previewedImage: ChatAttachment?
     @State private var expandedModelGroups: Set<String> = []
+    @State private var showsScrollToLatest = false
+    @State private var scrollToLatestRequest = 0
 
     var body: some View {
         Group {
@@ -231,6 +233,7 @@ struct ChatView: View {
                         : .distantFuture,
                     inputFocused: inputFocused,
                     highlightedMessageID: highlightedMessageID,
+                    scrollToLatestRequest: scrollToLatestRequest,
                     onThinkingOpen: { messageID in
                         inputFocused = false
                         attachmentsOpen = false
@@ -245,11 +248,59 @@ struct ChatView: View {
                     onBackgroundTap: {
                         inputFocused = false
                         if attachmentsOpen { attachmentsOpen = false }
+                    },
+                    onScrollToLatestVisibilityChanged: { shouldShow in
+                        guard showsScrollToLatest != shouldShow else { return }
+                        showsScrollToLatest = shouldShow
                     }
                 )
                 .equatable()
             }
         }
+        .overlay(alignment: .bottomTrailing) {
+            if showsScrollToLatest && !attachmentsOpen {
+                Button {
+                    scrollToLatestRequest &+= 1
+                } label: {
+                    Image(systemName: "arrow.down")
+                        .font(theme.font.scrollToLatestIcon)
+                        .foregroundStyle(theme.color.textPrimary)
+                        .frame(
+                            width: theme.metric.touchTarget,
+                            height: theme.metric.touchTarget
+                        )
+                        .background(
+                            CrystalSurface(
+                                cornerRadius: theme.metric.touchTarget / 2,
+                                strength: 1.08,
+                                usesChatControls: true
+                            )
+                        )
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("回到最新消息")
+                .accessibilityIdentifier("scroll-to-latest")
+                .padding(.trailing, theme.metric.pagePadding)
+                .padding(.bottom, theme.metric.gapM)
+                .transition(
+                    reduceMotion
+                        ? .opacity
+                        : .scale(scale: 0.88, anchor: .bottomTrailing)
+                            .combined(with: .opacity)
+                )
+                .zIndex(2)
+            }
+        }
+        .animation(
+            reduceMotion
+                ? .easeOut(duration: 0.12)
+                : .spring(
+                    response: theme.motion.scrollControlResponse,
+                    dampingFraction: theme.motion.scrollControlDampingFraction
+                ),
+            value: showsScrollToLatest && !attachmentsOpen
+        )
         .onChange(of: inputFocused) { _, focused in
             if focused {
                 attachmentsOpen = false
@@ -1310,6 +1361,7 @@ struct ChatView: View {
         let text = trimmedDraft
         guard canSend, !vm.isSending, !vm.isUploading else { return }
         draft = ""
+        scrollToLatestRequest &+= 1
         Task { await vm.send(text, reduceMotion: reduceMotion) }
     }
 

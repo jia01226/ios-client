@@ -189,13 +189,22 @@ struct ChatTimelineItem: Identifiable, Equatable {
 enum ChatTimelineFollowPolicy {
     static func shouldFollowLatest(
         timelineChanged: Bool,
-        wasNearLatest: Bool,
+        wasFollowingLatest: Bool,
         appendedOwnMessage: Bool,
         mayAutoFollow: Bool
     ) -> Bool {
         mayAutoFollow
             && timelineChanged
-            && (wasNearLatest || appendedOwnMessage)
+            && (wasFollowingLatest || appendedOwnMessage)
+    }
+}
+
+enum ChatTimelineScrollControlPolicy {
+    static func shouldShow(
+        distanceFromLatest: CGFloat,
+        revealDistance: CGFloat
+    ) -> Bool {
+        distanceFromLatest > revealDistance
     }
 }
 
@@ -205,9 +214,11 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable, Equatable {
     let suppressAutoScrollUntil: Date
     let inputFocused: Bool
     let highlightedMessageID: String?
+    let scrollToLatestRequest: Int
     let onThinkingOpen: (String) -> Void
     let onAttachmentTap: (ChatAttachment) -> Void
     let onBackgroundTap: () -> Void
+    let onScrollToLatestVisibilityChanged: (Bool) -> Void
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         // ChatViewModel 还承载模型选择、上传和设置状态。那些发布会让父视图
@@ -219,6 +230,7 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable, Equatable {
             && lhs.suppressAutoScrollUntil == rhs.suppressAutoScrollUntil
             && lhs.inputFocused == rhs.inputFocused
             && lhs.highlightedMessageID == rhs.highlightedMessageID
+            && lhs.scrollToLatestRequest == rhs.scrollToLatestRequest
     }
 
     func makeUIViewController(context: Context) -> ChatCollectionTimelineController {
@@ -227,9 +239,11 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable, Equatable {
             streamRevision: streamRevision,
             inputFocused: inputFocused,
             highlightedMessageID: highlightedMessageID,
+            scrollToLatestRequest: scrollToLatestRequest,
             onThinkingOpen: onThinkingOpen,
             onAttachmentTap: onAttachmentTap,
-            onBackgroundTap: onBackgroundTap
+            onBackgroundTap: onBackgroundTap,
+            onScrollToLatestVisibilityChanged: onScrollToLatestVisibilityChanged
         )
     }
 
@@ -243,9 +257,11 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable, Equatable {
             suppressAutoScrollUntil: suppressAutoScrollUntil,
             inputFocused: inputFocused,
             highlightedMessageID: highlightedMessageID,
+            scrollToLatestRequest: scrollToLatestRequest,
             onThinkingOpen: onThinkingOpen,
             onAttachmentTap: onAttachmentTap,
-            onBackgroundTap: onBackgroundTap
+            onBackgroundTap: onBackgroundTap,
+            onScrollToLatestVisibilityChanged: onScrollToLatestVisibilityChanged
         )
     }
 }
@@ -310,26 +326,35 @@ final class ChatCollectionTimelineController: UIViewController,
     private var onThinkingOpen: (String) -> Void
     private var onAttachmentTap: (ChatAttachment) -> Void
     private var onBackgroundTap: () -> Void
+    private var onScrollToLatestVisibilityChanged: (Bool) -> Void
+    private var scrollToLatestRequest: Int
     private var didScrollToLatest = false
     private var lastTimelineHeight: CGFloat = 0
     private var pendingFollowLatestAfterLayout = false
+    private var followsLatestByIntent = true
+    private var isScrollingToLatest = false
+    private var lastPublishedScrollControlVisibility: Bool?
 
     init(
         items: [ChatTimelineItem],
         streamRevision: Int,
         inputFocused: Bool,
         highlightedMessageID: String?,
+        scrollToLatestRequest: Int,
         onThinkingOpen: @escaping (String) -> Void,
         onAttachmentTap: @escaping (ChatAttachment) -> Void,
-        onBackgroundTap: @escaping () -> Void
+        onBackgroundTap: @escaping () -> Void,
+        onScrollToLatestVisibilityChanged: @escaping (Bool) -> Void
     ) {
         self.items = items
         self.streamRevision = streamRevision
         self.inputFocused = inputFocused
         self.highlightedMessageID = highlightedMessageID
+        self.scrollToLatestRequest = scrollToLatestRequest
         self.onThinkingOpen = onThinkingOpen
         self.onAttachmentTap = onAttachmentTap
         self.onBackgroundTap = onBackgroundTap
+        self.onScrollToLatestVisibilityChanged = onScrollToLatestVisibilityChanged
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -394,14 +419,7 @@ final class ChatCollectionTimelineController: UIViewController,
 
     override func viewDidLayoutSubviews() {
         let previousHeight = lastTimelineHeight
-        let previousMaximumOffset = max(
-            -collectionView.adjustedContentInset.top,
-            collectionView.contentSize.height
-                - previousHeight
-                + collectionView.adjustedContentInset.bottom
-        )
-        let wasFollowingLatest = previousHeight > 0
-            && collectionView.contentOffset.y >= previousMaximumOffset - 8
+        let shouldPreserveLatest = followsLatestByIntent
 
         super.viewDidLayoutSubviews()
         let currentHeight = collectionView.bounds.height
@@ -415,9 +433,12 @@ final class ChatCollectionTimelineController: UIViewController,
             return
         }
 
-        guard wasFollowingLatest,
+        guard shouldPreserveLatest,
               abs(currentHeight - previousHeight) > 0.5,
-              !items.isEmpty else { return }
+              !items.isEmpty else {
+            publishScrollControlVisibility()
+            return
+        }
 
         chatLayout.invalidateLayout()
         collectionView.layoutIfNeeded()
@@ -430,22 +451,27 @@ final class ChatCollectionTimelineController: UIViewController,
         suppressAutoScrollUntil: Date,
         inputFocused newInputFocused: Bool,
         highlightedMessageID newHighlightedMessageID: String?,
+        scrollToLatestRequest newScrollToLatestRequest: Int,
         onThinkingOpen: @escaping (String) -> Void,
         onAttachmentTap: @escaping (ChatAttachment) -> Void,
-        onBackgroundTap: @escaping () -> Void
+        onBackgroundTap: @escaping () -> Void,
+        onScrollToLatestVisibilityChanged: @escaping (Bool) -> Void
     ) {
         self.onThinkingOpen = onThinkingOpen
         self.onAttachmentTap = onAttachmentTap
         self.onBackgroundTap = onBackgroundTap
+        self.onScrollToLatestVisibilityChanged = onScrollToLatestVisibilityChanged
 
         let oldItems = items
         let oldStreamRevision = streamRevision
         let oldHighlightedMessageID = highlightedMessageID
-        let wasNearLatest = isNearLatest
+        let wasFollowingLatest = followsLatestByIntent || isNearLatest
+        let requestedScrollToLatest = scrollToLatestRequest != newScrollToLatestRequest
         items = newItems
         streamRevision = newStreamRevision
         inputFocused = newInputFocused
         highlightedMessageID = newHighlightedMessageID
+        scrollToLatestRequest = newScrollToLatestRequest
 
         let mayAutoFollow = Date.now >= suppressAutoScrollUntil
         let oldIDs = oldItems.map(\.id)
@@ -461,10 +487,13 @@ final class ChatCollectionTimelineController: UIViewController,
         let timelineChanged = oldIDs != newIDs || oldStreamRevision != newStreamRevision
         let shouldFollowLatest = ChatTimelineFollowPolicy.shouldFollowLatest(
             timelineChanged: timelineChanged,
-            wasNearLatest: wasNearLatest,
+            wasFollowingLatest: wasFollowingLatest,
             appendedOwnMessage: appendedOwnMessage,
             mayAutoFollow: mayAutoFollow
         )
+        if shouldFollowLatest {
+            followsLatestByIntent = true
+        }
 
         let hasStableIdentity = oldIDs == newIDs
         if hasStableIdentity {
@@ -492,23 +521,39 @@ final class ChatCollectionTimelineController: UIViewController,
            let index = newItems.firstIndex(where: {
                $0.messageID == newHighlightedMessageID && $0.kind == .message
            }) {
+            followsLatestByIntent = false
             collectionView.scrollToItem(
                 at: IndexPath(item: index, section: 0),
                 at: .centeredVertically,
                 animated: true
             )
         }
+
+        if requestedScrollToLatest {
+            DispatchQueue.main.async { [weak self] in
+                self?.scrollToLatest(animated: !UIAccessibility.isReduceMotionEnabled)
+            }
+        } else {
+            publishScrollControlVisibility()
+        }
     }
 
-    private var isNearLatest: Bool {
-        guard collectionView.bounds.height > 0 else { return true }
-        let maximumOffset = max(
+    private var maximumContentOffsetY: CGFloat {
+        max(
             -collectionView.adjustedContentInset.top,
             chatLayout.collectionViewContentSize.height
                 - collectionView.bounds.height
                 + collectionView.adjustedContentInset.bottom
         )
-        return collectionView.contentOffset.y >= maximumOffset - Theme.shared.metric.touchTarget
+    }
+
+    private var distanceFromLatest: CGFloat {
+        max(0, maximumContentOffsetY - collectionView.contentOffset.y)
+    }
+
+    private var isNearLatest: Bool {
+        guard collectionView.bounds.height > 0 else { return true }
+        return distanceFromLatest <= Theme.shared.metric.touchTarget
     }
 
     private func insertItems(at indexes: [Int], followLatest: Bool) {
@@ -561,7 +606,9 @@ final class ChatCollectionTimelineController: UIViewController,
     }
 
     private func requestFollowLatestAfterLayout() {
+        followsLatestByIntent = true
         pendingFollowLatestAfterLayout = true
+        publishScrollControlVisibility(forceHidden: true)
         view.setNeedsLayout()
     }
 
@@ -586,6 +633,7 @@ final class ChatCollectionTimelineController: UIViewController,
 
     private func scrollToLatest(animated: Bool) {
         guard !items.isEmpty else { return }
+        followsLatestByIntent = true
         chatLayout.invalidateLayout()
         collectionView.layoutIfNeeded()
 
@@ -593,16 +641,70 @@ final class ChatCollectionTimelineController: UIViewController,
         // 从很远的历史位置 scrollToItem 时，末尾自适应气泡尚未测量，
         // 只能先滚到 Thinking 标题；直接钉内容底部后，末尾 cell 会被实例化，
         // keepContentOffsetAtBottomOnBatchUpdates 再接住随后的自适应高度修正。
-        let bottomY = max(
-            -collectionView.adjustedContentInset.top,
-            chatLayout.collectionViewContentSize.height
-                - collectionView.bounds.height
-                + collectionView.adjustedContentInset.bottom
-        )
+        let bottomY = maximumContentOffsetY
+        let shouldAnimate = animated
+            && abs(collectionView.contentOffset.y - bottomY) > 0.5
+        isScrollingToLatest = shouldAnimate
+        publishScrollControlVisibility(forceHidden: true)
         collectionView.setContentOffset(
             CGPoint(x: collectionView.contentOffset.x, y: bottomY),
-            animated: animated
+            animated: shouldAnimate
         )
+        if !shouldAnimate {
+            isScrollingToLatest = false
+            publishScrollControlVisibility()
+        }
+    }
+
+    private func publishScrollControlVisibility(forceHidden: Bool = false) {
+        let shouldShow = !forceHidden
+            && !isScrollingToLatest
+            && ChatTimelineScrollControlPolicy.shouldShow(
+                distanceFromLatest: distanceFromLatest,
+                revealDistance: Theme.shared.metric.scrollToLatestRevealDistance
+            )
+        guard shouldShow != lastPublishedScrollControlVisibility else { return }
+        lastPublishedScrollControlVisibility = shouldShow
+        let callback = onScrollToLatestVisibilityChanged
+        DispatchQueue.main.async {
+            callback(shouldShow)
+        }
+    }
+
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        isScrollingToLatest = false
+        followsLatestByIntent = false
+        publishScrollControlVisibility()
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        if scrollView.isDragging || scrollView.isDecelerating {
+            followsLatestByIntent = isNearLatest
+        }
+        publishScrollControlVisibility(forceHidden: isScrollingToLatest)
+    }
+
+    func scrollViewDidEndDragging(
+        _ scrollView: UIScrollView,
+        willDecelerate decelerate: Bool
+    ) {
+        guard !decelerate else { return }
+        followsLatestByIntent = isNearLatest
+        publishScrollControlVisibility()
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        followsLatestByIntent = isNearLatest
+        publishScrollControlVisibility()
+    }
+
+    func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+        guard isScrollingToLatest else {
+            publishScrollControlVisibility()
+            return
+        }
+        isScrollingToLatest = false
+        scrollToLatest(animated: false)
     }
 
     @objc private func didTapTimeline() {

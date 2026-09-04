@@ -167,6 +167,7 @@ struct Metrics {
     let drawerHeaderHeight: CGFloat = 56
     let recentPhotoSize: CGFloat = 68
     let messageImageHeight: CGFloat = 180
+    let scrollToLatestRevealDistance: CGFloat = 96
 }
 
 // MARK: - 字号
@@ -192,6 +193,7 @@ struct Typo {
     let receiptIcon = Font.system(size: 10, weight: .semibold)
     let thinkingChevron = Font.system(size: 10, weight: .medium)
     let unavailableIcon = Font.system(size: 28, weight: .medium)
+    let scrollToLatestIcon = Font.system(size: 15, weight: .semibold)
     let memorySparkleIcon = Font.system(size: 12, weight: .regular)
     let disclosureIcon = Font.system(size: 13, weight: .regular)
     let anniversaryCountdown = Font.system(size: 26, weight: .light)
@@ -225,6 +227,8 @@ struct MotionTokens {
     let thinkingResponse: Double = 0.30
     let thinkingDampingFraction: Double = 1.0
     let splitBubbleInterval: Double = 0.40
+    let scrollControlResponse: Double = 0.28
+    let scrollControlDampingFraction: Double = 1.0
 }
 
 // MARK: - 对外的门面
