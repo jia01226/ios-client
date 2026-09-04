@@ -240,6 +240,31 @@ struct ThinkingSheetView: View {
     }
 }
 
+struct ChatDateDividerRow: View {
+    @EnvironmentObject private var theme: Theme
+    let date: Date
+
+    var body: some View {
+        HStack {
+            Spacer(minLength: 0)
+            Text(ChatTimelineDate.visibleLabel(for: date))
+                .font(theme.font.caption.weight(.medium))
+                .foregroundStyle(theme.color.textOnAccent)
+                .padding(.horizontal, theme.metric.gapM)
+                .padding(.vertical, theme.metric.gapXS)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(theme.color.textPrimary.opacity(0.92))
+                )
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, theme.metric.pagePadding)
+        .padding(.top, theme.metric.gapS)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(ChatTimelineDate.accessibilityLabel(for: date))
+    }
+}
+
 struct MessageRow: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

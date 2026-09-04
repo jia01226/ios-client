@@ -220,13 +220,11 @@ struct ChatView: View {
                 emptyTimeline
             } else {
                 ChatCollectionTimeline(
-                    items: vm.messages.flatMap { message in
-                        ChatTimelineItem.make(
-                            message: message,
-                            isHighlighted: highlightedMessageID == message.id,
-                            visibleSegmentCount: vm.visibleSegmentCount(for: message)
-                        )
-                    },
+                    items: ChatTimelineItem.make(
+                        messages: vm.messages,
+                        highlightedMessageID: highlightedMessageID,
+                        visibleSegmentCount: { vm.visibleSegmentCount(for: $0) }
+                    ),
                     streamRevision: vm.streamRevision,
                     suppressAutoScrollUntil: presentedThinkingMessageID == nil
                         ? .distantPast

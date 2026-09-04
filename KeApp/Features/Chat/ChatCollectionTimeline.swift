@@ -1,11 +1,74 @@
 import ChatLayout
+import Foundation
 import SwiftUI
 import UIKit
 
 enum ChatTimelineItemKind: Equatable {
+    case date(String)
     case thinking
     case tool(String)
     case message
+}
+
+enum ChatTimelineDate {
+    static let calendar: Calendar = {
+        var value = Calendar(identifier: .gregorian)
+        value.locale = Locale(identifier: "zh_CN")
+        value.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
+        return value
+    }()
+
+    static func dayKey(for message: Message) -> String? {
+        guard message.serverTimeIsValid != false else { return nil }
+        let components = calendar.dateComponents([.year, .month, .day], from: message.time)
+        guard let year = components.year,
+              let month = components.month,
+              let day = components.day else { return nil }
+        return String(format: "%04d-%02d-%02d", year, month, day)
+    }
+
+    static func visibleLabel(for date: Date, relativeTo now: Date = .now) -> String {
+        guard let parts = dateParts(for: date) else { return "" }
+        let monthDay = "\(parts.month)月\(parts.day)日"
+        if calendar.isDate(date, inSameDayAs: now) {
+            return "今天 · \(monthDay)"
+        }
+        if let yesterday = calendar.date(
+            byAdding: .day,
+            value: -1,
+            to: calendar.startOfDay(for: now)
+        ), calendar.isDate(date, inSameDayAs: yesterday) {
+            return "昨天 · \(monthDay)"
+        }
+        let currentYear = calendar.component(.year, from: now)
+        return parts.year == currentYear
+            ? monthDay
+            : "\(parts.year)年\(monthDay)"
+    }
+
+    static func accessibilityLabel(for date: Date, relativeTo now: Date = .now) -> String {
+        guard let parts = dateParts(for: date) else { return "日期" }
+        let fullDate = "\(parts.year)年\(parts.month)月\(parts.day)日"
+        if calendar.isDate(date, inSameDayAs: now) {
+            return "日期，今天，\(fullDate)"
+        }
+        if let yesterday = calendar.date(
+            byAdding: .day,
+            value: -1,
+            to: calendar.startOfDay(for: now)
+        ), calendar.isDate(date, inSameDayAs: yesterday) {
+            return "日期，昨天，\(fullDate)"
+        }
+        return "日期，\(fullDate)"
+    }
+
+    private static func dateParts(for date: Date) -> (year: Int, month: Int, day: Int)? {
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        guard let year = components.year,
+              let month = components.month,
+              let day = components.day else { return nil }
+        return (year, month, day)
+    }
 }
 
 struct ChatTimelineItem: Identifiable, Equatable {
@@ -16,6 +79,8 @@ struct ChatTimelineItem: Identifiable, Equatable {
 
     var id: String {
         switch kind {
+        case let .date(dayKey):
+            return "date::\(dayKey)"
         case .thinking:
             return "\(message.id)::thinking"
         case let .tool(toolRunID):
@@ -30,6 +95,35 @@ struct ChatTimelineItem: Identifiable, Equatable {
     var toolRun: ChatToolRun? {
         guard case let .tool(toolRunID) = kind else { return nil }
         return message.toolRuns?.first(where: { $0.id == toolRunID })
+    }
+
+    static func make(
+        messages: [Message],
+        highlightedMessageID: String?,
+        visibleSegmentCount: (Message) -> Int?
+    ) -> [Self] {
+        var result: [Self] = []
+        var previousDayKey: String?
+
+        for message in messages {
+            if let dayKey = ChatTimelineDate.dayKey(for: message) {
+                if dayKey != previousDayKey {
+                    result.append(Self(
+                        kind: .date(dayKey),
+                        message: message,
+                        isHighlighted: false,
+                        visibleSegmentCount: nil
+                    ))
+                }
+                previousDayKey = dayKey
+            }
+            result.append(contentsOf: make(
+                message: message,
+                isHighlighted: highlightedMessageID == message.id,
+                visibleSegmentCount: visibleSegmentCount(message)
+            ))
+        }
+        return result
     }
 
     static func make(
@@ -539,6 +633,10 @@ final class ChatCollectionTimelineController: UIViewController,
         cell.backgroundColor = .clear
         cell.contentConfiguration = UIHostingConfiguration {
             switch item.kind {
+            case .date:
+                ChatDateDividerRow(date: item.message.time)
+                    .environmentObject(Theme.shared)
+                    .accessibilityIdentifier("chat-date-\(item.id)")
             case .thinking:
                 ThinkingTimelineRow { [weak self] in
                     self?.onThinkingOpen(item.messageID)
@@ -589,6 +687,8 @@ final class ChatCollectionTimelineController: UIViewController,
     ) -> CGFloat? {
         guard kind == .cell, items.indices.contains(indexPath.item) else { return nil }
         switch items[indexPath.item].kind {
+        case .date:
+            return Theme.shared.metric.gapS
         case .thinking:
             return Theme.shared.metric.thinkingBubbleGap
         case .tool:

@@ -190,6 +190,94 @@ final class MessagePresentationTests: XCTestCase {
         XCTAssertEqual(items.map(\.messageID), [message.id, message.id])
     }
 
+    func testTimelineAddsOneDateDividerForEachBeijingCalendarDay() {
+        let first = Message(
+            id: "day-one-first",
+            sender: .me,
+            text: "第一条",
+            time: beijingDate(year: 2026, month: 9, day: 3, hour: 9)
+        )
+        let second = Message(
+            id: "day-one-second",
+            sender: .ke,
+            text: "同一天",
+            time: beijingDate(year: 2026, month: 9, day: 3, hour: 23)
+        )
+        let third = Message(
+            id: "day-two",
+            sender: .ke,
+            text: "第二天",
+            time: beijingDate(year: 2026, month: 9, day: 4, hour: 0),
+            thoughtSummary: "先接住日期。"
+        )
+
+        let items = ChatTimelineItem.make(
+            messages: [first, second, third],
+            highlightedMessageID: nil,
+            visibleSegmentCount: { _ in nil }
+        )
+
+        XCTAssertEqual(items.map(\.kind), [
+            .date("2026-09-03"), .message,
+            .message,
+            .date("2026-09-04"), .thinking, .message,
+        ])
+        XCTAssertEqual(items.filter {
+            if case .date = $0.kind { return true }
+            return false
+        }.map(\.id), ["date::2026-09-03", "date::2026-09-04"])
+    }
+
+    func testInvalidRemoteTimestampDoesNotCreateABogusDateDivider() {
+        let invalid = Message(
+            id: "bad-server-time",
+            sender: .ke,
+            text: "仍然保留这条消息",
+            time: .distantPast,
+            serverTimeIsValid: false
+        )
+
+        let items = ChatTimelineItem.make(
+            messages: [invalid],
+            highlightedMessageID: nil,
+            visibleSegmentCount: { _ in nil }
+        )
+
+        XCTAssertEqual(items.map(\.kind), [.message])
+    }
+
+    func testDateDividerLabelsAreConcreteAndRelativeToBeijingTime() {
+        let now = beijingDate(year: 2026, month: 9, day: 4, hour: 11)
+        XCTAssertEqual(
+            ChatTimelineDate.visibleLabel(
+                for: beijingDate(year: 2026, month: 9, day: 4, hour: 1),
+                relativeTo: now
+            ),
+            "今天 · 9月4日"
+        )
+        XCTAssertEqual(
+            ChatTimelineDate.visibleLabel(
+                for: beijingDate(year: 2026, month: 9, day: 3, hour: 23),
+                relativeTo: now
+            ),
+            "昨天 · 9月3日"
+        )
+        XCTAssertEqual(
+            ChatTimelineDate.visibleLabel(
+                for: beijingDate(year: 2026, month: 8, day: 12),
+                relativeTo: now
+            ),
+            "8月12日"
+        )
+        XCTAssertEqual(
+            ChatTimelineDate.visibleLabel(
+                for: beijingDate(year: 2025, month: 12, day: 31),
+                relativeTo: now
+            ),
+            "2025年12月31日"
+        )
+    }
+
     func testAssistantToolRunSitsBetweenThinkingAndReply() {
         let run = ChatToolRun(
             id: "history-1",
@@ -276,5 +364,25 @@ final class MessagePresentationTests: XCTestCase {
             XCTAssertEqual(items.count, 1)
             XCTAssertEqual(items.first?.kind, .message)
         }
+    }
+
+    private func beijingDate(
+        year: Int,
+        month: Int,
+        day: Int,
+        hour: Int = 12
+    ) -> Date {
+        var components = DateComponents()
+        components.calendar = ChatTimelineDate.calendar
+        components.timeZone = ChatTimelineDate.calendar.timeZone
+        components.year = year
+        components.month = month
+        components.day = day
+        components.hour = hour
+        guard let date = components.date else {
+            XCTFail("测试日期构造失败")
+            return .distantPast
+        }
+        return date
     }
 }
