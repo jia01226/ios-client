@@ -443,9 +443,15 @@ struct MessageRow: View {
     }
 
     private var bubbleBackground: some View {
-        RoundedRectangle(cornerRadius: CGFloat(theme.bubbleCornerRadius), style: .continuous)
-            .fill((message.sender == .me ? theme.color.bubbleMe : theme.color.bubbleKe)
-                .opacity(message.sender == .me ? 0.12 + theme.bubbleOpacity * 3 : 0.20 + theme.bubbleOpacity * 3))
+        ZStack {
+            BackdropBlur(
+                intensity: theme.glassBlur / theme.glass.maximumBlurValue,
+                dark: theme.skin == .night || theme.isBedroom
+            )
+            (message.sender == .me ? theme.color.bubbleMe : theme.color.bubbleKe)
+                .opacity(min(1, theme.bubbleOpacity * (message.sender == .me ? 13 : 20)))
+        }
+        .clipShape(RoundedRectangle(cornerRadius: CGFloat(theme.bubbleCornerRadius), style: .continuous))
     }
 
     private var visibleSegments: [String] {

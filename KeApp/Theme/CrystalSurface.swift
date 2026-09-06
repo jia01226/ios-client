@@ -62,7 +62,7 @@ struct CrystalSurface: View {
 
 /// 用公开的 UIVisualEffectView + 可暂停动画器，把系统材质强度变成连续可调值。
 /// Slider 的每一次变化都会直接更新 fractionComplete，不是只改旁边的数字。
-private struct BackdropBlur: UIViewRepresentable {
+struct BackdropBlur: UIViewRepresentable {
     let intensity: Double
     let dark: Bool
 
