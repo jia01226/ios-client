@@ -329,6 +329,7 @@ final class ChatViewModel: ObservableObject {
             for index in 0..<7 {
                 fixtureMessages.append(Message(
                     id: "ui-test-history-user-\(index)",
+                    serverID: 9000 + index,
                     sender: .me,
                     text: "前面的消息 \(index + 1)",
                     time: .now.addingTimeInterval(Double(index - 14) * 60)

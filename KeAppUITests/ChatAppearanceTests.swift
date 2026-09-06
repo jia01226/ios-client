@@ -26,6 +26,56 @@ final class ChatAppearanceTests: XCTestCase {
         XCTAssertTrue(bar.isHittable)
         XCTAssertTrue(app.buttons["复制消息"].firstMatch.isHittable)
     }
+    func testLongPressKeepsMessageInPlaceAndCopies() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-test-scroll-control"]
+        app.launch()
+        let message = app.staticTexts["这是最新一条回复。"]
+        XCTAssertTrue(message.waitForExistence(timeout: 5))
+        let originalY = message.frame.minY
+        message.press(forDuration: 0.7)
+        let copy = app.buttons["message-action-copy"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 3))
+        XCTAssertLessThan(abs(message.frame.minY - originalY), 3)
+        copy.tap()
+        XCTAssertTrue(copy.waitForNonExistence(timeout: 3))
+        XCTAssertLessThan(abs(message.frame.minY - originalY), 3)
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "long-press-dismissed-stable"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    func testLongPressWithKeyboardAndRecallCancellation() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-test-scroll-control"]
+        app.launch()
+        let input = app.textFields["chat-composer"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        input.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        let message = app.staticTexts["这是最新一条回复。"]
+        let originalY = message.frame.minY
+        message.press(forDuration: 0.7)
+        let copy = app.buttons["message-action-copy"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 3))
+        XCTAssertLessThan(abs(message.frame.minY - originalY), 3)
+        copy.tap()
+        XCTAssertLessThan(abs(message.frame.minY - originalY), 3)
+        let ownMessage = app.staticTexts["前面的消息 7"]
+        XCTAssertTrue(ownMessage.isHittable)
+        ownMessage.press(forDuration: 0.7)
+        XCTAssertTrue(app.buttons["撤回"].waitForExistence(timeout: 3))
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "message-actions-anchored"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        app.buttons["撤回"].tap()
+        XCTAssertTrue(app.buttons["撤回消息"].waitForExistence(timeout: 3))
+        app.buttons["取消"].tap()
+        XCTAssertTrue(ownMessage.exists)
+    }
+
     func testDateSearchPreservesTimeAndReturnsToMatchingMessage() {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-scroll-control"]

@@ -397,7 +397,7 @@ struct ChatView: View {
             TextField("和柯说点什么…", text: $draft, axis: .vertical)
                 .accessibilityIdentifier("chat-composer")
                 .lineLimit(1...5)
-                .font(theme.font.bubble)
+                .font(theme.font.body)
                 .foregroundStyle(theme.color.textPrimary)
                 .focused($inputFocused)
                 .padding(.horizontal, 4)

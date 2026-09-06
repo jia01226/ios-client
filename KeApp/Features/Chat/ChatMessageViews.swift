@@ -274,6 +274,7 @@ struct MessageRow: View {
     let onAttachmentTap: (ChatAttachment) -> Void
     var onRecall: (Message) -> Void = { _ in }
     @State private var copied = false
+    @State private var actionsPresented = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -335,17 +336,39 @@ struct MessageRow: View {
             maxWidth: .infinity,
             alignment: message.sender == .ke ? .leading : .trailing
         )
-        .contextMenu {
-            if !message.text.isEmpty {
-                Button("复制", systemImage: "doc.on.doc") {
-                    UIPasteboard.general.string = message.text
+        .onLongPressGesture(minimumDuration: 0.45) {
+            guard !message.text.isEmpty || message.canRecall else { return }
+            actionsPresented = true
+        }
+        .popover(isPresented: $actionsPresented) {
+            VStack(spacing: 0) {
+                if !message.text.isEmpty {
+                    Button {
+                        UIPasteboard.general.string = message.text
+                        actionsPresented = false
+                    } label: {
+                        Label("复制", systemImage: "doc.on.doc")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                    }
+                    .accessibilityIdentifier("message-action-copy")
+                }
+                if message.canRecall {
+                    if !message.text.isEmpty { Divider() }
+                    Button(role: .destructive) {
+                        actionsPresented = false
+                        onRecall(message)
+                    } label: {
+                        Label("撤回", systemImage: "arrow.uturn.backward")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                    }
                 }
             }
-            if message.canRecall {
-                Button("撤回", systemImage: "arrow.uturn.backward", role: .destructive) {
-                    onRecall(message)
-                }
-            }
+            .font(theme.font.body)
+            .buttonStyle(.plain)
+            .frame(width: 180)
+            .presentationCompactAdaptation(.popover)
         }
         .overlay {
             if isHighlighted {
