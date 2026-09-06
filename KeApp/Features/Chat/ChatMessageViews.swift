@@ -275,6 +275,7 @@ struct MessageRow: View {
     var onRecall: (Message) -> Void = { _ in }
     @State private var copied = false
     @State private var actionsPresented = false
+    @State private var recallAfterDismiss = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -356,8 +357,8 @@ struct MessageRow: View {
                 if message.canRecall {
                     if !message.text.isEmpty { Divider() }
                     Button(role: .destructive) {
+                        recallAfterDismiss = true
                         actionsPresented = false
-                        onRecall(message)
                     } label: {
                         Label("撤回", systemImage: "arrow.uturn.backward")
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -369,6 +370,11 @@ struct MessageRow: View {
             .buttonStyle(.plain)
             .frame(width: 180)
             .presentationCompactAdaptation(.popover)
+            .onDisappear {
+                guard recallAfterDismiss else { return }
+                recallAfterDismiss = false
+                onRecall(message)
+            }
         }
         .overlay {
             if isHighlighted {

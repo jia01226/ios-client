@@ -131,7 +131,7 @@ struct ChatView: View {
             NotificationCenter.default.post(name: .chatSettingsVisibility, object: value)
         }
         .onDisappear { NotificationCenter.default.post(name: .chatSettingsVisibility, object: false) }
-        .confirmationDialog("撤回这条消息？", isPresented: $recallConfirmation, titleVisibility: .visible) {
+        .alert("撤回这条消息？", isPresented: $recallConfirmation) {
             Button("撤回消息", role: .destructive) {
                 guard let message = messageToRecall, message.canRecall, let id = message.serverID else { return }
                 messageToRecall = nil
