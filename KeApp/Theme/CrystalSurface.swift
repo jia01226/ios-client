@@ -1,26 +1,12 @@
 import SwiftUI
 import UIKit
 
-/// 已确认的山茶花晚霞背景。卧室模式仍由服务端信号覆盖。
+/// 纯色背景随主题变化，卧室状态继续由服务端驱动。
 struct AppAtmosphere: View {
     @EnvironmentObject private var theme: Theme
 
     var body: some View {
-        GeometryReader { proxy in
-            ZStack {
-                Image("CamelliaSunset")
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .clipped()
-
-                theme.effectiveBackground
-                    .opacity(theme.isBedroom ? 0.82 : 0.06)
-            }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-        }
-        .ignoresSafeArea()
-        .accessibilityHidden(true)
+        theme.effectiveBackground.ignoresSafeArea().accessibilityHidden(true)
     }
 }
 /// 玻璃不是实体粉色卡片：系统材质负责折射，令牌只控制薄薄的染色与边缘反光。
@@ -130,5 +116,18 @@ private struct BackdropBlur: UIViewRepresentable {
     static func dismantleUIView(_ view: UIVisualEffectView, coordinator: Coordinator) {
         coordinator.animator?.stopAnimation(true)
         view.effect = nil
+    }
+}
+
+
+struct FloatingGlassSurface: View {
+    @EnvironmentObject private var theme: Theme
+    let cornerRadius: CGFloat
+    var body: some View {
+        if #available(iOS 26.0, *) {
+            Color.clear.glassEffect(.clear.tint(theme.color.accentSoft.opacity(0.04)), in: .rect(cornerRadius: cornerRadius))
+        } else {
+            CrystalSurface(cornerRadius: cornerRadius)
+        }
     }
 }

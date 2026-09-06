@@ -5,6 +5,7 @@ import UIKit
 
 @MainActor
 final class ChatViewModel: ObservableObject {
+    private let sendHaptics = SendReceiptHaptics()
     enum Phase: Equatable {
         case checking
         case needsLogin
@@ -525,6 +526,7 @@ final class ChatViewModel: ObservableObject {
         recoveryProbeID = nil
         pendingAttachments = []
 
+        sendHaptics.prepare()
         let clientID = "ios-\(UUID().uuidString.lowercased())"
         let userLocalID = "user-\(clientID)"
         let assistantLocalID = "assistant-\(clientID)"
@@ -1004,6 +1006,7 @@ final class ChatViewModel: ObservableObject {
                         $0.serverID = userMessageID ?? $0.serverID
                         $0.deliveryState = .sent
                     }
+                    sendHaptics.acknowledge(clientID: clientID, serverID: userMessageID)
                     applyBedroom(bedroom)
 
                 case let .text(delta):

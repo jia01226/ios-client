@@ -8,6 +8,7 @@ private enum ChatSettingsPage: Equatable {
     case search
     case delete
     case models
+    case palettes, fonts, appearance, dates, tools
 }
 
 struct ChatView: View {
@@ -17,6 +18,11 @@ struct ChatView: View {
     @StateObject private var vm = ChatViewModel()
     @StateObject private var recentPhotos = RecentPhotosStore()
     @State private var draft = ""
+    @State private var showingCallPlaceholder = false
+    @State private var messageToRecall: Message?
+    @State private var recallConfirmation = false
+    @State private var recallError: String?
+    @State private var historyDate = Date()
     @FocusState private var inputFocused: Bool
     @State private var settingsOpen = false
     @State private var attachmentsOpen = false
@@ -91,14 +97,8 @@ struct ChatView: View {
                 }
 
                 if settingsOpen {
-                    theme.color.glassShadow.opacity(theme.glass.scrimOpacity)
-                        .ignoresSafeArea()
-                        .contentShape(Rectangle())
-                        .onTapGesture { closeTransientPanels() }
-                        .transition(.opacity)
-
                     settingsDrawer
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                        .transition(.move(edge: .trailing))
                 }
 
 #if DEBUG
@@ -126,7 +126,30 @@ struct ChatView: View {
 #endif
             }
         }
-        .animation(.easeOut(duration: 0.22), value: settingsOpen)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: settingsOpen)
+        .onChange(of: settingsOpen) { _, value in
+            NotificationCenter.default.post(name: .chatSettingsVisibility, object: value)
+        }
+        .onDisappear { NotificationCenter.default.post(name: .chatSettingsVisibility, object: false) }
+        .confirmationDialog("撤回这条消息？", isPresented: $recallConfirmation, titleVisibility: .visible) {
+            Button("撤回消息", role: .destructive) {
+                guard let message = messageToRecall, message.canRecall, let id = message.serverID else { return }
+                messageToRecall = nil
+                Task {
+                    let deleted = await vm.deleteMessages(ids: [id])
+                    if !deleted.contains(id) { recallError = "撤回没有成功，请稍后再试。" }
+                }
+            }
+            Button("取消", role: .cancel) { messageToRecall = nil }
+        } message: {
+            Text("将从聊天记录中删除这条消息。已经开始生成的回复可能继续。")
+        }
+        .alert("未能撤回", isPresented: Binding(get: { recallError != nil }, set: { if !$0 { recallError = nil } })) {
+            Button("知道了", role: .cancel) { recallError = nil }
+        } message: { Text(recallError ?? "") }
+        .alert("语音通话", isPresented: $showingCallPlaceholder) {
+            Button("知道了", role: .cancel) {}
+        } message: { Text("通话功能即将接入。") }
         .fileImporter(
             isPresented: $importingFile,
             allowedContentTypes: [.item],
@@ -173,15 +196,8 @@ struct ChatView: View {
                     .foregroundStyle(theme.color.textPrimary)
 
                 if vm.isSending {
-                    HStack(spacing: 6) {
-                        ProgressView()
-                            .controlSize(.mini)
-                            .tint(theme.color.glassEdge)
-                        Text("正在输入…")
-                    }
-                    .font(.caption2)
-                    .foregroundStyle(theme.color.textSecondary)
-                    .transition(.opacity)
+                    WaitingShimmer(color: theme.color.textPrimary)
+                        .transition(.opacity)
                 } else {
                     Text(vm.isShowingCachedMessages ? "离线记录" : "在线")
                         .font(.caption2)
@@ -190,8 +206,15 @@ struct ChatView: View {
                 }
             }
 
-            HStack {
+            HStack(spacing: 12) {
+                Image(systemName: "moon").font(.title3)
+                    .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
                 Spacer()
+                Button { showingCallPlaceholder = true } label: {
+                    Image(systemName: "phone").font(.title3)
+                        .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
+                        .background(FloatingGlassSurface(cornerRadius: 22))
+                }.buttonStyle(.plain).accessibilityLabel("语音通话")
                 Button {
                     settingsOpen = true
                     settingsPage = .root
@@ -200,11 +223,11 @@ struct ChatView: View {
                 } label: {
                     Image(systemName: "ellipsis")
                         .symbolVariant(.none)
-                        .rotationEffect(.degrees(90))
                         .font(theme.font.menuIcon)
                         .foregroundStyle(theme.color.textPrimary)
                         .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
                         .contentShape(Rectangle())
+                        .background(FloatingGlassSurface(cornerRadius: 22))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("打开聊天设置")
@@ -244,6 +267,11 @@ struct ChatView: View {
                     },
                     onAttachmentTap: { attachment in
                         previewedImage = attachment
+                    },
+                    onRecall: { message in
+                        inputFocused = false
+                        messageToRecall = message
+                        recallConfirmation = true
                     },
                     onBackgroundTap: {
                         inputFocused = false
@@ -369,7 +397,7 @@ struct ChatView: View {
             TextField("和柯说点什么…", text: $draft, axis: .vertical)
                 .accessibilityIdentifier("chat-composer")
                 .lineLimit(1...5)
-                .font(theme.font.body)
+                .font(theme.font.bubble)
                 .foregroundStyle(theme.color.textPrimary)
                 .focused($inputFocused)
                 .padding(.horizontal, 4)
@@ -389,8 +417,7 @@ struct ChatView: View {
                 .frame(width: 40, height: 40)
                 .background(
                     Circle()
-                        .fill(theme.effectiveAccent.opacity(theme.glass.sendFillOpacity))
-                        .overlay(Circle().stroke(theme.color.glassEdge, lineWidth: theme.metric.glassStrokeWidth))
+                        .fill(theme.sendColor)
                 )
             }
             .disabled(!canSend || vm.isSending || vm.isUploading)
@@ -400,7 +427,7 @@ struct ChatView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(CrystalSurface(cornerRadius: theme.metric.radiusComposer, strength: 1.05))
+        .background(FloatingGlassSurface(cornerRadius: theme.metric.radiusComposer))
         .padding(.horizontal, theme.metric.pagePadding)
         .padding(.vertical, theme.metric.gapS)
     }
@@ -475,7 +502,7 @@ struct ChatView: View {
         }
         .padding(theme.metric.gapM)
         .background(
-            CrystalSurface(cornerRadius: theme.metric.radiusAttachmentTray, strength: 1.08)
+            FloatingGlassSurface(cornerRadius: theme.metric.radiusAttachmentTray)
                 .accessibilityElement()
                 .accessibilityIdentifier("attachment-tray")
         )
@@ -637,6 +664,11 @@ struct ChatView: View {
                         deleteSettings
                     case .models:
                         modelSettings
+                    case .palettes: paletteSettings
+                    case .fonts: fontSettings
+                    case .appearance: appearanceSettings
+                    case .dates: dateSettings
+                    case .tools: toolSettings
                     }
                 }
                 .padding(.horizontal, theme.metric.gapL)
@@ -645,9 +677,9 @@ struct ChatView: View {
             .scrollDismissesKeyboard(.interactively)
             .scrollContentBackground(.hidden)
         }
-        .frame(width: theme.metric.drawerWidth)
+        .frame(maxWidth: .infinity)
         .frame(maxHeight: .infinity)
-        .background(.ultraThinMaterial)
+        .background(theme.color.bg.ignoresSafeArea())
         .overlay(alignment: .leading) {
             Rectangle()
                 .fill(theme.color.glassEdge.opacity(theme.glass.drawerEdgeOpacity))
@@ -668,62 +700,70 @@ struct ChatView: View {
     }
 
     private var settingsHeader: some View {
-        HStack(spacing: theme.metric.gapS) {
-            if settingsPage != .root {
-                Button {
-                    settingsPage = .root
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("返回聊天设置")
-            }
-
-            Text(settingsTitle)
-                .font(theme.font.sectionTitle)
-                .foregroundStyle(theme.color.textPrimary)
-            Spacer()
-            Button { closeTransientPanels() } label: {
-                Image(systemName: "xmark")
+        HStack {
+            Button {
+                if settingsPage == .root { closeTransientPanels() }
+                else { settingsPage = .root }
+            } label: {
+                Image(systemName: "chevron.left")
                     .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("关闭聊天设置")
+            .accessibilityLabel(settingsPage == .root ? "关闭聊天设置" : "返回聊天设置")
+            Spacer()
+            Text(settingsTitle).font(theme.font.sectionTitle)
+            Spacer()
+            Color.clear.frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
         }
-        .foregroundStyle(theme.color.textSecondary)
+        .foregroundStyle(theme.color.textPrimary)
         .padding(.horizontal, theme.metric.gapM)
         .padding(.vertical, theme.metric.gapXS)
-        .frame(minHeight: theme.metric.drawerHeaderHeight)
     }
 
     private var settingsTitle: String {
         switch settingsPage {
-        case .root: return "聊天设置"
+        case .root: return "功能区"
         case .search: return "查找聊天记录"
         case .delete: return "批量删除"
         case .models: return "模型选择"
+        case .palettes: return "聊天配色"
+        case .fonts: return "聊天字体"
+        case .appearance: return "界面与气泡"
+        case .dates: return "按日期查找"
+        case .tools: return "工具状态"
         }
     }
 
     private var settingsRoot: some View {
         VStack(alignment: .leading, spacing: theme.metric.gapL) {
+            Text("聊天记录").font(theme.font.caption).foregroundStyle(theme.color.textSecondary)
             settingsLink("查找聊天记录", icon: "magnifyingglass") {
                 settingsPage = .search
                 Task { await vm.prepareSearchCorpus() }
             }
+            settingsLink("按日期查找", icon: "calendar") {
+                settingsPage = .dates
+                Task { await vm.prepareSearchCorpus() }
+            }
+            Text("聊天设置").font(theme.font.caption).foregroundStyle(theme.color.textSecondary).padding(.top, 12)
+            settingsLink("模型选择", icon: "circle.hexagongrid") {
+                settingsPage = .models
+                Task { await vm.loadModelSettings(force: true); expandSelectedModelGroup() }
+            }
+            settingsLink("聊天配色", icon: "paintpalette") { settingsPage = .palettes }
+            settingsLink("聊天字体", icon: "textformat") { settingsPage = .fonts }
+            settingsLink("界面与气泡", icon: "slider.horizontal.3") { settingsPage = .appearance }
+            settingsLink("工具状态", icon: "sparkle.magnifyingglass") { settingsPage = .tools }
+            Text("记录管理").font(theme.font.caption).foregroundStyle(theme.color.textSecondary).padding(.top, 12)
             settingsLink("批量删除聊天记录", icon: "checklist") {
                 settingsPage = .delete
                 Task { await vm.prepareSearchCorpus() }
             }
-            settingsLink("模型选择", icon: "sparkles") {
-                settingsPage = .models
-                Task {
-                    await vm.loadModelSettings(force: true)
-                    expandSelectedModelGroup()
-                }
-            }
+        }.padding(.top, 20)
+    }
 
+    private var appearanceSettings: some View {
+        VStack(alignment: .leading, spacing: theme.metric.gapL) {
             settingSlider(
                 title: "气泡透明度",
                 value: $theme.bubbleOpacity,
@@ -749,12 +789,74 @@ struct ChatView: View {
                 valueText: "\(Int(theme.chatFontSize))"
             )
 
-            Text("透明度可以降到完全透明；模糊、圆角和字体会即时预览，并保存在这台手机上。")
-                .font(theme.font.caption)
-                .foregroundStyle(theme.color.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.top, theme.metric.gapS)
+        }.padding(.top, 12)
+    }
+
+    private var paletteSettings: some View {
+        VStack(spacing: 14) {
+            ForEach(ChatPalette.all) { choice in
+                Button { theme.chatPalette = choice } label: {
+                    HStack(spacing: 12) {
+                        HStack(spacing: 4) {
+                            ForEach([choice.base, choice.tint, choice.accent], id: \.self) { color in
+                                Circle().fill(Color(hex: color)).frame(width: 22, height: 22)
+                            }
+                        }
+                        Text(choice.name).foregroundStyle(theme.color.textPrimary)
+                        Spacer()
+                        if theme.chatPalette.id == choice.id { Image(systemName: "checkmark") }
+                    }.frame(minHeight: 52).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+            }
+        }.padding(.top, 12)
+    }
+
+    private var fontSettings: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("今天不着急，慢慢说，我在听。")
+                .font(theme.font.bubble).lineSpacing(5).padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(theme.color.bubbleMe.opacity(0.2), in: RoundedRectangle(cornerRadius: 20))
+            ForEach(ChatTypography.all) { choice in
+                Button { theme.chatTypeface = choice } label: {
+                    HStack {
+                        Text(choice.title).font(choice.font(size: 17))
+                        Spacer()
+                        if theme.chatTypeface.id == choice.id { Image(systemName: "checkmark") }
+                    }.foregroundStyle(theme.color.textPrimary).frame(minHeight: 48).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+            }
+            settingSlider(title: "文字大小", value: $theme.chatFontSize, range: 13...22, valueText: "\(Int(theme.chatFontSize))")
+        }.padding(.top, 12)
+    }
+
+    private var dateSettings: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            DatePicker("选择日期", selection: $historyDate, displayedComponents: .date)
+                .datePickerStyle(.graphical).environment(\.locale, Locale(identifier: "zh_CN"))
+                .accessibilityIdentifier("chat-date-picker")
+            if vm.isPreparingSearch { settingsProgress("正在整理聊天记录…") }
+            if let error = vm.searchError {
+                settingsError(error) { Task { await vm.prepareSearchCorpus(force: true) } }
+            }
+            let matches = vm.deletionCandidates.filter { $0.serverTimeIsValid != false && ChatTimelineDate.calendar.isDate($0.time, inSameDayAs: historyDate) }
+            if matches.isEmpty { settingsHint("这一天没有找到已缓存的聊天记录。") }
+            ForEach(matches) { message in
+                Button {
+                    vm.revealSearchResult(message)
+                    highlightedMessageID = message.id
+                    settingsOpen = false
+                } label: { searchResultRow(message) }.buttonStyle(.plain)
+            }
+        }.padding(.top, 8)
+    }
+
+    private var toolSettings: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            let runs = vm.messages.flatMap { $0.toolRuns ?? [] }
+            if runs.isEmpty { settingsHint("当前聊天还没有工具记录。调用工具时，状态会显示在聊天中。") }
+            ForEach(runs) { run in ChatToolStatusRow(toolRun: run) }
+        }.padding(.top, 12)
     }
 
     private func settingsLink(

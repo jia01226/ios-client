@@ -150,8 +150,8 @@ struct Metrics {
     let radiusAttachmentTray: CGFloat = 24
     let navArtworkSize: CGFloat = 42
     let tabMinimumHeight: CGFloat = 54
-    let messageSideReserve: CGFloat = 44
-    let bubbleMaxWidth: CGFloat = 318
+    let messageSideReserve: CGFloat = 28
+    let bubbleMaxWidth: CGFloat = 360
     let bubbleHorizontalPadding: CGFloat = 16
     let bubbleVerticalPadding: CGFloat = 12
     let splitBubbleGap: CGFloat = 5
@@ -177,6 +177,7 @@ struct Metrics {
 
 struct Typo {
     let chatSize: CGFloat
+    var chatTypeface: ChatTypography = ChatTypography.all[0]
 
     let pageTitle   = Font.system(size: 30, weight: .semibold)
     let sectionTitle = Font.system(size: 17, weight: .medium)
@@ -184,7 +185,7 @@ struct Typo {
     let caption     = Font.system(size: 13, weight: .regular)
     let quote       = Font.system(size: 20, weight: .regular)   // "柯先开的口"那张卡
     let numberBig   = Font.system(size: 44, weight: .light)     // 428 天
-    let chatHeader  = Font.system(size: 26, weight: .medium, design: .serif)
+    let chatHeader  = Font.system(size: 20, weight: .medium)
     let menuIcon    = Font.system(size: 20, weight: .semibold)
     let composerIcon = Font.system(size: 18, weight: .regular)
     let sendIcon    = Font.system(size: 17, weight: .semibold)
@@ -200,7 +201,7 @@ struct Typo {
     let shiftBadge = Font.system(size: 15, weight: .medium)
 
     var bubble: Font {
-        Font.system(size: chatSize, weight: .regular, design: .serif)
+        chatTypeface.font(size: Double(chatSize))
     }
 
     var thinking: Font {
@@ -249,9 +250,22 @@ final class Theme: ObservableObject {
         set { storedSkin = newValue.rawValue; objectWillChange.send() }
     }
 
+    @AppStorage("app.chatPalette") private var storedPalette = "rose"
+    @AppStorage("app.chatTypeface") private var storedTypeface = "regular"
+
+    var chatPalette: ChatPalette {
+        get { ChatPalette.all.first { $0.id == storedPalette } ?? ChatPalette.all[1] }
+        set { objectWillChange.send(); storedPalette = newValue.id }
+    }
+    var chatTypeface: ChatTypography {
+        get { ChatTypography.all.first { $0.id == storedTypeface } ?? ChatTypography.all[0] }
+        set { objectWillChange.send(); storedTypeface = newValue.id }
+    }
+    var sendColor: Color { skin == .night ? color.accentSoft : Color(hex: chatPalette.send) }
+
     var color: Palette {
         switch skin {
-        case .day:   return .day
+        case .day:   return .chat(chatPalette)
         case .night: return .night
         }
     }
@@ -297,7 +311,7 @@ final class Theme: ObservableObject {
         defaults.set(bubbleOpacity, forKey: "app.bubbleOpacity")
     }
 
-    var font: Typo { Typo(chatSize: CGFloat(chatFontSize)) }
+    var font: Typo { Typo(chatSize: CGFloat(chatFontSize), chatTypeface: chatTypeface) }
 
     // MARK: 卧室模式
     //

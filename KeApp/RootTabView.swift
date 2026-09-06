@@ -6,6 +6,7 @@ struct RootTabView: View {
     @EnvironmentObject private var theme: Theme
     @State private var selection: Tab = .ke   // 默认落在聊天页
     @State private var keyboardIsVisible = false
+    @State private var chatSettingsOpen = false
 
     enum Tab: Hashable {
         case us, ke, play, memories, jiajia
@@ -37,7 +38,7 @@ struct RootTabView: View {
                         .tag(Tab.jiajia)
                 }
 
-                if !keyboardIsVisible {
+                if !keyboardIsVisible && !chatSettingsOpen {
                     crystalTabBar
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("root-tab-bar")
@@ -48,6 +49,9 @@ struct RootTabView: View {
                     theme.effectiveBackground.ignoresSafeArea()
                 }
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .chatSettingsVisibility)) { notification in
+            chatSettingsOpen = notification.object as? Bool ?? false
         }
         .onReceive(
             NotificationCenter.default.publisher(
@@ -81,7 +85,7 @@ struct RootTabView: View {
             if selection == .us {
                 theme.effectiveBackground
             } else {
-                CrystalSurface(cornerRadius: theme.metric.radiusDock, strength: 1.15)
+                FloatingGlassSurface(cornerRadius: theme.metric.radiusDock)
             }
         }
         .overlay(alignment: .top) {
@@ -101,17 +105,29 @@ struct RootTabView: View {
             selection = tab
         } label: {
             VStack(spacing: 1) {
-                NavArtwork(tab: tab, selected: selection == tab)
-                    .frame(width: 42, height: 42)
+                Image(systemName: symbol(for: tab))
+                    .font(.system(size: 23, weight: .medium))
+                    .frame(width: 42, height: 30)
                 Text(label)
                     .font(.caption2.weight(selection == tab ? .semibold : .regular))
             }
             .foregroundStyle(selection == tab ? theme.effectiveAccent : theme.color.textSecondary)
-            .frame(maxWidth: .infinity, minHeight: 54)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .background(selection == tab ? theme.color.textPrimary.opacity(0.055) : Color.clear, in: Capsule())
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
+    private func symbol(for tab: Tab) -> String {
+        switch tab {
+        case .us: return "moon.stars.fill"
+        case .ke: return "bubble.left.and.bubble.right.fill"
+        case .play: return "sparkles"
+        case .memories: return "clock.arrow.circlepath"
+        case .jiajia: return "person.crop.circle.fill"
+        }
+    }
+
 }
 
 private struct NavArtwork: View {
@@ -146,4 +162,9 @@ private struct NavArtwork: View {
 
 #Preview {
     RootTabView().environmentObject(Theme.shared)
+}
+
+
+extension Notification.Name {
+    static let chatSettingsVisibility = Notification.Name("love.chatSettingsVisibility")
 }

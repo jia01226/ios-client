@@ -268,3 +268,10 @@ struct MemoryCard: Identifiable, Hashable, Codable {
         return f
     }()
 }
+
+
+extension Message {
+    var canRecall: Bool {
+        sender == .me && serverID != nil && deliveryState == .sent && !isStreaming
+    }
+}

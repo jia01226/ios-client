@@ -272,6 +272,7 @@ struct MessageRow: View {
     let isHighlighted: Bool
     let visibleSegmentCount: Int?
     let onAttachmentTap: (ChatAttachment) -> Void
+    var onRecall: (Message) -> Void = { _ in }
     @State private var copied = false
 
     var body: some View {
@@ -308,6 +309,7 @@ struct MessageRow: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel(copied ? "已复制" : "复制消息")
                         .foregroundStyle(copied ? theme.effectiveAccent : theme.color.textSecondary)
                     }
 
@@ -333,6 +335,18 @@ struct MessageRow: View {
             maxWidth: .infinity,
             alignment: message.sender == .ke ? .leading : .trailing
         )
+        .contextMenu {
+            if !message.text.isEmpty {
+                Button("复制", systemImage: "doc.on.doc") {
+                    UIPasteboard.general.string = message.text
+                }
+            }
+            if message.canRecall {
+                Button("撤回", systemImage: "arrow.uturn.backward", role: .destructive) {
+                    onRecall(message)
+                }
+            }
+        }
         .overlay {
             if isHighlighted {
                 RoundedRectangle(cornerRadius: CGFloat(theme.bubbleCornerRadius), style: .continuous)
@@ -429,11 +443,9 @@ struct MessageRow: View {
     }
 
     private var bubbleBackground: some View {
-        CrystalSurface(
-            cornerRadius: CGFloat(theme.bubbleCornerRadius),
-            strength: message.sender == .ke ? 0.92 : 1.08,
-            usesChatControls: true
-        )
+        RoundedRectangle(cornerRadius: CGFloat(theme.bubbleCornerRadius), style: .continuous)
+            .fill((message.sender == .me ? theme.color.bubbleMe : theme.color.bubbleKe)
+                .opacity(message.sender == .me ? 0.12 + theme.bubbleOpacity * 3 : 0.20 + theme.bubbleOpacity * 3))
     }
 
     private var visibleSegments: [String] {

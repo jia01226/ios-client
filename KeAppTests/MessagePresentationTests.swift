@@ -2,6 +2,26 @@ import XCTest
 @testable import KeApp
 
 final class MessagePresentationTests: XCTestCase {
+    func testSendFeedbackRequiresServerReceiptAndDoesNotRepeatOnRetry() {
+        var gate = SendReceiptFeedbackGate()
+        XCTAssertFalse(gate.consume(clientID: "a", serverID: nil))
+        XCTAssertTrue(gate.consume(clientID: "a", serverID: 7))
+        XCTAssertFalse(gate.consume(clientID: "a", serverID: 7))
+        XCTAssertTrue(gate.consume(clientID: "b", serverID: 8))
+    }
+
+    func testRecallOnlyAllowsOwnPersistedSentMessages() {
+        var own = Message(id: "own", serverID: 7, sender: .me, text: "sample", time: .now)
+        XCTAssertTrue(own.canRecall)
+        own.deliveryState = .sending
+        XCTAssertFalse(own.canRecall)
+        own.deliveryState = .sent
+        own.serverID = nil
+        XCTAssertFalse(own.canRecall)
+        let reply = Message(id: "reply", serverID: 8, sender: .ke, text: "sample", time: .now)
+        XCTAssertFalse(reply.canRecall)
+    }
+
     func testTimelineSkipsUnrelatedModelSelectionPublishes() {
         let message = Message(
             id: "stable-during-model-selection",

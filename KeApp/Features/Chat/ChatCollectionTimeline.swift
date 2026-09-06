@@ -217,6 +217,7 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable, Equatable {
     let scrollToLatestRequest: Int
     let onThinkingOpen: (String) -> Void
     let onAttachmentTap: (ChatAttachment) -> Void
+    var onRecall: (Message) -> Void = { _ in }
     let onBackgroundTap: () -> Void
     let onScrollToLatestVisibilityChanged: (Bool) -> Void
 
@@ -242,6 +243,7 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable, Equatable {
             scrollToLatestRequest: scrollToLatestRequest,
             onThinkingOpen: onThinkingOpen,
             onAttachmentTap: onAttachmentTap,
+            onRecall: onRecall,
             onBackgroundTap: onBackgroundTap,
             onScrollToLatestVisibilityChanged: onScrollToLatestVisibilityChanged
         )
@@ -260,6 +262,7 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable, Equatable {
             scrollToLatestRequest: scrollToLatestRequest,
             onThinkingOpen: onThinkingOpen,
             onAttachmentTap: onAttachmentTap,
+            onRecall: onRecall,
             onBackgroundTap: onBackgroundTap,
             onScrollToLatestVisibilityChanged: onScrollToLatestVisibilityChanged
         )
@@ -325,6 +328,7 @@ final class ChatCollectionTimelineController: UIViewController,
     private var highlightedMessageID: String?
     private var onThinkingOpen: (String) -> Void
     private var onAttachmentTap: (ChatAttachment) -> Void
+    private var onRecall: (Message) -> Void
     private var onBackgroundTap: () -> Void
     private var onScrollToLatestVisibilityChanged: (Bool) -> Void
     private var scrollToLatestRequest: Int
@@ -343,6 +347,7 @@ final class ChatCollectionTimelineController: UIViewController,
         scrollToLatestRequest: Int,
         onThinkingOpen: @escaping (String) -> Void,
         onAttachmentTap: @escaping (ChatAttachment) -> Void,
+        onRecall: @escaping (Message) -> Void,
         onBackgroundTap: @escaping () -> Void,
         onScrollToLatestVisibilityChanged: @escaping (Bool) -> Void
     ) {
@@ -353,6 +358,7 @@ final class ChatCollectionTimelineController: UIViewController,
         self.scrollToLatestRequest = scrollToLatestRequest
         self.onThinkingOpen = onThinkingOpen
         self.onAttachmentTap = onAttachmentTap
+        self.onRecall = onRecall
         self.onBackgroundTap = onBackgroundTap
         self.onScrollToLatestVisibilityChanged = onScrollToLatestVisibilityChanged
         super.init(nibName: nil, bundle: nil)
@@ -454,11 +460,13 @@ final class ChatCollectionTimelineController: UIViewController,
         scrollToLatestRequest newScrollToLatestRequest: Int,
         onThinkingOpen: @escaping (String) -> Void,
         onAttachmentTap: @escaping (ChatAttachment) -> Void,
+        onRecall: @escaping (Message) -> Void,
         onBackgroundTap: @escaping () -> Void,
         onScrollToLatestVisibilityChanged: @escaping (Bool) -> Void
     ) {
         self.onThinkingOpen = onThinkingOpen
         self.onAttachmentTap = onAttachmentTap
+        self.onRecall = onRecall
         self.onBackgroundTap = onBackgroundTap
         self.onScrollToLatestVisibilityChanged = onScrollToLatestVisibilityChanged
 
@@ -758,7 +766,8 @@ final class ChatCollectionTimelineController: UIViewController,
                     visibleSegmentCount: item.visibleSegmentCount,
                     onAttachmentTap: { [weak self] attachment in
                         self?.onAttachmentTap(attachment)
-                    }
+                    },
+                    onRecall: { [weak self] message in self?.onRecall(message) }
                 )
                 .environmentObject(Theme.shared)
             }
