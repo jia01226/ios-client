@@ -809,6 +809,21 @@ struct ChatView: View {
             settingsLink("界面与气泡", icon: "slider.horizontal.3") { settingsPage = .appearance }
             settingsLink("工具状态", icon: "sparkle.magnifyingglass") { settingsPage = .tools }
             Text("记录管理").font(theme.font.caption).foregroundStyle(theme.color.textSecondary).padding(.top, 12)
+            Button {
+                Task { await vm.clearCurrentWindow() }
+            } label: {
+                Label(vm.isClearingWindow ? "正在清空…" : "清空当前窗口聊天", systemImage: "trash")
+                    .font(theme.font.body)
+                    .frame(minHeight: theme.metric.touchTarget)
+            }
+            .disabled(!vm.canClearWindow)
+            .accessibilityIdentifier("clear-chat-window")
+            settingsHint("清空当前聊天和上下文。事实记忆、其他窗口保留。旧记录单独归档。")
+            if let error = vm.clearWindowError {
+                settingsError(error) { Task { await vm.clearCurrentWindow() } }
+            } else if let notice = vm.clearWindowNotice {
+                settingsHint(notice)
+            }
             settingsLink("批量删除聊天记录", icon: "checklist") {
                 settingsPage = .delete
                 Task { await vm.prepareSearchCorpus() }

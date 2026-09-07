@@ -3,6 +3,21 @@ import XCTest
 final class ClaudeRefreshTests: XCTestCase {
     override func setUpWithError() throws { continueAfterFailure = false }
 
+    func testClearWindowRemovesVisibleHistory() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-test-model-groups"]
+        app.launch()
+        XCTAssertTrue(app.buttons["打开聊天设置"].waitForExistence(timeout: 5))
+        app.buttons["打开聊天设置"].tap()
+        let clear = app.buttons["clear-chat-window"]
+        for _ in 0..<4 where !clear.isHittable { app.swipeUp() }
+        XCTAssertTrue(clear.isHittable)
+        clear.tap()
+        XCTAssertTrue(app.staticTexts["当前聊天已清空，下一条从新的上下文开始。事实记忆保留。"].waitForExistence(timeout: 4))
+        app.buttons["关闭聊天设置"].tap()
+        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "message-bubble-ui-test-model-groups-message-0").firstMatch.exists)
+    }
+
     func testRefreshKeepsMessagesAndExplainsNextReply() {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-model-groups"]

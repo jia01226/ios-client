@@ -48,6 +48,10 @@ final class ChatViewModel: ObservableObject {
     @Published var searchCorpus: [Message] = []
     @Published var isPreparingSearch = false
     @Published var searchError: String?
+    @Published var isClearingWindow = false
+    @Published var clearWindowNotice: String?
+    @Published var clearWindowError: String?
+    private var clearRequestID: String?
     @Published var isDeleting = false
     @Published var deleteError: String?
     @Published var pendingAttachments: [ChatAttachment] = []
@@ -548,7 +552,7 @@ final class ChatViewModel: ObservableObject {
     }
 
     func send(_ text: String, reduceMotion: Bool = false) async {
-        guard let sessionID, !isSending, !isRefreshingClaude else { return }
+        guard let sessionID, !isSending, !isRefreshingClaude, !isClearingWindow else { return }
         let attachments = pendingAttachments
         guard !text.isEmpty || !attachments.isEmpty else { return }
 
@@ -823,7 +827,7 @@ final class ChatViewModel: ObservableObject {
             return
         }
 #endif
-        guard let sessionID, !isSelectingModel else { return }
+        guard let sessionID, !isSelectingModel, !isClearingWindow else { return }
         isSelectingModel = true
         modelError = nil
         defer { isSelectingModel = false }
@@ -838,11 +842,51 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
+    var canClearWindow: Bool {
+        phase == .ready && !isSending && !isDeleting && !isSelectingModel && !isPreparingSearch
+            && !isRefreshingClaude && !isClearingWindow && hasNetworkPath
+    }
+
+    func clearCurrentWindow() async {
+        guard canClearWindow, let oldSessionID = sessionID else { return }
+        isClearingWindow = true
+        clearWindowError = nil
+        clearWindowNotice = nil
+        defer { isClearingWindow = false }
+        let requestID = clearRequestID ?? UUID().uuidString
+        clearRequestID = requestID
+        do {
+            let newSessionID: Int
+#if DEBUG
+            if uiTestFixture == .modelGroups {
+                newSessionID = oldSessionID + 1
+            } else {
+                newSessionID = try await api.clearChatWindow(sessionID: oldSessionID, requestID: requestID)
+            }
+#else
+            newSessionID = try await api.clearChatWindow(sessionID: oldSessionID, requestID: requestID)
+#endif
+            sessionID = newSessionID
+            messages = []
+            searchCorpus = []
+            isShowingCachedMessages = false
+            historyLoadFailed = false
+            applyBedroom(false)
+            activeJobID = nil
+            activeStreamClientID = nil
+            await cache.save([], sessionID: newSessionID)
+            clearRequestID = nil
+            clearWindowNotice = "当前聊天已清空，下一条从新的上下文开始。事实记忆保留。"
+        } catch {
+            clearWindowError = "没有确认清空成功。\(error.localizedDescription)"
+        }
+    }
+
     var canRefreshClaude: Bool {
         let isClaude = selectedModel?.hasPrefix("claude-subscription-") == true
             || selectedModel?.hasPrefix("claude2-subscription-") == true
         return phase == .ready && isClaude && !isSending && !isSelectingModel
-            && !isRefreshingClaude && !isShowingCachedMessages && hasNetworkPath
+            && !isRefreshingClaude && !isClearingWindow && !isShowingCachedMessages && hasNetworkPath
     }
 
     func refreshClaudeSession() async {

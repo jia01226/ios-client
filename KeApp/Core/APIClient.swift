@@ -416,6 +416,17 @@ actor APIClient {
         }
     }
 
+    func clearChatWindow(sessionID: Int, requestID: String) async throws -> Int {
+        struct Result: Decodable { let ok: Bool; let id: Int }
+        var request = try makeRequest(path: "/api/sessions/clear-window", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["id": sessionID, "request_id": requestID])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, _) = try await perform(request)
+        let result = try decoder.decode(Result.self, from: data)
+        guard result.ok, result.id > 0 else { throw APIError.invalidResponse }
+        return result.id
+    }
+
     func refreshClaudeSession(sessionID: Int, model: String) async throws -> ClaudeSessionRefreshResult {
         var request = try makeRequest(path: "/api/sessions/claude-refresh", method: "POST")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["id": sessionID, "model": model])
