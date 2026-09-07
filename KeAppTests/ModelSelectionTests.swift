@@ -2,6 +2,39 @@ import XCTest
 @testable import KeApp
 
 final class ModelSelectionTests: XCTestCase {
+    @MainActor
+    func testClaudeRefreshTracksConnectionLossAndRecovery() async {
+        let vm = ChatViewModel(monitorConnectivity: false)
+        vm.phase = .ready
+        vm.selectedModel = "claude2-subscription-opus-5"
+        vm.setNetworkPathAvailable(true)
+        XCTAssertTrue(vm.canRefreshClaude)
+        vm.setNetworkPathAvailable(false)
+        XCTAssertFalse(vm.canRefreshClaude)
+        await vm.refreshClaudeSession()
+        XCTAssertFalse(vm.isRefreshingClaude)
+        XCTAssertNil(vm.claudeRefreshNotice)
+        vm.setNetworkPathAvailable(true)
+        XCTAssertTrue(vm.canRefreshClaude)
+        vm.isSending = true
+        XCTAssertFalse(vm.canRefreshClaude)
+        vm.isSending = false
+        vm.isSelectingModel = true
+        XCTAssertFalse(vm.canRefreshClaude)
+        vm.isSelectingModel = false
+        vm.selectedModel = "deepseek-v4-pro"
+        XCTAssertFalse(vm.canRefreshClaude)
+    }
+
+    func testClaudeRefreshResponseKeepsAppSessionAndReportsPendingRebuild() throws {
+        let data = Data(#"{"ok":true,"id":1,"model":"claude2-subscription-opus-5","refreshed":true}"#.utf8)
+        let result = try JSONDecoder().decode(ClaudeSessionRefreshResult.self, from: data)
+        XCTAssertTrue(result.ok)
+        XCTAssertEqual(result.id, 1)
+        XCTAssertEqual(result.model, "claude2-subscription-opus-5")
+        XCTAssertTrue(result.refreshed)
+    }
+
     func testCatalogDecodesFourOrderedProviderGroups() throws {
         let data = Data(#"""
         {

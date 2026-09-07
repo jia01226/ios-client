@@ -37,6 +37,13 @@ enum APIError: LocalizedError {
     }
 }
 
+struct ClaudeSessionRefreshResult: Decodable, Sendable {
+    let ok: Bool
+    let id: Int
+    let model: String
+    let refreshed: Bool
+}
+
 struct ActiveChatJob: Decodable, Identifiable, Sendable {
     let id: String
     let status: String
@@ -406,6 +413,18 @@ actor APIClient {
         } catch {
             throw APIError.decoding(error)
         }
+    }
+
+    func refreshClaudeSession(sessionID: Int, model: String) async throws -> ClaudeSessionRefreshResult {
+        var request = try makeRequest(path: "/api/sessions/claude-refresh", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["id": sessionID, "model": model])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, _) = try await perform(request)
+        let result = try decoder.decode(ClaudeSessionRefreshResult.self, from: data)
+        guard result.ok, result.id == sessionID, result.model == model else {
+            throw APIError.invalidResponse
+        }
+        return result
     }
 
     func fetchMessages(

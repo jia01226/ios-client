@@ -751,6 +751,32 @@ struct ChatView: View {
                 Task { await vm.loadModelSettings(force: true); expandSelectedModelGroup() }
             }
             settingsLink("聊天配色", icon: "paintpalette") { settingsPage = .palettes }
+            VStack(alignment: .leading, spacing: theme.metric.gapS) {
+                Button {
+                    Task { await vm.refreshClaudeSession() }
+                } label: {
+                    HStack(spacing: theme.metric.gapM) {
+                        Image(systemName: "arrow.clockwise")
+                        Text(vm.isRefreshingClaude ? "正在刷新…" : "刷新 Claude 会话")
+                        Spacer()
+                        if vm.isRefreshingClaude { ProgressView().controlSize(.small) }
+                    }
+                    .font(theme.font.body)
+                    .foregroundStyle(theme.color.textPrimary)
+                    .frame(minHeight: theme.metric.touchTarget)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!vm.canRefreshClaude)
+                .opacity(vm.canRefreshClaude || vm.isRefreshingClaude ? 1 : 0.5)
+                .accessibilityIdentifier("refresh-claude-session")
+                settingsHint("换个后台窗口，聊天记录和记忆不变。请先选 Claude，并等当前回复完成。")
+                if let error = vm.claudeRefreshError {
+                    settingsError(error) { Task { await vm.refreshClaudeSession() } }
+                } else if let notice = vm.claudeRefreshNotice {
+                    settingsHint(notice)
+                }
+            }
             settingsLink("聊天字体", icon: "textformat") { settingsPage = .fonts }
             settingsLink("界面与气泡", icon: "slider.horizontal.3") { settingsPage = .appearance }
             settingsLink("工具状态", icon: "sparkle.magnifyingglass") { settingsPage = .tools }
@@ -1461,7 +1487,7 @@ struct ChatView: View {
 
     private func send() {
         let text = trimmedDraft
-        guard canSend, !vm.isSending, !vm.isUploading else { return }
+        guard canSend, !vm.isSending, !vm.isUploading, !vm.isRefreshingClaude else { return }
         draft = ""
         scrollToLatestRequest &+= 1
         Task { await vm.send(text, reduceMotion: reduceMotion) }

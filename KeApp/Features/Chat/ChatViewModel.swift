@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
+import Network
 
 @MainActor
 final class ChatViewModel: ObservableObject {
@@ -38,6 +39,10 @@ final class ChatViewModel: ObservableObject {
     @Published var isLoadingModels = false
     @Published var isLoadingModelQuotas = false
     @Published var isSelectingModel = false
+    @Published var isRefreshingClaude = false
+    @Published var claudeRefreshNotice: String?
+    @Published var claudeRefreshError: String?
+    @Published private(set) var hasNetworkPath = false
     @Published var modelError: String?
     @Published var modelQuotaError: String?
     @Published var searchCorpus: [Message] = []
@@ -65,6 +70,8 @@ final class ChatViewModel: ObservableObject {
     private var failedUpload: AttachmentUploadPayload?
     private var lastModelQuotaLoad: Date?
     private var modelQuotaRequestRevision = 0
+    private let networkMonitor = NWPathMonitor()
+    private let networkQueue = DispatchQueue(label: "loveapp.chat.connectivity")
 
     private struct AttachmentUploadPayload {
         let data: Data
@@ -92,7 +99,7 @@ final class ChatViewModel: ObservableObject {
     private var uiTestFixture: UITestFixture?
 #endif
 
-    init() {
+    init(monitorConnectivity: Bool = true) {
 #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains("-ui-test-reply-failure") {
@@ -358,6 +365,27 @@ final class ChatViewModel: ObservableObject {
             }
         }
 #endif
+#if DEBUG
+        if uiTestFixture != nil {
+            hasNetworkPath = true
+            return
+        }
+#endif
+        if monitorConnectivity {
+            networkMonitor.pathUpdateHandler = { [weak self] path in
+                let available = path.status == .satisfied
+                Task { @MainActor [weak self] in
+                    self?.setNetworkPathAvailable(available)
+                }
+            }
+            networkMonitor.start(queue: networkQueue)
+        }
+    }
+
+    deinit { networkMonitor.cancel() }
+
+    func setNetworkPathAvailable(_ available: Bool) {
+        hasNetworkPath = available
     }
 
     func bootstrap() async {
@@ -500,6 +528,9 @@ final class ChatViewModel: ObservableObject {
     }
 
     func resumeFromForeground() async {
+#if DEBUG
+        if uiTestFixture != nil { return }
+#endif
         guard phase == .ready else { return }
         // 原 SSE 仍是这条回复的唯一所有者时，不并行启动 job polling。
         guard activeStreamClientID == nil else { return }
@@ -515,7 +546,7 @@ final class ChatViewModel: ObservableObject {
     }
 
     func send(_ text: String, reduceMotion: Bool = false) async {
-        guard let sessionID, !isSending else { return }
+        guard let sessionID, !isSending, !isRefreshingClaude else { return }
         let attachments = pendingAttachments
         guard !text.isEmpty || !attachments.isEmpty else { return }
 
@@ -767,6 +798,9 @@ final class ChatViewModel: ObservableObject {
     }
 
     func selectModel(_ model: String) async {
+        guard !isRefreshingClaude else { return }
+        claudeRefreshNotice = nil
+        claudeRefreshError = nil
 #if DEBUG
         if uiTestFixture == .modelGroups {
             isSelectingModel = true
@@ -799,6 +833,33 @@ final class ChatViewModel: ObservableObject {
             await loadModelQuotas(force: true)
         } catch {
             modelError = error.localizedDescription
+        }
+    }
+
+    var canRefreshClaude: Bool {
+        let isClaude = selectedModel?.hasPrefix("claude-subscription-") == true
+            || selectedModel?.hasPrefix("claude2-subscription-") == true
+        return phase == .ready && isClaude && !isSending && !isSelectingModel
+            && !isRefreshingClaude && !isShowingCachedMessages && hasNetworkPath
+    }
+
+    func refreshClaudeSession() async {
+        guard canRefreshClaude, let sessionID, let selectedModel else { return }
+        isRefreshingClaude = true
+        claudeRefreshError = nil
+        claudeRefreshNotice = nil
+        defer { isRefreshingClaude = false }
+#if DEBUG
+        if uiTestFixture == .modelGroups {
+            claudeRefreshNotice = "下一条消息会用新的 Claude 会话。聊天记录和记忆都保留。"
+            return
+        }
+#endif
+        do {
+            _ = try await api.refreshClaudeSession(sessionID: sessionID, model: selectedModel)
+            claudeRefreshNotice = "下一条消息会用新的 Claude 会话。聊天记录和记忆都保留。"
+        } catch {
+            claudeRefreshError = "没有确认刷新成功。\(error.localizedDescription)，请稍后重试。"
         }
     }
 
