@@ -99,8 +99,10 @@ struct Message: Identifiable, Hashable, Codable, Sendable {
 extension Message {
     /// 后端仍保存一条完整消息；这里只把柯的正文按空行切成显示气泡。
     /// 单换行保留在同一气泡里，连续空行不会产生空气泡。
+    /// 流式过程中同样分条：写完一段就先弹出去，正在写的那段留在最后一个气泡里。
+    /// 以前流式期间整条当一个气泡，收尾时才重排，屏幕上会先卡一下再碎成小卡片。
     var bubbleSegments: [String] {
-        guard sender == .ke, !isStreaming else {
+        guard sender == .ke else {
             let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
             return value.isEmpty ? [] : [text]
         }
@@ -127,14 +129,12 @@ extension Message {
         }
         appendCurrentSegment()
 
-        // 卧室回复本来就是连续场景；长篇回复也应保持完整阅读节奏。
-        // 日常短句才按空行拆成真人连发的小气泡。这里使用正文结构判断，
-        // 不靠“深聊/做爱”等关键词猜用户正在谈什么。
-        if keepsLongFormTogether(segments) {
+        // 卧室回复本来就是连续场景，整条保持完整阅读节奏。
+        if isBedroomScene {
             let value = normalized.trimmingCharacters(in: .whitespacesAndNewlines)
             return value.isEmpty ? [] : [value]
         }
-        return segments
+        return mergingFromFirstLongParagraph(segments)
     }
 
     /// 本地流式气泡与历史记录会换 id，serverID 让分条进度能跨刷新延续。
@@ -142,22 +142,25 @@ extension Message {
         serverID.map { "server-\($0)" } ?? id
     }
 
-    private func keepsLongFormTogether(_ segments: [String]) -> Bool {
-        guard segments.count > 1 else { return false }
-        if sceneMode?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "bedroom" {
-            return true
-        }
+    private var isBedroomScene: Bool {
+        sceneMode?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "bedroom"
+    }
 
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let longestParagraph = segments.map(\.count).max() ?? 0
-        return trimmed.count >= ChatPresentationPolicy.longFormCharacterThreshold
-            || longestParagraph >= ChatPresentationPolicy.longParagraphCharacterThreshold
+    /// 深聊、讲解这类连续内容靠“段落本身就长”认出来，不再看整条消息的总字数：
+    /// 口水话经常是好几段短句，加起来轻松超过总字数阈值，却被误判成长文整块显示。
+    /// 命中第一个长段之后的内容合并成一个气泡，命中之前的短气泡保持独立——
+    /// 已经弹出去的气泡永远不会再被合并回去，所以流式过程中不会出现重排跳变。
+    private func mergingFromFirstLongParagraph(_ segments: [String]) -> [String] {
+        guard segments.count > 1,
+              let index = segments.firstIndex(where: {
+                  $0.count >= ChatPresentationPolicy.longParagraphCharacterThreshold
+              }) else { return segments }
+        return Array(segments[..<index]) + [segments[index...].joined(separator: "\n\n")]
     }
 }
 
 private enum ChatPresentationPolicy {
-    /// 长篇与长段落属于连续阅读内容；数值只决定语义呈现，不是界面尺寸。
-    static let longFormCharacterThreshold = 180
+    /// 长段落属于连续阅读内容；数值只决定语义呈现，不是界面尺寸。
     static let longParagraphCharacterThreshold = 96
 }
 

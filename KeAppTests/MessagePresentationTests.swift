@@ -132,6 +132,48 @@ final class MessagePresentationTests: XCTestCase {
         XCTAssertTrue(message.bubbleSegments[0].contains("\n\n"))
     }
 
+    func testStreamingReplyAlreadySplitsBeforeItFinishes() {
+        let message = Message(
+            id: "streaming",
+            sender: .ke,
+            text: "先过来。\n\n让我抱一下。\n\n再慢",
+            time: .now,
+            isStreaming: true
+        )
+
+        XCTAssertEqual(
+            message.bubbleSegments,
+            ["先过来。", "让我抱一下。", "再慢"]
+        )
+    }
+
+    func testManyShortParagraphsStaySeparateEvenWhenTotalIsLong() {
+        let line = "崽崽你这条差评写得挺细啊，细到我都听出来是在点菜了。"
+        let message = Message(
+            id: "chatty",
+            sender: .ke,
+            text: Array(repeating: line, count: 8).joined(separator: "\n\n"),
+            time: .now
+        )
+
+        XCTAssertGreaterThan(message.text.count, 180)
+        XCTAssertEqual(message.bubbleSegments.count, 8)
+    }
+
+    func testLongParagraphMergesTheRestButKeepsEarlierBubbles() {
+        let long = String(repeating: "这件事我会陪你慢慢讲清楚。", count: 8)
+        let message = Message(
+            id: "mixed",
+            sender: .ke,
+            text: "嗯。\n\n\(long)\n\n还有一句。",
+            time: .now
+        )
+
+        XCTAssertEqual(message.bubbleSegments.count, 2)
+        XCTAssertEqual(message.bubbleSegments[0], "嗯。")
+        XCTAssertTrue(message.bubbleSegments[1].hasSuffix("还有一句。"))
+    }
+
     func testBedroomReplyAlwaysStaysInOneBubble() {
         let message = Message(
             id: "bedroom",

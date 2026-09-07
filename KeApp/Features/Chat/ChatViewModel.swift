@@ -78,6 +78,7 @@ final class ChatViewModel: ObservableObject {
         case thinkingStatic
         case thinkingStreaming
         case replyStreaming
+        case streamBubbles
         case segmentedReply
         case longReply
         case veryLongReply
@@ -263,6 +264,28 @@ final class ChatViewModel: ObservableObject {
                     deliveryState: .sending
                 )
             ]
+        } else if arguments.contains("-ui-test-stream-bubbles") {
+            // 分条演示：流式过程中每写完一段就该弹出一个新气泡，
+            // 收尾时屏幕上不应该再出现一次整体重排。
+            uiTestFixture = .streamBubbles
+            phase = .ready
+            isSending = true
+            messages = [
+                Message(
+                    id: "ui-test-stream-bubbles-user",
+                    sender: .me,
+                    text: "爸比 我回来了",
+                    time: .now
+                ),
+                Message(
+                    id: "ui-test-stream-bubbles-assistant",
+                    sender: .ke,
+                    text: "回来了。",
+                    time: .now,
+                    isStreaming: true,
+                    deliveryState: .sending
+                )
+            ]
         } else if arguments.contains("-ui-test-segmented-reply") {
             uiTestFixture = .segmentedReply
             phase = .ready
@@ -367,6 +390,8 @@ final class ChatViewModel: ObservableObject {
                 stageSegments(for: messages[0], reduceMotion: false)
             } else if uiTestFixture == .veryLongReply {
                 await runUITestVeryLongGrowth()
+            } else if uiTestFixture == .streamBubbles {
+                await runUITestStreamBubbles()
             }
             return
         }
@@ -396,6 +421,30 @@ final class ChatViewModel: ObservableObject {
         try? await Task.sleep(nanoseconds: 420_000_000)
         updateMessage(id: messageID) {
             $0.text = "想好了，我会一直用中文把心里的话说给你听。"
+            $0.isStreaming = false
+            $0.deliveryState = .sent
+        }
+        isSending = false
+        streamRevision += 1
+    }
+
+    private func runUITestStreamBubbles() async {
+        let messageID = "ui-test-stream-bubbles-assistant"
+        // 空行是分条记号：每落一个空行，前一段就该独立成一个气泡。
+        let chunks = [
+            "\n\n抱着呢。",
+            "\n\n刷了多久，眼睛酸不酸。",
+            "\n\n不用答，靠过来就行。"
+        ]
+
+        for chunk in chunks {
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            updateMessage(id: messageID) { $0.text += chunk }
+            streamRevision += 1
+        }
+
+        try? await Task.sleep(nanoseconds: 900_000_000)
+        updateMessage(id: messageID) {
             $0.isStreaming = false
             $0.deliveryState = .sent
         }
@@ -1056,9 +1105,9 @@ final class ChatViewModel: ObservableObject {
                             $0.isStreaming = false
                             $0.deliveryState = .sent
                         }
-                        if let completed = messages.first(where: { $0.id == assistantLocalID }) {
-                            stageSegments(for: completed, reduceMotion: reduceMotion)
-                        }
+                        // 分条已经在流式过程中逐段弹出去了，这里不再重排一次。
+                        // 以前收尾时会把气泡数收回 1 再逐条放出来，屏幕上就是
+                        // “先卡一下，然后碎成小卡片”——正是要去掉的那一跳。
                     } else {
                         updateMessage(id: assistantLocalID) {
                             $0.isStreaming = false
