@@ -478,9 +478,16 @@ struct MessageRow: View {
                 dark: theme.skin == .night || theme.isBedroom
             )
             (message.sender == .me ? theme.color.bubbleMe : theme.color.bubbleKe)
-                .opacity(min(1, theme.bubbleOpacity * (message.sender == .me ? 13 : 20)))
+                .opacity(min(1, theme.bubbleOpacity * (message.sender == .me ? 13 : 36)))
         }
         .clipShape(RoundedRectangle(cornerRadius: CGFloat(theme.bubbleCornerRadius), style: .continuous))
+        .overlay {
+            if message.sender == .ke {
+                RoundedRectangle(cornerRadius: CGFloat(theme.bubbleCornerRadius), style: .continuous)
+                    .strokeBorder(theme.color.bubbleKeText.opacity(0.10), lineWidth: 0.75)
+                    .allowsHitTesting(false)
+            }
+        }
     }
 
     private var visibleSegments: [String] {
