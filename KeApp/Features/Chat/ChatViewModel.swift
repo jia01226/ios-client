@@ -58,8 +58,8 @@ final class ChatViewModel: ObservableObject {
     @Published var replyFailure: ReplyFailure?
     @Published private var visibleSegmentCounts: [String: Int] = [:]
 
-    private let api = APIClient.shared
-    private let cache = ChatCache.shared
+    private let api: APIClient
+    private let cache: ChatCache
     private var sessionID: Int?
     private var didBootstrap = false
     private var activeJobID: String?
@@ -99,7 +99,9 @@ final class ChatViewModel: ObservableObject {
     private var uiTestFixture: UITestFixture?
 #endif
 
-    init(monitorConnectivity: Bool = true) {
+    init(line: ChatLine = .main, monitorConnectivity: Bool = true) {
+        api = APIClient(baseURL: line.apiBaseURL)
+        cache = ChatCache(fileName: line.cacheFileName)
 #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains("-ui-test-reply-failure") {

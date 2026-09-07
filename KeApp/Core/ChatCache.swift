@@ -18,7 +18,7 @@ actor ChatCache {
 
     private let fileURL: URL?
 
-    private init() {
+    init(fileName: String = "messages.json") {
         guard let applicationSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
@@ -41,7 +41,7 @@ actor ChatCache {
             values.isExcludedFromBackup = true
             var mutableDirectory = directory
             try mutableDirectory.setResourceValues(values)
-            fileURL = directory.appendingPathComponent("messages.json")
+            fileURL = directory.appendingPathComponent(fileName)
         } catch {
             fileURL = nil
         }

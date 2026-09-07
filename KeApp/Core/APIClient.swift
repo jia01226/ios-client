@@ -333,11 +333,12 @@ private extension String {
 actor APIClient {
     static let shared = APIClient()
 
-    private let baseURL = AppConfiguration.apiBaseURL
+    private let baseURL: URL
     private let session: URLSession
     private let decoder = JSONDecoder()
 
-    private init() {
+    init(baseURL: URL = AppConfiguration.apiBaseURL) {
+        self.baseURL = baseURL
         HTTPCookieStorage.shared.cookieAcceptPolicy = .always
         let configuration = URLSessionConfiguration.default
         configuration.httpCookieStorage = HTTPCookieStorage.shared

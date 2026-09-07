@@ -5,6 +5,7 @@ struct RootTabView: View {
 
     @EnvironmentObject private var theme: Theme
     @State private var selection: Tab = .ke   // 默认落在聊天页
+    @State private var chatLine: ChatLine = .main
     @State private var keyboardIsVisible = false
     @State private var chatSettingsOpen = false
 
@@ -24,7 +25,8 @@ struct RootTabView: View {
                     UsView()
                         .toolbar(.hidden, for: .tabBar)
                         .tag(Tab.us)
-                    ChatView()
+                    ChatView(line: chatLine, selectedLine: $chatLine)
+                        .id(chatLine)
                         .toolbar(.hidden, for: .tabBar)
                         .tag(Tab.ke)
                     PlayView()

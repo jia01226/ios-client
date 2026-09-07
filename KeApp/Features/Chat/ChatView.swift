@@ -15,7 +15,9 @@ struct ChatView: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @StateObject private var vm = ChatViewModel()
+    let line: ChatLine
+    @Binding var selectedLine: ChatLine
+    @StateObject private var vm: ChatViewModel
     @StateObject private var recentPhotos = RecentPhotosStore()
     @State private var draft = ""
     @State private var showingCallPlaceholder = false
@@ -39,6 +41,12 @@ struct ChatView: View {
     @State private var expandedModelGroups: Set<String> = []
     @State private var showsScrollToLatest = false
     @State private var scrollToLatestRequest = 0
+
+    init(line: ChatLine, selectedLine: Binding<ChatLine>) {
+        self.line = line
+        _selectedLine = selectedLine
+        _vm = StateObject(wrappedValue: ChatViewModel(line: line))
+    }
 
     var body: some View {
         Group {
@@ -190,21 +198,41 @@ struct ChatView: View {
 
     private var header: some View {
         ZStack {
-            VStack(spacing: 3) {
-                Text("柯")
-                    .font(theme.font.chatHeader)
+            Menu {
+                ForEach(ChatLine.allCases) { option in
+                    Button {
+                        selectedLine = option
+                    } label: {
+                        Label(
+                            option.title,
+                            systemImage: selectedLine == option ? "checkmark.circle.fill" : "circle"
+                        )
+                    }
+                }
+            } label: {
+                VStack(spacing: 3) {
+                    HStack(spacing: 4) {
+                        Text("柯")
+                            .font(theme.font.chatHeader)
+                        Image(systemName: "chevron.down")
+                            .font(.caption2.weight(.semibold))
+                    }
                     .foregroundStyle(theme.color.textPrimary)
 
-                if vm.isSending {
-                    WaitingShimmer(color: theme.color.textPrimary)
-                        .transition(.opacity)
-                } else {
-                    Text(vm.isShowingCachedMessages ? "离线记录" : "在线")
-                        .font(.caption2)
-                        .foregroundStyle(theme.color.textSecondary)
-                        .transition(.opacity)
+                    if vm.isSending {
+                        WaitingShimmer(color: theme.color.textPrimary)
+                            .transition(.opacity)
+                    } else {
+                        Text(vm.isShowingCachedMessages ? "\(line.title) · 离线记录" : "\(line.title) · 在线")
+                            .font(.caption2)
+                            .foregroundStyle(theme.color.textSecondary)
+                            .transition(.opacity)
+                    }
                 }
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("切换柯的聊天窗口，当前\(line.title)")
+            .accessibilityIdentifier("chat-line-switcher-\(line.rawValue)")
 
             HStack(spacing: 12) {
                 Image(systemName: "moon").font(.title3)
@@ -1525,5 +1553,5 @@ struct ChatView: View {
 }
 
 #Preview {
-    ChatView().environmentObject(Theme.shared)
+    ChatView(line: .main, selectedLine: .constant(.main)).environmentObject(Theme.shared)
 }
