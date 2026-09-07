@@ -472,13 +472,15 @@ struct MessageRow: View {
     }
 
     private var bubbleBackground: some View {
-        ZStack {
+        let fillScale: Double = message.sender == .ke ? 36
+            : (theme.skin == .day && !theme.isBedroom ? 80 : 13)
+        return ZStack {
             BackdropBlur(
                 intensity: theme.glassBlur / theme.glass.maximumBlurValue,
                 dark: theme.skin == .night || theme.isBedroom
             )
             (message.sender == .me ? theme.color.bubbleMe : theme.color.bubbleKe)
-                .opacity(min(1, theme.bubbleOpacity * (message.sender == .me ? 13 : 36)))
+                .opacity(min(1, theme.bubbleOpacity * fillScale))
         }
         .clipShape(RoundedRectangle(cornerRadius: CGFloat(theme.bubbleCornerRadius), style: .continuous))
         .overlay {
