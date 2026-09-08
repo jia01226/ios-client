@@ -689,6 +689,31 @@ actor APIClient {
         }
     }
 
+    func reviewPending(offset: Int = 0) async throws -> ReviewPage {
+        let request = try makeRequest(path: "/api/memory/pending", queryItems: [URLQueryItem(name: "offset", value: String(offset))])
+        let (data, _) = try await perform(request)
+        return try decoder.decode(ReviewPage.self, from: data)
+    }
+
+    func submitReview(_ operation: ReviewOperation) async throws -> ReviewReceipt {
+        var request = try makeRequest(path: "/api/memory/review", method: "POST")
+        request.httpBody = try JSONEncoder().encode(operation)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, _) = try await perform(request)
+        return try decoder.decode(ReviewReceipt.self, from: data)
+    }
+
+    func reviewStats() async throws -> ReviewStats {
+        let (data, _) = try await perform(try makeRequest(path: "/api/memory/stats"))
+        return try decoder.decode(ReviewStats.self, from: data)
+    }
+
+    func reviewedFacts(offset: Int = 0) async throws -> ReviewedFactsPage {
+        let request = try makeRequest(path: "/api/memory/facts", queryItems: [URLQueryItem(name: "offset", value: String(offset))])
+        let (data, _) = try await perform(request)
+        return try decoder.decode(ReviewedFactsPage.self, from: data)
+    }
+
     private func makeRequest(
         path: String,
         method: String = "GET",
@@ -850,3 +875,5 @@ private extension String {
             .replacingOccurrences(of: "\n", with: "_")
     }
 }
+
+extension APIClient: MemoryReviewService {}

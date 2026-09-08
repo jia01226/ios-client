@@ -126,6 +126,8 @@ extension Palette {
 // MARK: - 尺寸（也别写死在页面里）
 
 struct Metrics {
+    let reviewSwipeThreshold: CGFloat = 100
+    let reviewActionHeight: CGFloat = 66
     // 圆角：统一偏大，直角冷、圆角暖
     let radiusCard: CGFloat = 18
     let radiusBubble: CGFloat = 20
@@ -179,6 +181,9 @@ struct Typo {
     let chatSize: CGFloat
     var chatTypeface: ChatTypography = ChatTypography.all[0]
 
+    let reviewFact = Font.system(.title2, design: .default).weight(.semibold)
+    let reviewBody = Font.system(.body, design: .default)
+    let reviewCaption = Font.system(.caption, design: .default)
     let pageTitle   = Font.system(size: 30, weight: .semibold)
     let sectionTitle = Font.system(size: 17, weight: .medium)
     let body        = Font.system(size: 16, weight: .regular)
@@ -261,6 +266,8 @@ final class Theme: ObservableObject {
         get { ChatTypography.all.first { $0.id == storedTypeface } ?? ChatTypography.all[0] }
         set { objectWillChange.send(); storedTypeface = newValue.id }
     }
+    var reviewSecondary: Color { color.textPrimary.opacity(0.82) }
+
     var sendColor: Color { skin == .night ? color.accentSoft : Color(hex: chatPalette.send) }
 
     var color: Palette {
