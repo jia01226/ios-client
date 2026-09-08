@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-08T12:01:46Z",
+  "title": "Design System: LoveApp 记忆审卡",
+  "extensions": {
+    "native": {
+      "platform": "ios",
+      "framework": "SwiftUI",
+      "scope": "memory-review",
+      "mode": "operate",
+      "document": "DESIGN.md",
+      "pathBase": "repository-root",
+      "measurementUnit": "SwiftUI point",
+      "sources": [
+        { "path": "KeApp/Features/Memories/MemoriesView.swift", "symbols": ["MemoriesView"] },
+        { "path": "KeApp/Features/Memories/MemoryReviewDeck.swift", "symbols": ["MemoryReviewDeck", "ReviewNoteEditor", "ReviewOriginalView"] },
+        { "path": "KeApp/Features/Memories/MemoryReviewStore.swift", "symbols": ["MemoryReviewStore"] },
+        { "path": "KeApp/Features/Memories/MemoryReviewModels.swift", "symbols": ["ReviewGesture", "ReviewCard", "ReviewSource", "ReviewArchive"] },
+        { "path": "KeApp/Theme/Theme.swift", "symbols": ["Theme.color", "Theme.reviewSecondary", "Theme.effectiveAccent", "Metrics", "Typo", "Palette.night"] },
+        { "path": "KeApp/Theme/ChatPalette.swift", "symbols": ["ChatPalette.all", "Palette.chat(_:)"] }
+      ],
+      "themeBindings": {
+        "page": "theme.color.bg",
+        "card": "theme.color.cardElevated",
+        "backCardAndActionsAndEditor": "theme.color.card",
+        "text": "theme.color.textPrimary",
+        "secondaryText": "theme.reviewSecondary",
+        "tint": "theme.effectiveAccent",
+        "day": "Palette.chat(theme.chatPalette)",
+        "night": "Palette.night",
+        "recordedDayPalette": "ChatPalette.all.first { $0.id == \"rose\" }"
+      },
+      "derivedColors": [
+        { "name": "reviewSecondary", "expression": "theme.color.textPrimary.opacity(0.82)", "purpose": "审卡状态、来源和辅助说明。" }
+      ],
+      "typography": {
+        "reviewFact": "Font.system(.title2, design: .default).weight(.semibold)",
+        "reviewBody": "Font.system(.body, design: .default)",
+        "reviewCaption": "Font.system(.caption, design: .default)"
+      },
+      "layout": {
+        "actionHeightMeaning": "minimum",
+        "touchTarget": { "source": "Metrics.touchTarget", "minimumHeight": 44 },
+        "backCard": { "horizontalInset": "Metrics.gapM", "offsetY": "Metrics.gapS", "visibleWhen": "cards.count > 1" },
+        "cardLineLimits": { "fact": 7, "quote": 5, "note": 3, "sources": 2 },
+        "originalReading": { "scroll": "vertical", "textSelection": true, "sourceText": ".fixedSize(horizontal: false, vertical: true)", "lineLimit": null }
+      },
+      "gesture": {
+        "source": "ReviewGesture.action(x:y:threshold:)",
+        "threshold": { "source": "Metrics.reviewSwipeThreshold", "value": 100 },
+        "minimumDragDistance": 18,
+        "distanceInput": "actual translation",
+        "accept": "abs(x) > abs(y) && x >= threshold",
+        "reject": "abs(x) > abs(y) && x <= -threshold",
+        "defer": "y <= -threshold && abs(y) > abs(x)",
+        "belowThreshold": "spring to zero",
+        "emptyDeferNote": "spring to zero and open ReviewNoteEditor",
+        "positiveYVisualClamp": 35
+      },
+      "disabled": [
+        { "target": "accept", "condition": "!card.can_accept", "opacity": 0.35 },
+        { "target": "action row", "condition": "isDeparting || !store.canReview", "opacity": 0.35 },
+        { "target": "undo", "condition": "!store.canUndo || isDeparting", "opacity": 0.35 },
+        { "target": "defer in editor", "condition": "note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty", "opacity": 0.35 }
+      ],
+      "stateOwnership": {
+        "draft": { "source": "MemoryReviewStore.saveDraft(_:for:) / hasDraft(for:)", "description": "输入先保存本机；与 card.note 不同的值为未提交草稿。" },
+        "noteSubmission": { "source": "ReviewNoteEditor.saveNote()", "description": "完成与只保存备注共享提交入口；成功后关闭并同步，卡片仍在原队列。" },
+        "localOperation": { "source": "MemoryReviewStore.act(_:on:note:)", "description": "持久化卡片状态与 outbox 后才报告操作成功。" },
+        "syncLabel": { "source": "MemoryReviewStore.syncLabel", "priority": ["needsReconciliation", "outbox", "isSyncing", "draft", "hasLoaded"] },
+        "recovery": { "source": "MemoryReviewStore.discardBlockedOperation()", "description": "撤回同卡依赖操作，保留备注草稿，重新核对服务器记录。" },
+        "undo": { "source": "MemoryReviewStore.undo() / ReviewArchive.undo", "description": "恢复最近一次操作前的卡片与备注，并移至队列前部；单层撤销。" }
+      },
+      "accessibility": {
+        "dynamicType": ["reviewFact", "reviewBody", "reviewCaption"],
+        "voiceOverActions": ["收下", "不对", "备注", "暂缓"],
+        "hiddenDecorations": ["back card", "drag preview badge"],
+        "originalRoleLabels": { "user": "你的原话", "other": "助手原话，仅供核对" }
+      },
+      "screenshots": [
+        { "path": ".impeccable/review/phone-light.png", "surface": "deck", "appearance": "day" },
+        { "path": ".impeccable/review/phone-dark.png", "surface": "deck", "appearance": "night" },
+        { "path": ".impeccable/review/phone-large.png", "surface": "deck", "textSize": "large" },
+        { "path": ".impeccable/review/phone-note.png", "surface": "note editor", "state": "empty note, keyboard visible, defer disabled" },
+        { "path": ".impeccable/review/phone-original.png", "surface": "original source" },
+        { "path": ".impeccable/review/phone-original-large.png", "surface": "original source", "textSize": "large" }
+      ]
+    },
+    "motion": [
+      { "name": "review-return", "value": ".spring(response: 0.34, dampingFraction: 0.86)", "purpose": "未达阈值或判定未成功时回到原位。", "reduceMotion": "nil" },
+      { "name": "review-departure", "value": ".easeOut(duration: 0.22)", "purpose": "本机判定保存成功后出卡。", "translation": "accept: x = width * 1.3; reject: x = -width * 1.3; defer: y = -width * 2", "reduceMotion": "animation nil, translation zero" },
+      { "name": "review-drag-rotation", "value": "translation.width / 24 degrees", "purpose": "拖动时跟随水平距离倾斜。", "reduceMotion": "0 degrees" }
+    ]
+  },
+  "components": [
+    { "name": "回忆页审卡入口", "kind": "nav", "description": "在已收下列表之前显示待审与暂缓入口。", "nativeSource": { "path": "KeApp/Features/Memories/MemoriesView.swift", "symbol": "MemoriesView.body", "identifier": "memory-review-entry" } },
+    { "name": "核对卡", "kind": "card", "refersTo": "review-card", "description": "按事实、引证、备注、来源的顺序支持逐张判断。", "nativeSource": { "path": "KeApp/Features/Memories/MemoryReviewDeck.swift", "symbol": "MemoryReviewDeck.cardFace(_:)", "identifier": "review-card" } },
+    { "name": "三项操作按钮", "kind": "button", "refersTo": "review-action", "description": "左侧不对、中间备注、右侧收下，配合方向手势使用。", "nativeSource": { "path": "KeApp/Features/Memories/MemoryReviewDeck.swift", "symbol": "MemoryReviewDeck.actionButton(_:icon:id:action:)", "identifiers": ["review-reject", "review-note", "review-accept"] } },
+    { "name": "备注输入与提交", "kind": "input", "refersTo": "review-note-editor", "description": "自动保留本机草稿，可提交备注或附说明暂缓。", "nativeSource": { "path": "KeApp/Features/Memories/MemoryReviewDeck.swift", "symbol": "ReviewNoteEditor", "identifiers": ["review-note-editor", "review-save-note", "review-defer"] } },
+    { "name": "完整原文", "kind": "custom", "description": "可滚动和选取的完整事实、引证与带角色标签的来源正文。", "nativeSource": { "path": "KeApp/Features/Memories/MemoryReviewDeck.swift", "symbol": "ReviewOriginalView" } },
+    { "name": "撤销上一张", "kind": "button", "description": "恢复最近一次操作，禁用状态明确变淡。", "nativeSource": { "path": "KeApp/Features/Memories/MemoryReviewDeck.swift", "symbol": "MemoryReviewDeck.body", "identifier": "review-undo" } }
+  ]
+}
