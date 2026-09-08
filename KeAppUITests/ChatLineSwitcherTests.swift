@@ -23,6 +23,11 @@ final class ChatLineSwitcherTests: XCTestCase {
         XCTAssertTrue(testSwitcher.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["测试1 · 在线"].exists)
         testSwitcher.tap()
+        app.buttons["测试2"].tap()
+        let test2Switcher = app.buttons["chat-line-switcher-test2"]
+        XCTAssertTrue(test2Switcher.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["测试2 · 在线"].exists)
+        test2Switcher.tap()
         app.buttons["原版"].tap()
         XCTAssertTrue(mainSwitcher.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["原版 · 在线"].exists)

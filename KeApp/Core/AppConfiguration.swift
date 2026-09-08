@@ -22,6 +22,7 @@ enum ChatLine: String, CaseIterable, Identifiable {
     case main
     case compact
     case test1
+    case test2
 
     var id: String { rawValue }
 
@@ -30,6 +31,7 @@ enum ChatLine: String, CaseIterable, Identifiable {
         case .main: return "原版"
         case .compact: return "精简版"
         case .test1: return "测试1"
+        case .test2: return "测试2"
         }
     }
 
@@ -38,6 +40,7 @@ enum ChatLine: String, CaseIterable, Identifiable {
         case .main: return AppConfiguration.apiBaseURL
         case .compact: return AppConfiguration.compactAPIBaseURL
         case .test1: return AppConfiguration.apiBaseURL.appendingPathComponent("ke-test1")
+        case .test2: return AppConfiguration.apiBaseURL.appendingPathComponent("ke-test2")
         }
     }
 
@@ -46,6 +49,7 @@ enum ChatLine: String, CaseIterable, Identifiable {
         case .main: return "messages.json"
         case .compact: return "messages-compact.json"
         case .test1: return "messages-test1.json"
+        case .test2: return "messages-test2.json"
         }
     }
 }
