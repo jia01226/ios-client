@@ -21,6 +21,7 @@ struct ChatView: View {
     @StateObject private var recentPhotos = RecentPhotosStore()
     @State private var draft = ""
     @State private var showingCallPlaceholder = false
+    @State private var quoteToSave: Message?
     @State private var messageToRecall: Message?
     @State private var recallConfirmation = false
     @State private var recallError: String?
@@ -64,6 +65,10 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.clear)
         .animation(.easeInOut(duration: 0.6), value: theme.isBedroom)
+        .sheet(item: $quoteToSave) { message in
+            AppQuoteSaveView(line: line, message: message)
+                .environmentObject(theme)
+        }
         .task { await vm.bootstrap() }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
@@ -300,6 +305,10 @@ struct ChatView: View {
                         inputFocused = false
                         messageToRecall = message
                         recallConfirmation = true
+                    },
+                    onSaveQuote: { message in
+                        inputFocused = false
+                        quoteToSave = message
                     },
                     onBackgroundTap: {
                         inputFocused = false

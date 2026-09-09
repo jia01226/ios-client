@@ -689,6 +689,22 @@ actor APIClient {
         }
     }
 
+    func appQuotes() async throws -> AppQuotePage {
+        let (data, _) = try await perform(try makeRequest(path: "/api/memory/app-quotes"))
+        return try decoder.decode(AppQuotePage.self, from: data)
+    }
+
+    func saveAppQuote(messageID: Int, note: String) async throws {
+        var request = try makeRequest(path: "/api/memory/app-quotes", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["message_id": messageID, "note": note])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        _ = try await perform(request)
+    }
+
+    func removeAppQuote(id: Int) async throws {
+        _ = try await perform(try makeRequest(path: "/api/memory/app-quotes/\(id)", method: "DELETE"))
+    }
+
     func reviewPending(offset: Int = 0) async throws -> ReviewPage {
         let request = try makeRequest(path: "/api/memory/pending", queryItems: [URLQueryItem(name: "offset", value: String(offset))])
         let (data, _) = try await perform(request)

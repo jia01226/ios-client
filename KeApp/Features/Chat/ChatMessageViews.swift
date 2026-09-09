@@ -273,9 +273,11 @@ struct MessageRow: View {
     let visibleSegmentCount: Int?
     let onAttachmentTap: (ChatAttachment) -> Void
     var onRecall: (Message) -> Void = { _ in }
+    var onSaveQuote: (Message) -> Void = { _ in }
     @State private var copied = false
     @State private var actionsPresented = false
     @State private var recallAfterDismiss = false
+    @State private var quoteAfterDismiss = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -354,6 +356,18 @@ struct MessageRow: View {
                     }
                     .accessibilityIdentifier("message-action-copy")
                 }
+                if message.sender == .ke && message.serverID != nil && !message.isStreaming && !message.text.isEmpty {
+                    Divider()
+                    Button {
+                        quoteAfterDismiss = true
+                        actionsPresented = false
+                    } label: {
+                        Label("收进 App 柯味语录", systemImage: "quote.bubble")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                    }
+                    .accessibilityIdentifier("message-action-save-quote")
+                }
                 if message.canRecall {
                     if !message.text.isEmpty { Divider() }
                     Button(role: .destructive) {
@@ -371,6 +385,10 @@ struct MessageRow: View {
             .frame(width: 180)
             .presentationCompactAdaptation(.popover)
             .onDisappear {
+                if quoteAfterDismiss {
+                    quoteAfterDismiss = false
+                    onSaveQuote(message)
+                }
                 guard recallAfterDismiss else { return }
                 recallAfterDismiss = false
                 onRecall(message)

@@ -43,6 +43,15 @@ struct MemoriesView: View {
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("memory-review-entry")
 
+                    NavigationLink {
+                        AppQuotesView(line: review.line)
+                    } label: {
+                        Label("App 柯味语录", systemImage: "quote.bubble")
+                            .font(theme.font.sectionTitle)
+                            .frame(minHeight: theme.metric.touchTarget)
+                    }
+                    .accessibilityIdentifier("app-quotes-entry")
+
                     VStack(alignment: .leading, spacing: theme.metric.gapS) {
                         Text(review.syncLabel).font(theme.font.reviewCaption)
                         if let error = review.error {

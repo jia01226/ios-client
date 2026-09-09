@@ -76,6 +76,26 @@ final class ChatAppearanceTests: XCTestCase {
         XCTAssertTrue(ownMessage.exists)
     }
 
+    func testQuoteSelectionOpensSheetWithoutSendingChat() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-test-scroll-control"]
+        app.launch()
+        let message = app.staticTexts["这是最新一条回复。"]
+        XCTAssertTrue(message.waitForExistence(timeout: 5))
+        message.press(forDuration: 0.7)
+        let action = app.buttons["message-action-save-quote"]
+        XCTAssertTrue(action.waitForExistence(timeout: 3))
+        action.tap()
+        XCTAssertTrue(app.buttons["收下"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.textFields["哪里像柯？可以留空"].exists)
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "app-quote-save"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        app.buttons["取消"].tap()
+        XCTAssertTrue(app.textFields["chat-composer"].waitForExistence(timeout: 3))
+    }
+
     func testDateSearchPreservesTimeAndReturnsToMatchingMessage() {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-scroll-control"]
