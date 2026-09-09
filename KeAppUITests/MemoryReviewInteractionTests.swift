@@ -21,7 +21,7 @@ final class MemoryReviewInteractionTests: XCTestCase {
         let entry = app.buttons["memory-usage-entry"]
         XCTAssertTrue(entry.waitForExistence(timeout: 5))
         entry.tap()
-        XCTAssertTrue(app.staticTexts["$0.004560"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["¥0.004560"].firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["输入缓存命中率"].firstMatch.exists)
         XCTAssertTrue(app.staticTexts["1 次尚无可核实费用，未计入上方估算。"].firstMatch.exists)
         let shot = XCTAttachment(screenshot: app.screenshot())

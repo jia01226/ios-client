@@ -7,7 +7,7 @@ struct MemoryUsageTotals: Decodable {
     let cache_hit_tokens: Int?
     let cache_miss_tokens: Int?
     let cache_hit_percent: Double?
-    let estimated_usd: Double?
+    let estimated_cny: Double?
     let priced_calls: Int
     let unknown_calls: Int
 }
@@ -20,7 +20,7 @@ struct MemoryUsageCall: Decodable, Identifiable {
     let input_tokens: Int?
     let output_tokens: Int?
     let cache_hit_tokens: Int?
-    let estimated_usd: Double?
+    let estimated_cny: Double?
 }
 struct MemoryUsageReport: Decodable {
     let started_at: String?
@@ -53,7 +53,7 @@ struct MemoryUsageView: View {
                         .font(theme.font.caption).foregroundStyle(theme.color.textSecondary)
                     Text(report.notice).font(theme.font.caption).foregroundStyle(theme.color.textSecondary)
                     Text("单价核实于 \(report.price_version)").font(theme.font.caption)
-                    Link("查看 DeepSeek 官方单价", destination: URL(string: "https://api-docs.deepseek.com/quick_start/pricing/")!)
+                    Link("查看 DeepSeek 官方单价", destination: URL(string: "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/")!)
                 }
                 Section("最近 20 次") {
                     ForEach(report.recent) { call in
@@ -61,7 +61,7 @@ struct MemoryUsageView: View {
                             HStack {
                                 Text(call.kind == "cc_memory" ? "CC 记忆整理" : "App 记忆整理")
                                 Spacer()
-                                Text(money(call.estimated_usd)).monospacedDigit()
+                                Text(money(call.estimated_cny)).monospacedDigit()
                             }
                             Text("输入 \(count(call.input_tokens)) · 输出 \(count(call.output_tokens)) · 缓存 \(count(call.cache_hit_tokens))")
                                 .font(theme.font.caption)
@@ -91,9 +91,9 @@ struct MemoryUsageView: View {
 
     @ViewBuilder private func totals(_ value: MemoryUsageTotals) -> some View {
         HStack {
-            Text("估算费用（美元）")
+            Text("估算费用（人民币）")
             Spacer()
-            Text(money(value.estimated_usd)).font(theme.font.sectionTitle).monospacedDigit()
+            Text(money(value.estimated_cny)).font(theme.font.sectionTitle).monospacedDigit()
         }
         LabeledContent("整理调用", value: "\(value.calls) 次")
         LabeledContent("输入 token", value: count(value.input_tokens))
@@ -109,7 +109,7 @@ struct MemoryUsageView: View {
         }
     }
     private func count(_ value: Int?) -> String { value.map { $0.formatted() } ?? "未知" }
-    private func money(_ value: Double?) -> String { value.map { String(format: "$%.6f", $0) } ?? "待核实" }
+    private func money(_ value: Double?) -> String { value.map { String(format: "¥%.6f", $0) } ?? "待核实" }
     private func dateText(_ value: String) -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -122,9 +122,9 @@ struct MemoryUsageView: View {
         if ProcessInfo.processInfo.arguments.contains("-ui-test-memory-usage") {
             let totals = MemoryUsageTotals(calls: 12, input_tokens: 18000, output_tokens: 2400,
                 cache_hit_tokens: 14400, cache_miss_tokens: 3600, cache_hit_percent: 80,
-                estimated_usd: 0.00456, priced_calls: 11, unknown_calls: 1)
+                estimated_cny: 0.00456, priced_calls: 11, unknown_calls: 1)
             report = MemoryUsageReport(started_at: "2026-09-09T03:00:00.000000+00:00",
-                today: totals, total: totals, recent: [], notice: "匿名测试数据。费用为美元估算。", price_version: "2026-09-09")
+                today: totals, total: totals, recent: [], notice: "匿名测试数据。费用为人民币估算。", price_version: "2026-09-09")
             loading = false
             return
         }
