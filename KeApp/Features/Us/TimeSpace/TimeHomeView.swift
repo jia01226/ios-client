@@ -4,7 +4,8 @@ import SwiftUI
 struct TimeHomeView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
-    @State private var offset: CGFloat = 0
+    @State private var scrollPosition = TimeScrollPosition()
+    @State private var calendarVisible = false
     @State private var month = Date()
     @State private var selected = CompanionDate.calendar.startOfDay(for: Date())
     @State private var filter: TimeEventKind?
@@ -36,15 +37,14 @@ struct TimeHomeView: View {
     var body: some View {
         GeometryReader { viewport in
             let height = viewport.size.height
-            let progress = min(1, max(0, offset / (height * 0.9)))
             ZStack(alignment: .top) {
                 Color(red: 0.985, green: 0.980, blue: 0.969).ignoresSafeArea()
-                TimeMoonScene(progress: reduceMotion ? (progress > 0.6 ? 1 : 0) : progress,
-                              reduceMotion: reduceMotion,
-                              active: active && scenePhase == .active,
-                              showSatellite: screen == 0,
-                              topInset: viewport.safeAreaInsets.top,
-                              bottomInset: viewport.safeAreaInsets.bottom)
+                TimeScrollingBackdrop(position: scrollPosition, height: height,
+                                      reduceMotion: reduceMotion,
+                                      active: active && scenePhase == .active,
+                                      showSatellite: screen == 0,
+                                      topInset: viewport.safeAreaInsets.top,
+                                      bottomInset: viewport.safeAreaInsets.bottom)
                     .frame(height: height + viewport.safeAreaInsets.top + viewport.safeAreaInsets.bottom)
                     .offset(y: -viewport.safeAreaInsets.top)
                     .allowsHitTesting(false)
@@ -65,13 +65,17 @@ struct TimeHomeView: View {
                                 .id("calendar")
                         }
                         .background {
-                            if #unavailable(iOS 18.0) { TimeScrollProbe(offset: $offset) }
+                            if #unavailable(iOS 18.0) {
+                                TimeScrollProbe(offset: Binding(get: { scrollPosition.offset }, set: {
+                                    trackScroll($0, height: height)
+                                }))
+                            }
                         }
                     }
                     .refreshable { await data.refresh() }
                     .coordinateSpace(name: "time-scroll")
                     .scrollIndicators(.hidden)
-                    .modifier(TimeScrollTracking(offset: $offset))
+                    .modifier(TimeScrollTracking { trackScroll($0, height: height) })
                     .accessibilityIdentifier("time-scroll")
                     .mask(alignment: .top) {
                         VStack(spacing: 0) {
@@ -83,7 +87,7 @@ struct TimeHomeView: View {
                         HStack {
                             Text("我们的时间").font(song(19)).tracking(1)
                             Spacer()
-                            if progress > 0.55 {
+                            if calendarVisible {
                                 Button("回到上面") {
                                     withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.55)) {
                                         proxy.scrollTo("reminders", anchor: .top)
@@ -97,9 +101,9 @@ struct TimeHomeView: View {
                                     .foregroundStyle(screen == 1 ? gold : secondary)
                                     .accessibilityIdentifier("time-anniversary-tab")
                             }
-                            Button { if progress > 0.55 { showEditor = true } else { showAnniversaries = true } } label: {
+                            Button { if calendarVisible { showEditor = true } else { showAnniversaries = true } } label: {
                                 Image(systemName: "plus").font(.system(size: 17, weight: .light)).frame(width: 44, height: 44)
-                            }.accessibilityLabel(progress > 0.55 ? "添加日期记录" : "管理纪念日")
+                            }.accessibilityLabel(calendarVisible ? "添加日期记录" : "管理纪念日")
                         }
                         .font(song(15))
                         .padding(.leading, 28).padding(.trailing, 12)
@@ -370,6 +374,11 @@ struct TimeHomeView: View {
     }
 
     private func song(_ size: CGFloat) -> Font { .custom("NotoSerifSC-Regular", size: size, relativeTo: .body).weight(.light) }
+    private func trackScroll(_ offset: CGFloat, height: CGFloat) {
+        scrollPosition.update(offset, limit: height * 0.9)
+        let visible = offset > height * 0.9 * 0.55
+        if calendarVisible != visible { calendarVisible = visible }
+    }
     private func format(_ date: Date, _ template: String) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_CN")
@@ -380,14 +389,39 @@ struct TimeHomeView: View {
 }
 
 private struct TimeScrollTracking: ViewModifier {
-    @Binding var offset: CGFloat
+    var onScroll: (CGFloat) -> Void
     @ViewBuilder func body(content: Content) -> some View {
         if #available(iOS 18.0, *) {
             content.onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentOffset.y + geometry.contentInsets.top
-            } action: { _, value in offset = max(0, value) }
+            } action: { _, value in onScroll(max(0, value)) }
         } else {
             content
         }
+    }
+}
+
+// 高频位置只通知背景。正文、日期格式化与月历筛选不参与逐帧重算。
+final class TimeScrollPosition: ObservableObject {
+    @Published private(set) var offset: CGFloat = 0
+    func update(_ value: CGFloat, limit: CGFloat) {
+        let next = min(max(0, value), max(0, limit))
+        if offset != next { offset = next }
+    }
+}
+
+private struct TimeScrollingBackdrop: View {
+    @ObservedObject var position: TimeScrollPosition
+    let height: CGFloat
+    let reduceMotion: Bool
+    let active: Bool
+    let showSatellite: Bool
+    let topInset: CGFloat
+    let bottomInset: CGFloat
+    var body: some View {
+        let progress = min(1, max(0, position.offset / max(1, height * 0.9)))
+        TimeMoonScene(progress: reduceMotion ? (progress > 0.6 ? 1 : 0) : progress,
+                      reduceMotion: reduceMotion, active: active, showSatellite: showSatellite,
+                      topInset: topInset, bottomInset: bottomInset)
     }
 }

@@ -1,8 +1,33 @@
 import XCTest
 import UIKit
+import Combine
+import SceneKit
 @testable import KeApp
 
 final class TimeSpaceTests: XCTestCase {
+    func testScrollPositionStopsPublishingPastCalendarAndForUnchangedOffsets() {
+        let position = TimeScrollPosition()
+        var updates: [CGFloat] = []
+        let subscription = position.$offset.dropFirst().sink { updates.append($0) }
+        position.update(-30, limit: 700)
+        position.update(240, limit: 700)
+        position.update(240, limit: 700)
+        position.update(900, limit: 700)
+        position.update(950, limit: 700)
+        position.update(0, limit: 700)
+        XCTAssertEqual(updates, [240, 700, 0])
+        withExtendedLifetime(subscription) {}
+    }
+
+    @MainActor func testTimeSceneHasNoContinuousActionsAndUsesPackagedNebula() {
+        let coordinator = TimeMoonScene.Coordinator()
+        XCTAssertNotNil(UIImage(named: "time-nebula-baked"))
+        XCTAssertNil(coordinator.starBackground.geometry?.firstMaterial?.shaderModifiers)
+        coordinator.scene.rootNode.enumerateChildNodes { node, _ in
+            XCTAssertFalse(node.hasActions, "The idle time page must not keep scheduling frames")
+        }
+    }
+
     @MainActor func testLegacyScrollProbeTracksOffsetAndStopsObserving() async {
         let scroll = UIScrollView(frame: CGRect(x: 0, y: 0, width: 300, height: 600))
         scroll.contentSize = CGSize(width: 300, height: 1600)

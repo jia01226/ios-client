@@ -15,7 +15,7 @@ enum TimeMoonFraming {
     }
 }
 
-/// Solid lunar and satellite geometry in front of a ray-integrated nebula volume.
+/// 月球保留实时几何；星云使用同一着色器预渲染的纹理。
 struct TimeMoonScene: UIViewRepresentable {
     var progress: CGFloat
     var reduceMotion: Bool
@@ -26,51 +26,57 @@ struct TimeMoonScene: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    func makeUIView(context: Context) -> SCNView {
-        let view = SCNView()
+    func makeUIView(context: Context) -> TimeSceneView {
+        let view = TimeSceneView()
         view.backgroundColor = .clear
         view.isOpaque = false
         view.scene = context.coordinator.scene
         view.pointOfView = context.coordinator.camera
         view.antialiasingMode = .multisampling4X
-        view.preferredFramesPerSecond = 30
+        view.preferredFramesPerSecond = 60
+        view.rendersContinuously = false
+        view.isPlaying = false
         view.contentScaleFactor = 1.5
         view.isUserInteractionEnabled = false
         view.accessibilityElementsHidden = true
         return view
     }
 
-    static func dismantleUIView(_ view: SCNView, coordinator: Coordinator) {
+    static func dismantleUIView(_ view: TimeSceneView, coordinator: Coordinator) {
         view.isPlaying = false
-        coordinator.setDrift(enabled: false)
+        view.onLayout = nil
         view.scene = nil
     }
 
-    func updateUIView(_ view: SCNView, context: Context) {
+    func updateUIView(_ view: TimeSceneView, context: Context) {
+        let coordinator = context.coordinator
+        view.onLayout = { view in updateScene(view, coordinator: coordinator) }
+        updateScene(view, coordinator: coordinator)
+    }
+
+    private func updateScene(_ view: TimeSceneView, coordinator: Coordinator) {
         let size = view.bounds.size
-        guard size.height > 0 else {
-            DispatchQueue.main.async { updateUIView(view, context: context) }
-            return
-        }
+        guard size.width > 0, size.height > 0, active else { return }
         let p = min(1, max(0, progress))
-        context.coordinator.setDrift(enabled: active && !reduceMotion)
-        view.isPlaying = active && !reduceMotion
+        let input = FrameInput(size: size, progress: p, reduceMotion: reduceMotion,
+                               showSatellite: showSatellite, topInset: topInset, bottomInset: bottomInset)
+        guard input != coordinator.lastFrame else { return }
+        coordinator.lastFrame = input
         let framing = TimeMoonFraming.frame(size: size, bottomInset: bottomInset, progress: p)
         let diameter = framing.diameter
         let centerY = framing.center.y
         let scale = Float(diameter / size.height * 2)
         SCNTransaction.begin()
         SCNTransaction.animationDuration = 0
-        context.coordinator.moon.scale = SCNVector3(scale, scale, scale)
-        context.coordinator.moon.position = SCNVector3(0, Float((size.height / 2 - centerY) / size.height * 4), 0)
-        context.coordinator.moon.eulerAngles = SCNVector3Zero
+        coordinator.moon.scale = SCNVector3(scale, scale, scale)
+        coordinator.moon.position = SCNVector3(0, Float((size.height / 2 - centerY) / size.height * 4), 0)
+        coordinator.moon.eulerAngles = SCNVector3Zero
         // Orthographic projection keeps the circular body stable while framing changes.
-        context.coordinator.camera.position.z = Float(20 + diameter / size.height * 4)
-        let scene = context.coordinator
+        coordinator.camera.position.z = Float(20 + diameter / size.height * 4)
+        let scene = coordinator
         (scene.starBackground.geometry as? SCNPlane)?.width = 4.2 * size.width / size.height
-        scene.starBackground.geometry?.firstMaterial?.setValue(Float(reduceMotion ? 0 : p), forKey: "u_travel")
-        scene.starBackground.geometry?.firstMaterial?.setValue(Float(reduceMotion || !active ? 0 : 1), forKey: "u_motion")
-        scene.starBackground.geometry?.firstMaterial?.setValue(Float(size.width / size.height), forKey: "u_aspect")
+        scene.starBackground.position.y = Float(reduceMotion ? 0 : p * 0.28)
+        scene.starBackground.scale = SCNVector3(1, 1.16, 1)
         scene.satellite.position = SCNVector3(Float((size.width / 2 - 82) / size.height * 4),
             Float(2 - (topInset + 86) / size.height * 4 + (reduceMotion ? 0 : p * 0.25)), 3)
         scene.satellite.opacity = showSatellite ? max(0, 1 - p * 3) : 0
@@ -85,6 +91,23 @@ struct TimeMoonScene: UIViewRepresentable {
         view.setNeedsDisplay()
     }
 
+    struct FrameInput: Equatable {
+        let size: CGSize
+        let progress: CGFloat
+        let reduceMotion: Bool
+        let showSatellite: Bool
+        let topInset: CGFloat
+        let bottomInset: CGFloat
+    }
+
+    final class TimeSceneView: SCNView {
+        var onLayout: ((TimeSceneView) -> Void)?
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            onLayout?(self)
+        }
+    }
+
     final class Coordinator {
         let scene = SCNScene()
         let camera = SCNNode()
@@ -93,33 +116,14 @@ struct TimeMoonScene: UIViewRepresentable {
         let nearStars = SCNNode()
         let satellite = SCNNode(geometry: SCNSphere(radius: 0.065))
         let starBackground = SCNNode(geometry: SCNPlane(width: 2, height: 4.2))
-        private var driftEnabled = false
-
-        func setDrift(enabled: Bool) {
-            guard enabled != driftEnabled else { return }
-            driftEnabled = enabled
-            // 已确认银星原图含光照，保持正面投射，避免虚构背面。
-            satellite.removeAction(forKey: "rotation")
-            for (index, node) in nearStars.childNodes.enumerated() {
-                if enabled {
-                    let drift = SCNAction.moveBy(x: index.isMultiple(of: 2) ? 0.012 : -0.012, y: 0.018, z: 0, duration: Double(9 + index * 2))
-                    drift.timingMode = .easeInEaseOut
-                    node.runAction(.repeatForever(.sequence([drift, drift.reversed()])), forKey: "quiet-drift")
-                } else {
-                    node.removeAction(forKey: "quiet-drift")
-                }
-            }
-        }
+        var lastFrame: FrameInput?
 
         init() {
             scene.background.contents = UIColor(red: 0.94, green: 0.92, blue: 0.89, alpha: 1)
             let sky = SCNMaterial()
             sky.lightingModel = .constant
-            sky.diffuse.contents = UIColor.white
-            sky.shaderModifiers = [.fragment: TimeNebulaVolume.fragment]
-            sky.setValue(Float(0), forKey: "u_travel")
-            sky.setValue(Float(1), forKey: "u_motion")
-            sky.setValue(Float(0.46), forKey: "u_aspect")
+            sky.diffuse.contents = UIImage(named: "time-nebula-baked") ?? UIImage()
+            sky.diffuse.mipFilter = .linear
             sky.isDoubleSided = true
             starBackground.geometry?.firstMaterial = sky
             starBackground.position.z = -20
@@ -131,7 +135,7 @@ struct TimeMoonScene: UIViewRepresentable {
             camera.camera?.wantsHDR = false
             camera.position = SCNVector3(0, 0, 25)
             scene.rootNode.addChildNode(camera)
-            (moon.geometry as? SCNSphere)?.segmentCount = 160
+            (moon.geometry as? SCNSphere)?.segmentCount = 96
             let material = SCNMaterial()
             material.diffuse.contents = UIImage(named: "time-moon-albedo")
             material.diffuse.wrapS = .repeat
@@ -147,7 +151,7 @@ struct TimeMoonScene: UIViewRepresentable {
             moon.geometry?.firstMaterial = material
             scene.rootNode.addChildNode(moon)
             let atmosphere = SCNNode(geometry: SCNSphere(radius: 1.012))
-            (atmosphere.geometry as? SCNSphere)?.segmentCount = 128
+            (atmosphere.geometry as? SCNSphere)?.segmentCount = 64
             let air = SCNMaterial()
             air.lightingModel = .constant
             air.diffuse.contents = UIColor.white
@@ -165,7 +169,7 @@ struct TimeMoonScene: UIViewRepresentable {
             _geometry.texcoords[0] = float2(0.491 + _geometry.position.x / 0.13 * 0.785,
                                            0.492 - _geometry.position.y / 0.13 * 0.785);
             """]
-            (satellite.geometry as? SCNSphere)?.segmentCount = 96
+            (satellite.geometry as? SCNSphere)?.segmentCount = 32
             satellite.geometry?.firstMaterial = silver
             satellite.categoryBitMask = 2
             scene.rootNode.addChildNode(satellite)
@@ -207,6 +211,7 @@ struct TimeMoonScene: UIViewRepresentable {
             scene.rootNode.addChildNode(nearStars)
             for index in 0..<65 {
                 let node = SCNNode(geometry: SCNSphere(radius: index.isMultiple(of: 17) ? 0.0025 : 0.0012))
+                (node.geometry as? SCNSphere)?.segmentCount = 6
                 let material = SCNMaterial()
                 material.lightingModel = .constant
                 material.diffuse.contents = UIColor(white: 1, alpha: 0.65)
@@ -218,6 +223,7 @@ struct TimeMoonScene: UIViewRepresentable {
             }
             for (x, y, radius) in [(-0.82, 0.82, 0.004), (0.73, 1.15, 0.0055), (0.84, -0.30, 0.007), (-0.70, -1.35, 0.0045)] {
                 let node = SCNNode(geometry: SCNSphere(radius: radius))
+                (node.geometry as? SCNSphere)?.segmentCount = 8
                 let material = SCNMaterial()
                 material.lightingModel = .constant
                 material.diffuse.contents = UIColor(red: 1, green: 0.98, blue: 0.92, alpha: 0.65)

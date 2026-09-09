@@ -1,0 +1,11 @@
+{
+  "source": "TimeNebulaVolume.fragment",
+  "generator": "Design/TimeSpaceTools/Bake.swift",
+  "resolution": [
+    768,
+    1536
+  ],
+  "shader_time": 0,
+  "sha256": "dc8ce3971efc6c9af32ed6eb7306c343f4107953911500d44c2967f992188cd2",
+  "purpose": "Pre-render existing nebula to eliminate per-frame ray integration"
+}
