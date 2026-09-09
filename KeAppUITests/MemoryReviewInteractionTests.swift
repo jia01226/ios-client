@@ -28,6 +28,23 @@ final class MemoryReviewInteractionTests: XCTestCase {
         shot.name = "memory-usage"; shot.lifetime = .keepAlways; add(shot)
     }
 
+    func testMemoryRetrievalSeparatesCheckFromPromptAndShowsNotes() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-test-scroll-control", "-ui-test-memory-review", "-ui-test-memory-retrieval", "-app.skin", "day"]
+        app.launch()
+        app.buttons["回忆"].tap()
+        let entry = app.buttons["memory-retrieval-entry"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 5))
+        entry.tap()
+        XCTAssertTrue(app.staticTexts["检索测试 · 未发送聊天"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["意思相近 · 本次选中"].exists)
+        app.staticTexts["最近是妈妈做饭"].tap()
+        app.swipeUp()
+        XCTAssertTrue(app.staticTexts["你的备注 · 只指最近一段时间"].waitForExistence(timeout: 3))
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "memory-retrieval"; shot.lifetime = .keepAlways; add(shot)
+    }
+
     func testSourceNoteSwipeAndUndo() {
         let app = openDeck()
         let fact = app.staticTexts["review-fact"]

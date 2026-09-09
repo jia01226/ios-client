@@ -694,6 +694,19 @@ actor APIClient {
         return try decoder.decode(MemoryUsageReport.self, from: data)
     }
 
+    func memoryRetrieval() async throws -> MemoryRetrievalReport {
+        let (data, _) = try await perform(try makeRequest(path: "/api/memory/retrieval"))
+        return try decoder.decode(MemoryRetrievalReport.self, from: data)
+    }
+
+    func checkMemoryRetrieval(query: String) async throws -> MemoryRetrievalTrace {
+        var request = try makeRequest(path: "/api/memory/retrieval/check", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["query": query])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, _) = try await perform(request)
+        return try decoder.decode(MemoryRetrievalTrace.self, from: data)
+    }
+
     func appQuotes() async throws -> AppQuotePage {
         let (data, _) = try await perform(try makeRequest(path: "/api/memory/app-quotes"))
         return try decoder.decode(AppQuotePage.self, from: data)

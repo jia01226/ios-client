@@ -60,6 +60,15 @@ struct MemoriesView: View {
                     }
                     .accessibilityIdentifier("memory-usage-entry")
 
+                    NavigationLink {
+                        MemoryRetrievalView(line: review.line)
+                    } label: {
+                        Label("记忆怎么找的", systemImage: "magnifyingglass")
+                            .font(theme.font.sectionTitle)
+                            .frame(minHeight: theme.metric.touchTarget)
+                    }
+                    .accessibilityIdentifier("memory-retrieval-entry")
+
                     VStack(alignment: .leading, spacing: theme.metric.gapS) {
                         Text(review.syncLabel).font(theme.font.reviewCaption)
                         if let error = review.error {
