@@ -16,8 +16,17 @@ final class CompanionInteractionTests: XCTestCase {
         capture("play-home")
         app.buttons["play-diary"].tap()
         XCTAssertTrue(app.staticTexts["匿名日记"].waitForExistence(timeout: 5))
+        let diarySearch = app.searchFields["查找标题、正文或作者"]
+        XCTAssertTrue(diarySearch.waitForExistence(timeout: 3))
+        diarySearch.tap()
+        diarySearch.typeText("月光")
+        XCTAssertTrue(app.staticTexts["枕边的一页"].waitForExistence(timeout: 3))
         capture("companion-diary")
-        app.buttons["关闭"].tap()
+        app.keyboards.buttons["Search"].tap()
+        app.buttons["close"].tap()
+        let closeDiary = app.buttons["companion-close"]
+        XCTAssertTrue(closeDiary.waitForExistence(timeout: 3))
+        closeDiary.tap()
         app.buttons["play-moments"].tap()
         XCTAssertTrue(app.staticTexts["今天的天空很好看。"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["评论"].exists)

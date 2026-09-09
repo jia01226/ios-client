@@ -24,7 +24,7 @@ final class TimeDataStore: ObservableObject {
         do {
             anniversaries = try await api.fetchAnniversaries().map {
                 guard let date = CompanionDate.parse($0.date) else { throw APIError.invalidResponse }
-                return Anniversary(id: String($0.id), title: $0.name, date: date, isYearly: false)
+                return Anniversary(id: String($0.id), title: $0.name, date: date, isYearly: true)
             }
         } catch { failures.append("纪念日") }
         do {

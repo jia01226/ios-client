@@ -26,7 +26,13 @@ final class CompanionPreviewTransport: URLProtocol {
             case let p where p.hasSuffix("/schedule"):
                 body = #"{"current":[{"id":1,"text":"带上资料","scheduled_for":"2026-09-10 09:00:00","status":"pending","outcome":"","outcome_label":"","due":false}],"history":[]}"#
             case let p where p.hasSuffix("/diary"):
-                body = #"[{"id":1,"title":"匿名日记","content":"今天一起散步。","author":"佳佳","created_at":"2026-09-09 10:00:00","locked_hidden":false,"comments":0}]"#
+                let rows = [
+                    #"{"id":1,"title":"匿名日记","content":"今天一起散步。","author":"佳佳","created_at":"2026-09-09 10:00:00","locked_hidden":false,"comments":0}"#,
+                    #"{"id":2,"title":"枕边的一页","content":"月光落在窗边。","author":"柯","created_at":"2026-09-08 23:00:00","locked_hidden":false,"comments":0}"#,
+                ]
+                let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
+                    .queryItems?.first(where: { $0.name == "query" })?.value ?? ""
+                body = "[" + rows.filter { query.isEmpty || $0.contains(query) }.joined(separator: ",") + "]"
             case let p where p.hasSuffix("/moments"):
                 body = #"[{"id":1,"author":"user","content":"今天的天空很好看。","image":"/uploads/companion-preview.png","created_at":"2026-09-09 10:00:00","user_liked":0,"ai_liked":0,"comments":[]}]"#
             case let p where p.hasSuffix("/companion/records"):

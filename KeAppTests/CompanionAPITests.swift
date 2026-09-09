@@ -57,6 +57,20 @@ final class CompanionAPITests: XCTestCase {
         } catch APIError.invalidResponse { }
     }
 
+    func testDiarySearchEncodesQueryAndPagination() async throws {
+        CompanionStub.handler = { request in
+            let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
+            let values = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+            XCTAssertEqual(request.url?.path, "/ke-test2/api/diary")
+            XCTAssertEqual(values["query"], "月光 & 我")
+            XCTAssertEqual(values["offset"], "50")
+            XCTAssertEqual(values["limit"], "25")
+            return (200, #"[{"id":8,"title":"月光","content":"正文","author":"柯","created_at":"2026-09-08 23:00:00","locked_hidden":false,"comments":0}]"#)
+        }
+        let rows = try await api().fetchDiaries(query: "月光 & 我", offset: 50, limit: 25)
+        XCTAssertEqual(rows.map(\.id), [8])
+    }
+
     @MainActor func testRefreshKeepsPendingOverdueRemindersAndUnknownShiftLabels() async throws {
         CompanionStub.handler = { request in
             switch request.url!.lastPathComponent {
@@ -73,7 +87,7 @@ final class CompanionAPITests: XCTestCase {
         XCTAssertNil(model.error)
         XCTAssertEqual(model.activeReminders.count, 1)
         XCTAssertEqual(model.thisWeek.first?.label, "备班")
-        XCTAssertEqual(model.anniversaries.first?.isYearly, false)
+        XCTAssertEqual(model.anniversaries.first?.isYearly, true)
         CompanionStub.handler = { _ in (503, #"{"error":"暂时不可用"}"#) }
         await model.refresh()
         XCTAssertNotNil(model.error)

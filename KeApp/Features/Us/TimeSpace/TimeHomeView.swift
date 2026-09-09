@@ -204,13 +204,11 @@ struct TimeHomeView: View {
                 .frame(height: 325).padding(.trailing, -28).clipped()
             if data.anniversaries.indices.contains(selectedAnniversary) {
                 let anniversary = data.anniversaries[selectedAnniversary]
-                let today = model.calendar.startOfDay(for: .now)
-                let target = model.calendar.startOfDay(for: anniversary.date)
-                let days = model.calendar.dateComponents([.day], from: today, to: target).day ?? 0
+                let days = daysUntilNextOccurrence(anniversary)
                 Text(anniversary.title).font(song(22))
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Text("\(abs(days))").font(.custom("Didot", size: 52, relativeTo: .largeTitle))
-                    Text(days == 0 ? "就是今天" : (days < 0 ? "天前" : "天后")).font(song(17))
+                    Text(days == 0 ? "就是今天" : "天后").font(song(17))
                 }
                 Text(format(anniversary.date, "yyyy年M月d日")).font(song(14)).foregroundStyle(secondary)
             } else if !data.loading {
@@ -223,6 +221,17 @@ struct TimeHomeView: View {
             } label: { Image(systemName: "chevron.down").frame(maxWidth: .infinity, minHeight: 66) }
                 .accessibilityLabel("展开日历").padding(.bottom, 22)
         }.padding(.horizontal, 28).frame(height: height * 0.96, alignment: .top)
+    }
+
+    private func daysUntilNextOccurrence(_ anniversary: Anniversary) -> Int {
+        let today = model.calendar.startOfDay(for: .now)
+        var parts = model.calendar.dateComponents([.month, .day], from: anniversary.date)
+        parts.year = model.calendar.component(.year, from: today)
+        var target = model.calendar.date(from: parts) ?? anniversary.date
+        if target < today {
+            target = model.calendar.date(byAdding: .year, value: 1, to: target) ?? target
+        }
+        return model.calendar.dateComponents([.day], from: today, to: target).day ?? 0
     }
 
     private var calendarPage: some View {

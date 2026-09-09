@@ -656,7 +656,7 @@ final class UsViewModel: ObservableObject {
             let (remoteDates, remoteSchedule, remoteShifts) = try await (dates, schedule, shifts)
             let nextDates = try remoteDates.map { item -> Anniversary in
                 guard let date = CompanionDate.parse(item.date) else { throw APIError.invalidResponse }
-                return Anniversary(id: String(item.id), title: item.name, date: date, isYearly: false)
+                return Anniversary(id: String(item.id), title: item.name, date: date, isYearly: true)
             }
             let nextReminders = try remoteSchedule.current.map { item -> Reminder in
                 guard let date = CompanionDate.parse(item.scheduled_for) else { throw APIError.invalidResponse }

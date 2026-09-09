@@ -770,8 +770,14 @@ actor APIClient {
         try await readResource("/api/periods")
     }
 
-    func fetchDiaries() async throws -> [RemoteDiary] {
-        try await readResource("/api/diary")
+    func fetchDiaries(query: String = "", offset: Int = 0, limit: Int = 50) async throws -> [RemoteDiary] {
+        let request = try makeRequest(path: "/api/diary", queryItems: [
+            URLQueryItem(name: "query", value: query),
+            URLQueryItem(name: "offset", value: String(offset)),
+            URLQueryItem(name: "limit", value: String(limit)),
+        ])
+        let (data, _) = try await perform(request)
+        return try decoder.decode([RemoteDiary].self, from: data)
     }
 
     func fetchMoments() async throws -> [RemoteMoment] {

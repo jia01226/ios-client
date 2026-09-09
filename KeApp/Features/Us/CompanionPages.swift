@@ -37,6 +37,11 @@ struct CompanionPages: View {
     @State private var commentTarget: Int?
     @State private var commentText = ""
     @State private var comments: [Int: [RemoteMomentComment]] = [:]
+    @State private var diaryQuery = ""
+    @State private var diaryHasMore = false
+    @State private var diaryRequestID = UUID()
+    @State private var diarySearchTask: Task<Void, Never>?
+    private let diaryPageSize = 50
 
     init(page: CompanionPage, line: ChatLine) {
         self.page = page
@@ -54,6 +59,7 @@ struct CompanionPages: View {
                             if page == .diary { diaryContent } else { momentsContent }
                         }.padding(26).frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .diarySearchable(page == .diary, text: $diaryQuery)
                 } else {
                     List {
                         if let error {
@@ -81,15 +87,34 @@ struct CompanionPages: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     if page == .diary || page == .moments {
-                        Button("关闭", systemImage: "chevron.left") { dismiss() }.labelStyle(.iconOnly)
+                        Button("关闭", systemImage: "chevron.left") { dismiss() }
+                            .labelStyle(.iconOnly)
+                            .accessibilityLabel("关闭")
+                            .accessibilityIdentifier("companion-close")
                     } else { Button("关闭") { dismiss() } }
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button(page == .diary ? "写一篇" : "添加", systemImage: page == .diary ? "square.and.pencil" : "plus") { editingID = nil; operationID = UUID().uuidString; title = ""; content = ""; editing = true }.disabled(saving)
                 }
             }
-            .refreshable { await reload() }
-            .task { await reload() }
+            .refreshable {
+                if page == .diary { await reloadDiaries(reset: true) }
+                else { await reload() }
+            }
+            .task {
+                if page == .diary { await reloadDiaries(reset: true) }
+                else { await reload() }
+            }
+            .onChange(of: diaryQuery) { _, _ in
+                guard page == .diary else { return }
+                diarySearchTask?.cancel()
+                diarySearchTask = Task {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    guard !Task.isCancelled else { return }
+                    await reloadDiaries(reset: true)
+                }
+            }
+            .onDisappear { diarySearchTask?.cancel() }
             .sheet(isPresented: $editing) { editor }
             .sheet(isPresented: Binding(get: { commentTarget != nil }, set: { if !$0 { commentTarget = nil } })) { commentEditor }
             .onChange(of: scenePhase) { _, phase in
@@ -219,7 +244,16 @@ struct CompanionPages: View {
                 .contextMenu { Button("删除", role: .destructive) { pendingDeletion = item.id } }
                 Divider().padding(.vertical, 12)
             }
-            if diaries.isEmpty && !loading && error == nil { Text("还没有日记，点右上角写一篇") }
+            if diaries.isEmpty && !loading && error == nil {
+                Text(diaryQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                     ? "还没有日记，点右上角写一篇"
+                     : "没有找到相关日记，换个词试试")
+                    .foregroundStyle(theme.color.textSecondary)
+            }
+            if diaryHasMore && !loading {
+                Button("再翻一些") { Task { await reloadDiaries(reset: false) } }
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
         }
     }
 
@@ -324,12 +358,36 @@ struct CompanionPages: View {
                 async let c = api.fetchSchedule()
                 let (newShifts, newPeriods, schedule) = try await (a, b, c)
                 shifts = newShifts; periods = newPeriods; reminders = schedule.current + schedule.history
-            case .diary: diaries = try await api.fetchDiaries()
+            case .diary: await reloadDiaries(reset: true); return
             case .moments: moments = try await api.fetchMoments()
             }
             if privateExpanded { await loadPrivateRecords() }
             error = nil
         } catch { self.error = "没有加载成功，请重试。" + error.localizedDescription }
+    }
+
+    @MainActor private func reloadDiaries(reset: Bool) async {
+        let requestID = UUID()
+        diaryRequestID = requestID
+        loading = true
+        let query = diaryQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        let offset = reset ? 0 : diaries.count
+        do {
+            let rows = try await api.fetchDiaries(query: query, offset: offset, limit: diaryPageSize)
+            guard diaryRequestID == requestID else { return }
+            diaries = reset ? rows : diaries + rows
+            diaryHasMore = rows.count == diaryPageSize
+            error = nil
+            loading = false
+        } catch is CancellationError {
+            if diaryRequestID == requestID { loading = false }
+        } catch {
+            guard diaryRequestID == requestID else { return }
+            self.error = query.isEmpty
+                ? "日记没有加载成功，请重试。"
+                : "没有完成查找，请重试。"
+            loading = false
+        }
     }
 
     @MainActor private func save() async {
@@ -420,6 +478,17 @@ struct CompanionPages: View {
         defer { saving = false }
         do { try await api.setMomentLike(id: item.id, liked: item.user_liked == 0); await reload() }
         catch { self.error = "没有保存喜欢状态，请重试。" + error.localizedDescription }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func diarySearchable(_ enabled: Bool, text: Binding<String>) -> some View {
+        if enabled {
+            searchable(text: text, prompt: "查找标题、正文或作者")
+        } else {
+            self
+        }
     }
 }
 
