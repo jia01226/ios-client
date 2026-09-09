@@ -14,6 +14,7 @@ final class UsInteractionTests: XCTestCase {
         XCTAssertTrue(usTab.waitForExistence(timeout: 5))
         usTab.tap()
 
+        app.buttons["time-anniversary-tab"].tap()
         let moon = app.descendants(matching: .any)["us-moon-orbit-selector"]
         XCTAssertTrue(moon.waitForExistence(timeout: 3))
         XCTAssertEqual(moon.value as? String, "相识那天")

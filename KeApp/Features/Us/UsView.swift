@@ -216,12 +216,14 @@ struct UsView: View {
 
 // MARK: - 月球与小行星选择器
 
-private struct MoonOrbitSelector: View {
+struct MoonOrbitSelector: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let events: [Anniversary]
     @Binding var selectedIndex: Int
+    var timeStyle = false
+    var onSwipeToReminders: (() -> Void)?
 
     @State private var orbitalPosition: CGFloat = 1
     @State private var moonYaw: Double = -0.18
@@ -238,7 +240,7 @@ private struct MoonOrbitSelector: View {
                 width: min(224, width * 0.56),
                 height: min(160, proxy.size.height * 0.43)
             )
-            let moonSize = min(max(width * 1.08, 390), 446)
+            let moonSize = timeStyle ? min(width * 1.08, proxy.size.height * 0.98) : min(max(width * 1.08, 390), 446)
 
             ZStack {
                 Ellipse()
@@ -275,7 +277,7 @@ private struct MoonOrbitSelector: View {
                         OrbitEventMarker(
                             title: event.title,
                             activeProgress: max(0, 1 - abs(relativePosition)),
-                            selected: index == selectedIndex
+                            selected: index == selectedIndex, timeStyle: timeStyle
                         )
                         .position(x: position.x - 74, y: position.y)
                     }
@@ -289,7 +291,7 @@ private struct MoonOrbitSelector: View {
             .accessibilityIdentifier("us-moon-orbit-selector")
             .accessibilityLabel("纪念日月球")
             .accessibilityValue(accessibilityValue)
-            .accessibilityHint("上下滑动切换纪念日，左右滑动旋转月球")
+            .accessibilityHint(timeStyle ? "上下滑动切换纪念日，向右滑动回到提醒" : "上下滑动切换纪念日，左右滑动旋转月球")
             .accessibilityAdjustableAction { direction in
                 switch direction {
                 case .increment:
@@ -330,6 +332,7 @@ private struct MoonOrbitSelector: View {
     private var dragGesture: some Gesture {
         DragGesture(minimumDistance: 6)
             .onChanged { value in
+                if timeStyle && abs(value.translation.width) > abs(value.translation.height) { return }
                 guard !events.isEmpty else { return }
 
                 if dragOriginPosition == nil {
@@ -357,6 +360,11 @@ private struct MoonOrbitSelector: View {
                 }
             }
             .onEnded { value in
+                if timeStyle && abs(value.translation.width) > abs(value.translation.height) {
+                    dragOriginPosition = nil; dragOriginYaw = nil; dragOriginPitch = nil
+                    if value.translation.width > 60 { onSwipeToReminders?() }
+                    return
+                }
                 guard !events.isEmpty else { return }
 
                 let startPosition = dragOriginPosition ?? orbitalPosition
@@ -537,13 +545,14 @@ private struct OrbitEventMarker: View {
     let title: String
     let activeProgress: CGFloat
     let selected: Bool
+    var timeStyle = false
 
     var body: some View {
         HStack(spacing: 8) {
             Text(title)
                 .font(
                     .custom(
-                        selected ? "STSongti-SC-Regular" : "STSongti-SC-Light",
+                        "NotoSerifSC-Regular",
                         size: 16,
                         relativeTo: .callout
                     )
@@ -551,7 +560,7 @@ private struct OrbitEventMarker: View {
                 .tracking(selected ? 1.1 : 0.8)
                 .lineLimit(1)
                 .minimumScaleFactor(0.78)
-                .foregroundStyle(selected ? theme.effectiveAccent : theme.color.textPrimary)
+                .foregroundStyle(timeStyle ? (selected ? Color(hex: 0x947343) : Color(hex: 0x302D28)) : (selected ? theme.effectiveAccent : theme.color.textPrimary))
                 .frame(width: 96, alignment: .trailing)
 
             if selected {

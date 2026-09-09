@@ -22,7 +22,7 @@ struct RootTabView: View {
                 // ChatView 会保留状态，同时只有当前页面参与命中测试和主要渲染。
                 // 栏可见性从页面向上交给 TabView，每个页面都需声明隐藏系统栏。
                 TabView(selection: $selection) {
-                    UsView(line: chatLine)
+                    TimeHomeView(line: chatLine, active: selection == .us)
                         .id(chatLine)
                         .toolbar(.hidden, for: .tabBar)
                         .tag(Tab.us)
