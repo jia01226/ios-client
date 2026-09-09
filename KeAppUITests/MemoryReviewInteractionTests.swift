@@ -45,6 +45,25 @@ final class MemoryReviewInteractionTests: XCTestCase {
         shot.name = "memory-retrieval"; shot.lifetime = .keepAlways; add(shot)
     }
 
+    func testDownSwipeSavesExplicitNewStateAndUndo() {
+        let app = openDeck()
+        app.buttons["review-note"].tap()
+        let fact = app.textFields["review-change-fact"]
+        let field = fact.exists ? fact : app.textViews["review-change-fact"]
+        XCTAssertTrue(field.waitForExistence(timeout: 3))
+        field.tap(); field.typeText("Now I prefer strawberries")
+        app.textFields["review-change-when"].tap()
+        app.textFields["review-change-when"].typeText("August")
+        app.navigationBars.buttons["完成"].tap()
+        XCTAssertTrue(app.otherElements["review-card"].waitForExistence(timeout: 3))
+        app.otherElements["review-card"].swipeDown()
+        XCTAssertTrue(app.staticTexts["周末想试试陶艺"].waitForExistence(timeout: 5))
+        app.buttons["review-undo"].tap()
+        XCTAssertTrue(app.staticTexts["喜欢有酸味的蓝莓果酱"].waitForExistence(timeout: 5))
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "memory-change-undo"; shot.lifetime = .keepAlways; add(shot)
+    }
+
     func testSourceNoteSwipeAndUndo() {
         let app = openDeck()
         let fact = app.staticTexts["review-fact"]

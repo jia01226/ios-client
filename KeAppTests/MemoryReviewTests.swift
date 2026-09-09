@@ -137,12 +137,35 @@ final class MemoryReviewTests: XCTestCase {
         XCTAssertTrue(viewModel.archive.outbox.isEmpty)
     }
 
+    func testChangeDraftAndOfflineOperationSurviveRelaunch() async throws {
+        let api = ReviewTestService()
+        let model = store(api)
+        await model.sync()
+        let card = try XCTUnwrap(model.pending.first)
+        XCTAssertFalse(model.act(.changed, on: card, note: ""))
+        model.saveChangeDraft(MemoryChangeDraft(fact: "现在喜欢草莓", when: "今年八月"), for: card)
+        let reopened = store(api)
+        XCTAssertEqual(reopened.changeDraft(for: card).fact, "现在喜欢草莓")
+        await api.configure(offline: true)
+        XCTAssertTrue(reopened.act(.changed, on: card, note: "不是过敏"))
+        await reopened.sync()
+        let again = store(api)
+        XCTAssertEqual(again.archive.outbox.first?.new_fact, "现在喜欢草莓")
+        XCTAssertEqual(again.archive.outbox.first?.changed_when, "今年八月")
+        await api.configure()
+        await again.sync()
+        XCTAssertEqual(again.archive.facts.first?.fact, "现在喜欢草莓")
+        again.undo()
+        await again.sync()
+        XCTAssertEqual(again.pending.first?.id, card.id)
+    }
+
     func testDirectionAndThresholdIgnoreShortAndDiagonalDrags() {
         XCTAssertEqual(ReviewGesture.action(x: 120, y: 10), .accept)
         XCTAssertEqual(ReviewGesture.action(x: -120, y: 10), .reject)
         XCTAssertEqual(ReviewGesture.action(x: 10, y: -120), .defer)
         XCTAssertNil(ReviewGesture.action(x: 99, y: 0))
         XCTAssertNil(ReviewGesture.action(x: 110, y: 110))
-        XCTAssertNil(ReviewGesture.action(x: 0, y: 150))
+        XCTAssertEqual(ReviewGesture.action(x: 0, y: 150), .changed)
     }
 }

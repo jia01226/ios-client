@@ -76,18 +76,39 @@ final class MemoryReviewStore: ObservableObject {
         do { try persist(next) } catch { self.error = "备注没能存到本机，请保留输入内容后重试。" }
     }
 
+    func changeDraft(for card: ReviewCard) -> MemoryChangeDraft {
+        archive.changeDrafts?[card.id] ?? MemoryChangeDraft()
+    }
+    func saveChangeDraft(_ value: MemoryChangeDraft, for card: ReviewCard) {
+        var next = archive
+        if next.changeDrafts == nil { next.changeDrafts = [:] }
+        next.changeDrafts?[card.id] = value
+        do { try persist(next) } catch { self.error = "新情况没能存到本机，请保留文字后重试。" }
+    }
+    func prepareUpdate(_ card: ReviewCard) {
+        var next = archive
+        if let i = next.cards.firstIndex(where: { $0.id == card.id }) { next.cards[i] = card }
+        else { next.cards.append(card) }
+        do { try persist(next) } catch { self.error = "卡片没能载入，请刷新重试。" }
+    }
+
     @discardableResult
     func act(_ action: ReviewAction, on card: ReviewCard, note: String) -> Bool {
         guard canReview, let storeID = archive.storeID,
               let index = archive.cards.firstIndex(where: { $0.id == card.id }),
               archive.cards[index].revision == card.revision else { return false }
-        if action == .accept && !card.can_accept { error = "请先核对这张卡的来源。"; return false }
+        if (action == .accept || action == .changed) && !card.can_accept { error = "请先核对这张卡的来源。"; return false }
         if action == .defer && note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             error = "写下不确定的地方，再向上划暂缓。"; return false
         }
         if note.count > 4000 { error = "备注最多写 4000 字，请缩短后保存。"; return false }
+        let change = changeDraft(for: card)
+        if action == .changed && (change.fact.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || change.fact.count > 1000 || change.when.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || change.when.count > 80) {
+            error = "请先填写现在的完整情况和大概变化时间，再下划更新。"; return false
+        }
         let operation = ReviewOperation(store_id: storeID, operation_id: UUID().uuidString,
-            patch_id: card.id, revision: card.revision, verdict: action, note: note)
+            patch_id: card.id, revision: card.revision, verdict: action, note: note,
+            new_fact: action == .changed ? change.fact : nil, changed_when: action == .changed ? change.when : nil)
         var next = archive
         next.outbox.append(operation)
         next.undo = ReviewUndo(operation: operation, before: card)
@@ -95,7 +116,7 @@ final class MemoryReviewStore: ObservableObject {
         next.cards[index].note = note
         next.drafts.removeValue(forKey: card.id)
         switch action {
-        case .accept: next.cards[index].status = "applied"
+        case .accept, .changed: next.cards[index].status = "applied"
         case .reject: next.cards[index].status = "rejected"
         case .defer: next.cards[index].deferred = true
         default: break

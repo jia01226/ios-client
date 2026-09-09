@@ -5,6 +5,7 @@ struct MemoriesView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var review: MemoryReviewStore
     @State private var category = "全部"
+    @State private var updating: ReviewCard?
 
     init(line: ChatLine = .main) {
         _review = StateObject(wrappedValue: MemoryReviewStore.make(line: line))
@@ -98,6 +99,22 @@ struct MemoriesView: View {
                                 if !fact.note.isEmpty {
                                     Text("你的备注 · \(fact.note)").font(theme.font.reviewCaption)
                                 }
+                                if let when = fact.changed_when { Text("变化时间 · \(when)").font(theme.font.reviewCaption) }
+                                if let history = fact.history, !history.isEmpty {
+                                    DisclosureGroup("以前的情况") {
+                                        ForEach(history) { old in
+                                            VStack(alignment: .leading, spacing: theme.metric.gapS) {
+                                                Text(old.fact).font(theme.font.reviewBody)
+                                                Text("历史记录 · \(old.observed_at)").font(theme.font.reviewCaption)
+                                                if !old.note.isEmpty { Text(old.note).font(theme.font.reviewCaption) }
+                                            }
+                                        }
+                                    }
+                                }
+                                if let card = fact.review_card {
+                                    Button("以前是，现在变了") { review.prepareUpdate(card); updating = card }
+                                        .frame(minHeight: theme.metric.touchTarget)
+                                }
                                 Text("\(fact.category) · \(fact.observed_at)")
                                     .font(theme.font.reviewCaption).foregroundStyle(theme.reviewSecondary)
                             }
@@ -114,6 +131,7 @@ struct MemoriesView: View {
             .toolbar(.hidden, for: .navigationBar)
             .refreshable { await review.sync() }
         }
+        .sheet(item: $updating) { card in ReviewNoteEditor(store: review, card: card) }
         .tint(theme.effectiveAccent)
         .task { await review.sync() }
         .onChange(of: scenePhase) { _, phase in

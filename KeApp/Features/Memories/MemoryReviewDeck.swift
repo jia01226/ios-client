@@ -53,7 +53,7 @@ struct MemoryReviewDeck: View {
                         cardFace(card)
                             .overlay(alignment: .topTrailing) {
                                 if let action = previewAction {
-                                    Text(action == .accept ? "收下" : action == .reject ? "不对" : "暂缓")
+                                    Text(action.label)
                                         .font(theme.font.sectionTitle)
                                         .padding(theme.metric.gapM)
                                         .background(theme.color.cardElevated, in: Capsule())
@@ -66,7 +66,7 @@ struct MemoryReviewDeck: View {
                             .gesture(DragGesture(minimumDistance: 18)
                                 .onChanged { value in
                                     guard !isDeparting, store.canReview else { return }
-                                    translation = CGSize(width: value.translation.width, height: min(value.translation.height, 35))
+                                    translation = CGSize(width: value.translation.width, height: value.translation.height)
                                 }
                                 .onEnded { value in
                                     guard !isDeparting else { return }
@@ -79,6 +79,7 @@ struct MemoryReviewDeck: View {
                             .accessibilityAction(named: "不对") { commit(.reject, card: card, width: geometry.size.width) }
                             .accessibilityAction(named: "备注") { editing = card }
                             .accessibilityAction(named: "暂缓") { commit(.defer, card: card, width: geometry.size.width) }
+                            .accessibilityAction(named: "情况变了") { commit(.changed, card: card, width: geometry.size.width) }
                     }
                     .frame(maxHeight: .infinity)
                     .accessibilityElement(children: .contain)
@@ -92,7 +93,7 @@ struct MemoryReviewDeck: View {
                     }
                     .disabled(isDeparting || !store.canReview)
                     .opacity(store.canReview && !isDeparting ? 1 : 0.35)
-                    Text("左划不对 · 右划收下 · 写说明后上划暂缓")
+                    Text("左划不对 · 右划收下\n上划暂缓 · 填好现在的情况下划更新")
                         .font(theme.font.reviewCaption).foregroundStyle(theme.reviewSecondary)
                         .multilineTextAlignment(.center)
                 } else {
@@ -197,6 +198,11 @@ struct MemoryReviewDeck: View {
             editing = card
             return
         }
+        if action == .changed && (store.changeDraft(for: card).fact.isEmpty || store.changeDraft(for: card).when.isEmpty) {
+            withAnimation(spring) { translation = .zero }
+            editing = card
+            return
+        }
         departingCard = card
         guard store.act(action, on: card, note: store.draft(for: card)) else {
             departingCard = nil
@@ -205,7 +211,7 @@ struct MemoryReviewDeck: View {
         isDeparting = true
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.22), completionCriteria: .logicallyComplete) {
             translation = reduceMotion ? .zero : CGSize(width: action == .accept ? width * 1.3 : action == .reject ? -width * 1.3 : 0,
-                                                        height: action == .defer ? -width * 2 : translation.height)
+                                                        height: action == .defer ? -width * 2 : action == .changed ? width * 2 : translation.height)
         } completion: {
             departingCard = nil
             translation = .zero
@@ -215,26 +221,38 @@ struct MemoryReviewDeck: View {
     }
 }
 
-private struct ReviewNoteEditor: View {
+struct ReviewNoteEditor: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var store: MemoryReviewStore
     let card: ReviewCard
     @State private var note: String = ""
+    @State private var change = MemoryChangeDraft()
 
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: theme.metric.gapM) {
                 Text("很多事不只分对错").font(theme.font.sectionTitle)
-                Text("写下当时的语境。只保存备注会留在这张卡；暂缓后可以先看下一张。")
+                Text("只保存备注不代表收下。不完全对、还拿不准，可以暂缓；旧情况有变化，填写下方的新情况。")
                     .font(theme.font.reviewBody).foregroundStyle(theme.reviewSecondary)
                 TextEditor(text: $note).font(theme.font.reviewBody)
                     .scrollContentBackground(.hidden)
                     .padding(theme.metric.gapS)
                     .background(theme.color.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
                     .accessibilityIdentifier("review-note-editor")
+                TextField("现在的完整情况，例如现在不喜欢蓝莓了", text: $change.fact, axis: .vertical)
+                    .lineLimit(1...3).accessibilityIdentifier("review-change-fact")
+                TextField("大概什么时候变的？不确定可写时间不详", text: $change.when)
+                    .accessibilityIdentifier("review-change-when")
+                Text(card.status == "applied" ? "保存现在的情况后，旧状态保留为历史。" : "填好后完成，回到卡片下划更新。旧状态保留为历史。")
+                    .font(theme.font.reviewCaption).foregroundStyle(theme.reviewSecondary)
                 if let error = store.error { Text(error).font(theme.font.reviewCaption) }
-                Button("只保存备注", action: saveNote)
+                if card.status == "applied" {
+                    Button("保存现在的情况") {
+                        if store.act(.changed, on: card, note: note) { dismiss(); Task { await store.sync() } }
+                    }.accessibilityIdentifier("review-change-save")
+                }
+                Button(card.status == "applied" ? "保留草稿" : "只保存备注", action: saveNote)
                     .frame(maxWidth: .infinity, minHeight: theme.metric.touchTarget)
                     .accessibilityIdentifier("review-save-note")
                 Button("保存说明，先放着") {
@@ -243,18 +261,22 @@ private struct ReviewNoteEditor: View {
                     .disabled(note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .opacity(note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.35 : 1)
                     .accessibilityIdentifier("review-defer")
+                    .disabled(card.status == "applied")
             }
             .padding(theme.metric.pagePadding)
             .foregroundStyle(theme.color.textPrimary)
             .background(theme.color.bg)
             .navigationTitle("备注")
             .toolbar { Button("完成", action: saveNote) }
-            .onAppear { note = store.draft(for: card) }
+            .onAppear { note = store.draft(for: card); change = store.changeDraft(for: card) }
+            .onChange(of: change.fact) { _, _ in store.saveChangeDraft(change, for: card) }
+            .onChange(of: change.when) { _, _ in store.saveChangeDraft(change, for: card) }
             .onChange(of: note) { _, value in store.saveDraft(value, for: card) }
         }.tint(theme.effectiveAccent)
     }
 
     private func saveNote() {
+        if card.status == "applied" { dismiss(); return }
         if store.act(.note, on: card, note: note) {
             dismiss()
             Task { await store.sync() }

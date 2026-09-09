@@ -27,6 +27,7 @@ struct MemoryRetrievalTrace: Decodable, Identifiable {
     let candidates: [MemoryRetrievalCandidate]
     let raw_event_ids: [String]
     let semantic: MemoryRetrievalSemantic
+    var change_guard_count: Int? = nil
 }
 struct MemoryRetrievalReport: Decodable {
     let recent: [MemoryRetrievalTrace]
@@ -83,6 +84,10 @@ struct MemoryRetrievalView: View {
                                  : "\(trace.fact_count) 条已审核记忆已放入提示词")
                             if !trace.raw_event_ids.isEmpty {
                                 Text("另找到 \(trace.raw_event_ids.count) 条历史原话线索，独立于已审核卡片。")
+                                    .font(theme.font.caption)
+                            }
+                            if let count = trace.change_guard_count, count > 0 {
+                                Text("已核对 \(count) 条旧原话对应的新情况，旧状态不会作为现状提供。")
                                     .font(theme.font.caption)
                             }
                             Text(semanticLabel(trace.semantic)).font(theme.font.caption)

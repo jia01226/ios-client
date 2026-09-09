@@ -36,6 +36,7 @@ actor MemoryReviewFixtureService: MemoryReviewService {
         before[operation.id] = cards[i]
         switch operation.verdict {
         case .accept: cards[i].status = "applied"
+        case .changed: cards[i].status = "applied"; cards[i].fact = operation.new_fact ?? cards[i].fact
         case .reject: cards[i].status = "rejected"
         case .defer: cards[i].deferred = true
         case .undo: if let previous = before[operation.undo_operation_id ?? ""] { cards[i] = previous }

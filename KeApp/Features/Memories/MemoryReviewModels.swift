@@ -13,6 +13,7 @@ struct ReviewSource: Codable, Equatable, Identifiable, Sendable {
         switch channel {
         case "app": return "App"
         case "cc": return "CC"
+        case "manual": return "App 审核"
         case "wechat": return "微信"
         default: return channel
         }
@@ -42,6 +43,14 @@ struct ReviewPage: Codable, Sendable {
     var next_offset: Int?
 }
 
+struct ReviewedFactHistory: Codable, Identifiable, Sendable {
+    var id: String
+    var fact: String
+    var quote: String
+    var observed_at: String
+    var note: String
+}
+
 struct ReviewedFact: Codable, Identifiable, Sendable {
     var fact_id: String
     var fact: String
@@ -49,6 +58,9 @@ struct ReviewedFact: Codable, Identifiable, Sendable {
     var category: String
     var observed_at: String
     var note: String
+    var review_card: ReviewCard? = nil
+    var history: [ReviewedFactHistory]? = nil
+    var changed_when: String? = nil
     var id: String { fact_id }
 }
 
@@ -66,7 +78,7 @@ struct ReviewStats: Codable, Sendable {
 }
 
 enum ReviewAction: String, Codable, Sendable {
-    case accept, reject, note, `defer`, undo
+    case accept, reject, note, `defer`, undo, changed
     var label: String {
         switch self {
         case .accept: return "收下"
@@ -74,6 +86,7 @@ enum ReviewAction: String, Codable, Sendable {
         case .note: return "保存备注"
         case .defer: return "暂缓"
         case .undo: return "撤销"
+        case .changed: return "情况变了"
         }
     }
 }
@@ -85,6 +98,8 @@ struct ReviewOperation: Codable, Identifiable, Sendable {
     var revision: Int
     var verdict: ReviewAction
     var note: String
+    var new_fact: String? = nil
+    var changed_when: String? = nil
     var undo_operation_id: String?
     var id: String { operation_id }
 }
@@ -107,7 +122,13 @@ struct ReviewUndo: Codable {
     var before: ReviewCard
 }
 
+struct MemoryChangeDraft: Codable {
+    var fact: String = ""
+    var when: String = ""
+}
+
 struct ReviewArchive: Codable {
+    var changeDrafts: [String: MemoryChangeDraft]? = nil
     var storeID: String?
     var cards: [ReviewCard] = []
     var outbox: [ReviewOperation] = []
@@ -121,6 +142,7 @@ struct ReviewGesture {
     static func action(x: CGFloat, y: CGFloat, threshold: CGFloat = 100) -> ReviewAction? {
         if abs(x) > abs(y), abs(x) >= threshold { return x > 0 ? .accept : .reject }
         if y <= -threshold, abs(y) > abs(x) { return .defer }
+        if y >= threshold, abs(y) > abs(x) { return .changed }
         return nil
     }
 }
