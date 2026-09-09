@@ -2,8 +2,7 @@ import Foundation
 
 // 数据模型。
 //
-// ⚠️ 这一份是照着"界面需要什么"先写的占位版。
-// 等 `工单板/后端接口清单.md` 出来之后，按真实返回结构对齐字段名，别反过来让后端迁就这儿。
+// 界面领域模型；服务端日期记录的返回结构见 CompanionAPIModels。
 
 // MARK: - 聊天
 
@@ -220,6 +219,7 @@ struct Anniversary: Identifiable, Hashable, Codable {
 /// 她几点起、什么时候在上班、什么时候刚下夜班需要睡。
 struct ShiftDay: Identifiable, Hashable, Codable {
     enum Kind: String, Codable {
+        case custom
         case off        // 休
         case day        // 白
         case evening    // 晚
@@ -228,6 +228,7 @@ struct ShiftDay: Identifiable, Hashable, Codable {
     let id: String
     let date: Date
     let kind: Kind
+    var label: String? = nil
 }
 
 // MARK: - 回忆

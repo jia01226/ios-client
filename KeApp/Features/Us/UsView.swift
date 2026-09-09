@@ -6,13 +6,20 @@ import SwiftUI
 // - 月球是真正的 3D 球体，可连续旋转 360°。
 // - 纪念日是有限的小行星队列；选中项永远吸附在左侧中点。
 // - 队列两端不循环，没有相邻数据时对应位置保持空白。
-// - 提醒没有勾选框；过期后安静收起。
+// - 提醒没有勾选框；是否收起由服务端状态决定。
 
 struct UsView: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @StateObject private var vm = UsViewModel()
-    @State private var selectedAnniversaryIndex = 1
+    @StateObject private var vm: UsViewModel
+    @State private var selectedAnniversaryIndex = 0
+    @State private var destination: CompanionPage?
+    private let line: ChatLine
+
+    init(line: ChatLine = .main) {
+        self.line = line
+        _vm = StateObject(wrappedValue: UsViewModel(api: APIClient(baseURL: line.apiBaseURL)))
+    }
 
     var body: some View {
         GeometryReader { viewport in
@@ -20,6 +27,12 @@ struct UsView: View {
                 VStack(alignment: .leading, spacing: theme.metric.gapM) {
                     pageHeader
                         .padding(.horizontal, theme.metric.pagePadding)
+
+                    if let error = vm.error {
+                        Text(error).foregroundStyle(theme.color.textSecondary)
+                            .padding(.horizontal, theme.metric.pagePadding)
+                    }
+                    if vm.isLoading && vm.anniversaries.isEmpty { ProgressView() }
 
                     MoonOrbitSelector(
                         events: vm.anniversaries,
@@ -41,6 +54,14 @@ struct UsView: View {
 
                     shiftSection
                         .padding(.horizontal, theme.metric.pagePadding)
+
+                    HStack(spacing: theme.metric.gapL) {
+                        Button("日历") { destination = .calendar }
+                        Button("日记") { destination = .diary }
+                        Button("朋友圈") { destination = .moments }
+                    }
+                    .font(theme.font.body)
+                    .padding(theme.metric.pagePadding)
                 }
                 .frame(
                     minHeight: max(0, viewport.size.height - theme.metric.gapM - theme.metric.gapS),
@@ -52,6 +73,12 @@ struct UsView: View {
             .scrollContentBackground(.hidden)
         }
         .background(theme.effectiveBackground.ignoresSafeArea())
+        .task { await vm.refresh() }
+        .refreshable { await vm.refresh() }
+        .sheet(item: $destination, onDismiss: { Task { await vm.refresh() } }) { page in
+            CompanionPages(page: page, line: line)
+                .environmentObject(theme)
+        }
         .onChange(of: vm.anniversaries.map(\.id)) { _, ids in
             guard !ids.isEmpty else {
                 selectedAnniversaryIndex = 0
@@ -76,7 +103,7 @@ struct UsView: View {
 
             Spacer()
 
-            Image(systemName: "plus")
+            Button { destination = .anniversaries } label: { Image(systemName: "plus") }
                 .font(.system(size: 21, weight: .light))
                 .foregroundStyle(theme.effectiveAccent)
                 .padding(.top, 8)
@@ -111,7 +138,7 @@ struct UsView: View {
                     value: days
                 )
 
-            Text("天后")
+            Text(vm.isPast(anniversary) ? "天前" : "天后")
                 .font(.custom("STSongti-SC-Light", size: 16, relativeTo: .body))
                 .tracking(1.0)
                 .foregroundStyle(theme.color.textSecondary)
@@ -119,7 +146,7 @@ struct UsView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(anniversary.title)，\(days)天后")
+        .accessibilityLabel("\(anniversary.title)，\(days)\(vm.isPast(anniversary) ? "天前" : "天后")")
     }
 
     private var remindersSection: some View {
@@ -128,6 +155,11 @@ struct UsView: View {
                 .font(.custom("STSongti-SC-Regular", size: 24, relativeTo: .title2))
                 .tracking(1.8)
                 .foregroundStyle(theme.color.textPrimary)
+
+            if vm.activeReminders.isEmpty && !vm.isLoading && vm.error == nil {
+                Text("还没有安排提醒").font(theme.font.caption)
+                    .foregroundStyle(theme.color.textSecondary)
+            }
 
             VStack(spacing: 0) {
                 ForEach(vm.activeReminders) { reminder in
@@ -154,13 +186,18 @@ struct UsView: View {
                 .tracking(1.0)
                 .foregroundStyle(theme.color.textPrimary)
 
+            if vm.thisWeek.isEmpty && !vm.isLoading && vm.error == nil {
+                Text("这周还没有排班记录").font(theme.font.caption)
+                    .foregroundStyle(theme.color.textSecondary)
+            }
+
             HStack(spacing: theme.metric.gapS) {
                 ForEach(vm.thisWeek) { day in
                     VStack(spacing: theme.metric.gapXS) {
                         Text(vm.weekdayLabel(day.date))
                             .font(theme.font.caption)
                             .foregroundStyle(theme.color.textSecondary)
-                        Text(vm.shiftLabel(day.kind))
+                        Text(day.label ?? vm.shiftLabel(day.kind))
                             .font(theme.font.shiftBadge)
                             .foregroundStyle(
                                 day.kind == .off
@@ -568,12 +605,13 @@ private struct ReminderRow: View {
     private var timeLabel: String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_CN")
+        formatter.timeZone = CompanionDate.calendar.timeZone
         formatter.dateFormat = "HH:mm"
 
-        if Calendar.current.isDateInToday(reminder.dueAt) {
+        if CompanionDate.calendar.isDateInToday(reminder.dueAt) {
             return "今天 \(formatter.string(from: reminder.dueAt))"
         }
-        if Calendar.current.isDateInTomorrow(reminder.dueAt) {
+        if CompanionDate.calendar.isDateInTomorrow(reminder.dueAt) {
             return "明天 \(formatter.string(from: reminder.dueAt))"
         }
 
@@ -582,7 +620,7 @@ private struct ReminderRow: View {
     }
 }
 
-// MARK: - ViewModel（假数据版）
+// MARK: - ViewModel
 
 @MainActor
 final class UsViewModel: ObservableObject {
@@ -590,64 +628,62 @@ final class UsViewModel: ObservableObject {
     @Published var anniversaries: [Anniversary] = []
     @Published var thisWeek: [ShiftDay] = []
 
+    @Published var isLoading = false
+    @Published var error: String?
+    private let api: APIClient
+
     var activeReminders: [Reminder] {
-        reminders
-            .filter { !$0.dismissedByKe && $0.dueAt > Date().addingTimeInterval(-86400) }
-            .sorted { $0.dueAt < $1.dueAt }
+        reminders.filter { !$0.dismissedByKe }.sorted { $0.dueAt < $1.dueAt }
     }
 
-    init() {
-        // 假数据：顺序就是轨道顺序；正式接口返回多少条，轨道就出现多少颗小行星。
-        anniversaries = [
-            Anniversary(
-                id: "mine",
-                title: "我的生日",
-                date: Date().addingTimeInterval(86400 * 113)
-            ),
-            Anniversary(
-                id: "ours",
-                title: "我们的纪念日",
-                date: Date().addingTimeInterval(86400 * 28)
-            ),
-            Anniversary(
-                id: "ke",
-                title: "柯的生日",
-                date: Date().addingTimeInterval(86400 * 204)
-            ),
-        ]
+    init(api: APIClient = .shared) { self.api = api }
 
-        reminders = [
-            Reminder(
-                id: "r1",
-                text: "把明天要带的东西放进包里。",
-                dueAt: Date().addingTimeInterval(3600),
-                category: .other
-            ),
-            Reminder(
-                id: "r2",
-                text: "周一有安排，提前半小时出发。",
-                dueAt: Date().addingTimeInterval(86400),
-                category: .work
-            ),
-        ]
-
-        let calendar = Calendar.current
-        let start = calendar.date(
-            byAdding: .day,
-            value: -calendar.component(.weekday, from: .now) + 2,
-            to: .now
-        ) ?? .now
-        thisWeek = (0..<7).map { index in
-            ShiftDay(
-                id: "s\(index)",
-                date: calendar.date(byAdding: .day, value: index, to: start) ?? .now,
-                kind: [.off, .evening, .evening, .off, .evening, .off, .off][index]
-            )
+    func refresh() async {
+        guard !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            async let dates = api.fetchAnniversaries()
+            async let schedule = api.fetchSchedule()
+            async let shifts = api.fetchShifts()
+            let (remoteDates, remoteSchedule, remoteShifts) = try await (dates, schedule, shifts)
+            let nextDates = try remoteDates.map { item -> Anniversary in
+                guard let date = CompanionDate.parse(item.date) else { throw APIError.invalidResponse }
+                return Anniversary(id: String(item.id), title: item.name, date: date, isYearly: false)
+            }
+            let nextReminders = try remoteSchedule.current.map { item -> Reminder in
+                guard let date = CompanionDate.parse(item.scheduled_for) else { throw APIError.invalidResponse }
+                return Reminder(id: String(item.id), text: item.text, dueAt: date,
+                    dismissedByKe: item.status != "pending")
+            }
+            let calendar = CompanionDate.calendar
+            let week = calendar.dateInterval(of: .weekOfYear, for: .now)!
+            let nextShifts = try remoteShifts.compactMap { item -> ShiftDay? in
+                guard let date = CompanionDate.parse(item.date) else { throw APIError.invalidResponse }
+                guard week.contains(date) else { return nil }
+                let kind: ShiftDay.Kind
+                switch item.shift {
+                case "休", "休息", "off": kind = .off
+                case "白", "白班", "早班", "day": kind = .day
+                case "晚", "晚班", "evening": kind = .evening
+                case "夜", "夜班", "night": kind = .night
+                default: kind = .custom
+                }
+                return ShiftDay(id: item.date, date: date, kind: kind, label: item.shift)
+            }
+            guard !Task.isCancelled else { return }
+            anniversaries = nextDates
+            reminders = nextReminders
+            thisWeek = nextShifts
+            error = nil
+        } catch {
+            guard !Task.isCancelled else { return }
+            self.error = "没有刷新成功，请下拉重试。" + error.localizedDescription
         }
     }
 
     func daysUntil(_ anniversary: Anniversary) -> Int {
-        let calendar = Calendar.current
+        let calendar = CompanionDate.calendar
         let today = calendar.startOfDay(for: .now)
         var target = calendar.startOfDay(for: anniversary.date)
 
@@ -661,7 +697,12 @@ final class UsViewModel: ObservableObject {
             }
         }
 
-        return max(0, calendar.dateComponents([.day], from: today, to: target).day ?? 0)
+        return abs(calendar.dateComponents([.day], from: today, to: target).day ?? 0)
+    }
+
+    func isPast(_ anniversary: Anniversary) -> Bool {
+        !anniversary.isYearly && CompanionDate.calendar.startOfDay(for: anniversary.date)
+            < CompanionDate.calendar.startOfDay(for: .now)
     }
 
     func weekdayLabel(_ date: Date) -> String {
@@ -675,6 +716,7 @@ final class UsViewModel: ObservableObject {
         case .day: return "白"
         case .evening: return "晚"
         case .night: return "夜"
+        case .custom: return "班"
         }
     }
 }

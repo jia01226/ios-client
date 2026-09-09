@@ -15,7 +15,11 @@ import LocalAuthentication
 struct PlayView: View {
 
     @EnvironmentObject private var theme: Theme
+    let line: ChatLine
+    @Environment(\.scenePhase) private var scenePhase
     @State private var privateUnlocked = false
+    @State private var drawerOpen = false
+    init(line: ChatLine = .main) { self.line = line }
 
     var body: some View {
         ScrollView {
@@ -28,13 +32,18 @@ struct PlayView: View {
                 gamesRow
                 privateSpaceCard
                 if privateUnlocked {
-                    drawerCard
+                    Button { drawerOpen = true } label: { drawerCard }.buttonStyle(.plain)
                 }
             }
             .padding(theme.metric.pagePadding)
         }
         .scrollContentBackground(.hidden)
         .background(Color.clear)
+        .sheet(isPresented: $drawerOpen) { DrawerView(line: line).environmentObject(theme) }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { privateUnlocked = false; drawerOpen = false }
+        }
+        .onDisappear { privateUnlocked = false; drawerOpen = false }
     }
 
     // MARK: 小游戏

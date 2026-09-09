@@ -3,11 +3,11 @@ import XCTest
 
 @MainActor
 final class UsOrbitTests: XCTestCase {
-    func testOurAnniversaryIsTheDefaultMiddleEvent() {
+    func testNoInventedRecordsBeforeFirstServerResponse() {
         let viewModel = UsViewModel()
-
-        XCTAssertEqual(viewModel.anniversaries.map(\.id), ["mine", "ours", "ke"])
-        XCTAssertEqual(viewModel.anniversaries[1].title, "我们的纪念日")
+        XCTAssertTrue(viewModel.anniversaries.isEmpty)
+        XCTAssertTrue(viewModel.reminders.isEmpty)
+        XCTAssertTrue(viewModel.thisWeek.isEmpty)
     }
 
     func testOrbitLeavesMissingNeighborSlotsEmptyAtBothEnds() {

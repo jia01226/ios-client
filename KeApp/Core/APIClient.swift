@@ -337,15 +337,19 @@ actor APIClient {
     private let session: URLSession
     private let decoder = JSONDecoder()
 
-    init(baseURL: URL = AppConfiguration.apiBaseURL) {
+    init(baseURL: URL = AppConfiguration.apiBaseURL, configuration: URLSessionConfiguration = .default) {
         self.baseURL = baseURL
         HTTPCookieStorage.shared.cookieAcceptPolicy = .always
-        let configuration = URLSessionConfiguration.default
         configuration.httpCookieStorage = HTTPCookieStorage.shared
         configuration.httpShouldSetCookies = true
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.timeoutIntervalForRequest = 30
         configuration.timeoutIntervalForResource = 300
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ui-test-companion") {
+            configuration.protocolClasses = [CompanionPreviewTransport.self]
+        }
+        #endif
         session = URLSession(configuration: configuration)
     }
 
@@ -746,6 +750,134 @@ actor APIClient {
         let request = try makeRequest(path: "/api/memory/facts", queryItems: [URLQueryItem(name: "offset", value: String(offset))])
         let (data, _) = try await perform(request)
         return try decoder.decode(ReviewedFactsPage.self, from: data)
+    }
+
+    func fetchDrawer() async throws -> RemoteDrawer { try await readResource("/api/drawer") }
+
+    func fetchAnniversaries() async throws -> [RemoteAnniversary] {
+        try await readResource("/api/anniversaries")
+    }
+
+    func fetchSchedule() async throws -> RemoteSchedule {
+        try await readResource("/api/schedule")
+    }
+
+    func fetchShifts() async throws -> [RemoteShift] {
+        try await readResource("/api/shifts")
+    }
+
+    func fetchPeriods() async throws -> [RemotePeriod] {
+        try await readResource("/api/periods")
+    }
+
+    func fetchDiaries() async throws -> [RemoteDiary] {
+        try await readResource("/api/diary")
+    }
+
+    func fetchMoments() async throws -> [RemoteMoment] {
+        try await readResource("/api/moments")
+    }
+
+    func addAnniversary(name: String, date: String, emoji: String = "💞") async throws {
+        try await writeResource("/api/anniversaries", body: ["name": name, "date": date, "emoji": emoji])
+    }
+
+    func deleteAnniversary(id: Int) async throws {
+        try await writeResource("/api/anniversaries/delete", body: ["id": id])
+    }
+
+    func setShift(date: String, shift: String, note: String) async throws {
+        try await writeResource("/api/shifts", body: ["date": date, "shift": shift, "note": note])
+    }
+
+    func deleteShift(date: String) async throws {
+        try await writeResource("/api/shifts/delete", body: ["date": date])
+    }
+
+    func addPeriod(startDate: String, note: String) async throws {
+        try await writeResource("/api/periods", body: ["start_date": startDate, "note": note])
+    }
+
+    func deletePeriod(id: Int) async throws {
+        try await writeResource("/api/periods/delete", body: ["id": id])
+    }
+
+    func addDiary(title: String, content: String, mood: String) async throws {
+        try await writeResource("/api/diary/entry", body: ["title": title, "content": content, "mood": mood, "author": "佳佳"])
+    }
+
+    func addDiaryComment(id: Int, content: String) async throws {
+        try await writeResource("/api/diary/comment", body: ["id": id, "content": content, "author": "佳佳"])
+    }
+
+    func fetchDiaryComments(id: Int) async throws -> [RemoteMomentComment] {
+        let request = try makeRequest(path: "/api/diary/comments", queryItems: [URLQueryItem(name: "id", value: String(id))])
+        let (data, _) = try await perform(request)
+        return try decoder.decode([RemoteMomentComment].self, from: data)
+    }
+
+    func deleteDiary(id: Int) async throws {
+        try await writeResource("/api/diary/delete", body: ["id": id])
+    }
+
+    func addMoment(content: String, image: String = "") async throws {
+        try await writeResource("/api/moments", body: ["content": content, "image": image, "visibility": "private"])
+    }
+
+    func setMomentLike(id: Int, liked: Bool) async throws {
+        try await writeResource("/api/moments/like", body: ["id": id, "liked": liked])
+    }
+
+    func addMomentComment(id: Int, content: String) async throws {
+        try await writeResource("/api/moments/comment", body: ["moment_id": id, "content": content])
+    }
+
+    func editMoment(id: Int, content: String) async throws {
+        try await writeResource("/api/moments/edit", body: ["id": id, "content": content])
+    }
+
+    func deleteMoment(id: Int) async throws {
+        try await writeResource("/api/moments/delete", body: ["id": id])
+    }
+
+    func fetchPrivateRecords(date: String) async throws -> [RemotePrivateRecord] {
+        let request = try makeRequest(path: "/api/companion/records", queryItems: [
+            URLQueryItem(name: "start", value: date), URLQueryItem(name: "end", value: date)])
+        let (data, _) = try await perform(request)
+        do { return try decoder.decode([RemotePrivateRecord].self, from: data) }
+        catch { throw APIError.decoding(error) }
+    }
+
+    func savePrivateRecord(date: String, note: String, operationID: String) async throws {
+        try await writeResource("/api/companion/records", body: ["kind": "intimate", "action": "create", "date": date, "note": note, "operation_id": operationID])
+    }
+
+    func deletePrivateRecord(id: Int, operationID: String) async throws {
+        try await writeResource("/api/companion/records", body: ["kind": "intimate", "action": "delete", "id": id, "operation_id": operationID])
+    }
+
+    func editAnniversary(id: Int, name: String, date: String, operationID: String) async throws {
+        try await writeResource("/api/companion/records", body: ["kind": "anniversary", "action": "update", "id": id, "date": date, "note": name, "operation_id": operationID])
+    }
+
+    private func readResource<T: Decodable>(_ path: String) async throws -> T {
+        let (data, _) = try await perform(try makeRequest(path: path))
+        do { return try decoder.decode(T.self, from: data) }
+        catch { throw APIError.decoding(error) }
+    }
+
+    private func writeResource(_ path: String, body: [String: Any]) async throws {
+        var request = try makeRequest(path: path, method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, _) = try await perform(request)
+        guard let result = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw APIError.invalidResponse
+        }
+        if let error = result["error"] as? String { throw APIError.serverMessage(error) }
+        guard result["ok"] as? Bool == true || result["id"] as? Int != nil else {
+            throw APIError.invalidResponse
+        }
     }
 
     private func makeRequest(
