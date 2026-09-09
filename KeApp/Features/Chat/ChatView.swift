@@ -21,6 +21,7 @@ struct ChatView: View {
     @StateObject private var recentPhotos = RecentPhotosStore()
     @State private var draft = ""
     @State private var showingCallPlaceholder = false
+    @State private var showingMemoryUsage = false
     @State private var quoteToSave: Message?
     @State private var messageToRecall: Message?
     @State private var recallConfirmation = false
@@ -65,6 +66,9 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.clear)
         .animation(.easeInOut(duration: 0.6), value: theme.isBedroom)
+        .sheet(isPresented: $showingMemoryUsage) {
+            NavigationStack { MemoryUsageView(line: line).environmentObject(theme) }
+        }
         .sheet(item: $quoteToSave) { message in
             AppQuoteSaveView(line: line, message: message)
                 .environmentObject(theme)
@@ -1221,6 +1225,11 @@ struct ChatView: View {
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 0) {
+                    if section.id == "deepseek" {
+                        Button("查看记忆整理用量") { showingMemoryUsage = true }
+                            .font(theme.font.body)
+                            .frame(minHeight: theme.metric.touchTarget)
+                    }
                     if let quota = modelQuotaGroup(for: section.id), !quota.windows.isEmpty {
                         modelQuotaDetails(quota)
                     }
@@ -1339,6 +1348,10 @@ struct ChatView: View {
                 return "额度已用完 · \(reset)\(staleSuffix)"
             }
             return "额度已用完\(staleSuffix)"
+        case "auth_required":
+            return "需要重新验证登录，暂时读不到额度"
+        case "local_cooldown":
+            return "本地线路暂缓 · 官方额度见下方\(staleSuffix)"
         case "not_configured":
             return "尚未接入"
         case "unknown":
@@ -1354,6 +1367,10 @@ struct ChatView: View {
 
     private func modelQuotaDetails(_ quota: ChatModelQuotaGroup) -> some View {
         VStack(alignment: .leading, spacing: theme.metric.gapS) {
+            if quota.id.hasPrefix("claude") {
+                Text("账号共享额度，包含 App 和 CC 的使用")
+                    .font(theme.font.caption).foregroundStyle(theme.color.textSecondary)
+            }
             ForEach(Array(quota.windows.enumerated()), id: \.offset) { _, window in
                 VStack(alignment: .leading, spacing: theme.metric.gapXS) {
                     HStack(spacing: theme.metric.gapS) {

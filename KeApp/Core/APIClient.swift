@@ -689,6 +689,11 @@ actor APIClient {
         }
     }
 
+    func memoryUsage() async throws -> MemoryUsageReport {
+        let (data, _) = try await perform(try makeRequest(path: "/api/memory/usage"))
+        return try decoder.decode(MemoryUsageReport.self, from: data)
+    }
+
     func appQuotes() async throws -> AppQuotePage {
         let (data, _) = try await perform(try makeRequest(path: "/api/memory/app-quotes"))
         return try decoder.decode(AppQuotePage.self, from: data)

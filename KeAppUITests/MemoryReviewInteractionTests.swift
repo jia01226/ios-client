@@ -13,6 +13,21 @@ final class MemoryReviewInteractionTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["review-fact"].waitForExistence(timeout: 5))
         return app
     }
+    func testMemoryUsageShowsCostCacheAndUnknownCoverage() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-test-scroll-control", "-ui-test-memory-review", "-ui-test-memory-usage", "-app.skin", "day"]
+        app.launch()
+        app.buttons["回忆"].tap()
+        let entry = app.buttons["memory-usage-entry"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 5))
+        entry.tap()
+        XCTAssertTrue(app.staticTexts["$0.004560"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["输入缓存命中率"].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["1 次尚无可核实费用，未计入上方估算。"].firstMatch.exists)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "memory-usage"; shot.lifetime = .keepAlways; add(shot)
+    }
+
     func testSourceNoteSwipeAndUndo() {
         let app = openDeck()
         let fact = app.staticTexts["review-fact"]

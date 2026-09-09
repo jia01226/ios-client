@@ -51,6 +51,14 @@ struct MemoriesView: View {
                             .frame(minHeight: theme.metric.touchTarget)
                     }
                     .accessibilityIdentifier("app-quotes-entry")
+                    NavigationLink {
+                        MemoryUsageView(line: review.line)
+                    } label: {
+                        Label("整理用量", systemImage: "chart.bar")
+                            .font(theme.font.sectionTitle)
+                            .frame(minHeight: theme.metric.touchTarget)
+                    }
+                    .accessibilityIdentifier("memory-usage-entry")
 
                     VStack(alignment: .leading, spacing: theme.metric.gapS) {
                         Text(review.syncLabel).font(theme.font.reviewCaption)
