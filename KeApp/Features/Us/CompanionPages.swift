@@ -9,6 +9,7 @@ struct CompanionPages: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
+    private var journalInk: Color { theme.skin == .night ? theme.color.textPrimary : Color(hex: 0x302D28) }
     let page: CompanionPage
     private let api: APIClient
     @State private var anniversaries: [RemoteAnniversary] = []
@@ -44,31 +45,47 @@ struct CompanionPages: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                if let error {
-                    Section {
-                        Text(error).foregroundStyle(theme.color.textSecondary)
-                        Button("重新加载") { Task { await reload() } }.disabled(loading)
+            Group {
+                if page == .diary || page == .moments {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 26) {
+                            if let error { Text(error); Button("重新加载") { Task { await reload() } } }
+                            if loading { ProgressView("正在加载") }
+                            if page == .diary { diaryContent } else { momentsContent }
+                        }.padding(26).frame(maxWidth: .infinity, alignment: .leading)
                     }
-                }
-                if loading { ProgressView("正在加载") }
-                switch page {
-                case .calendar: calendarContent
-                case .anniversaries: anniversaryContent
-                case .diary: diaryContent
-                case .moments: momentsContent
+                } else {
+                    List {
+                        if let error {
+                            Section {
+                                Text(error).foregroundStyle(theme.color.textSecondary)
+                                Button("重新加载") { Task { await reload() } }.disabled(loading)
+                            }
+                        }
+                        if loading { ProgressView("正在加载") }
+                        switch page {
+                        case .calendar: calendarContent
+                        case .anniversaries: anniversaryContent
+                        case .diary: diaryContent
+                        case .moments: momentsContent
+                        }
+                    }
                 }
             }
             .scrollContentBackground(.hidden)
             .background(theme.effectiveBackground)
-            .font(theme.font.body)
+            .font(page == .diary || page == .moments ? .custom("NotoSerifSC-Regular", size: 17, relativeTo: .body) : theme.font.body)
             .tint(theme.effectiveAccent)
             .navigationTitle(page.rawValue)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("关闭") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    if page == .diary || page == .moments {
+                        Button("关闭", systemImage: "chevron.left") { dismiss() }.labelStyle(.iconOnly)
+                    } else { Button("关闭") { dismiss() } }
+                }
                 ToolbarItem(placement: .primaryAction) {
-                    Button("添加", systemImage: "plus") { editingID = nil; operationID = UUID().uuidString; title = ""; content = ""; editing = true }.disabled(saving)
+                    Button(page == .diary ? "写一篇" : "添加", systemImage: page == .diary ? "square.and.pencil" : "plus") { editingID = nil; operationID = UUID().uuidString; title = ""; content = ""; editing = true }.disabled(saving)
                 }
             }
             .refreshable { await reload() }
@@ -187,11 +204,20 @@ struct CompanionPages: View {
                     }
                 } label: {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(item.title)
-                        Text(item.created_at).font(theme.font.caption).foregroundStyle(theme.color.textSecondary)
+                        HStack(alignment: .top, spacing: 20) {
+                            Text(String(item.created_at.dropFirst(8).prefix(2)))
+                                .font(.custom("Didot", size: 40, relativeTo: .largeTitle)).frame(width: 48)
+                            Rectangle().fill(theme.color.separator).frame(width: 1, height: 66)
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text(item.title).font(.custom("NotoSerifSC-Regular", size: 21, relativeTo: .title3))
+                                Text(item.locked_hidden ? "暂时锁着的一页" : item.content).lineLimit(2).font(theme.font.caption)
+                                Text(item.author ?? "柯").font(.custom("NotoSerifSC-Regular", size: 14, relativeTo: .caption))
+                            }
+                        }.foregroundStyle(journalInk)
                     }
                 }
-                .swipeActions { Button("删除", role: .destructive) { pendingDeletion = item.id } }
+                .contextMenu { Button("删除", role: .destructive) { pendingDeletion = item.id } }
+                Divider().padding(.vertical, 12)
             }
             if diaries.isEmpty && !loading && error == nil { Text("还没有日记，点右上角写一篇") }
         }
@@ -200,24 +226,31 @@ struct CompanionPages: View {
     private var momentsContent: some View {
         Group {
             ForEach(moments) { item in
-                Section {
-                    Text(item.author == "user" ? "我" : "柯").font(theme.font.sectionTitle)
-                    Text(item.content).textSelection(.enabled)
-                    Text(item.created_at).font(theme.font.caption).foregroundStyle(theme.color.textSecondary)
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 12) {
+                        Text(item.author == "user" ? "佳" : "柯").font(.custom("NotoSerifSC-Regular", size: 20)).frame(width: 40, height: 40).background(theme.color.accentSoft.opacity(0.15), in: Circle())
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(item.author == "user" ? "佳佳" : "柯")
+                            Text(item.created_at).font(theme.font.caption).foregroundStyle(theme.color.textSecondary)
+                        }
+                    }
+                    Text(item.content).textSelection(.enabled).lineSpacing(6)
                     if let image = item.image, !image.isEmpty { CompanionImage(api: api, path: image) }
-                    Button(item.user_liked != 0 ? "取消喜欢" : "喜欢") {
-                        Task { await like(item) }
-                    }.disabled(saving)
-                    Button("评论") { commentTarget = item.id; commentText = "" }
+                    HStack(spacing: 22) {
+                        Spacer()
+                        Button(item.user_liked != 0 ? "取消喜欢" : "喜欢", systemImage: item.user_liked != 0 ? "heart.fill" : "heart") { Task { await like(item) } }.disabled(saving)
+                        Button("评论", systemImage: "bubble") { commentTarget = item.id; commentText = "" }
+                    }.labelStyle(.iconOnly).font(.system(size: 23, weight: .light)).frame(minHeight: 44)
                     ForEach(item.comments) { comment in
                         Text("\(comment.author == "user" ? "我" : "柯")：\(comment.content)")
                     }
                 }
-                .swipeActions {
+                .contextMenu {
                     if item.author == "user" {
                         Button("删除", role: .destructive) { pendingDeletion = item.id }
                     }
                 }
+                Divider().padding(.vertical, 12)
             }
             if moments.isEmpty && !loading && error == nil { Text("还没有动态，点右上角分享一件事") }
         }
@@ -390,14 +423,24 @@ struct CompanionPages: View {
     }
 }
 
-private struct CompanionImage: View {
+struct CompanionImage: View {
     let api: APIClient
     let path: String
+    var thumbnail = false
     @State private var image: UIImage?
     @State private var failed = false
     var body: some View {
         Group {
-            if let image { Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 320).accessibilityLabel("动态图片") }
+            if let image {
+                if thumbnail {
+                    GeometryReader { bounds in
+                        Image(uiImage: image).resizable().scaledToFill()
+                            .frame(width: bounds.size.width, height: 170).clipped()
+                    }.frame(height: 170).accessibilityLabel("动态图片")
+                } else {
+                    Image(uiImage: image).resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: 320).accessibilityLabel("动态图片")
+                }
+            }
             else if failed { Text("图片未能加载") }
             else { ProgressView("正在加载图片") }
         }

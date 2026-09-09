@@ -57,8 +57,6 @@ struct UsView: View {
 
                     HStack(spacing: theme.metric.gapL) {
                         Button("日历") { destination = .calendar }
-                        Button("日记") { destination = .diary }
-                        Button("朋友圈") { destination = .moments }
                     }
                     .font(theme.font.body)
                     .padding(theme.metric.pagePadding)

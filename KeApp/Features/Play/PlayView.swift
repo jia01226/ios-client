@@ -1,150 +1,90 @@
 import SwiftUI
 
-// 【玩】—— 小游戏 + 调教室 + 抽屉。
-//
-// 🔴 隐私是这一格的第一要求，不是"好用"：
-//    她手机不是绝对私密的（家人会拿）。
-//    调教室和抽屉的入口，不得在任何一眼可见处显示可辨识名称，
-//    必须 Face ID / 独立密码二次解锁。
-//
-// 注：她把调教室藏进"玩"里，是她自己想出来的一手——
-//    外人看见"游戏室"三个字，不会多想。
-
-import LocalAuthentication
-
 struct PlayView: View {
-
     @EnvironmentObject private var theme: Theme
     let line: ChatLine
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var privateUnlocked = false
-    @State private var drawerOpen = false
+    @State private var destination: CompanionPage?
+    @State private var latestMoment: RemoteMoment?
+    @State private var latestDiary: RemoteDiary?
+    @State private var loadError: String?
+    @State private var loading = false
+
     init(line: ChatLine = .main) { self.line = line }
+
+    private var ink: Color { theme.skin == .night ? theme.color.textPrimary : Color(hex: 0x302D28) }
+    private var gold: Color { theme.skin == .night ? theme.color.accentSoft : Color(hex: 0x947343) }
+    private func serif(_ size: CGFloat) -> Font { .custom("NotoSerifSC-Regular", size: size, relativeTo: .body).weight(.light) }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: theme.metric.gapL) {
-
-                Text("玩")
-                    .font(theme.font.pageTitle)
-                    .foregroundStyle(theme.color.textPrimary)
-
-                gamesRow
-                privateSpaceCard
-                if privateUnlocked {
-                    Button { drawerOpen = true } label: { drawerCard }.buttonStyle(.plain)
+            VStack(alignment: .leading, spacing: 28) {
+                Text("玩").font(serif(52)).padding(.top, 12)
+                Text("生活很长，\n一起，把平凡过成喜欢的样子。")
+                    .font(serif(16)).lineSpacing(5).foregroundStyle(ink.opacity(0.65))
+                    .padding(.top, -18)
+                if loading { ProgressView().accessibilityLabel("正在加载") }
+                if let loadError {
+                    Text(loadError).font(serif(14))
+                    Button("重试") { Task { await refresh() } }
                 }
-            }
-            .padding(theme.metric.pagePadding)
+                Button { destination = .moments } label: {
+                    VStack(alignment: .leading, spacing: 14) {
+                        heading("朋友圈", subtitle: "分享今天的小事")
+                        if let item = latestMoment {
+                            if let path = item.image, !path.isEmpty {
+                                CompanionImage(api: APIClient(baseURL: line.apiBaseURL), path: path, thumbnail: true)
+                                    .frame(maxWidth: .infinity).clipped()
+                            }
+                            Text("\(item.author == "user" ? "佳佳" : "柯") · \(item.content)")
+                                .font(serif(16)).lineLimit(3).lineSpacing(5)
+                        } else if !loading {
+                            Text("还没有动态，写下今天的一件小事。")
+                                .font(serif(16)).foregroundStyle(ink.opacity(0.65)).padding(.vertical, 25)
+                        }
+                    }.contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityIdentifier("play-moments")
+                Divider().overlay(gold.opacity(0.12))
+                Button { destination = .diary } label: {
+                    VStack(alignment: .leading, spacing: 18) {
+                        heading("日记", subtitle: "把心情，安放在这里")
+                        HStack(alignment: .center, spacing: 20) {
+                            Text(latestDiary.map { String($0.created_at.dropFirst(8).prefix(2)) + "\n/\n" + String($0.created_at.dropFirst(5).prefix(2)) } ?? "—")
+                                .font(.custom("Didot", size: 20, relativeTo: .title3))
+                                .multilineTextAlignment(.center).frame(width: 95, height: 96)
+                                .background(gold.opacity(0.045))
+                            VStack(alignment: .leading, spacing: 9) {
+                                Text(latestDiary?.title ?? "把今天留在这里").font(serif(20))
+                                Text(latestDiary.map { $0.locked_hidden ? "暂时锁着的一页" : $0.content } ?? "有些话，慢慢写。")
+                                    .font(serif(15)).lineLimit(2).foregroundStyle(ink.opacity(0.65))
+                            }
+                        }
+                    }.contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityIdentifier("play-diary")
+            }.padding(.horizontal, 28).padding(.bottom, 12)
         }
-        .scrollContentBackground(.hidden)
-        .background(Color.clear)
-        .sheet(isPresented: $drawerOpen) { DrawerView(line: line).environmentObject(theme) }
-        .onChange(of: scenePhase) { _, phase in
-            if phase != .active { privateUnlocked = false; drawerOpen = false }
-        }
-        .onDisappear { privateUnlocked = false; drawerOpen = false }
-    }
-
-    // MARK: 小游戏
-
-    private var gamesRow: some View {
-        HStack(spacing: theme.metric.gapM) {
-            gameCard(title: "让柯开一局", note: "玩法和节奏交给他", icon: "dice")
-            gameCard(title: "抽一张牌", note: "只给一个开头", icon: "sparkles.rectangle.stack")
-        }
-    }
-
-    private func gameCard(title: String, note: String, icon: String) -> some View {
-        VStack(alignment: .leading, spacing: theme.metric.gapS) {
-            Image(systemName: icon)
-                .foregroundStyle(theme.effectiveAccent)
-            Text(title)
-                .font(theme.font.sectionTitle)
-                .foregroundStyle(theme.color.textPrimary)
-            Text(note)
-                .font(theme.font.caption)
-                .foregroundStyle(theme.color.textSecondary)
-        }
-        .padding(theme.metric.gapL)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: theme.metric.radiusCard, style: .continuous)
-                .fill(theme.color.card)
-        )
-    }
-
-    // MARK: 私密空间（＝调教室，名称对外不出现）
-
-    private var privateSpaceCard: some View {
-        Button {
-            unlockPrivateSpace()
-        } label: {
-            HStack(spacing: theme.metric.gapM) {
-                Image(systemName: privateUnlocked ? "lock.open" : "faceid")
-                    .foregroundStyle(theme.effectiveAccent)
-                    .frame(width: 42, height: 42)
-                    .background(Circle().stroke(theme.color.accentSoft, lineWidth: 1))
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("私密空间")
-                        .font(theme.font.sectionTitle)
-                        .foregroundStyle(theme.color.textPrimary)
-                    Text("名称已隐藏 · Face ID 或独立密码")
-                        .font(theme.font.caption)
-                        .foregroundStyle(theme.color.textSecondary)
-                }
-
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(theme.font.disclosureIcon)
-                    .foregroundStyle(theme.color.textSecondary)
-            }
-            .padding(theme.metric.gapM)
-            .background(
-                RoundedRectangle(cornerRadius: theme.metric.radiusCard, style: .continuous)
-                    .fill(theme.color.card)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// ⚠️ 解锁失败不给任何提示文案，也不显示里面有什么 —— 别人拿到手机也看不出这儿有东西。
-    private func unlockPrivateSpace() {
-        let ctx = LAContext()
-        ctx.localizedFallbackTitle = "输入密码"
-        var err: NSError?
-        guard ctx.canEvaluatePolicy(.deviceOwnerAuthentication, error: &err) else { return }
-        ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "打开") { ok, _ in
-            guard ok else { return }
-            Task { @MainActor in privateUnlocked = true }
+        .foregroundStyle(ink).background(theme.effectiveBackground)
+        .task { await refresh() }.refreshable { await refresh() }
+        .fullScreenCover(item: $destination, onDismiss: { Task { await refresh() } }) { page in
+            CompanionPages(page: page, line: line).environmentObject(theme)
         }
     }
 
-    // MARK: 抽屉 —— 柯自己写的东西
-    //
-    // 她 2026-08-14 18:45 的原话：「柯自己的想法，就是抽屉啦，不一定是带锁的日记」
-    // 出处：她答卷第 13 题要柯"更在意自己一点，不要憋着"。
-    // 这一格就是柯不憋着的地方。
-
-    private var drawerCard: some View {
-        VStack(alignment: .leading, spacing: theme.metric.gapS) {
-            Text("抽屉")
-                .font(theme.font.sectionTitle)
-                .foregroundStyle(theme.color.textPrimary)
-            Text("柯自己写的东西。你哪天翻进去，就能捡到一件。")
-                .font(theme.font.caption)
-                .foregroundStyle(theme.color.textSecondary)
+    private func heading(_ title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack { Text(title).font(serif(26)); Spacer(); Image(systemName: "chevron.right").font(.system(size: 15, weight: .light)) }
+            Text(subtitle).font(serif(14)).foregroundStyle(ink.opacity(0.65))
         }
-        .padding(theme.metric.gapL)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: theme.metric.radiusCard, style: .continuous)
-                .fill(theme.color.cardElevated)
-        )
     }
-}
 
-#Preview {
-    PlayView().environmentObject(Theme.shared)
+    @MainActor private func refresh() async {
+        guard !loading else { return }
+        loading = true; loadError = nil
+        defer { loading = false }
+        let api = APIClient(baseURL: line.apiBaseURL)
+        do { latestMoment = try await api.fetchMoments().first }
+        catch { loadError = "动态没有加载成功，请重试。" }
+        do { latestDiary = try await api.fetchDiaries().first }
+        catch { loadError = "日记没有加载成功，请重试。" }
+    }
+
 }

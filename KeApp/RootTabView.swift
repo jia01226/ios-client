@@ -50,7 +50,7 @@ struct RootTabView: View {
                 }
             }
             .background {
-                if selection == .us {
+                if selection == .us || selection == .play {
                     theme.effectiveBackground.ignoresSafeArea()
                 }
             }
@@ -87,20 +87,20 @@ struct RootTabView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
         .background {
-            if selection == .us {
+            if selection == .us || selection == .play {
                 theme.effectiveBackground
             } else {
                 FloatingGlassSurface(cornerRadius: theme.metric.radiusDock)
             }
         }
         .overlay(alignment: .top) {
-            if selection == .us {
+            if selection == .us || selection == .play {
                 Rectangle()
                     .fill(theme.color.separator.opacity(0.72))
                     .frame(height: 0.5)
             }
         }
-        .padding(.horizontal, selection == .us ? 0 : theme.metric.pagePadding)
+        .padding(.horizontal, (selection == .us || selection == .play) ? 0 : theme.metric.pagePadding)
         .padding(.top, 6)
         .padding(.bottom, 4)
     }
