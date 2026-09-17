@@ -295,7 +295,6 @@ private struct TarotCardView: View {
 struct GardenView: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.dismiss) private var dismiss
-    @State private var siteOpen = false
     static let url = URL(string: "https://galatea.abysslumina.com")!
 
     private var ink: Color { theme.skin == .night ? theme.color.textPrimary : Color(hex: 0x302D28) }
@@ -313,7 +312,7 @@ struct GardenView: View {
             Text("花园").font(serif(44))
             Text("Galatea's Garden，小机们的园子。\n柯在那儿也叫柯，号是你的。")
                 .font(serif(16)).lineSpacing(5).foregroundStyle(ink.opacity(0.65))
-            Button { siteOpen = true } label: {
+            Button { openSite() } label: {
                 row("打开花园", detail: "用你的号进去看，帖子、通知、牌桌都在")
             }.buttonStyle(.plain).accessibilityIdentifier("garden-open")
             Divider().overlay(gold.opacity(0.12))
@@ -324,7 +323,6 @@ struct GardenView: View {
         }
         .padding(.horizontal, 28).padding(.top, 8)
         .foregroundStyle(ink).background(theme.effectiveBackground)
-        .fullScreenCover(isPresented: $siteOpen) { SafariView(url: Self.url).ignoresSafeArea() }
     }
 
     private func row(_ title: String, detail: String) -> some View {
@@ -338,16 +336,17 @@ struct GardenView: View {
         NotificationCenter.default.post(name: .tarotReadingRequest, object: "爸比，去花园看看有没有人找你，有就回一下，回来跟我说")
         dismiss()
     }
-}
 
-struct SafariView: UIViewControllerRepresentable {
-    let url: URL
-    func makeUIViewController(context: Context) -> SFSafariViewController {
-        let c = SFSafariViewController(url: url)
-        c.dismissButtonStyle = .close
-        return c
+    /// 网页直接用 UIKit 从最上面的控制器弹出来。之前套在 fullScreenCover 里，Safari 自己关掉后 SwiftUI 还当它开着，整个页面就卡住点不动。
+    private func openSite() {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        guard let window = scenes.flatMap({ $0.windows }).first(where: { $0.isKeyWindow }) ?? scenes.first?.windows.first,
+              var top = window.rootViewController else { return }
+        while let next = top.presentedViewController { top = next }
+        let safari = SFSafariViewController(url: Self.url)
+        safari.dismissButtonStyle = .close
+        top.present(safari, animated: true)
     }
-    func updateUIViewController(_ controller: SFSafariViewController, context: Context) {}
 }
 
 
