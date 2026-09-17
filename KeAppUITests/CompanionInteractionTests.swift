@@ -148,6 +148,24 @@ final class CompanionInteractionTests: XCTestCase {
         capture("garden-handoff-chat")
     }
 
+    func testFortuneRunsAndHandsToKe() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-app.skin", "day"]
+        app.launch()
+        XCTAssertTrue(app.buttons["玩"].waitForExistence(timeout: 5))
+        app.buttons["玩"].tap()
+        XCTAssertTrue(app.buttons["play-fortune"].waitForExistence(timeout: 5))
+        app.buttons["play-fortune"].tap()
+        XCTAssertTrue(app.buttons["fortune-run"].waitForExistence(timeout: 5))
+        capture("fortune-form")
+        app.buttons["fortune-run"].tap()
+        XCTAssertTrue(app.buttons["fortune-ask-ke"].waitForExistence(timeout: 15))
+        app.buttons["fortune-ask-ke"].tap()
+        XCTAssertTrue(app.buttons["柯"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "帮我看看")).firstMatch.waitForExistence(timeout: 8))
+        capture("fortune-handoff-chat")
+    }
+
     func testTarotCardMessageOpensEachCard() {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-tarot-cards", "-ui-test-companion", "-app.skin", "day"]

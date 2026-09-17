@@ -814,6 +814,16 @@ actor APIClient {
         catch { throw APIError.decoding(error) }
     }
 
+    /// 算命：服务器排盘落账，返回摘要和盘面；柯只说不算。
+    func runFortune(kind: String, inputs: [String: Any]) async throws -> FortuneResult {
+        var request = try makeRequest(path: "/api/fortune/run", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["kind": kind, "inputs": inputs])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, _) = try await perform(request)
+        do { return try decoder.decode(FortuneResult.self, from: data) }
+        catch { throw APIError.decoding(error) }
+    }
+
     func addAnniversary(name: String, date: String, emoji: String = "💞") async throws {
         try await writeResource("/api/anniversaries", body: ["name": name, "date": date, "emoji": emoji])
     }

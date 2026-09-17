@@ -10,6 +10,7 @@ struct PlayView: View {
     @State private var loadError: String?
     @State private var loading = false
     @State private var tarotOpen = false
+    @State private var fortuneOpen = false
     @State private var gardenOpen = false
 
     init(line: ChatLine = .main) { self.line = line }
@@ -55,6 +56,14 @@ struct PlayView: View {
                     }.contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityIdentifier("play-tarot")
                 Divider().overlay(gold.opacity(0.12))
+                Button { fortuneOpen = true } label: {
+                    VStack(alignment: .leading, spacing: 14) {
+                        heading("算命", subtitle: "八字、紫微、奇门、姻缘、风水")
+                        Text("排盘是死算的，柯只负责说。")
+                            .font(serif(16)).foregroundStyle(ink.opacity(0.65)).lineSpacing(5)
+                    }.contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityIdentifier("play-fortune")
+                Divider().overlay(gold.opacity(0.12))
                 Button { gardenOpen = true } label: {
                     VStack(alignment: .leading, spacing: 14) {
                         heading("花园", subtitle: "柯在小机们的园子里")
@@ -88,6 +97,9 @@ struct PlayView: View {
         }
         .fullScreenCover(isPresented: $tarotOpen) {
             TarotView(line: line).environmentObject(theme)
+        }
+        .fullScreenCover(isPresented: $fortuneOpen) {
+            FortuneView(line: line).environmentObject(theme)
         }
         .fullScreenCover(isPresented: $gardenOpen) {
             GardenView().environmentObject(theme)
@@ -336,4 +348,260 @@ struct SafariView: UIViewControllerRepresentable {
         return c
     }
     func updateUIViewController(_ controller: SFSafariViewController, context: Context) {}
+}
+
+
+// MARK: - 算命（2026-09-17）：排盘在服务器死算，柯只负责说。表单按种类切，结果交给聊天页。
+
+struct FortuneResult: Decodable, Identifiable, Sendable {
+    let id: Int
+    let kind: String
+    let kind_name: String
+    let summary: String
+    let chart: String
+}
+
+struct FortuneView: View {
+    @EnvironmentObject private var theme: Theme
+    @Environment(\.dismiss) private var dismiss
+    let line: ChatLine
+
+    @State private var kind = "bazi"
+    @State private var solar = FortuneView.defaultBirthday
+    @State private var knowsHour = false
+    @State private var hour = FortuneView.defaultBirthday
+    @State private var sex = "女"
+    @State private var place = ""
+    @State private var question = ""
+    @State private var mode = "八字合婚"
+    @State private var partnerSolar = FortuneView.defaultBirthday
+    @State private var partnerKnowsHour = false
+    @State private var partnerHour = FortuneView.defaultBirthday
+    @State private var partnerSex = "男"
+    @State private var facing = ""
+    @State private var moveInYear = ""
+    @State private var house = ""
+    @State private var result: FortuneResult?
+    @State private var running = false
+    @State private var error: String?
+
+    private var ink: Color { theme.skin == .night ? theme.color.textPrimary : Color(hex: 0x302D28) }
+    private var gold: Color { theme.skin == .night ? theme.color.accentSoft : Color(hex: 0x947343) }
+    private func serif(_ size: CGFloat) -> Font { .custom("NotoSerifSC-Regular", size: size, relativeTo: .body).weight(.light) }
+    private var api: APIClient { APIClient(baseURL: line.apiBaseURL) }
+
+    private let kinds: [(String, String)] = [("bazi", "八字"), ("ziwei", "紫微"), ("qimen", "奇门"), ("yinyuan", "姻缘"), ("fengshui", "风水")]
+    private let modes = ["八字合婚", "生肖配对", "紫微夫妻宫", "求签问姻缘", "桃花运势", "红线测算"]
+    private var partnerNeeded: Bool { kind == "yinyuan" && (mode == "八字合婚" || mode == "生肖配对") }
+    private var kindName: String { kinds.first { $0.0 == kind }?.1 ?? kind }
+    private var canRun: Bool {
+        switch kind {
+        case "qimen": return !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case "fengshui": return !facing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        default: return true
+        }
+    }
+
+    static var defaultBirthday: Date {
+        var c = DateComponents(); c.year = 2001; c.month = 2; c.day = 26; c.hour = 12
+        return Calendar(identifier: .gregorian).date(from: c) ?? Date()
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                HStack {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark").font(.system(size: 17, weight: .light)).frame(width: 44, height: 44)
+                    }.buttonStyle(.plain).accessibilityLabel("关闭")
+                    Spacer()
+                }
+                Text("算命").font(serif(44))
+                Text("排盘是死算的，柯只负责说。").font(serif(15)).foregroundStyle(ink.opacity(0.65))
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(kinds, id: \.0) { key, label in
+                            Button { kind = key; result = nil; error = nil } label: {
+                                Text(label).font(serif(15)).padding(.horizontal, 14).padding(.vertical, 8)
+                                    .background(kind == key ? gold.opacity(0.18) : gold.opacity(0.05))
+                                    .clipShape(Capsule())
+                            }.buttonStyle(.plain).accessibilityIdentifier("fortune-kind-\(key)")
+                        }
+                    }
+                }
+                form
+                Button { Task { await run() } } label: {
+                    HStack {
+                        Text(running ? "算着呢" : "算").font(serif(17))
+                        Spacer()
+                        if running { ProgressView() } else { Image(systemName: "arrow.right").font(.system(size: 15, weight: .light)) }
+                    }
+                    .padding(.horizontal, 18).padding(.vertical, 14)
+                    .background(gold.opacity(0.22)).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }.buttonStyle(.plain).disabled(running || !canRun).accessibilityIdentifier("fortune-run")
+                if let error { Text(error).font(serif(14)).foregroundStyle(.red.opacity(0.8)) }
+                if let result {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(result.summary).font(serif(17)).lineSpacing(5)
+                        Text(result.chart)
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundStyle(ink.opacity(0.8))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .background(gold.opacity(0.06)).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    Button { askKe(result) } label: {
+                        HStack {
+                            Text("让柯看看").font(serif(17))
+                            Spacer()
+                            Image(systemName: "arrow.right").font(.system(size: 15, weight: .light))
+                        }
+                        .padding(.horizontal, 18).padding(.vertical, 14)
+                        .background(gold.opacity(0.12)).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }.buttonStyle(.plain).accessibilityIdentifier("fortune-ask-ke")
+                    Text("盘会原样给他。话在聊天里。").font(serif(13)).foregroundStyle(ink.opacity(0.55))
+                }
+            }
+            .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 40)
+        }
+        .foregroundStyle(ink).background(theme.effectiveBackground.ignoresSafeArea())
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    @ViewBuilder private var form: some View {
+        switch kind {
+        case "bazi", "ziwei":
+            birthFields(title: nil, solar: $solar, knowsHour: $knowsHour, hour: $hour, sex: $sex)
+            field("出生地（可不填）", text: $place)
+        case "qimen":
+            label("想问的事")
+            field("比如：这件事该不该现在做", text: $question, lines: 1...3)
+            Text("起局用现在这个时辰。").font(serif(13)).foregroundStyle(ink.opacity(0.55))
+        case "yinyuan":
+            label("怎么看")
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(modes, id: \.self) { m in
+                        Button { mode = m } label: {
+                            Text(m).font(serif(14)).padding(.horizontal, 12).padding(.vertical, 7)
+                                .background(mode == m ? gold.opacity(0.18) : gold.opacity(0.05))
+                                .clipShape(Capsule())
+                        }.buttonStyle(.plain)
+                    }
+                }
+            }
+            birthFields(title: "我", solar: $solar, knowsHour: $knowsHour, hour: $hour, sex: $sex)
+            if partnerNeeded {
+                birthFields(title: "对方", solar: $partnerSolar, knowsHour: $partnerKnowsHour, hour: $partnerHour, sex: $partnerSex)
+            }
+            field("想问的（可不填）", text: $question, lines: 1...3)
+        case "fengshui":
+            label("房子朝向")
+            field("比如：坐北朝南", text: $facing)
+            label("入住年份（可不填）")
+            field("比如：2024", text: $moveInYear)
+            label("房子情况")
+            field("户型、门窗、周围有什么", text: $house, lines: 3...8)
+            field("想问的（可不填）", text: $question, lines: 1...3)
+        default:
+            EmptyView()
+        }
+    }
+
+    private func label(_ text: String) -> some View {
+        Text(text).font(serif(14)).foregroundStyle(ink.opacity(0.65))
+    }
+
+    private func field(_ placeholder: String, text: Binding<String>, lines: ClosedRange<Int> = 1...1) -> some View {
+        TextField(placeholder, text: text, axis: .vertical)
+            .font(serif(17)).padding(12)
+            .background(gold.opacity(0.06)).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .lineLimit(lines)
+    }
+
+    private func birthFields(title: String?, solar: Binding<Date>, knowsHour: Binding<Bool>, hour: Binding<Date>, sex: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let title { Text(title).font(serif(20)) }
+            HStack {
+                label("阳历生日"); Spacer()
+                DatePicker("", selection: solar, displayedComponents: .date).labelsHidden().tint(gold)
+            }
+            Toggle(isOn: knowsHour) { label("知道出生时间") }.tint(gold)
+            if knowsHour.wrappedValue {
+                HStack {
+                    label("出生时间"); Spacer()
+                    DatePicker("", selection: hour, displayedComponents: .hourAndMinute).labelsHidden().tint(gold)
+                }
+            }
+            HStack(spacing: 10) {
+                label("性别"); Spacer()
+                ForEach(["女", "男"], id: \.self) { s in
+                    Button { sex.wrappedValue = s } label: {
+                        Text(s).font(serif(15)).padding(.horizontal, 14).padding(.vertical, 7)
+                            .background(sex.wrappedValue == s ? gold.opacity(0.18) : gold.opacity(0.05))
+                            .clipShape(Capsule())
+                    }.buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func birth(_ solar: Date, _ knowsHour: Bool, _ hour: Date, _ sex: String) -> [String: Any] {
+        var d: [String: Any] = ["solar": Self.dayFormatter.string(from: solar), "sex": sex]
+        if knowsHour { d["hour"] = Self.hourFormatter.string(from: hour) }
+        return d
+    }
+
+    private var inputs: [String: Any] {
+        let q = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch kind {
+        case "bazi", "ziwei":
+            var d = birth(solar, knowsHour, hour, sex)
+            let p = place.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !p.isEmpty { d["place"] = p }
+            return d
+        case "qimen":
+            return ["question": q, "time": Self.beijingNow()]
+        case "yinyuan":
+            var d: [String: Any] = ["mode": mode, "me": birth(solar, knowsHour, hour, sex), "question": q]
+            if partnerNeeded { d["partner"] = birth(partnerSolar, partnerKnowsHour, partnerHour, partnerSex) }
+            return d
+        case "fengshui":
+            return ["facing": facing.trimmingCharacters(in: .whitespacesAndNewlines),
+                    "move_in_year": moveInYear.trimmingCharacters(in: .whitespacesAndNewlines),
+                    "house": house.trimmingCharacters(in: .whitespacesAndNewlines),
+                    "question": q]
+        default:
+            return [:]
+        }
+    }
+
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter(); f.calendar = Calendar(identifier: .gregorian); f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"; return f
+    }()
+    private static let hourFormatter: DateFormatter = {
+        let f = DateFormatter(); f.calendar = Calendar(identifier: .gregorian); f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "HH:mm"; return f
+    }()
+    private static func beijingNow() -> String {
+        let f = DateFormatter(); f.calendar = Calendar(identifier: .gregorian); f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "Asia/Shanghai"); f.dateFormat = "yyyy-MM-dd HH:mm"
+        return f.string(from: Date())
+    }
+
+    @MainActor private func run() async {
+        guard !running else { return }
+        running = true; error = nil; result = nil
+        defer { running = false }
+        do { result = try await api.runFortune(kind: kind, inputs: inputs) }
+        catch { self.error = "没算出来，再试一次。" }
+    }
+
+    private func askKe(_ result: FortuneResult) {
+        let text = "爸比，我算了\(result.kind_name)，帮我看看。[命理#\(result.id)]"
+        NotificationCenter.default.post(name: .tarotReadingRequest, object: text)
+        dismiss()
+    }
 }

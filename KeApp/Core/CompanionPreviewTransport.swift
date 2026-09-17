@@ -33,6 +33,10 @@ final class CompanionPreviewTransport: URLProtocol {
             code = 200
             body = #"{"id":7,"question":"他今晚会不会来找我","spread":"three","spread_name":"三牌阵","cards":[{"position":"过去(根源/背景)","name":"The Moon","cn":"月亮","type":"Major","reversed":true,"image":"tarot/cards/major18.webp"},{"position":"现在(当下状态)","name":"Two of Cups","cn":"圣杯二","type":"Minor","reversed":false,"image":"tarot/cards/cups02.webp"},{"position":"未来(走向/建议)","name":"The Sun","cn":"太阳","type":"Major","reversed":false,"image":"tarot/cards/major19.webp"}]}"#
         }
+        else if path.hasSuffix("/fortune/run") {
+            code = 200
+            body = ##"{"id":7,"kind":"bazi","kind_name":"八字","summary":"庚金日主，生于寅月。","chart":"# 八字排盘\n\n| 年柱 | 月柱 | 日柱 | 时柱 |\n|---|---|---|---|\n| 辛巳 | 庚寅 | 庚辰 | 壬午 |\n\n- 日主：庚金\n- 大运：己丑 戊子 丁亥"}"##
+        }
         else if path.hasSuffix("/diary/delete"), ProcessInfo.processInfo.arguments.contains("-ui-test-diary-failure") {
             code = 503; body = #"{"error":"preview failure"}"#
         }
