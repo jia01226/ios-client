@@ -3,7 +3,7 @@ import Foundation
 enum TimeEventKind: String, CaseIterable, Identifiable {
     case reminder = "提醒", shift = "排班", period = "生理期", intimate = "亲密"
     var id: String { rawValue }
-    var isPrivate: Bool { self == .period || self == .intimate }
+    var isPrivate: Bool { self == .intimate }
 }
 
 struct TimeEntry: Identifiable {

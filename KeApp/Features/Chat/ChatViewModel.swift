@@ -98,6 +98,7 @@ final class ChatViewModel: ObservableObject {
         case sendStability
         case modelGroups
         case replyFailure
+        case tarotCards
     }
 
     private var uiTestFixture: UITestFixture?
@@ -108,7 +109,22 @@ final class ChatViewModel: ObservableObject {
         cache = ChatCache(fileName: line.cacheFileName)
 #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
-        if arguments.contains("-ui-test-reply-failure") {
+        if arguments.contains("-ui-test-tarot-cards") {
+            uiTestFixture = .tarotCards
+            phase = .ready
+            sessionID = 1
+            let base = "https://jiagude.love/ke-test1/tarot/cards/"
+            messages = [
+                Message(id: "ui-test-tarot-text", serverID: 501, sender: .ke,
+                        text: "想看看你今晚睡不睡得着。\n抽了三牌阵。月亮逆位，星币骑士逆位，星币王后逆位。", time: .now),
+                Message(id: "ui-test-tarot-cards", serverID: 502, sender: .ke, text: "", time: .now,
+                        attachments: [
+                            ChatAttachment(url: base + "major18.webp", name: "月亮·逆位", kind: "image"),
+                            ChatAttachment(url: base + "pentacles12.webp", name: "星币骑士·逆位", kind: "image"),
+                            ChatAttachment(url: base + "pentacles13.webp", name: "星币王后·逆位", kind: "image"),
+                        ]),
+            ]
+        } else if arguments.contains("-ui-test-reply-failure") {
             uiTestFixture = .replyFailure
             phase = .ready
             sessionID = 1

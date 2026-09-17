@@ -33,6 +33,15 @@ struct TimeHomeView: View {
 
     private var entries: [TimeEntry] { data.entries }
     private var dayEntries: [TimeEntry] { model.entries(on: selected, in: entries, kind: filter) }
+    private var selectedShift: String? {
+        data.shifts.first { model.calendar.isDate($0.date, inSameDayAs: selected) }?.title
+            .components(separatedBy: " · ").first
+    }
+    private var selectedShiftNote: String {
+        guard let title = data.shifts.first(where: { model.calendar.isDate($0.date, inSameDayAs: selected) })?.title else { return "" }
+        let parts = title.components(separatedBy: " · ")
+        return parts.count > 1 ? parts.dropFirst().joined(separator: " · ") : ""
+    }
 
     var body: some View {
         GeometryReader { viewport in
@@ -72,7 +81,7 @@ struct TimeHomeView: View {
                             }
                         }
                     }
-                    .refreshable { await data.refresh() }
+                    .refreshable { await refreshCalendar() }
                     .coordinateSpace(name: "time-scroll")
                     .scrollIndicators(.hidden)
                     .modifier(TimeScrollTracking { trackScroll($0, height: height) })
@@ -103,7 +112,7 @@ struct TimeHomeView: View {
                             }
                             Button { if calendarVisible { showEditor = true } else { showAnniversaries = true } } label: {
                                 Image(systemName: "plus").font(.system(size: 17, weight: .light)).frame(width: 44, height: 44)
-                            }.accessibilityLabel(calendarVisible ? "添加日期记录" : "管理纪念日")
+                            }.accessibilityLabel(calendarVisible ? "修改排班" : "管理纪念日")
                         }
                         .font(song(15))
                         .padding(.leading, 28).padding(.trailing, 12)
@@ -113,18 +122,21 @@ struct TimeHomeView: View {
             .frame(width: viewport.size.width, height: height, alignment: .top)
             .foregroundStyle(ink)
             .tint(gold)
-            .task { await data.refresh() }
+            .task { await refreshCalendar() }
             .sheet(isPresented: $showAnniversaries, onDismiss: { Task { await data.refresh() } }) {
                 CompanionPages(page: .anniversaries, line: line).environmentObject(theme)
             }
             .sheet(isPresented: $showEditor, onDismiss: { Task { await data.refresh(); if showPrivate { await data.loadPrivate(date: format(selected, "yyyy-MM-dd")) } } }) {
-                TimeRecordEditor(line: line, date: selected)
+                TimeRecordEditor(line: line, date: selected, currentShift: selectedShift, currentNote: selectedShiftNote)
             }
             .onChange(of: showPrivate) { _, expanded in
                 if expanded { Task { await data.loadPrivate(date: format(selected, "yyyy-MM-dd")) } }
                 else { data.hidePrivate() }
             }
             .onChange(of: scenePhase) { _, phase in if phase != .active { showPrivate = false; data.hidePrivate() } }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { Task { await refreshCalendar() } }
+            }
             .onChange(of: active) { _, visible in if !visible { showPrivate = false; data.hidePrivate() } }
             .alert("删除这条记录？", isPresented: Binding(get: { deleteEntry != nil }, set: { if !$0 { deleteEntry = nil } })) {
                 Button("取消", role: .cancel) { deleteEntry = nil }
@@ -251,16 +263,13 @@ struct TimeHomeView: View {
             }
             .foregroundStyle(ink)
             calendarGrid
-            ScrollView(.horizontal) {
-                HStack(spacing: 18) {
-                    filterButton(nil)
-                    ForEach(TimeEventKind.allCases) { filterButton($0) }
-                }
-            }.scrollIndicators(.hidden)
             HStack {
                 Text(format(selected, "M月d日 · EEEE")).font(song(21))
                     .accessibilityIdentifier("selected-date")
                 Spacer()
+                Button("排班") { showEditor = true }
+                    .font(song(14)).frame(minWidth: 44, minHeight: 44)
+                    .accessibilityIdentifier("edit-selected-shift")
                 Button("今天") {
                     selected = CompanionDate.calendar.startOfDay(for: .now)
                     month = selected
@@ -269,9 +278,9 @@ struct TimeHomeView: View {
             dayDetail
             if let error = data.error { Text(error).font(song(13)).foregroundStyle(secondary) }
             if let actionError { Text(actionError).font(song(13)) }
-            Button("添加日期记录") { showEditor = true }.font(song(15)).frame(minHeight: 44)
         }
         .padding(.horizontal, 26)
+        .task(id: format(month, "yyyy-MM")) { await loadMonthCounts() }
     }
 
     private var calendarGrid: some View {
@@ -285,19 +294,23 @@ struct TimeHomeView: View {
                 ForEach(Array(model.monthDays(month).enumerated()), id: \.offset) { _, date in
                     if let date {
                         let isSelected = model.calendar.isDate(date, inSameDayAs: selected)
-                        let categories = Set(model.entries(on: date, in: entries, kind: filter).map(\.kind))
-                        Button { selected = date } label: {
-                            VStack(spacing: 4) {
+                        let dateEntries = model.entries(on: date, in: entries, kind: filter)
+                        let isPeriod = dateEntries.contains { $0.kind == .period }
+                        Button {
+                            selected = date
+                            showEditor = true
+                        } label: {
+                            VStack(spacing: 2) {
                                 Text("\(model.calendar.component(.day, from: date))")
                                     .font(.custom("Didot", size: 20, relativeTo: .body))
-                                    .frame(width: 34, height: 34)
+                                    .frame(width: 32, height: 28)
                                     .background { if isSelected { Circle().stroke(gold.opacity(0.8), lineWidth: 1) } }
-                                HStack(spacing: 3) {
-                                    ForEach(TimeEventKind.allCases.filter { categories.contains($0) }) { kind in
-                                        Circle().fill(kindColor(kind)).frame(width: 3, height: 3)
-                                    }
-                                }.frame(height: 4)
-                            }.frame(maxWidth: .infinity, minHeight: 46)
+                                calendarLabels(dateEntries)
+                            }
+                            .padding(.vertical, 3)
+                            .frame(maxWidth: .infinity, minHeight: 62, alignment: .top)
+                            .background(isPeriod ? kindColor(.period).opacity(0.13) : Color.clear,
+                                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -318,23 +331,61 @@ struct TimeHomeView: View {
                 Text("这一天没有安排").font(song(17)).foregroundStyle(secondary)
                     .accessibilityIdentifier("empty-day")
             }
-            ForEach(dayEntries.filter { !$0.kind.isPrivate }) { row($0) }
+            ForEach(dayEntries.filter { !$0.kind.isPrivate && $0.kind != .period }) { row($0) }
             DisclosureGroup(isExpanded: $showPrivate) {
                 VStack(alignment: .leading, spacing: 20) {
                     if let error = data.privateError {
                         Text(error).font(song(14))
                         Button("重试") { Task { await data.loadPrivate(date: format(selected, "yyyy-MM-dd")) } }
                     }
-                    ForEach(dayEntries.filter { $0.kind.isPrivate }) { row($0) }
-                    if dayEntries.filter({ $0.kind.isPrivate }).isEmpty && data.privateError == nil {
+                    ForEach(data.intimate.filter { model.calendar.isDate($0.date, inSameDayAs: selected) }) { row($0) }
+                    if data.intimate.isEmpty && data.privateError == nil {
                         Text("这一天没有私密记录").font(song(14))
                     }
                 }.padding(.top, 18)
             } label: {
-                Label("私密记录 · 点开查看", systemImage: "lock")
+                Label(intimateLabel, systemImage: "lock")
                     .font(song(16)).foregroundStyle(secondary).frame(minHeight: 44)
             }.accessibilityIdentifier("private-records")
         }
+    }
+
+    @ViewBuilder private func calendarLabels(_ values: [TimeEntry]) -> some View {
+        let shifts = values.filter { $0.kind == .shift }
+        let intimate = values.first { $0.kind == .intimate }
+        VStack(spacing: 1) {
+            if let shift = shifts.first {
+                Text(shortShift(shift.title)).foregroundStyle(ink)
+                    .background(kindColor(.shift).opacity(0.16), in: Capsule())
+            }
+            if let intimate { Text(intimate.title.replacingOccurrences(of: "亲密 ", with: "♡" )).foregroundStyle(kindColor(.intimate)) }
+        }
+        .font(.system(size: 8, weight: .medium))
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+    }
+
+    private var intimateLabel: String {
+        dayEntries.first(where: { $0.kind == .intimate })?.title.appending(" · 点开查看")
+            ?? "亲密记录 · 点开查看"
+    }
+
+    private func shortShift(_ value: String) -> String {
+        let base = value.components(separatedBy: " · ").first ?? value
+        return base.replacingOccurrences(of: "早班+", with: "早+")
+            .replacingOccurrences(of: "夜班", with: "上夜")
+    }
+
+    private func loadMonthCounts() async {
+        let start = model.monthStart(month)
+        let next = model.movingMonth(start, by: 1)
+        let end = model.calendar.date(byAdding: .day, value: -1, to: next) ?? next
+        await data.loadIntimateCounts(start: format(start, "yyyy-MM-dd"), end: format(end, "yyyy-MM-dd"))
+    }
+
+    private func refreshCalendar() async {
+        await data.refresh()
+        await loadMonthCounts()
     }
 
     private func row(_ entry: TimeEntry) -> some View {
@@ -348,7 +399,7 @@ struct TimeHomeView: View {
         }
         .accessibilityElement(children: .combine)
         .contextMenu {
-            if entry.kind != .reminder {
+            if entry.kind == .shift {
                 Button("删除", role: .destructive) { deleteEntry = entry }
             }
         }

@@ -405,6 +405,15 @@ actor APIClient {
         }
     }
 
+    func usageDashboard() async throws -> UsageDashboardReport {
+        let (data, _) = try await perform(try makeRequest(path: "/api/usage/dashboard"))
+        do {
+            return try decoder.decode(UsageDashboardReport.self, from: data)
+        } catch {
+            throw APIError.decoding(error)
+        }
+    }
+
     func selectModel(sessionID: Int, model: String) async throws -> ActiveChatSession {
         var request = try makeRequest(path: "/api/sessions/active", method: "POST")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
@@ -711,6 +720,17 @@ actor APIClient {
         return try decoder.decode(MemoryRetrievalTrace.self, from: data)
     }
 
+    func submitMemoryRetrievalFeedback(traceID: String, kind: MemoryFeedbackKind,
+                                       candidateID: String?, note: String) async throws -> MemoryFeedbackReceipt {
+        var request = try makeRequest(path: "/api/memory/retrieval/feedback", method: "POST")
+        var body: [String: Any] = ["trace_id": traceID, "kind": kind.rawValue, "note": note]
+        if let candidateID { body["candidate_id"] = candidateID }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, _) = try await perform(request)
+        return try decoder.decode(MemoryFeedbackReceipt.self, from: data)
+    }
+
     func appQuotes() async throws -> AppQuotePage {
         let (data, _) = try await perform(try makeRequest(path: "/api/memory/app-quotes"))
         return try decoder.decode(AppQuotePage.self, from: data)
@@ -784,6 +804,16 @@ actor APIClient {
         try await readResource("/api/moments")
     }
 
+    /// 塔罗：服务器抽牌落账，返回牌面；柯只断不抽。
+    func drawTarot(question: String, spread: String) async throws -> TarotCast {
+        var request = try makeRequest(path: "/api/tarot/draw", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["question": question, "spread": spread])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, _) = try await perform(request)
+        do { return try decoder.decode(TarotCast.self, from: data) }
+        catch { throw APIError.decoding(error) }
+    }
+
     func addAnniversary(name: String, date: String, emoji: String = "💞") async throws {
         try await writeResource("/api/anniversaries", body: ["name": name, "date": date, "emoji": emoji])
     }
@@ -851,6 +881,14 @@ actor APIClient {
             URLQueryItem(name: "start", value: date), URLQueryItem(name: "end", value: date)])
         let (data, _) = try await perform(request)
         do { return try decoder.decode([RemotePrivateRecord].self, from: data) }
+        catch { throw APIError.decoding(error) }
+    }
+
+    func fetchIntimateCounts(start: String, end: String) async throws -> [RemoteIntimateCount] {
+        let request = try makeRequest(path: "/api/companion/intimate-counts", queryItems: [
+            URLQueryItem(name: "start", value: start), URLQueryItem(name: "end", value: end)])
+        let (data, _) = try await perform(request)
+        do { return try decoder.decode([RemoteIntimateCount].self, from: data) }
         catch { throw APIError.decoding(error) }
     }
 

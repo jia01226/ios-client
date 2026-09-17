@@ -62,7 +62,9 @@ struct MemoriesView: View {
                     .accessibilityIdentifier("memory-usage-entry")
 
                     NavigationLink {
-                        MemoryRetrievalView(line: review.line)
+                        MemoryRetrievalView(line: review.line) {
+                            Task { await review.sync() }
+                        }
                     } label: {
                         Label("记忆怎么找的", systemImage: "magnifyingglass")
                             .font(theme.font.sectionTitle)

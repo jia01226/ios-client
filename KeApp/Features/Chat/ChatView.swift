@@ -21,7 +21,9 @@ struct ChatView: View {
     @StateObject private var recentPhotos = RecentPhotosStore()
     @State private var draft = ""
     @State private var showingCallPlaceholder = false
+    @State private var tarotOpen = false
     @State private var showingMemoryUsage = false
+    @State private var showingUsageDashboard = false
     @State private var quoteToSave: Message?
     @State private var messageToRecall: Message?
     @State private var recallConfirmation = false
@@ -66,8 +68,15 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.clear)
         .animation(.easeInOut(duration: 0.6), value: theme.isBedroom)
+        .onReceive(NotificationCenter.default.publisher(for: .tarotReadingRequest)) { notification in
+            guard let text = notification.object as? String, !text.isEmpty else { return }
+            Task { await vm.send(text) }
+        }
         .sheet(isPresented: $showingMemoryUsage) {
             NavigationStack { MemoryUsageView(line: line).environmentObject(theme) }
+        }
+        .sheet(isPresented: $showingUsageDashboard) {
+            NavigationStack { UsageDashboardView(line: line).environmentObject(theme) }
         }
         .sheet(item: $quoteToSave) { message in
             AppQuoteSaveView(line: line, message: message)
@@ -198,6 +207,9 @@ struct ChatView: View {
                 .presentationDragIndicator(.visible)
                 .presentationContentInteraction(.scrolls)
         }
+        .fullScreenCover(isPresented: $tarotOpen) {
+            TarotView(line: line).environmentObject(theme)
+        }
         .fullScreenCover(item: $previewedImage) { attachment in
             AttachmentImageViewer(attachment: attachment) {
                 previewedImage = nil
@@ -247,6 +259,11 @@ struct ChatView: View {
                 Image(systemName: "moon").font(.title3)
                     .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
                 Spacer()
+                Button { tarotOpen = true } label: {
+                    Image(systemName: "sparkles").font(.title3)
+                        .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
+                        .background(FloatingGlassSurface(cornerRadius: 22))
+                }.buttonStyle(.plain).accessibilityLabel("塔罗").accessibilityIdentifier("chat-tarot")
                 Button { showingCallPlaceholder = true } label: {
                     Image(systemName: "phone").font(.title3)
                         .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
@@ -1155,6 +1172,24 @@ struct ChatView: View {
                         .accessibilityIdentifier("model-quota-error")
                 }
 
+                Button { showingUsageDashboard = true } label: {
+                    HStack(spacing: theme.metric.gapS) {
+                        Image(systemName: "chart.line.uptrend.xyaxis")
+                        VStack(alignment: .leading, spacing: theme.metric.gapXS) {
+                            Text("用量与额度").font(theme.font.sectionTitle)
+                            Text("查看小时额度、Token 和调用趋势")
+                                .font(.caption).foregroundStyle(theme.color.textSecondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .foregroundStyle(theme.color.textSecondary)
+                    }
+                    .frame(minHeight: theme.metric.touchTarget)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("open-usage-dashboard")
+
                 ForEach(modelSections) { section in
                     modelDisclosure(section)
                 }
@@ -1225,11 +1260,6 @@ struct ChatView: View {
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 0) {
-                    if section.id == "deepseek" {
-                        Button("查看记忆整理用量") { showingMemoryUsage = true }
-                            .font(theme.font.body)
-                            .frame(minHeight: theme.metric.touchTarget)
-                    }
                     if let quota = modelQuotaGroup(for: section.id), !quota.windows.isEmpty {
                         modelQuotaDetails(quota)
                     }

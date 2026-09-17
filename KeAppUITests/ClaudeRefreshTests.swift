@@ -3,6 +3,27 @@ import XCTest
 final class ClaudeRefreshTests: XCTestCase {
     override func setUpWithError() throws { continueAfterFailure = false }
 
+    func testUsageDashboardShowsQuotaAndUsage() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-test-model-groups", "-ui-test-usage-dashboard", "-app.skin", "day"]
+        app.launch()
+        XCTAssertTrue(app.buttons["打开聊天设置"].waitForExistence(timeout: 5))
+        app.buttons["打开聊天设置"].tap()
+        XCTAssertTrue(app.buttons["模型选择"].waitForExistence(timeout: 2))
+        app.buttons["模型选择"].tap()
+        let open = app.buttons["open-usage-dashboard"]
+        XCTAssertTrue(open.waitForExistence(timeout: 2))
+        open.tap()
+        XCTAssertTrue(app.navigationBars["用量与额度"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["5 小时额度"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["API 等价费用估算"].exists)
+        XCTAssertTrue(app.staticTexts["近 30 天"].exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "usage-dashboard"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
     func testClearWindowRemovesVisibleHistory() {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-model-groups"]

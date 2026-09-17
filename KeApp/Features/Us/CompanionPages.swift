@@ -9,6 +9,7 @@ struct CompanionPages: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private var journalInk: Color { theme.skin == .night ? theme.color.textPrimary : Color(hex: 0x302D28) }
     let page: CompanionPage
     private let api: APIClient
@@ -41,7 +42,20 @@ struct CompanionPages: View {
     @State private var diaryHasMore = false
     @State private var diaryRequestID = UUID()
     @State private var diarySearchTask: Task<Void, Never>?
+    private enum DiaryRetry { case load(Bool), delete(Int), comments(Int) }
+    @State private var diaryRetry: DiaryRetry?
+    @State private var diarySearchPresented = false
+    @State private var diaryFilter = "全部"
+    @State private var selectedDiaryID: Int?
+    @State private var selectedMonth: String?
+    @State private var showingDiaryComments = false
+    @FocusState private var diarySearchFocused: Bool
     private let diaryPageSize = 50
+    private var diaryPaper: Color { theme.skin == .night ? theme.effectiveBackground : Color(hex: 0xFFFCF7) }
+    private var diaryMuted: Color { theme.skin == .night ? theme.color.textSecondary : Color(hex: 0x77716A) }
+    private func diaryFont(_ size: CGFloat, _ style: Font.TextStyle = .body) -> Font {
+        .custom("NotoSerifSC-Regular", size: size, relativeTo: style)
+    }
 
     init(page: CompanionPage, line: ChatLine) {
         self.page = page
@@ -51,7 +65,9 @@ struct CompanionPages: View {
     var body: some View {
         NavigationStack {
             Group {
-                if page == .diary || page == .moments {
+                if page == .diary {
+                    diaryIndex
+                } else if page == .moments {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 26) {
                             if let error { Text(error); Button("重新加载") { Task { await reload() } } }
@@ -79,10 +95,10 @@ struct CompanionPages: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(theme.effectiveBackground)
+            .background(page == .diary ? diaryPaper : theme.effectiveBackground)
             .font(page == .diary || page == .moments ? .custom("NotoSerifSC-Regular", size: 17, relativeTo: .body) : theme.font.body)
             .tint(theme.effectiveAccent)
-            .navigationTitle(page.rawValue)
+            .navigationTitle(page == .diary ? "枕边日记" : page.rawValue)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -97,6 +113,10 @@ struct CompanionPages: View {
                     Button(page == .diary ? "写一篇" : "添加", systemImage: page == .diary ? "square.and.pencil" : "plus") { editingID = nil; operationID = UUID().uuidString; title = ""; content = ""; editing = true }.disabled(saving)
                 }
             }
+            .toolbar(page == .diary ? .hidden : .visible, for: .navigationBar)
+            .navigationDestination(isPresented: Binding(get: { selectedDiaryID != nil }, set: { if !$0 { selectedDiaryID = nil } })) {
+                diaryReader
+            }
             .refreshable {
                 if page == .diary { await reloadDiaries(reset: true) }
                 else { await reload() }
@@ -107,6 +127,9 @@ struct CompanionPages: View {
             }
             .onChange(of: diaryQuery) { _, _ in
                 guard page == .diary else { return }
+                selectedMonth = nil
+                diaryRequestID = UUID()
+                loading = true
                 diarySearchTask?.cancel()
                 diarySearchTask = Task {
                     try? await Task.sleep(for: .milliseconds(300))
@@ -114,9 +137,13 @@ struct CompanionPages: View {
                     await reloadDiaries(reset: true)
                 }
             }
+            .onChange(of: diaryFilter) { _, _ in
+                Task { await loadAuthorPagesIfNeeded() }
+            }
+            .onChange(of: loading) { _, isLoading in
+                if !isLoading { Task { await loadAuthorPagesIfNeeded() } }
+            }
             .onDisappear { diarySearchTask?.cancel() }
-            .sheet(isPresented: $editing) { editor }
-            .sheet(isPresented: Binding(get: { commentTarget != nil }, set: { if !$0 { commentTarget = nil } })) { commentEditor }
             .onChange(of: scenePhase) { _, phase in
                 if phase != .active { privateExpanded = false; privateRecords = [] }
             }
@@ -125,15 +152,18 @@ struct CompanionPages: View {
                 if expanded { Task { await loadPrivateRecords() } }
                 else { privateRecords = []; privateError = nil }
             }
-            .alert("删除这条记录？", isPresented: Binding(
-                get: { pendingDeletion != nil }, set: { if !$0 { pendingDeletion = nil } }
-            )) {
-                Button("取消", role: .cancel) { pendingDeletion = nil }
-                Button("删除", role: .destructive) {
-                    guard let id = pendingDeletion else { return }
-                    pendingDeletion = nil
-                    Task { await remove(id) }
-                }
+
+        }
+        .sheet(isPresented: $editing) { editor }
+        .sheet(isPresented: Binding(get: { commentTarget != nil }, set: { if !$0 { commentTarget = nil } })) { commentEditor }
+        .alert("删除这条记录？", isPresented: Binding(
+            get: { pendingDeletion != nil }, set: { if !$0 { pendingDeletion = nil } }
+        )) {
+            Button("取消", role: .cancel) { pendingDeletion = nil }
+            Button("删除", role: .destructive) {
+                guard let id = pendingDeletion else { return }
+                pendingDeletion = nil
+                Task { await remove(id) }
             }
         }
     }
@@ -213,47 +243,272 @@ struct CompanionPages: View {
         }
     }
 
-    private var diaryContent: some View {
-        Group {
-            ForEach(diaries) { item in
-                DisclosureGroup {
-                    if item.locked_hidden {
-                        Text("这一页还锁着，可以在聊天里问柯。")
-                    } else {
-                        Text(item.content).textSelection(.enabled)
-                        ForEach(comments[item.id] ?? []) { comment in
-                            Text("\(comment.author)：\(comment.content)").font(theme.font.caption)
+    private var visibleDiaries: [RemoteDiary] {
+        diaries.filter { item in
+            switch diaryFilter {
+            case "柯": return item.author == "柯" || item.author == "ai" || item.author == nil
+            case "我": return item.author == "佳佳" || item.author == "user"
+            default: return true
+            }
+        }.sorted { $0.created_at > $1.created_at }
+    }
+
+    private var diaryMonths: [String] {
+        Array(Set(visibleDiaries.map { String($0.created_at.prefix(7)) })).sorted(by: >)
+    }
+
+    private func diaryDate(_ item: RemoteDiary, format: String) -> String {
+        guard let date = CompanionDate.parse(item.created_at) else { return String(item.created_at.prefix(10)) }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.timeZone = CompanionDate.calendar.timeZone
+        formatter.dateFormat = format
+        return formatter.string(from: date)
+    }
+
+    private func diaryAuthor(_ item: RemoteDiary) -> String {
+        switch item.author {
+        case "user", "佳佳": return "我"
+        case "ai", nil: return "柯"
+        default: return item.author ?? "柯"
+        }
+    }
+
+    private var diaryIndex: some View {
+        ScrollViewReader { proxy in
+            VStack(spacing: 0) {
+                if !dynamicTypeSize.isAccessibilitySize { diaryIndexHeader(proxy) }
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        if dynamicTypeSize.isAccessibilitySize { diaryIndexHeader(proxy) }
+                        if let error {
+                            Text(error).padding(.top, 20)
+                            Button("重新加载") { Task { await reloadDiaries(reset: true) } }.frame(minHeight: 44)
                         }
-                        Button("查看评论") { Task { await loadComments(item.id) } }
-                        Button("写评论") { commentTarget = item.id; commentText = "" }
+                        diaryContent
+                        if loading { ProgressView("正在加载").frame(maxWidth: .infinity).padding(24) }
+                    }.padding(.bottom, 20)
+                }.scrollDismissesKeyboard(.interactively)
+                HStack {
+                    Button { dismiss() } label: { Label("返回", systemImage: "chevron.left").frame(minHeight: 44) }
+                        .accessibilityIdentifier("companion-close")
+                    Spacer()
+                    Button { title = ""; content = ""; editingID = nil; editing = true } label: {
+                        Label("写一篇", systemImage: "square.and.pencil").frame(minHeight: 44)
                     }
+                }.font(diaryFont(15, .subheadline))
+            }.padding(.horizontal, 26)
+                .foregroundStyle(journalInk).background(diaryPaper)
+        }
+    }
+
+    private func diaryIndexHeader(_ proxy: ScrollViewProxy) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            (dynamicTypeSize.isAccessibilitySize
+             ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+             : AnyLayout(HStackLayout(alignment: .firstTextBaseline))) {
+                Text("枕边日记").font(diaryFont(34, .largeTitle))
+                if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 12) }
+                Button {
+                    diarySearchPresented.toggle()
+                    diarySearchFocused = diarySearchPresented
+                    if !diarySearchPresented { diaryQuery = "" }
                 } label: {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(alignment: .top, spacing: 20) {
-                            Text(String(item.created_at.dropFirst(8).prefix(2)))
-                                .font(.custom("Didot", size: 40, relativeTo: .largeTitle)).frame(width: 48)
-                            Rectangle().fill(theme.color.separator).frame(width: 1, height: 66)
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text(item.title).font(.custom("NotoSerifSC-Regular", size: 21, relativeTo: .title3))
-                                Text(item.locked_hidden ? "暂时锁着的一页" : item.content).lineLimit(2).font(theme.font.caption)
-                                Text(item.author ?? "柯").font(.custom("NotoSerifSC-Regular", size: 14, relativeTo: .caption))
-                            }
-                        }.foregroundStyle(journalInk)
+                    Label("查找日记", systemImage: "magnifyingglass").font(diaryFont(17))
+                        .frame(minHeight: 44)
+                }.accessibilityIdentifier("diary-search-toggle")
+            }.padding(.top, 12).padding(.bottom, 12)
+            if diarySearchPresented {
+                HStack {
+                    TextField("查找标题、正文或作者", text: $diaryQuery)
+                        .focused($diarySearchFocused).submitLabel(.search)
+                        .onSubmit { diarySearchFocused = false }
+                        .accessibilityIdentifier("diary-search-field")
+                    Button("取消") { diaryQuery = ""; diarySearchPresented = false; diarySearchFocused = false }
+                        .frame(minHeight: 44)
+                }.padding(.horizontal, 12)
+                    .background(journalInk.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+                    .padding(.bottom, 8)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 22) {
+                    ForEach(diaryMonths.reversed(), id: \.self) { month in
+                        Button {
+                            selectedMonth = month
+                            diarySearchFocused = false
+                            proxy.scrollTo(month, anchor: .top)
+                        } label: {
+                            Text("\(Int(month.suffix(2)) ?? 0)月")
+                                .font(diaryFont(22, .title3))
+                                .foregroundStyle((selectedMonth ?? diaryMonths.first) == month ? journalInk : diaryMuted)
+                                .frame(minWidth: 56, minHeight: 44)
+                                .overlay(alignment: .bottom) {
+                                    if (selectedMonth ?? diaryMonths.first) == month {
+                                        Rectangle().fill(Color(hex: 0xA4826B)).frame(height: 1.5)
+                                    }
+                                }
+                        }.accessibilityLabel("\(month.prefix(4))年\(Int(month.suffix(2)) ?? 0)月")
                     }
                 }
-                .contextMenu { Button("删除", role: .destructive) { pendingDeletion = item.id } }
-                Divider().padding(.vertical, 12)
             }
-            if diaries.isEmpty && !loading && error == nil {
-                Text(diaryQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                     ? "还没有日记，点右上角写一篇"
-                     : "没有找到相关日记，换个词试试")
-                    .foregroundStyle(theme.color.textSecondary)
+            Divider()
+            HStack(spacing: 0) {
+                ForEach(["全部", "柯", "我"], id: \.self) { filter in
+                    Button { diaryFilter = filter; selectedMonth = nil } label: {
+                        Text(filter).font(diaryFont(15, .subheadline))
+                            .foregroundStyle(diaryFilter == filter ? journalInk : diaryMuted)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }.accessibilityAddTraits(diaryFilter == filter ? .isSelected : [])
+                        .accessibilityIdentifier("diary-filter-\(filter)")
+                    if filter != "我" { Rectangle().fill(diaryMuted.opacity(0.45)).frame(width: 0.5, height: 12) }
+                }
+            }
+            Divider()
+        }
+    }
+
+    private var diaryContent: some View {
+        Group {
+            ForEach(diaryMonths, id: \.self) { month in
+                VStack(alignment: .leading, spacing: 0) {
+                    if diaryMonths.first(where: { $0.hasPrefix(String(month.prefix(4))) }) == month {
+                        Text("\(month.prefix(4))年").font(diaryFont(14, .caption)).foregroundStyle(diaryMuted)
+                    }
+                    Text("\(Int(month.suffix(2)) ?? 0)月").font(diaryFont(42, .largeTitle)).padding(.bottom, 8)
+                    ForEach(visibleDiaries.filter { $0.created_at.hasPrefix(month) }) { item in
+                        Button { selectedDiaryID = item.id; showingDiaryComments = false } label: {
+                            HStack(alignment: .top, spacing: 12) {
+                                (dynamicTypeSize.isAccessibilitySize
+                                 ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
+                                 : AnyLayout(HStackLayout(alignment: .top, spacing: 12))) {
+                                    Text(diaryDate(item, format: "M月d日"))
+                                        .font(diaryFont(14, .caption)).padding(.horizontal, 11).padding(.vertical, 3)
+                                        .background(journalInk.opacity(0.045), in: Capsule())
+                                        .fixedSize()
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        if let date = CompanionDate.parse(item.created_at), CompanionDate.calendar.isDateInToday(date) {
+                                            Text("今天").font(diaryFont(13, .caption))
+                                                .foregroundStyle(Color(hex: 0x947055))
+                                                .padding(.horizontal, 10).padding(.vertical, 3)
+                                                .background(Color(hex: 0xB78D68).opacity(0.10), in: Capsule())
+                                        }
+                                        Text(item.title).font(diaryFont(20, .title3)).lineLimit(2)
+                                        Text(item.locked_hidden ? "暂时锁着的一页" : item.content.replacingOccurrences(of: "\n", with: " "))
+                                            .font(diaryFont(15, .subheadline)).lineLimit(1)
+                                        Text(diaryAuthor(item)).font(diaryFont(14, .caption)).foregroundStyle(diaryMuted)
+                                    }.frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                Image(systemName: item.locked_hidden ? "lock" : "chevron.right")
+                                    .font(.system(size: 16, weight: .regular)).frame(width: 18).padding(.top, 14)
+                            }.padding(.vertical, 14).contentShape(Rectangle())
+                        }.buttonStyle(.plain).accessibilityIdentifier("diary-row-\(item.id)")
+                            .contextMenu { Button("删除", role: .destructive) { pendingDeletion = item.id } }
+                        Divider()
+                    }
+                }.padding(.top, 18).id(month)
+            }
+            if visibleDiaries.isEmpty && !loading && error == nil {
+                Text(diaryHasMore ? "已翻到的日记里没有匹配，可以再翻一些" : (diaries.isEmpty && diaryQuery.isEmpty ? "还没有日记，点下方写一篇" : "没有找到相关日记，换个词或筛选试试"))
+                    .foregroundStyle(diaryMuted).padding(.vertical, 32)
             }
             if diaryHasMore && !loading {
                 Button("再翻一些") { Task { await reloadDiaries(reset: false) } }
-                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .frame(maxWidth: .infinity, minHeight: 44).padding(.top, 16)
             }
+        }
+    }
+
+    private var diaryReader: some View {
+        Group {
+            if let index = visibleDiaries.firstIndex(where: { $0.id == selectedDiaryID }) {
+                let item = visibleDiaries[index]
+                ScrollView {
+                    VStack(spacing: 0) {
+                        Text(diaryDate(item, format: "yyyy年M月"))
+                            .font(diaryFont(17)).padding(.top, 34)
+                        Text(diaryDate(item, format: "dd"))
+                            .font(.custom("Didot", size: 92, relativeTo: .largeTitle))
+                            .padding(.top, 4)
+                        Rectangle().fill(Color(hex: 0xA4826B)).frame(width: 40, height: 1).padding(.top, 8)
+                        Text(item.title).font(diaryFont(32, .largeTitle))
+                            .multilineTextAlignment(.center).padding(.top, 24).padding(.bottom, 30)
+                        Text(item.locked_hidden ? "这一页还锁着，可以在聊天里问柯。" : item.content)
+                            .font(diaryFont(19)).lineSpacing(9)
+                            .frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
+                        if showingDiaryComments && !item.locked_hidden {
+                            Divider().padding(.top, 36).padding(.bottom, 18)
+                            ForEach(comments[item.id] ?? []) { comment in
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(comment.author == "user" ? "佳佳" : comment.author).foregroundStyle(diaryMuted)
+                                    Text(comment.content)
+                                }.font(diaryFont(15)).frame(maxWidth: .infinity, alignment: .leading).padding(.bottom, 18)
+                            }
+                            if (comments[item.id] ?? []).isEmpty { Text("还没有评论").foregroundStyle(diaryMuted) }
+                            Button("写评论") { commentTarget = item.id; commentText = "" }.frame(minHeight: 44)
+                        }
+                    }.padding(.horizontal, 34).padding(.bottom, 32)
+                }.id(item.id)
+                    .safeAreaInset(edge: .bottom) {
+                        VStack(spacing: 8) {
+                            if let error, diaryRetry != nil {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(error).font(diaryFont(15))
+                                    Button("重试") { Task { await retryDiaryAction() } }
+                                        .frame(minHeight: 44).disabled(loading || saving)
+                                }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 26)
+                            }
+                        HStack {
+                            Button { turnDiary(index - 1) } label: {
+                                Image(systemName: "chevron.left").frame(width: 44, height: 44)
+                            }.disabled(index == 0 || loading).accessibilityLabel("上一篇")
+                            Spacer()
+                            Text("\(index + 1) / \(visibleDiaries.count)\(diaryHasMore ? "+" : "")").font(diaryFont(14, .caption))
+                                .foregroundStyle(diaryMuted)
+                            Spacer()
+                            Button {
+                                if index + 1 < visibleDiaries.count { turnDiary(index + 1) }
+                                else { Task { await reloadDiaries(reset: false); turnDiary(index + 1) } }
+                            } label: {
+                                if loading { ProgressView().frame(width: 44, height: 44) }
+                                else { Image(systemName: "chevron.right").frame(width: 44, height: 44) }
+                            }.disabled(loading || (index + 1 == visibleDiaries.count && !diaryHasMore))
+                                .accessibilityLabel("下一篇")
+                        }.padding(.horizontal, 20).padding(.bottom, 8)
+                        }.background(diaryPaper)
+                    }
+                    .toolbar {
+                        ToolbarItem(placement: .primaryAction) {
+                            Menu {
+                                if !item.locked_hidden {
+                                    Button("查看评论") { showingDiaryComments = true; Task { await loadComments(item.id) } }
+                                    Button("写评论") { commentTarget = item.id; commentText = "" }
+                                }
+                                Button("删除", role: .destructive) { pendingDeletion = item.id }
+                            } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
+                                .accessibilityLabel("日记菜单")
+                        }
+                    }
+            }
+        }.foregroundStyle(journalInk).background(diaryPaper)
+            .navigationTitle("").navigationBarTitleDisplayMode(.inline)
+            .toolbar(.visible, for: .navigationBar)
+            .toolbarBackground(diaryPaper, for: .navigationBar)
+            .tint(journalInk)
+    }
+
+    private func turnDiary(_ index: Int) {
+        guard visibleDiaries.indices.contains(index) else { return }
+        selectedDiaryID = visibleDiaries[index].id
+        showingDiaryComments = false
+        diaryRetry = nil; error = nil
+    }
+
+    @MainActor private func retryDiaryAction() async {
+        switch diaryRetry {
+        case .load(let reset): await reloadDiaries(reset: reset)
+        case .delete(let id): await remove(id)
+        case .comments(let id): await loadComments(id)
+        case nil: break
         }
     }
 
@@ -366,9 +621,15 @@ struct CompanionPages: View {
         } catch { self.error = "没有加载成功，请重试。" + error.localizedDescription }
     }
 
+    @MainActor private func loadAuthorPagesIfNeeded() async {
+        guard page == .diary, diaryFilter != "全部", diaryHasMore, !loading, error == nil else { return }
+        await reloadDiaries(reset: false)
+    }
+
     @MainActor private func reloadDiaries(reset: Bool) async {
         let requestID = UUID()
         diaryRequestID = requestID
+        diaryRetry = nil
         loading = true
         let query = diaryQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         let offset = reset ? 0 : diaries.count
@@ -383,6 +644,7 @@ struct CompanionPages: View {
             if diaryRequestID == requestID { loading = false }
         } catch {
             guard diaryRequestID == requestID else { return }
+            diaryRetry = .load(reset)
             self.error = query.isEmpty
                 ? "日记没有加载成功，请重试。"
                 : "没有完成查找，请重试。"
@@ -418,7 +680,9 @@ struct CompanionPages: View {
         do {
             switch page {
             case .anniversaries: try await api.deleteAnniversary(id: id)
-            case .diary: try await api.deleteDiary(id: id)
+            case .diary:
+                try await api.deleteDiary(id: id)
+                if selectedDiaryID == id { selectedDiaryID = nil }
             case .moments: try await api.deleteMoment(id: id)
             case .calendar:
                 if calendarDeletionKind == "排班" { try await api.deleteShift(date: shiftDeletionDate) }
@@ -426,7 +690,10 @@ struct CompanionPages: View {
                 else { try await api.deletePrivateRecord(id: id, operationID: UUID().uuidString) }
             }
             await reload()
-        } catch { self.error = "没有删除成功，请重试。" + error.localizedDescription }
+        } catch {
+            self.error = "没有删除成功，请重试。" + error.localizedDescription
+            if page == .diary { diaryRetry = .delete(id) }
+        }
     }
 
     private var commentEditor: some View {
@@ -457,8 +724,8 @@ struct CompanionPages: View {
     }
 
     @MainActor private func loadComments(_ id: Int) async {
-        do { comments[id] = try await api.fetchDiaryComments(id: id) }
-        catch { self.error = "评论没有加载成功，请重试。" }
+        do { comments[id] = try await api.fetchDiaryComments(id: id); diaryRetry = nil; error = nil }
+        catch { self.error = "评论没有加载成功，请重试。"; diaryRetry = .comments(id) }
     }
 
     @MainActor private func sendComment() async {

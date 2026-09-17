@@ -20,8 +20,13 @@ final class TimeSpaceInteractionTests: XCTestCase {
         app.buttons["上个月"].tap()
         XCTAssertFalse(app.staticTexts["匿名私密记录"].exists)
         capture("us-time-calendar")
-        app.buttons["添加日期记录"].firstMatch.tap()
+        app.buttons["day-9"].tap()
         XCTAssertTrue(app.buttons["保存"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["shift-option-早班"].exists)
+        XCTAssertTrue(app.buttons["shift-option-上夜"].exists)
+        XCTAssertTrue(app.buttons["shift-option-下夜"].exists)
+        XCTAssertTrue(app.buttons["shift-option-早班+睡班"].exists)
+        capture("us-time-shift-sheet")
         app.buttons["取消"].tap()
     }
     func testHorizontalSwipeSwitchesReminderAndAnniversaryPages() {

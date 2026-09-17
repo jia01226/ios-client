@@ -34,13 +34,40 @@ struct MemoryRetrievalReport: Decodable {
     let notice: String
 }
 
+enum MemoryFeedbackKind: String, CaseIterable, Identifiable {
+    case missing
+    case memoryOutdated = "memory_outdated"
+    case memoryWrong = "memory_wrong"
+    case answerWrong = "answer_wrong"
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .missing: return "没找到该记忆"
+        case .memoryOutdated: return "记忆已经过期"
+        case .memoryWrong: return "记忆内容不对"
+        case .answerWrong: return "记忆正确，柯答错了"
+        }
+    }
+    var needsCandidate: Bool { self == .memoryOutdated || self == .memoryWrong }
+}
+
+struct MemoryFeedbackReceipt: Decodable {
+    let saved: Bool
+    let id: String
+    let patch_id: String?
+    let result: String
+}
+
 struct MemoryRetrievalView: View {
     @EnvironmentObject private var theme: Theme
     let line: ChatLine
+    var correctionCreated: () -> Void = {}
     @State private var report: MemoryRetrievalReport?
     @State private var query = ""
     @State private var error: String?
     @State private var loading = false
+    @State private var correcting: MemoryRetrievalTrace?
+    @State private var resultMessage: String?
 
     var body: some View {
         List {
@@ -92,6 +119,13 @@ struct MemoryRetrievalView: View {
                             }
                             Text(semanticLabel(trace.semantic)).font(theme.font.caption)
                                 .foregroundStyle(theme.color.textSecondary)
+                            Button {
+                                correcting = trace
+                            } label: {
+                                Label("记错了", systemImage: "exclamationmark.bubble")
+                            }
+                            .buttonStyle(.bordered)
+                            .accessibilityIdentifier("memory-feedback-\(trace.id)")
                         }
                         ForEach(trace.candidates) { candidate in
                             DisclosureGroup {
@@ -122,6 +156,17 @@ struct MemoryRetrievalView: View {
         .task { await load() }
         .refreshable { await load() }
         .accessibilityIdentifier("memory-retrieval-page")
+        .sheet(item: $correcting) { trace in
+            MemoryFeedbackSheet(line: line, trace: trace) { message in
+                resultMessage = message
+                correctionCreated()
+                Task { await load() }
+            }
+            .environmentObject(theme)
+        }
+        .alert("已处理", isPresented: Binding(get: { resultMessage != nil }, set: { if !$0 { resultMessage = nil } })) {
+            Button("知道了", role: .cancel) { resultMessage = nil }
+        } message: { Text(resultMessage ?? "") }
     }
 
     private func candidateLabel(_ value: MemoryRetrievalCandidate, isCheck: Bool) -> String {
@@ -174,6 +219,89 @@ struct MemoryRetrievalView: View {
             _ = try await api.checkMemoryRetrieval(query: query)
             report = try await api.memoryRetrieval()
             error = nil
+        } catch { self.error = error.localizedDescription }
+    }
+}
+
+private struct MemoryFeedbackSheet: View {
+    @EnvironmentObject private var theme: Theme
+    @Environment(\.dismiss) private var dismiss
+    let line: ChatLine
+    let trace: MemoryRetrievalTrace
+    let completed: (String) -> Void
+    @State private var kind: MemoryFeedbackKind = .missing
+    @State private var candidateID: String?
+    @State private var correction = ""
+    @State private var submitting = false
+    @State private var error: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("这轮问的是") { Text(trace.query) }
+                Section("哪里出了问题") {
+                    Picker("错误类型", selection: $kind) {
+                        ForEach(MemoryFeedbackKind.allCases) { Text($0.label).tag($0) }
+                    }
+                    .pickerStyle(.inline)
+                }
+                if kind.needsCandidate {
+                    Section("选择要更正的记忆") {
+                        if trace.candidates.isEmpty {
+                            Text("这轮没有可更正的已审核记忆，请改选“没找到该记忆”。")
+                                .foregroundStyle(theme.color.textSecondary)
+                        } else {
+                            Picker("记忆", selection: $candidateID) {
+                                Text("请选择").tag(String?.none)
+                                ForEach(trace.candidates) { Text(traceLabel($0)).tag(String?.some($0.id)) }
+                            }
+                            .pickerStyle(.inline)
+                        }
+                    }
+                }
+                Section(kind == .answerWrong ? "柯哪里说错了" : "现在的正确情况") {
+                    TextEditor(text: $correction)
+                        .frame(minHeight: 110)
+                        .accessibilityIdentifier("memory-feedback-correction")
+                    Text(kind == .answerWrong
+                         ? "这条只记录为回答问题，不会修改记忆库。"
+                         : "提交后会进入待审卡；你收下后才会更新记忆库。")
+                        .font(theme.font.caption).foregroundStyle(theme.color.textSecondary)
+                }
+                if let error { Section { Text(error).foregroundStyle(.red) } }
+            }
+            .navigationTitle("纠正这轮记忆")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(submitting ? "提交中" : "提交") { Task { await submit() } }
+                        .disabled(!canSubmit || submitting)
+                        .accessibilityIdentifier("memory-feedback-submit")
+                }
+            }
+            .onChange(of: kind) { _, value in if !value.needsCandidate { candidateID = nil } }
+        }
+    }
+
+    private var canSubmit: Bool {
+        !correction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        && correction.count <= 1000 && (!kind.needsCandidate || candidateID != nil)
+    }
+    private func traceLabel(_ candidate: MemoryRetrievalCandidate) -> String {
+        candidate.fact.count > 72 ? String(candidate.fact.prefix(72)) + "…" : candidate.fact
+    }
+    private func submit() async {
+        submitting = true
+        defer { submitting = false }
+        do {
+            let receipt = try await APIClient(baseURL: line.apiBaseURL)
+                .submitMemoryRetrievalFeedback(traceID: trace.id, kind: kind,
+                                               candidateID: candidateID, note: correction)
+            dismiss()
+            completed(receipt.result == "pending_correction"
+                      ? "更正卡已经放进待审区，收下后才会替换记忆。"
+                      : "已记录为柯本轮回答错误，事实记忆没有被修改。")
         } catch { self.error = error.localizedDescription }
     }
 }

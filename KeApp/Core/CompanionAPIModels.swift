@@ -33,7 +33,14 @@ struct RemoteShift: Decodable, Identifiable, Sendable {
 struct RemotePeriod: Decodable, Identifiable, Sendable {
     let id: Int
     let start_date: String
+    let end_date: String?
     let note: String?
+}
+
+struct RemoteIntimateCount: Decodable, Identifiable, Sendable {
+    let date: String
+    let count: Int
+    var id: String { date }
 }
 
 struct RemoteDiary: Decodable, Identifiable, Sendable {

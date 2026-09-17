@@ -58,6 +58,9 @@ struct RootTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .chatSettingsVisibility)) { notification in
             chatSettingsOpen = notification.object as? Bool ?? false
         }
+        .onReceive(NotificationCenter.default.publisher(for: .tarotReadingRequest)) { _ in
+            selection = .ke
+        }
         .onReceive(
             NotificationCenter.default.publisher(
                 for: UIResponder.keyboardWillChangeFrameNotification

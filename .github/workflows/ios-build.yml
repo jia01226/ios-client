@@ -3,6 +3,11 @@ name: Build iOS
 on:
   # 私有仓库的 macOS runner 按 10 倍分钟计费，只允许手动触发。
   workflow_dispatch:
+    inputs:
+      build_number:
+        description: "可选：指定 App Build 号；留空则使用工作流运行序号"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -81,15 +86,20 @@ jobs:
           echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
 
       - name: Archive（Ad Hoc）
+        env:
+          REQUESTED_BUILD_NUMBER: ${{ inputs.build_number }}
         run: |
           set -euo pipefail
+          BUILD_NUMBER="${REQUESTED_BUILD_NUMBER:-$GITHUB_RUN_NUMBER}"
+          [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
           xcodebuild \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
             -configuration Release \
             -archivePath "$RUNNER_TEMP/KeApp.xcarchive" \
             -destination 'generic/platform=iOS' \
-            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             DEVELOPMENT_TEAM="$TEAM_ID" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY='Apple Distribution' \

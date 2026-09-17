@@ -470,8 +470,16 @@ struct MessageRow: View {
             spacing: theme.metric.gapS
         ) {
             if includesAttachments {
-                ForEach(message.attachments ?? []) { attachment in
-                    attachmentView(attachment)
+                if isTarotCardMessage {
+                    HStack(alignment: .top, spacing: theme.metric.gapS) {
+                        ForEach(message.attachments ?? []) { attachment in
+                            tarotCardView(attachment)
+                        }
+                    }
+                } else {
+                    ForEach(message.attachments ?? []) { attachment in
+                        attachmentView(attachment)
+                    }
                 }
             }
             if let text, !text.isEmpty {
@@ -519,6 +527,33 @@ struct MessageRow: View {
         return Array(segments.prefix(max(1, visibleSegmentCount)))
     }
 
+    /// 柯自己抽的牌：三张以内、都是图、名字带正逆位。整张显示，不裁切，逆位倒着。
+    private var isTarotCardMessage: Bool {
+        let items = message.attachments ?? []
+        return message.sender == .ke && !items.isEmpty && items.count <= 3
+            && items.allSatisfy { $0.isImage && ($0.name.hasSuffix("·正位") || $0.name.hasSuffix("·逆位")) }
+    }
+
+    private func tarotCardView(_ attachment: ChatAttachment) -> some View {
+        Button {
+            onAttachmentTap(attachment)
+        } label: {
+            VStack(spacing: 4) {
+                AuthenticatedAttachmentImage(attachment: attachment, contentMode: .fit)
+                    .aspectRatio(0.58, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .rotationEffect(.degrees(attachment.name.hasSuffix("·逆位") ? 180 : 0))
+                Text(attachment.name)
+                    .font(theme.font.caption)
+                    .foregroundStyle(theme.color.textSecondary)
+                    .lineLimit(1)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("打开图片 \(attachment.name)")
+    }
+
     @ViewBuilder
     private func attachmentView(_ attachment: ChatAttachment) -> some View {
         if attachment.isImage {
@@ -532,6 +567,10 @@ struct MessageRow: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: theme.metric.messageImageHeight)
                 .clipShape(RoundedRectangle(
+                    cornerRadius: theme.metric.radiusChip,
+                    style: .continuous
+                ))
+                .contentShape(RoundedRectangle(
                     cornerRadius: theme.metric.radiusChip,
                     style: .continuous
                 ))
