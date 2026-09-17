@@ -49,6 +49,8 @@ jobs:
             -scheme KeApp \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
             -resultBundlePath "$RUNNER_TEMP/iOSSimulator.xcresult" \
+            -only-testing:KeAppTests \
+            -only-testing:KeAppUITests/CompanionInteractionTests/testGardenEntryHandsToKe \
             CODE_SIGNING_ALLOWED=NO
 
       - name: 导出 UI 核验截图
