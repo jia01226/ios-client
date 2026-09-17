@@ -8,19 +8,18 @@ permissions:
 
 jobs:
   verify:
-    # macos-15 的轻量镜像目前只带编译 SDK，没有预装 iOS Simulator runtime。
-    # macos-14 自带可启动的 iOS 17 runtime，正好覆盖本项目最低系统版本。
-    runs-on: macos-14
+    # 花园界面使用 Xcode 27 的 Liquid Glass API，需要对应工具链与模拟器。
+    runs-on: xcode-27
     timeout-minutes: 20
 
     steps:
       - name: 检出源码
         uses: actions/checkout@v4
 
-      - name: 选择带 Swift 6 与 iOS 18 模拟器的 Xcode
+      - name: 查看 Xcode 27 与模拟器环境
         run: |
-          sudo xcode-select -s /Applications/Xcode_16.2.app
           xcodebuild -version
+          xcrun simctl list runtimes
 
       - name: 安装 XcodeGen
         run: brew install xcodegen
