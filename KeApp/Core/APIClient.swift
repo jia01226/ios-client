@@ -824,6 +824,20 @@ actor APIClient {
         catch { throw APIError.decoding(error) }
     }
 
+    /// 共读网页边注：只发送当前可见片段，服务器不保存网址或正文。
+    func annotateWebReading(title: String, url: String, excerpt: String) async throws -> WebReadingComment {
+        var request = try makeRequest(path: "/api/reading/web-annotate", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "title": title,
+            "url": url,
+            "excerpt": excerpt,
+        ])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, _) = try await perform(request)
+        do { return try decoder.decode(WebReadingComment.self, from: data) }
+        catch { throw APIError.decoding(error) }
+    }
+
     func addAnniversary(name: String, date: String, emoji: String = "💞") async throws {
         try await writeResource("/api/anniversaries", body: ["name": name, "date": date, "emoji": emoji])
     }

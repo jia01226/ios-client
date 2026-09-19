@@ -1,6 +1,25 @@
 import XCTest
 
 final class CompanionInteractionTests: XCTestCase {
+    func testCoReadingSearchAndJoin() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-test-companion", "-ui-test-coreading", "-app.skin", "day"]
+        app.launch()
+        XCTAssertTrue(app.buttons["玩"].waitForExistence(timeout: 5))
+        app.buttons["玩"].tap()
+        XCTAssertTrue(app.buttons["play-reading"].waitForExistence(timeout: 5))
+        app.buttons["play-reading"].tap()
+        let field = app.textFields["coreading-search-field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText("小王子")
+        app.buttons["coreading-search"].tap()
+        XCTAssertTrue(app.buttons["coreading-join"].waitForExistence(timeout: 8))
+        app.buttons["coreading-join"].tap()
+        XCTAssertTrue(app.buttons["coreading-ask-ke"].waitForExistence(timeout: 5))
+        capture("coreading-reading-page")
+    }
+
     func testCalendarPrivacyAndDailyPages() {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-app.skin", "day"]

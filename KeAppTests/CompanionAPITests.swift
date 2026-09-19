@@ -18,6 +18,21 @@ private final class CompanionStub: URLProtocol {
     override func stopLoading() {}
 }
 
+private func requestBody(_ request: URLRequest) -> Data? {
+    if let body = request.httpBody { return body }
+    guard let stream = request.httpBodyStream else { return nil }
+    stream.open()
+    defer { stream.close() }
+    var data = Data()
+    var buffer = [UInt8](repeating: 0, count: 1024)
+    while stream.hasBytesAvailable {
+        let count = stream.read(&buffer, maxLength: buffer.count)
+        if count <= 0 { break }
+        data.append(buffer, count: count)
+    }
+    return data
+}
+
 final class CompanionAPITests: XCTestCase {
     private func api() -> APIClient {
         let configuration = URLSessionConfiguration.ephemeral
@@ -69,6 +84,24 @@ final class CompanionAPITests: XCTestCase {
         }
         let rows = try await api().fetchDiaries(query: "月光 & 我", offset: 50, limit: 25)
         XCTAssertEqual(rows.map(\.id), [8])
+    }
+
+    func testWebReadingAnnotationSendsOnlyCurrentExcerpt() async throws {
+        CompanionStub.handler = { request in
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.url?.path, "/ke-test2/api/reading/web-annotate")
+            let body = try XCTUnwrap(requestBody(request))
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: String])
+            XCTAssertEqual(object["title"], "小王子")
+            XCTAssertEqual(object["url"], "https://example.com/chapter-1")
+            XCTAssertEqual(object["excerpt"], "只有这一小段")
+            return (200, #"{"author":"柯","content":"这里我想陪你多停一会儿。"}"#)
+        }
+        let comment = try await api().annotateWebReading(
+            title: "小王子", url: "https://example.com/chapter-1", excerpt: "只有这一小段"
+        )
+        XCTAssertEqual(comment.author, "柯")
+        XCTAssertEqual(comment.content, "这里我想陪你多停一会儿。")
     }
 
     @MainActor func testRefreshKeepsPendingOverdueRemindersAndUnknownShiftLabels() async throws {

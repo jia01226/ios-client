@@ -12,6 +12,7 @@ struct PlayView: View {
     @State private var tarotOpen = false
     @State private var fortuneOpen = false
     @State private var gardenOpen = false
+    @State private var readingOpen = false
 
     init(line: ChatLine = .main) { self.line = line }
 
@@ -72,6 +73,14 @@ struct PlayView: View {
                     }.contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityIdentifier("play-garden")
                 Divider().overlay(gold.opacity(0.12))
+                Button { readingOpen = true } label: {
+                    VStack(alignment: .leading, spacing: 14) {
+                        heading("共读", subtitle: "找本书，坐在一起看")
+                        Text("像浏览器一样找书。读到哪儿，柯就陪到哪儿。")
+                            .font(serif(16)).foregroundStyle(ink.opacity(0.65)).lineSpacing(5)
+                    }.contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityIdentifier("play-reading")
+                Divider().overlay(gold.opacity(0.12))
                 Button { destination = .diary } label: {
                     VStack(alignment: .leading, spacing: 18) {
                         heading("日记", subtitle: "把心情，安放在这里")
@@ -103,6 +112,9 @@ struct PlayView: View {
         }
         .fullScreenCover(isPresented: $gardenOpen) {
             GardenView().environmentObject(theme)
+        }
+        .fullScreenCover(isPresented: $readingOpen) {
+            CoReadingView(line: line).environmentObject(theme)
         }
     }
 
