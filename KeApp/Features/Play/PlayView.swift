@@ -145,6 +145,8 @@ struct TarotCast: Decodable, Identifiable, Sendable {
     let spread: String
     let spread_name: String
     let cards: [TarotCard]
+    /// 引擎的第三视角客观解读（多行）。柯的视角另在聊天里给。
+    let objective: String?
 }
 
 extension Notification.Name {
@@ -161,14 +163,24 @@ struct TarotView: View {
     @State private var spread = "three"
     @State private var cast: TarotCast?
     @State private var revealed = 0
+    @State private var dealtCount = 0
+    @State private var phase: DrawPhase = .idle
+    @State private var shuffleTick = false
+    @State private var showThemePicker = false
     @State private var drawing = false
     @State private var error: String?
     @FocusState private var questionFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage("tarot.backTheme") private var backThemeID = "waite"
+
+    private enum DrawPhase { case idle, shuffling, dealing }
 
     private var ink: Color { theme.skin == .night ? theme.color.textPrimary : Color(hex: 0x302D28) }
     private var gold: Color { theme.skin == .night ? theme.color.accentSoft : Color(hex: 0x947343) }
     private func serif(_ size: CGFloat) -> Font { .custom("NotoSerifSC-Regular", size: size, relativeTo: .body).weight(.light) }
     private var api: APIClient { APIClient(baseURL: line.apiBaseURL) }
+    private var back: TarotBack { TarotBack.find(backThemeID) }
+    private var backTint: Color { back.id == "waite" ? gold : back.tint }
 
     private let spreads: [(String, String)] = [("one", "一张"), ("three", "三张"), ("celtic", "十字")]
 
@@ -180,6 +192,14 @@ struct TarotView: View {
                         Image(systemName: "chevron.left").font(.system(size: 17, weight: .light)).padding(8)
                     }.buttonStyle(.plain).accessibilityLabel("返回")
                     Spacer()
+                    Button { showThemePicker = true } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "paintbrush.pointed").font(.system(size: 13, weight: .light))
+                            Text("牌面").font(serif(14))
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(gold.opacity(0.08)).clipShape(Capsule())
+                    }.buttonStyle(.plain).accessibilityIdentifier("tarot-theme")
                 }
                 Text("塔罗").font(serif(44))
                 Text("想问什么，写一句。不写也行。").font(serif(15)).foregroundStyle(ink.opacity(0.65))
@@ -208,12 +228,32 @@ struct TarotView: View {
                     let columns = cast.cards.count <= 3
                         ? Array(repeating: GridItem(.flexible(), spacing: 12), count: cast.cards.count)
                         : Array(repeating: GridItem(.flexible(), spacing: 12), count: 2)
-                    LazyVGrid(columns: columns, spacing: 18) {
-                        ForEach(Array(cast.cards.enumerated()), id: \.offset) { index, card in
-                            TarotCardView(card: card, api: api, faceUp: index < revealed, ink: ink, gold: gold)
+                    ZStack(alignment: .top) {
+                        LazyVGrid(columns: columns, spacing: 18) {
+                            ForEach(Array(cast.cards.enumerated()), id: \.offset) { index, card in
+                                TarotCardView(card: card, api: api,
+                                              dealt: index < dealtCount, faceUp: index < revealed,
+                                              back: back, tilt: Double((index % 3) - 1) * 6,
+                                              ink: ink, gold: gold)
+                            }
                         }
+                        if phase == .shuffling { shuffleStack.padding(.top, 24) }
                     }
                     if revealed >= cast.cards.count {
+                        if let objective = cast.objective,
+                           !objective.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("牌面").font(serif(20))
+                                Text(objective).font(serif(15)).foregroundStyle(ink.opacity(0.82))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .textSelection(.enabled)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(16)
+                            .background(gold.opacity(0.06))
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(gold.opacity(0.18), lineWidth: 1))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
                         Button { askKe(cast) } label: {
                             HStack {
                                 Text("让柯断这次的牌").font(serif(17))
@@ -231,19 +271,89 @@ struct TarotView: View {
         }
         .foregroundStyle(ink).background(theme.effectiveBackground.ignoresSafeArea())
         .scrollDismissesKeyboard(.interactively)
+        .sheet(isPresented: $showThemePicker) { themePicker }
+    }
+
+    /// 洗牌时中间那叠牌背，轻微抖动交叠。
+    private var shuffleStack: some View {
+        ZStack {
+            ForEach(0..<5, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(backTint.opacity(0.14))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(backTint.opacity(0.35), lineWidth: 1))
+                    .frame(width: 72, height: 122)
+                    .rotationEffect(.degrees(Double(i - 2) * (shuffleTick ? 7 : 3)))
+                    .offset(x: CGFloat(i - 2) * (shuffleTick ? 5 : 2), y: shuffleTick ? -3 : 3)
+            }
+        }
+        .onAppear {
+            shuffleTick = false
+            withAnimation(.easeInOut(duration: 0.26).repeatForever(autoreverses: true)) { shuffleTick = true }
+        }
+        .accessibilityLabel("洗牌中")
+    }
+
+    private var themePicker: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("牌面").font(serif(28))
+            Text("换一副牌背。以后能加更多。").font(serif(14)).foregroundStyle(ink.opacity(0.6))
+            ForEach(TarotBack.all) { option in
+                Button {
+                    backThemeID = option.id
+                    showThemePicker = false
+                } label: {
+                    HStack(spacing: 14) {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill((option.id == "waite" ? gold : option.tint).opacity(0.14))
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke((option.id == "waite" ? gold : option.tint).opacity(0.4), lineWidth: 1))
+                            .overlay(Image(systemName: option.icon).font(.system(size: 16, weight: .ultraLight)).foregroundStyle((option.id == "waite" ? gold : option.tint).opacity(0.7)))
+                            .frame(width: 40, height: 60)
+                        Text(option.name).font(serif(18))
+                        Spacer()
+                        if option.id == backThemeID {
+                            Image(systemName: "checkmark").font(.system(size: 15, weight: .light)).foregroundStyle(gold)
+                        }
+                    }
+                    .padding(.vertical, 6)
+                }.buttonStyle(.plain)
+            }
+            Spacer()
+        }
+        .padding(28)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .foregroundStyle(ink)
+        .background(theme.effectiveBackground.ignoresSafeArea())
     }
 
     @MainActor private func draw() async {
         guard !drawing else { return }
         questionFocused = false
-        drawing = true; error = nil; revealed = 0; cast = nil
-        defer { drawing = false }
+        drawing = true; error = nil; revealed = 0; dealtCount = 0; cast = nil; phase = .idle
+        defer { drawing = false; phase = .idle }
         do {
             let result = try await api.drawTarot(question: question.trimmingCharacters(in: .whitespacesAndNewlines), spread: spread)
             cast = result
-            for i in 1...result.cards.count {
-                try? await Task.sleep(nanoseconds: 420_000_000)
-                withAnimation(.easeInOut(duration: 0.55)) { revealed = i }
+            let n = result.cards.count
+            guard n > 0 else { return }
+            if reduceMotion {
+                dealtCount = n
+                withAnimation(.easeInOut(duration: 0.3)) { revealed = n }
+                return
+            }
+            // 洗牌
+            phase = .shuffling
+            try? await Task.sleep(nanoseconds: 850_000_000)
+            // 发牌：一张张飞到各自位置
+            phase = .dealing
+            for i in 1...n {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.72)) { dealtCount = i }
+                try? await Task.sleep(nanoseconds: 150_000_000)
+            }
+            try? await Task.sleep(nanoseconds: 180_000_000)
+            // 翻牌：逐张 3D 翻面
+            for i in 1...n {
+                withAnimation(.easeInOut(duration: 0.5)) { revealed = i }
+                try? await Task.sleep(nanoseconds: 320_000_000)
             }
         } catch {
             self.error = "牌没抽出来，再试一次。"
@@ -258,30 +368,60 @@ struct TarotView: View {
     }
 }
 
+/// 牌背/牌面主题预设。第一版做牌背样式切换，结构留着以后能加更多副。
+struct TarotBack: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let tint: Color   // "waite" 用页面 gold；其余用这个色调
+    let icon: String
+
+    static let all: [TarotBack] = [
+        TarotBack(id: "waite", name: "默认（韦特）", tint: .clear, icon: "sparkles"),
+        TarotBack(id: "night", name: "靛夜", tint: .indigo, icon: "moon.stars"),
+        TarotBack(id: "rose", name: "玫瑰", tint: .pink, icon: "seal")
+    ]
+    static func find(_ id: String) -> TarotBack { all.first { $0.id == id } ?? all[0] }
+}
+
 private struct TarotCardView: View {
     let card: TarotCard
     let api: APIClient
+    let dealt: Bool
     let faceUp: Bool
+    let back: TarotBack
+    let tilt: Double
     let ink: Color
     let gold: Color
     private func serif(_ size: CGFloat) -> Font { .custom("NotoSerifSC-Regular", size: size, relativeTo: .body).weight(.light) }
+    private var backTint: Color { back.id == "waite" ? gold : back.tint }
 
     var body: some View {
         VStack(spacing: 8) {
             ZStack {
+                // 牌背
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(gold.opacity(0.14))
-                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(gold.opacity(0.35), lineWidth: 1))
-                    .overlay(Image(systemName: "sparkles").font(.system(size: 22, weight: .ultraLight)).foregroundStyle(gold.opacity(0.6)))
+                    .fill(backTint.opacity(0.14))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(backTint.opacity(0.35), lineWidth: 1))
+                    .overlay(Image(systemName: back.icon).font(.system(size: 22, weight: .ultraLight)).foregroundStyle(backTint.opacity(0.6)))
                     .opacity(faceUp ? 0 : 1)
-                if faceUp {
-                    CompanionImage(api: api, path: card.image)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .rotationEffect(.degrees(card.reversed ? 180 : 0))
+                // 牌面（预翻 180° 抵消容器旋转，翻正后不镜像）
+                Group {
+                    if faceUp {
+                        CompanionImage(api: api, path: card.image)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .rotationEffect(.degrees(card.reversed ? 180 : 0))
+                    }
                 }
+                .opacity(faceUp ? 1 : 0)
+                .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
             }
             .aspectRatio(0.58, contentMode: .fit)
-            .rotation3DEffect(.degrees(faceUp ? 0 : 180), axis: (x: 0, y: 1, z: 0))
+            .rotation3DEffect(.degrees(faceUp ? 180 : 0), axis: (x: 0, y: 1, z: 0))
+            // 发牌：从上方飞入落定
+            .opacity(dealt ? 1 : 0)
+            .scaleEffect(dealt ? 1 : 0.82)
+            .rotationEffect(.degrees(dealt ? 0 : tilt))
+            .offset(y: dealt ? 0 : -170)
             .accessibilityLabel(faceUp ? "\(card.cn)，\(card.reversed ? "逆位" : "正位")" : "背面朝上的牌")
             Text(card.position).font(serif(12)).foregroundStyle(ink.opacity(0.6)).lineLimit(1)
             Text(faceUp ? "\(card.cn) · \(card.reversed ? "逆位" : "正位")" : " ")

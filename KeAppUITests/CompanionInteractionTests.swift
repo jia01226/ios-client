@@ -123,7 +123,8 @@ final class CompanionInteractionTests: XCTestCase {
         app.buttons["三张"].tap()
         capture("tarot-before-draw")
         app.buttons["tarot-draw"].tap()
-        XCTAssertTrue(app.buttons["tarot-ask-ke"].waitForExistence(timeout: 15))
+        // 洗牌→发牌→翻牌的仪式动画比原来长，放宽等待。
+        XCTAssertTrue(app.buttons["tarot-ask-ke"].waitForExistence(timeout: 25))
         sleep(2)
         capture("tarot-cards")
         app.buttons["tarot-ask-ke"].tap()
