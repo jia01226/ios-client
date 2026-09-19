@@ -77,6 +77,8 @@ final class CompanionPreviewTransport: URLProtocol {
                 } else {
                     body = "[" + rows.filter { query.isEmpty || $0.contains(query) }.joined(separator: ",") + "]"
                 }
+            case let p where p.hasSuffix("/work/drawer"):
+                body = ##"{"summary":{"running":1,"today":4,"last_dispatch":"2026-09-19 19:05","last_dispatch_ago":"3小时前"},"tasks":[{"id":"work-a1","status":"running","instruction":"把抽屉页接上真实的派活记录，跑完告诉我","created_at":"2026-09-19 19:05","updated_at":"2026-09-19 19:32","steps":38,"runs":[{"title":"跑：读现有接口","detail":"先看了已有接口，确认字段名和落库的表对得上。","status":"succeeded","created_at":"2026-09-19 19:06"}]}]}"##
             case let p where p.hasSuffix("/moments"):
                 body = #"[{"id":1,"author":"user","content":"今天的天空很好看。","image":"/uploads/companion-preview.png","created_at":"2026-09-09 10:00:00","user_liked":0,"ai_liked":0,"comments":[]}]"#
             case let p where p.hasSuffix("/companion/records"):

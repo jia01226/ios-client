@@ -838,6 +838,9 @@ actor APIClient {
         catch { throw APIError.decoding(error) }
     }
 
+    /// 抽屉：柯手边在跑什么活，让她自己看见，不用只听他说。
+    func fetchWorkDrawer() async throws -> WorkDrawer { try await readResource("/api/work/drawer") }
+
     func addAnniversary(name: String, date: String, emoji: String = "💞") async throws {
         try await writeResource("/api/anniversaries", body: ["name": name, "date": date, "emoji": emoji])
     }

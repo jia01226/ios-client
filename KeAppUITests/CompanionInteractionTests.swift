@@ -20,6 +20,23 @@ final class CompanionInteractionTests: XCTestCase {
         capture("coreading-reading-page")
     }
 
+    func testWorkDrawerShowsStatusInTest1() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-app.skin", "day"]
+        app.launch()
+        let switcher = app.buttons["chat-line-switcher-main"]
+        XCTAssertTrue(switcher.waitForExistence(timeout: 8))
+        switcher.tap()
+        XCTAssertTrue(app.buttons["测试1"].waitForExistence(timeout: 3))
+        app.buttons["测试1"].tap()
+        let entry = app.buttons["chat-drawer"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 10))
+        entry.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["drawer-summary"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.descendants(matching: .any)["drawer-tasks"].waitForExistence(timeout: 5))
+        capture("work-drawer")
+    }
+
     func testCalendarPrivacyAndDailyPages() {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-app.skin", "day"]

@@ -22,6 +22,7 @@ struct ChatView: View {
     @State private var draft = ""
     @State private var showingCallPlaceholder = false
     @State private var tarotOpen = false
+    @State private var workDrawerOpen = false
     @State private var showingMemoryUsage = false
     @State private var showingUsageDashboard = false
     @State private var quoteToSave: Message?
@@ -210,6 +211,9 @@ struct ChatView: View {
         .fullScreenCover(isPresented: $tarotOpen) {
             TarotView(line: line).environmentObject(theme)
         }
+        .fullScreenCover(isPresented: $workDrawerOpen) {
+            WorkDrawerView(line: line).environmentObject(theme)
+        }
         .fullScreenCover(item: $previewedImage) { attachment in
             AttachmentImageViewer(attachment: attachment) {
                 previewedImage = nil
@@ -256,8 +260,19 @@ struct ChatView: View {
             .accessibilityIdentifier("chat-line-switcher-\(line.rawValue)")
 
             HStack(spacing: 12) {
-                Image(systemName: "moon").font(.title3)
-                    .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
+                if line == .test1 {
+                    Button { workDrawerOpen = true } label: {
+                        Image(systemName: "moon").font(.title3)
+                            .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
+                            .background(FloatingGlassSurface(cornerRadius: 22))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("抽屉")
+                    .accessibilityIdentifier("chat-drawer")
+                } else {
+                    Image(systemName: "moon").font(.title3)
+                        .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
+                }
                 Spacer()
                 Button { tarotOpen = true } label: {
                     Image(systemName: "sparkles").font(.title3)
