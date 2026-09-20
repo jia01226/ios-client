@@ -87,14 +87,62 @@ struct MemoriesView: View {
                             Text("已收下的记忆").font(theme.font.sectionTitle)
                             Spacer()
                             Picker("类型", selection: $category) {
-                                ForEach(["全部", "身体", "喜好", "约定", "生活", "关系"], id: \.self) { Text($0) }
+                                ForEach(["全部", "身体用药", "安排", "关系约定", "喜好", "生活日常"], id: \.self) { Text($0) }
                             }.pickerStyle(.menu)
                         }
-                        let facts = review.archive.facts.filter { category == "全部" || $0.category == category }
+                        let facts = review.archive.facts.filter { category == "全部" || ($0.group ?? $0.category) == category }
                         if facts.isEmpty {
                             Text(review.archive.outbox.isEmpty ? "收下并同步的记忆会留在这里。" : "审核已存本机，同步后更新这里。")
                                 .font(theme.font.reviewBody).foregroundStyle(theme.reviewSecondary)
                         }
+                        let groupOrder = ["身体用药", "安排", "关系约定", "喜好", "生活日常"]
+                        let layerRank = ["现行": 0, "长期": 1, "零碎": 2, "旧账": 3]
+                        let grouped = Dictionary(grouping: facts) { $0.group ?? "生活日常" }
+                        let names = groupOrder.filter { grouped[$0] != nil } + grouped.keys.filter { !groupOrder.contains($0) }.sorted()
+                        ForEach(names, id: \.self) { name in
+                            let items = (grouped[name] ?? []).sorted {
+                                let a = ($0.changed_when != nil || !($0.history ?? []).isEmpty) ? 0 : 1
+                                let b = ($1.changed_when != nil || !($1.history ?? []).isEmpty) ? 0 : 1
+                                if a != b { return a < b }
+                                return (layerRank[$0.layer ?? ""] ?? 9) < (layerRank[$1.layer ?? ""] ?? 9)
+                            }
+                            let changedCount = items.filter { $0.changed_when != nil || !($0.history ?? []).isEmpty }.count
+                            Section {
+                                factsList(items)
+                            } header: {
+                                HStack(spacing: theme.metric.gapS) {
+                                    Text(name).font(theme.font.sectionTitle)
+                                    Text("\(items.count)").font(theme.font.reviewCaption)
+                                        .foregroundStyle(theme.reviewSecondary)
+                                    if changedCount > 0 {
+                                        Text("变过 \(changedCount)").font(theme.font.reviewCaption)
+                                            .padding(.horizontal, theme.metric.gapS)
+                                            .background(theme.effectiveAccent.opacity(0.16), in: Capsule())
+                                    }
+                                    Spacer()
+                                }
+                                .padding(.top, theme.metric.gapM)
+                            }
+                        }
+                    }
+                }
+                .foregroundStyle(theme.color.textPrimary)
+                .padding(theme.metric.pagePadding)
+            }
+            .background(theme.color.bg)
+            .toolbar(.hidden, for: .navigationBar)
+            .refreshable { await review.sync() }
+        }
+        .sheet(item: $updating) { card in ReviewNoteEditor(store: review, card: card) }
+        .tint(theme.effectiveAccent)
+        .task { await review.sync() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await review.sync() } }
+        }
+    }
+
+    @ViewBuilder
+    private func factsList(_ facts: [ReviewedFact]) -> some View {
                         ForEach(facts) { fact in
                             VStack(alignment: .leading, spacing: theme.metric.gapS) {
                                 Text(fact.fact).font(theme.font.reviewBody)
@@ -117,27 +165,24 @@ struct MemoriesView: View {
                                     Button("以前是，现在变了") { review.prepareUpdate(card); updating = card }
                                         .frame(minHeight: theme.metric.touchTarget)
                                 }
-                                Text("\(fact.category) · \(fact.observed_at)")
-                                    .font(theme.font.reviewCaption).foregroundStyle(theme.reviewSecondary)
+                                HStack(spacing: theme.metric.gapS) {
+                                    if let layer = fact.layer {
+                                        Text(layer).font(theme.font.reviewCaption)
+                                            .padding(.horizontal, theme.metric.gapS)
+                                            .background(theme.color.cardElevated, in: Capsule())
+                                    }
+                                    if fact.changed_when != nil || !(fact.history ?? []).isEmpty {
+                                        Text("变过").font(theme.font.reviewCaption)
+                                            .padding(.horizontal, theme.metric.gapS)
+                                            .background(theme.effectiveAccent.opacity(0.16), in: Capsule())
+                                    }
+                                    Text(fact.observed_at)
+                                        .font(theme.font.reviewCaption).foregroundStyle(theme.reviewSecondary)
+                                }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.vertical, theme.metric.gapS)
                             Divider()
                         }
-                    }
-                }
-                .foregroundStyle(theme.color.textPrimary)
-                .padding(theme.metric.pagePadding)
-            }
-            .background(theme.color.bg)
-            .toolbar(.hidden, for: .navigationBar)
-            .refreshable { await review.sync() }
-        }
-        .sheet(item: $updating) { card in ReviewNoteEditor(store: review, card: card) }
-        .tint(theme.effectiveAccent)
-        .task { await review.sync() }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await review.sync() } }
-        }
     }
 }

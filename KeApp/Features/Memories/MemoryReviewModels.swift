@@ -61,6 +61,8 @@ struct ReviewedFact: Codable, Identifiable, Sendable {
     var review_card: ReviewCard? = nil
     var history: [ReviewedFactHistory]? = nil
     var changed_when: String? = nil
+    var layer: String? = nil
+    var group: String? = nil
     var id: String { fact_id }
 }
 
