@@ -58,6 +58,9 @@ struct Palette {
     // 卧室模式（由柯触发，不由她按）
     let bedroomBg: Color
     let bedroomAccent: Color
+
+    // 玩页飘着的花瓣。风铃本身是水彩图，不需要色值。
+    let playPetal: Color
 }
 
 // MARK: - 两套皮的实际取值
@@ -90,7 +93,9 @@ extension Palette {
         glassShadow:     Color(hex: 0x6D5670).opacity(0.14),
 
         bedroomBg:     Color(hex: 0x2A1D1F),
-        bedroomAccent: Color(hex: 0xC79A4B)
+        bedroomAccent: Color(hex: 0xC79A4B),
+
+        playPetal:     Color(hex: 0xF2A9B4)
     )
 
     /// 深夜蓝 + 金 —— 跟 App 图标同源
@@ -119,7 +124,9 @@ extension Palette {
         glassShadow:     Color.black.opacity(0.22),
 
         bedroomBg:     Color(hex: 0x120A14),
-        bedroomAccent: Color(hex: 0xD9AE5F)
+        bedroomAccent: Color(hex: 0xD9AE5F),
+
+        playPetal:     Color(hex: 0x8A5A66)
     )
 }
 

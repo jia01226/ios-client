@@ -147,11 +147,10 @@ final class CompanionInteractionTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-app.skin", "day"]
         app.launch()
-        XCTAssertTrue(app.buttons["玩"].waitForExistence(timeout: 5))
-        app.buttons["玩"].tap()
-        XCTAssertTrue(app.buttons["play-tarot"].waitForExistence(timeout: 5))
-        capture("tarot-play-entry")
-        app.buttons["play-tarot"].tap()
+        // 塔罗入口在聊天页顶上（玩页那颗珠子 0923 让给了共读）。
+        XCTAssertTrue(app.buttons["chat-tarot"].waitForExistence(timeout: 5))
+        capture("tarot-chat-entry")
+        app.buttons["chat-tarot"].tap()
         XCTAssertTrue(app.buttons["tarot-draw"].waitForExistence(timeout: 5))
         let question = app.textFields["问题"].firstMatch.exists ? app.textFields["问题"].firstMatch : app.textViews.firstMatch
         question.tap()

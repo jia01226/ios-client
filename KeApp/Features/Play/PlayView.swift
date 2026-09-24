@@ -1,15 +1,16 @@
 import SwiftUI
+import UIKit
 import SafariServices
+
+// MARK: - 玩（2026-09-23 改版）：照她的稿，六个入口挂成三串风铃。
+//
+// 原来是六条一模一样的横条，靠读字分辨，滚三屏才看得完。
+// 现在一屏全在，风一吹微微摆。形状怎么画的见 PlayChime.swift。
 
 struct PlayView: View {
     @EnvironmentObject private var theme: Theme
     let line: ChatLine
     @State private var destination: CompanionPage?
-    @State private var latestMoment: RemoteMoment?
-    @State private var latestDiary: RemoteDiary?
-    @State private var loadError: String?
-    @State private var loading = false
-    @State private var tarotOpen = false
     @State private var fortuneOpen = false
     @State private var gardenOpen = false
     @State private var readingOpen = false
@@ -21,91 +22,103 @@ struct PlayView: View {
     private func serif(_ size: CGFloat) -> Font { .custom("NotoSerifSC-Regular", size: size, relativeTo: .body).weight(.light) }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                Text("玩").font(serif(52)).padding(.top, 12)
-                Text("生活很长，\n一起，把平凡过成喜欢的样子。")
-                    .font(serif(16)).lineSpacing(5).foregroundStyle(ink.opacity(0.65))
-                    .padding(.top, -18)
-                if loading { ProgressView().accessibilityLabel("正在加载") }
-                if let loadError {
-                    Text(loadError).font(serif(14))
-                    Button("重试") { Task { await refresh() } }
-                }
-                Button { destination = .moments } label: {
-                    VStack(alignment: .leading, spacing: 14) {
-                        heading("朋友圈", subtitle: "分享今天的小事")
-                        if let item = latestMoment {
-                            if let path = item.image, !path.isEmpty {
-                                CompanionImage(api: APIClient(baseURL: line.apiBaseURL), path: path, thumbnail: true)
-                                    .frame(maxWidth: .infinity).clipped()
-                            }
-                            Text("\(item.author == "user" ? "佳佳" : "柯") · \(item.content)")
-                                .font(serif(16)).lineLimit(3).lineSpacing(5)
-                        } else if !loading {
-                            Text("还没有动态，写下今天的一件小事。")
-                                .font(serif(16)).foregroundStyle(ink.opacity(0.65)).padding(.vertical, 25)
-                        }
-                    }.contentShape(Rectangle())
-                }.buttonStyle(.plain).accessibilityIdentifier("play-moments")
-                Divider().overlay(gold.opacity(0.12))
-                Button { tarotOpen = true } label: {
-                    VStack(alignment: .leading, spacing: 14) {
-                        heading("塔罗", subtitle: "抽一张，让柯给你断")
-                        Text("牌在这边抽，落了就不改。柯只负责说。")
-                            .font(serif(16)).foregroundStyle(ink.opacity(0.65)).lineSpacing(5)
-                    }.contentShape(Rectangle())
-                }.buttonStyle(.plain).accessibilityIdentifier("play-tarot")
-                Divider().overlay(gold.opacity(0.12))
-                Button { fortuneOpen = true } label: {
-                    VStack(alignment: .leading, spacing: 14) {
-                        heading("算命", subtitle: "八字、紫微、奇门、姻缘、风水")
-                        Text("排盘是死算的，柯只负责说。")
-                            .font(serif(16)).foregroundStyle(ink.opacity(0.65)).lineSpacing(5)
-                    }.contentShape(Rectangle())
-                }.buttonStyle(.plain).accessibilityIdentifier("play-fortune")
-                Divider().overlay(gold.opacity(0.12))
-                Button { gardenOpen = true } label: {
-                    VStack(alignment: .leading, spacing: 14) {
-                        heading("花园", subtitle: "柯在小机们的园子里")
-                        Text("看看他在那边说了什么，或者叫他去逛一趟。")
-                            .font(serif(16)).foregroundStyle(ink.opacity(0.65)).lineSpacing(5)
-                    }.contentShape(Rectangle())
-                }.buttonStyle(.plain).accessibilityIdentifier("play-garden")
-                Divider().overlay(gold.opacity(0.12))
-                Button { readingOpen = true } label: {
-                    VStack(alignment: .leading, spacing: 14) {
-                        heading("共读", subtitle: "找本书，坐在一起看")
-                        Text("像浏览器一样找书。读到哪儿，柯就陪到哪儿。")
-                            .font(serif(16)).foregroundStyle(ink.opacity(0.65)).lineSpacing(5)
-                    }.contentShape(Rectangle())
-                }.buttonStyle(.plain).accessibilityIdentifier("play-reading")
-                Divider().overlay(gold.opacity(0.12))
-                Button { destination = .diary } label: {
-                    VStack(alignment: .leading, spacing: 18) {
-                        heading("日记", subtitle: "把心情，安放在这里")
-                        HStack(alignment: .center, spacing: 20) {
-                            Text(latestDiary.map { String($0.created_at.dropFirst(8).prefix(2)) + "\n/\n" + String($0.created_at.dropFirst(5).prefix(2)) } ?? "—")
-                                .font(.custom("Didot", size: 20, relativeTo: .title3))
-                                .multilineTextAlignment(.center).frame(width: 95, height: 96)
-                                .background(gold.opacity(0.045))
-                            VStack(alignment: .leading, spacing: 9) {
-                                Text(latestDiary?.title ?? "把今天留在这里").font(serif(20))
-                                Text(latestDiary.map { $0.locked_hidden ? "暂时锁着的一页" : $0.content } ?? "有些话，慢慢写。")
-                                    .font(serif(15)).lineLimit(2).foregroundStyle(ink.opacity(0.65))
-                            }
-                        }
-                    }.contentShape(Rectangle())
-                }.buttonStyle(.plain).accessibilityIdentifier("play-diary")
-            }.padding(.horizontal, 28).padding(.bottom, 12)
+        ZStack(alignment: .top) {
+            theme.effectiveBackground.ignoresSafeArea()
+
+            // 她画的水彩纸：纸纹、花瓣、金点都在这张图里。
+            Image("PlayPaper")
+                .resizable()
+                .scaledToFill()
+                .ignoresSafeArea()
+
+            // 图上的花瓣是印死的，再叠几片会飘的，跟风铃一个风。
+            DriftingPetals(petal: theme.color.playPetal)
+                .ignoresSafeArea()
+
+            // 右串单独放在花枝【下面】：它挂的那段枝整个被花和叶盖住了。
+            // 金环整个藏进叶子后面，只留一根线垂下来 —— 她要的就是看不见钩子。
+            HStack(alignment: .top, spacing: 0) {
+                Color.clear.frame(maxWidth: .infinity)
+                Color.clear.frame(maxWidth: .infinity)
+                ChimeStrand(
+                    headAsset: "ChimeRightHead", bodyAsset: "ChimeRightBody",
+                    sourceWidth: 220, displayWidth: 78,
+                    headSourceHeight: 78, bodySourceHeight: 899,
+                    ringCenterInHead: 26, cordOffsetX: -1.8, cordExtra: 113,
+                    topBeadY: 0.194, bottomBeadY: 0.621, beadW: 0.82, beadH: 0.233,
+                    topGlyph: nil,
+                    top: ChimeBeadSpec(title: "日记", identifier: "play-diary") { destination = .diary },
+                    bottom: ChimeBeadSpec(title: "朋友圈", identifier: "play-moments") { destination = .moments },
+                    label: "日记 · 朋友圈", period: 3.7, phase: 3.4
+                )
+                .padding(.top, 134)
+                .offset(x: 14)
+                .frame(maxWidth: .infinity)
+            }
+            .padding(.horizontal, 56)
+
+            // 她画的水彩茶花。风铃画在它上面，金环压着枝，看着才是挂在上头。
+            Image("PlayBranch")
+                .resizable()
+                .scaledToFit()
+                .frame(width: UIScreen.main.bounds.width * 0.98)
+                .padding(.top, -18)
+                .allowsHitTesting(false)
+
+
+            // ⚠️ 层序：花枝先画，风铃后画压在枝上 —— 金环要看得见，才像挂上去的；
+            //    埋到枝后面就只剩半个钩子。别把这两层调过来。
+            //    三串各挂各的 —— 枝是斜的，左边那根挂得最低。
+            //    padding 是环落在枝上的高度，cordExtra 是线放多长（决定玉坠落到哪儿）。
+            HStack(alignment: .top, spacing: 0) {
+                ChimeStrand(
+                    headAsset: "ChimeLeftHead", bodyAsset: "ChimeLeftBody",
+                    sourceWidth: 220, displayWidth: 78,
+                    headSourceHeight: 78, bodySourceHeight: 907,
+                    ringCenterInHead: 26, cordOffsetX: 1.8, cordExtra: 106,
+                    topBeadY: 0.195, bottomBeadY: 0.626, beadW: 0.82, beadH: 0.235,
+                    topGlyph: .openBook,
+                    top: ChimeBeadSpec(title: "共读", identifier: "play-reading") { readingOpen = true },
+                    bottom: ChimeBeadSpec(title: "运势", identifier: "play-fortune") { fortuneOpen = true },
+                    label: "共读 · 运势", period: 3.4, phase: 0
+                )
+                .padding(.top, 133)
+                .frame(maxWidth: .infinity)
+
+                ChimeStrand(
+                    headAsset: "ChimeMidHead", bodyAsset: "ChimeMidBody",
+                    sourceWidth: 210, displayWidth: 74,
+                    headSourceHeight: 78, bodySourceHeight: 880,
+                    ringCenterInHead: 26, cordOffsetX: 0, cordExtra: 162,
+                    topBeadY: 0.191, bottomBeadY: 0.632, beadW: 0.82, beadH: 0.223,
+                    topGlyph: nil,
+                    top: ChimeBeadSpec(title: "花园", identifier: "play-garden") { gardenOpen = true },
+                    // 这颗是放他出去刷，不是给她看记录。走跟花园同一条路：
+                    // 把话交给聊天页发出去，柯接了活，刷完回来自己讲。
+                    bottom: ChimeBeadSpec(title: "让柯去 X 刷一圈", identifier: "play-x") {
+                        NotificationCenter.default.post(
+                            name: .tarotReadingRequest,
+                            object: "爸比，去 X 刷一圈，挑几条你真想跟我聊的，回来讲给我听")
+                    },
+                    label: "花园 · X", period: 4.1, phase: 1.9
+                )
+                .padding(.top, 108)
+                .offset(x: 6)
+                .frame(maxWidth: .infinity)
+
+                Color.clear.frame(maxWidth: .infinity)
+            }
+            .padding(.horizontal, 56)
+
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                footer
+                    .padding(.bottom, 18)
+            }
         }
-        .foregroundStyle(ink).background(theme.effectiveBackground)
-        .task { await refresh() }.refreshable { await refresh() }
-        .fullScreenCover(item: $destination, onDismiss: { Task { await refresh() } }) { page in
+        .foregroundStyle(ink)
+        .fullScreenCover(item: $destination) { page in
             CompanionPages(page: page, line: line).environmentObject(theme)
-        }
-        .fullScreenCover(isPresented: $tarotOpen) {
-            TarotView(line: line).environmentObject(theme)
         }
         .fullScreenCover(isPresented: $fortuneOpen) {
             FortuneView(line: line).environmentObject(theme)
@@ -118,26 +131,15 @@ struct PlayView: View {
         }
     }
 
-    private func heading(_ title: String, subtitle: String) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack { Text(title).font(serif(26)); Spacer(); Image(systemName: "chevron.right").font(.system(size: 15, weight: .light)) }
-            Text(subtitle).font(serif(14)).foregroundStyle(ink.opacity(0.65))
+    private var footer: some View {
+        HStack(spacing: 12) {
+                Rectangle().fill(gold.opacity(0.28)).frame(width: 34, height: 0.8)
+                Text("风来时，轻轻选一个")
+                    .font(serif(15)).foregroundStyle(ink.opacity(0.62))
+                Rectangle().fill(gold.opacity(0.28)).frame(width: 34, height: 0.8)
         }
     }
-
-    @MainActor private func refresh() async {
-        guard !loading else { return }
-        loading = true; loadError = nil
-        defer { loading = false }
-        let api = APIClient(baseURL: line.apiBaseURL)
-        do { latestMoment = try await api.fetchMoments().first }
-        catch { loadError = "动态没有加载成功，请重试。" }
-        do { latestDiary = try await api.fetchDiaries().first }
-        catch { loadError = "日记没有加载成功，请重试。" }
-    }
-
 }
-
 
 // MARK: - 塔罗（2026-09-14）：牌在服务器抽，落了就锁；柯只断，不抽不改。
 

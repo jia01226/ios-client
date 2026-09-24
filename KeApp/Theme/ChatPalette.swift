@@ -46,7 +46,8 @@ extension Palette {
             glassTint: .white, glassTintStrong: .white.opacity(0.12),
             glassEdge: .white.opacity(0.65), glassInnerLight: .white.opacity(0.3),
             glassShadow: ink.opacity(0.06), bedroomBg: Palette.night.bedroomBg,
-            bedroomAccent: Palette.night.bedroomAccent
+            bedroomAccent: Palette.night.bedroomAccent,
+            playPetal: Palette.day.playPetal
         )
     }
 }
