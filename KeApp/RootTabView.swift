@@ -4,11 +4,16 @@ import UIKit
 struct RootTabView: View {
 
     @EnvironmentObject private var theme: Theme
-    @State private var selection: Tab = .ke   // 默认落在聊天页
+    @State private var selection: Tab
     @State private var keyboardIsVisible = false
 
     enum Tab: Hashable {
         case us, ke, play, memories, jiajia
+    }
+
+    init() {
+        let previewUs = ProcessInfo.processInfo.arguments.contains("-preview-us")
+        _selection = State(initialValue: previewUs ? .us : .ke)
     }
 
     var body: some View {
