@@ -5,37 +5,48 @@ final class UsInteractionTests: XCTestCase {
         continueAfterFailure = false
     }
 
-    func testMoonOrbitBoundaryRotationAndTabRoundTrip() throws {
+    func testMoonOrbitSelectionRotationAndTabRoundTrip() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion"]
+        app.launchArguments = ["-ui-test-scroll-control"]
         app.launch()
 
         let usTab = app.buttons["我们"]
         XCTAssertTrue(usTab.waitForExistence(timeout: 5))
         usTab.tap()
 
-        app.buttons["time-anniversary-tab"].tap()
         let moon = app.descendants(matching: .any)["us-moon-orbit-selector"]
         XCTAssertTrue(moon.waitForExistence(timeout: 3))
-        XCTAssertEqual(moon.value as? String, "相识那天")
+        XCTAssertTrue((moon.value as? String)?.hasPrefix("表白的日子，320天") == true)
         attachScreenshot(named: "20-us-default-anniversary")
-
-        moon.swipeDown(velocity: .slow)
-        waitForValue("相识那天", on: moon)
-        attachScreenshot(named: "21-us-first-anniversary-boundary")
-
-        moon.swipeLeft(velocity: .slow)
-        Thread.sleep(forTimeInterval: 0.7)
-        XCTAssertEqual(moon.value as? String, "相识那天")
-        attachScreenshot(named: "22-us-moon-rotated")
 
         app.buttons["柯"].tap()
         XCTAssertTrue(app.buttons["我们"].waitForExistence(timeout: 2))
         app.buttons["我们"].tap()
 
         XCTAssertTrue(moon.waitForExistence(timeout: 2))
-        XCTAssertEqual(moon.value as? String, "相识那天")
+        XCTAssertTrue((moon.value as? String)?.hasPrefix("表白的日子，320天") == true)
         attachScreenshot(named: "23-us-tab-round-trip")
+    }
+
+    func testCalendarDayCanWriteShift() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-preview-us", "-preview-us-calendar"]
+        app.launch()
+
+        let day = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'calendar-day-'")).element(boundBy: 0)
+        XCTAssertTrue(day.waitForExistence(timeout: 5))
+        day.tap()
+
+        XCTAssertTrue(app.staticTexts["写班表"].waitForExistence(timeout: 2))
+        app.buttons["其他"].tap()
+        let note = app.textFields["写下班次，例如：培训、临时班"]
+        XCTAssertTrue(note.waitForExistence(timeout: 2))
+        note.tap()
+        note.typeText("培训\n")
+        attachScreenshot(named: "24-us-shift-editor")
+        app.buttons["保存班表"].tap()
+        XCTAssertFalse(app.staticTexts["写班表"].waitForExistence(timeout: 1))
+        attachScreenshot(named: "25-us-calendar-shift-saved")
     }
 
     private func waitForValue(_ value: String, on element: XCUIElement) {

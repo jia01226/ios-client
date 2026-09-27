@@ -4,13 +4,18 @@ import UIKit
 struct RootTabView: View {
 
     @EnvironmentObject private var theme: Theme
-    @State private var selection: Tab = .ke   // 默认落在聊天页
+    @State private var selection: Tab
     @State private var chatLine: ChatLine = .main
     @State private var keyboardIsVisible = false
     @State private var chatSettingsOpen = false
 
     enum Tab: Hashable {
         case us, ke, play, memories, jiajia
+    }
+
+    init() {
+        let previewUs = ProcessInfo.processInfo.arguments.contains("-preview-us")
+        _selection = State(initialValue: previewUs ? .us : .ke)
     }
 
     var body: some View {
@@ -22,8 +27,7 @@ struct RootTabView: View {
                 // ChatView 会保留状态，同时只有当前页面参与命中测试和主要渲染。
                 // 栏可见性从页面向上交给 TabView，每个页面都需声明隐藏系统栏。
                 TabView(selection: $selection) {
-                    TimeHomeView(line: chatLine, active: selection == .us)
-                        .id(chatLine)
+                    UsView()
                         .toolbar(.hidden, for: .tabBar)
                         .tag(Tab.us)
                     ChatView(line: chatLine, selectedLine: $chatLine)
