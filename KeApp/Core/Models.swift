@@ -2,8 +2,7 @@ import Foundation
 
 // 数据模型。
 //
-// ⚠️ 这一份是照着"界面需要什么"先写的占位版。
-// 等 `工单板/后端接口清单.md` 出来之后，按真实返回结构对齐字段名，别反过来让后端迁就这儿。
+// 界面领域模型；服务端日期记录的返回结构见 CompanionAPIModels。
 
 // MARK: - 聊天
 
@@ -267,4 +266,11 @@ struct MemoryCard: Identifiable, Hashable, Codable {
         f.dateFormat = "yyyy年M月d日"
         return f
     }()
+}
+
+
+extension Message {
+    var canRecall: Bool {
+        sender == .me && serverID != nil && deliveryState == .sent && !isStreaming
+    }
 }

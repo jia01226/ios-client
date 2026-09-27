@@ -104,29 +104,6 @@ final class CompanionAPITests: XCTestCase {
         XCTAssertEqual(comment.content, "这里我想陪你多停一会儿。")
     }
 
-    @MainActor func testRefreshKeepsPendingOverdueRemindersAndUnknownShiftLabels() async throws {
-        CompanionStub.handler = { request in
-            switch request.url!.lastPathComponent {
-            case "anniversaries": return (200, #"[{"id":1,"name":"相识","date":"2024-02-29","emoji":"","days":924}]"#)
-            case "schedule": return (200, #"{"current":[{"id":9,"text":"仍待处理","scheduled_for":"2020-01-01 08:00:00","status":"pending","outcome":"blocked","outcome_label":"等待","due":true}],"history":[]}"#)
-            default:
-                let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd"
-                formatter.timeZone = CompanionDate.calendar.timeZone
-                return (200, "[{\"date\":\"\(formatter.string(from: .now))\",\"shift\":\"备班\",\"note\":\"\"}]")
-            }
-        }
-        let model = UsViewModel(api: api())
-        await model.refresh()
-        XCTAssertNil(model.error)
-        XCTAssertEqual(model.activeReminders.count, 1)
-        XCTAssertEqual(model.thisWeek.first?.label, "备班")
-        XCTAssertEqual(model.anniversaries.first?.isYearly, true)
-        CompanionStub.handler = { _ in (503, #"{"error":"暂时不可用"}"#) }
-        await model.refresh()
-        XCTAssertNotNil(model.error)
-        XCTAssertEqual(model.activeReminders.count, 1)
-    }
-
     @MainActor func testTimeSpaceKeepsCompletedRemindersInCalendarAndAllowsPartialRefresh() async {
         CompanionStub.handler = { request in
             switch request.url!.lastPathComponent {

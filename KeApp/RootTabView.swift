@@ -23,29 +23,18 @@ struct RootTabView: View {
             AppAtmosphere()
 
             VStack(spacing: 0) {
-                // 由系统 TabView 管顶层页面的生命周期和可见层级：已经访问过的
-                // ChatView 会保留状态，同时只有当前页面参与命中测试和主要渲染。
-                // 栏可见性从页面向上交给 TabView，每个页面都需声明隐藏系统栏。
-                TabView(selection: $selection) {
-                    UsView()
-                        .toolbar(.hidden, for: .tabBar)
-                        .tag(Tab.us)
+                // 不使用系统 TabView，避免 iOS 17 留下透明、可命中的系统栏。
+                // 聊天页始终留在层级内以保留当前窗口状态；其它页面按需加载，
+                // 风铃和月球动画不会在后台继续运行。
+                ZStack {
+                    selectedNonChatPage
                     ChatView(line: chatLine, selectedLine: $chatLine)
                         .id(chatLine)
-                        .toolbar(.hidden, for: .tabBar)
-                        .tag(Tab.ke)
-                    PlayView(line: chatLine)
-                        .id(chatLine)
-                        .toolbar(.hidden, for: .tabBar)
-                        .tag(Tab.play)
-                    MemoriesView(line: chatLine)
-                        .id(chatLine)
-                        .toolbar(.hidden, for: .tabBar)
-                        .tag(Tab.memories)
-                    JiajiaView()
-                        .toolbar(.hidden, for: .tabBar)
-                        .tag(Tab.jiajia)
+                        .opacity(selection == .ke ? 1 : 0)
+                        .allowsHitTesting(selection == .ke)
+                        .accessibilityHidden(selection != .ke)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 if !keyboardIsVisible && !chatSettingsOpen {
                     crystalTabBar
@@ -80,6 +69,22 @@ struct RootTabView: View {
             )
         ) { _ in
             keyboardIsVisible = false
+        }
+    }
+
+    @ViewBuilder
+    private var selectedNonChatPage: some View {
+        switch selection {
+        case .us:
+            UsView()
+        case .ke:
+            Color.clear.allowsHitTesting(false)
+        case .play:
+            PlayView(line: chatLine).id(chatLine)
+        case .memories:
+            MemoriesView(line: chatLine).id(chatLine)
+        case .jiajia:
+            JiajiaView()
         }
     }
 
