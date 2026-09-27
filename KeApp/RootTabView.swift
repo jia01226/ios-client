@@ -12,6 +12,9 @@ struct RootTabView: View {
     }
 
     init() {
+        // App 使用自己的水晶导航栏。iOS 17 即使收到 SwiftUI 的 hidden toolbar，
+        // 仍可能保留一个透明、占 49pt 且可命中的 UITabBar；从 UIKit 层彻底关闭。
+        UITabBar.appearance().isHidden = true
         let previewUs = ProcessInfo.processInfo.arguments.contains("-preview-us")
         _selection = State(initialValue: previewUs ? .us : .ke)
     }
