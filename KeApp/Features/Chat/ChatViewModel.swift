@@ -352,6 +352,7 @@ final class ChatViewModel: ObservableObject {
                 sessionID = 1
             } else {
                 uiTestFixture = .scrollControl
+                sessionID = 1
             }
             phase = .ready
             var fixtureMessages: [Message] = []

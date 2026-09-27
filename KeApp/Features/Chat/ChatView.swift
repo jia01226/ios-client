@@ -69,7 +69,7 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.clear)
         .animation(.easeInOut(duration: 0.6), value: theme.isBedroom)
-        .onReceive(NotificationCenter.default.publisher(for: .tarotReadingRequest)) { notification in
+        .onReceive(NotificationCenter.default.publisher(for: .chatSendRequest)) { notification in
             guard let text = notification.object as? String, !text.isEmpty else { return }
             Task { await vm.send(text) }
         }

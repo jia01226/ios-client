@@ -51,8 +51,12 @@ struct RootTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .chatSettingsVisibility)) { notification in
             chatSettingsOpen = notification.object as? Bool ?? false
         }
-        .onReceive(NotificationCenter.default.publisher(for: .tarotReadingRequest)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .tarotReadingRequest)) { notification in
             selection = .ke
+            guard let text = notification.object as? String, !text.isEmpty else { return }
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .chatSendRequest, object: text)
+            }
         }
         .onReceive(
             NotificationCenter.default.publisher(
@@ -184,4 +188,5 @@ private struct NavArtwork: View {
 
 extension Notification.Name {
     static let chatSettingsVisibility = Notification.Name("love.chatSettingsVisibility")
+    static let chatSendRequest = Notification.Name("love.chatSendRequest")
 }
