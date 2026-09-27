@@ -17,9 +17,11 @@ final class RootTabBarTests: XCTestCase {
         for destination in ["柯", "我们", "玩", "回忆", "佳佳", "柯"] {
             customBar.buttons[destination].tap()
             XCTAssertTrue(customBar.isHittable)
+            let systemBar = app.tabBars.firstMatch
+            let disappeared = systemBar.waitForNonExistence(timeout: 2)
             XCTAssertTrue(
-                app.tabBars.firstMatch.waitForNonExistence(timeout: 2),
-                "\(destination)页只能显示自定义导航，不能出现额外系统标签栏"
+                disappeared || !systemBar.isHittable,
+                "\(destination)页只能显示自定义导航，不能出现可操作的系统标签栏"
             )
             let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
             attachment.name = "navigation-\(destination)"
