@@ -4,6 +4,7 @@ import UIKit
 struct RootTabView: View {
 
     @EnvironmentObject private var theme: Theme
+    @StateObject private var chatViewModel = ChatViewModel()
     @State private var selection: Tab
     @State private var keyboardIsVisible = false
 
@@ -12,9 +13,6 @@ struct RootTabView: View {
     }
 
     init() {
-        // App 使用自己的水晶导航栏。iOS 17 即使收到 SwiftUI 的 hidden toolbar，
-        // 仍可能保留一个透明、占 49pt 且可命中的 UITabBar；从 UIKit 层彻底关闭。
-        UITabBar.appearance().isHidden = true
         let previewUs = ProcessInfo.processInfo.arguments.contains("-preview-us")
         _selection = State(initialValue: previewUs ? .us : .ke)
     }
@@ -24,26 +22,11 @@ struct RootTabView: View {
             AppAtmosphere()
 
             VStack(spacing: 0) {
-                // 由系统 TabView 管顶层页面的生命周期和可见层级：已经访问过的
-                // ChatView 会保留状态，同时只有当前页面参与命中测试和主要渲染。
-                // 栏可见性从页面向上交给 TabView，每个页面都需声明隐藏系统栏。
-                TabView(selection: $selection) {
-                    UsView()
-                        .toolbar(.hidden, for: .tabBar)
-                        .tag(Tab.us)
-                    ChatView()
-                        .toolbar(.hidden, for: .tabBar)
-                        .tag(Tab.ke)
-                    PlayView()
-                        .toolbar(.hidden, for: .tabBar)
-                        .tag(Tab.play)
-                    MemoriesView()
-                        .toolbar(.hidden, for: .tabBar)
-                        .tag(Tab.memories)
-                    JiajiaView()
-                        .toolbar(.hidden, for: .tabBar)
-                        .tag(Tab.jiajia)
-                }
+                // 页面按需加载，避免隐藏的星空动画继续耗电；聊天数据模型由根页
+                // 持有，切回聊天时消息不会丢。这里不用系统 TabView，彻底避开
+                // iOS 17 的透明 49pt TabBar。
+                selectedPage
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 if !keyboardIsVisible {
                     crystalTabBar
@@ -72,6 +55,22 @@ struct RootTabView: View {
             )
         ) { _ in
             keyboardIsVisible = false
+        }
+    }
+
+    @ViewBuilder
+    private var selectedPage: some View {
+        switch selection {
+        case .us:
+            UsView()
+        case .ke:
+            ChatView(vm: chatViewModel)
+        case .play:
+            PlayView()
+        case .memories:
+            MemoriesView()
+        case .jiajia:
+            JiajiaView()
         }
     }
 

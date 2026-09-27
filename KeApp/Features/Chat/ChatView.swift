@@ -14,7 +14,7 @@ struct ChatView: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @StateObject private var vm = ChatViewModel()
+    @ObservedObject private var vm: ChatViewModel
     @StateObject private var recentPhotos = RecentPhotosStore()
     @State private var draft = ""
     @FocusState private var inputFocused: Bool
@@ -33,6 +33,10 @@ struct ChatView: View {
     @State private var expandedModelGroups: Set<String> = []
     @State private var showsScrollToLatest = false
     @State private var scrollToLatestRequest = 0
+
+    init(vm: ChatViewModel) {
+        self.vm = vm
+    }
 
     var body: some View {
         Group {
@@ -1397,5 +1401,5 @@ struct ChatView: View {
 }
 
 #Preview {
-    ChatView().environmentObject(Theme.shared)
+    ChatView(vm: ChatViewModel()).environmentObject(Theme.shared)
 }
