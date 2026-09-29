@@ -245,8 +245,8 @@ private struct WatercolorAnniversaryHero: View {
                 Image("WatercolorMoon")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 430, height: 430)
-                    .position(x: width + 20, y: 102)
+                    .frame(width: 492, height: 492)
+                    .position(x: width + 30, y: 110)
                     .opacity(0.97)
                     .shadow(color: UsPalette.gold.opacity(0.10), radius: 28, x: -14, y: 12)
                     .accessibilityHidden(true)
@@ -340,8 +340,8 @@ private struct WatercolorAnniversaryHero: View {
         let fraction = fractions[min(index, fractions.count - 1)]
         let angle = Double(108 + 142 * fraction) * .pi / 180
         return CGPoint(
-            x: width + 20 + 258 * CGFloat(cos(angle)),
-            y: 102 + 258 * CGFloat(sin(angle))
+            x: width + 30 + 278 * CGFloat(cos(angle)),
+            y: 110 + 278 * CGFloat(sin(angle))
         )
     }
 
@@ -358,10 +358,10 @@ private struct WatercolorOrbit: View {
 
     var body: some View {
         Canvas { context, _ in
-            let center = CGPoint(x: width + 20, y: 102)
-            let main = arc(center: center, radius: 258, start: 108, end: 250)
-            let soft = arc(center: CGPoint(x: center.x - 2, y: center.y + 1), radius: 262, start: 109, end: 249)
-            let inner = arc(center: CGPoint(x: center.x + 1, y: center.y), radius: 253, start: 112, end: 247)
+            let center = CGPoint(x: width + 30, y: 110)
+            let main = arc(center: center, radius: 278, start: 108, end: 250)
+            let soft = arc(center: CGPoint(x: center.x - 2, y: center.y + 1), radius: 282, start: 109, end: 249)
+            let inner = arc(center: CGPoint(x: center.x + 1, y: center.y), radius: 273, start: 112, end: 247)
 
             context.stroke(soft, with: .color(UsPalette.blush.opacity(0.12)), lineWidth: 7)
             context.stroke(main, with: .color(UsPalette.hairline.opacity(0.72)), lineWidth: 0.9)
@@ -387,11 +387,11 @@ private struct WatercolorOrbit: View {
 
     private var pigmentSamples: [(angle: CGFloat, radius: CGFloat, size: CGFloat, color: Color)] {
         [
-            (121, 260, 2.4, UsPalette.gold.opacity(0.36)),
-            (145, 255, 1.8, UsPalette.coral.opacity(0.28)),
-            (177, 263, 2.0, UsPalette.gold.opacity(0.26)),
-            (208, 255, 2.8, UsPalette.blush.opacity(0.34)),
-            (236, 261, 1.7, UsPalette.gold.opacity(0.34)),
+            (121, 280, 3.4, UsPalette.gold.opacity(0.54)),
+            (145, 275, 2.8, UsPalette.coral.opacity(0.44)),
+            (177, 283, 3.0, UsPalette.gold.opacity(0.42)),
+            (208, 275, 3.8, UsPalette.blush.opacity(0.52)),
+            (236, 281, 2.7, UsPalette.gold.opacity(0.48)),
         ]
     }
 }
@@ -404,24 +404,24 @@ private struct WatercolorOrbitBody: View {
         ZStack {
             Circle()
                 .fill(UsPalette.paper.opacity(0.90))
-                .frame(width: selected ? 43 : 31, height: selected ? 43 : 31)
+                .frame(width: selected ? 51 : 38, height: selected ? 51 : 38)
                 .shadow(color: UsPalette.gold.opacity(selected ? 0.19 : 0.07), radius: selected ? 9 : 3, y: 3)
 
             Image("WatercolorMoon")
                 .resizable()
                 .scaledToFit()
-                .frame(width: selected ? 38 : 27, height: selected ? 38 : 27)
+                .frame(width: selected ? 45 : 33, height: selected ? 45 : 33)
                 .colorMultiply(tint)
                 .opacity(selected ? 1 : 0.74)
 
             if selected {
                 Ellipse()
                     .stroke(UsPalette.coral.opacity(0.48), lineWidth: 1)
-                    .frame(width: 50, height: 17)
+                    .frame(width: 59, height: 20)
                     .rotationEffect(.degrees(-18))
             }
         }
-        .frame(width: 52, height: 52)
+        .frame(width: 62, height: 62)
         .animation(.spring(response: 0.32, dampingFraction: 1), value: selected)
     }
 
@@ -746,8 +746,8 @@ private struct MonthCalendar: View {
                 currentShift: vm.shift(on: selection.date),
                 currentNote: vm.shiftNote(on: selection.date),
                 onSave: { shift, note in
-                    vm.setShift(shift, note: note, on: selection.date)
                     editingDate = nil
+                    Task { await vm.setShift(shift, note: note, on: selection.date) }
                 }
             )
             .presentationDetents([.height(420)])
@@ -1004,6 +1004,7 @@ final class UsViewModel: ObservableObject {
     @Published private(set) var savedShifts: [String: ShiftDay.Kind] = [:]
     @Published private(set) var savedShiftNotes: [String: String] = [:]
     @Published private(set) var clearedShiftKeys: Set<String> = []
+    @Published private var remoteShifts: [String: ShiftDay] = [:]
 
     private let calendar = Calendar.current
     private let savedShiftsKey = "us.saved-shifts.v2"
@@ -1073,15 +1074,9 @@ final class UsViewModel: ObservableObject {
 
         let weekday = calendar.component(.weekday, from: today)
         let monday = calendar.date(byAdding: .day, value: -((weekday + 5) % 7), to: today) ?? today
-        let kinds: [ShiftDay.Kind?] = [nil, .early, .deputy, nil, .early, nil, .other]
-        let notes: [String?] = [nil, nil, nil, nil, nil, nil, "培训"]
         thisWeek = (0..<7).map { index in
             let date = calendar.date(byAdding: .day, value: index, to: monday) ?? today
-            let key = dateKey(date)
-            let isCleared = clearedShiftKeys.contains(key)
-            let kind = isCleared ? nil : (savedShifts[key] ?? kinds[index])
-            let note = isCleared ? nil : (savedShiftNotes[key] ?? notes[index])
-            return ShiftDay(id: "s\(index)", date: date, kind: kind, note: note)
+            return ShiftDay(id: "s\(index)", date: date, kind: nil, note: nil)
         }
     }
 
@@ -1089,19 +1084,33 @@ final class UsViewModel: ObservableObject {
         guard let api else { return }
         loadingReminders = true
         defer { loadingReminders = false }
+        var failures: [String] = []
         do {
-            async let scheduleTask = api.fetchSchedule()
-            async let anniversariesTask = api.fetchAnniversaries()
-            let (schedule, remoteAnniversaries) = try await (scheduleTask, anniversariesTask)
+            let schedule = try await api.fetchSchedule()
             reminders = Self.reminders(from: schedule.current)
+        } catch {
+            failures.append("提醒")
+        }
+        do {
+            let remoteAnniversaries = try await api.fetchAnniversaries()
             let resolvedAnniversaries = Self.anniversaries(from: remoteAnniversaries)
             if !resolvedAnniversaries.isEmpty {
                 anniversaries = resolvedAnniversaries
             }
-            reminderLoadError = nil
         } catch {
-            reminderLoadError = "提醒暂时没有接上，请点重新连接或稍后再试。"
+            failures.append("纪念日")
         }
+        do {
+            let rows = try await api.fetchShifts()
+            remoteShifts = Dictionary(uniqueKeysWithValues: rows.compactMap { row in
+                guard let date = CompanionDate.parse(row.date), let kind = Self.shiftKind(row.shift) else { return nil }
+                return (row.date, ShiftDay(id: row.date, date: date, kind: kind, note: row.note))
+            })
+            rebuildThisWeek()
+        } catch {
+            failures.append("排班")
+        }
+        reminderLoadError = failures.isEmpty ? nil : failures.joined(separator: "、") + "暂时没有接上，请下拉重试。"
     }
 
     static func anniversaries(from rows: [RemoteAnniversary]) -> [Anniversary] {
@@ -1115,6 +1124,15 @@ final class UsViewModel: ObservableObject {
                 date: date,
                 isYearly: name.contains("生日")
             )
+        }
+    }
+
+    private static func shiftKind(_ value: String) -> ShiftDay.Kind? {
+        if let kind = ShiftDay.Kind(rawValue: value) { return kind }
+        switch value {
+        case "早班": return .early
+        case "副班": return .deputy
+        default: return .other
         }
     }
 
@@ -1194,44 +1212,49 @@ final class UsViewModel: ObservableObject {
     func shift(on date: Date) -> ShiftDay.Kind? {
         let key = dateKey(date)
         if clearedShiftKeys.contains(key) { return nil }
-        return savedShifts[key] ?? thisWeek.first { calendar.isDate($0.date, inSameDayAs: date) }?.kind
+        return savedShifts[key] ?? remoteShifts[key]?.kind
     }
 
     func shiftNote(on date: Date) -> String? {
         let key = dateKey(date)
         if clearedShiftKeys.contains(key) { return nil }
-        return savedShiftNotes[key] ?? thisWeek.first { calendar.isDate($0.date, inSameDayAs: date) }?.note
+        return savedShiftNotes[key] ?? remoteShifts[key]?.note
     }
 
-    func setShift(_ kind: ShiftDay.Kind?, note: String? = nil, on date: Date) {
+    func setShift(_ kind: ShiftDay.Kind?, note: String? = nil, on date: Date) async {
         let key = dateKey(date)
-        if let kind {
-            savedShifts[key] = kind
-            if kind == .other, let note, !note.isEmpty {
-                savedShiftNotes[key] = note
+        do {
+            if let kind {
+                try await api?.setShift(date: key, shift: shiftLabel(kind), note: kind == .other ? (note ?? "") : "")
             } else {
-                savedShiftNotes.removeValue(forKey: key)
+                try await api?.deleteShift(date: key)
             }
+        } catch {
+            reminderLoadError = "班表没有保存成功，请稍后重试。"
+            return
+        }
+        if let kind {
+            remoteShifts[key] = ShiftDay(id: key, date: date, kind: kind, note: kind == .other ? note : nil)
             clearedShiftKeys.remove(key)
         } else {
-            savedShifts.removeValue(forKey: key)
-            savedShiftNotes.removeValue(forKey: key)
+            remoteShifts.removeValue(forKey: key)
             clearedShiftKeys.insert(key)
         }
-
-        if let index = thisWeek.firstIndex(where: { calendar.isDate($0.date, inSameDayAs: date) }) {
-            thisWeek[index] = ShiftDay(
-                id: thisWeek[index].id,
-                date: thisWeek[index].date,
-                kind: kind,
-                note: kind == .other ? note : nil
-            )
-        }
+        savedShifts.removeValue(forKey: key)
+        savedShiftNotes.removeValue(forKey: key)
 
         var stored = savedShifts.mapValues(\.rawValue)
         for key in clearedShiftKeys { stored[key] = "none" }
         defaults.set(stored, forKey: savedShiftsKey)
         defaults.set(savedShiftNotes, forKey: savedShiftNotesKey)
+        rebuildThisWeek()
+    }
+
+    private func rebuildThisWeek() {
+        thisWeek = thisWeek.map { day in
+            let key = dateKey(day.date)
+            return ShiftDay(id: day.id, date: day.date, kind: shift(on: day.date), note: savedShiftNotes[key] ?? remoteShifts[key]?.note)
+        }
     }
 
     func calendarDayAccessibilityLabel(_ date: Date) -> String {
