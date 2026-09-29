@@ -49,6 +49,24 @@ final class UsInteractionTests: XCTestCase {
         attachScreenshot(named: "25-us-calendar-shift-saved")
     }
 
+    func testCompanionHubShowsRemindersDrawersAndCapabilities() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-preview-us", "-ui-test-companion", "-app.skin", "day"]
+        app.launch()
+
+        let entry = app.buttons["us-companion-hub"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 5))
+        entry.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["companion-hub"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["hub-reminders"].exists)
+        XCTAssertTrue(app.buttons["hub-work-drawer"].exists)
+        XCTAssertTrue(app.buttons["hub-personal-drawer"].exists)
+        XCTAssertTrue(app.staticTexts["邮箱、笔友与群聊"].exists)
+        XCTAssertTrue(app.staticTexts["照片与相册"].exists)
+        attachScreenshot(named: "26-us-companion-hub")
+    }
+
     private func waitForValue(_ value: String, on element: XCUIElement) {
         let expectation = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "value == %@", value),

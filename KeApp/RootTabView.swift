@@ -80,7 +80,7 @@ struct RootTabView: View {
     private var selectedNonChatPage: some View {
         switch selection {
         case .us:
-            UsView()
+            UsView(line: chatLine).id(chatLine)
         case .ke:
             Color.clear.allowsHitTesting(false)
         case .play:

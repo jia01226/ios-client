@@ -4,9 +4,16 @@ import SwiftUI
 
 struct UsView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @StateObject private var vm = UsViewModel()
+    let line: ChatLine
+    @StateObject private var vm: UsViewModel
     @State private var selectedAnniversaryIndex = 1
     @State private var selectedWeekIndex = min(6, max(0, (Calendar.current.component(.weekday, from: .now) + 5) % 7))
+    @State private var showingCompanionHub = false
+
+    init(line: ChatLine = .test1) {
+        self.line = line
+        _vm = StateObject(wrappedValue: UsViewModel(api: APIClient(baseURL: line.apiBaseURL)))
+    }
 
     var body: some View {
         ScrollViewReader { scrollProxy in
@@ -27,6 +34,10 @@ struct UsView: View {
 
                 reminder
                     .padding(.horizontal, 30)
+
+                companionEntry
+                    .padding(.horizontal, 30)
+                    .padding(.top, 34)
 
                 if dynamicTypeSize.isAccessibilitySize {
                     AccessibleWeekSchedule(days: vm.thisWeek, vm: vm)
@@ -54,6 +65,7 @@ struct UsView: View {
                 }
             }
             .scrollIndicators(.hidden)
+            .refreshable { await vm.loadReminders() }
             .scrollContentBackground(.hidden)
             .background(UsPalette.paper.ignoresSafeArea())
             .task {
@@ -64,6 +76,10 @@ struct UsView: View {
             }
             .onChange(of: vm.anniversaries.map(\.id)) { _, ids in
                 selectedAnniversaryIndex = min(selectedAnniversaryIndex, max(0, ids.count - 1))
+            }
+            .task(id: line) { await vm.loadReminders() }
+            .sheet(isPresented: $showingCompanionHub) {
+                CompanionHubView(line: line, model: vm)
             }
         }
     }
@@ -94,8 +110,80 @@ struct UsView: View {
                         .font(.custom("STSongti-SC-Light", size: 12, relativeTo: .caption))
                         .tracking(0.8)
                         .foregroundStyle(UsPalette.mutedInk)
+                } else if vm.loadingReminders {
+                    Text("正在看看记下了什么")
+                        .font(.custom("STSongti-SC-Light", size: 14, relativeTo: .body))
+                        .foregroundStyle(UsPalette.mutedInk)
+                } else if vm.reminderLoadError != nil {
+                    Button("提醒暂时没接上 · 点这里重试") {
+                        Task { await vm.loadReminders() }
+                    }
+                    .font(.custom("STSongti-SC-Light", size: 14, relativeTo: .body))
+                    .foregroundStyle(UsPalette.coral)
+                } else {
+                    Text("现在没有待着的提醒")
+                        .font(.custom("STSongti-SC-Light", size: 14, relativeTo: .body))
+                        .foregroundStyle(UsPalette.mutedInk)
                 }
             }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var companionEntry: some View {
+        Button { showingCompanionHub = true } label: {
+            VStack(alignment: .leading, spacing: 13) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("柯的接口")
+                        .font(.custom("STSongti-SC-Regular", size: 20, relativeTo: .headline))
+                        .tracking(1.8)
+                    Spacer()
+                    Text("打开")
+                        .font(.custom("STSongti-SC-Light", size: 13, relativeTo: .caption))
+                        .tracking(1)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .medium))
+                }
+
+                Text("提醒你的事 · 柯在忙什么 · 柯的抽屉")
+                    .font(.custom("STSongti-SC-Light", size: 14, relativeTo: .body))
+                    .tracking(0.7)
+                    .foregroundStyle(UsPalette.mutedInk)
+
+                HStack(spacing: 17) {
+                    hubStatus("提醒", value: reminderStatus)
+                    hubStatus("能力", value: "逐步接通")
+                    hubStatus("抽屉", value: "去看看")
+                }
+            }
+            .foregroundStyle(UsPalette.ink)
+            .padding(.vertical, 17)
+            .overlay(alignment: .top) {
+                Rectangle().fill(UsPalette.hairline.opacity(0.52)).frame(height: 0.5)
+            }
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(UsPalette.hairline.opacity(0.28)).frame(height: 0.5)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("us-companion-hub")
+        .accessibilityHint("查看提醒、抽屉和柯能做的事情")
+    }
+
+    private var reminderStatus: String {
+        if vm.loadingReminders { return "连接中" }
+        if vm.reminderLoadError != nil { return "未接上" }
+        return vm.activeReminders.isEmpty ? "暂无" : "\(vm.activeReminders.count) 件"
+    }
+
+    private func hubStatus(_ title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.custom("STSongti-SC-Light", size: 12, relativeTo: .caption))
+                .foregroundStyle(UsPalette.mutedInk)
+            Text(value)
+                .font(.custom("STSongti-SC-Regular", size: 14, relativeTo: .subheadline))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -921,10 +1009,13 @@ final class UsViewModel: ObservableObject {
     private let savedShiftsKey = "us.saved-shifts.v2"
     private let savedShiftNotesKey = "us.saved-shift-notes.v2"
     private let defaults: UserDefaults
+    private let api: APIClient?
+    @Published private(set) var reminderLoadError: String?
+    @Published private(set) var loadingReminders = false
 
     var activeReminders: [Reminder] {
         reminders
-            .filter { !$0.dismissedByKe && $0.dueAt > Date().addingTimeInterval(-86400) }
+            .filter { !$0.dismissedByKe }
             .sorted { $0.dueAt < $1.dueAt }
     }
 
@@ -952,8 +1043,9 @@ final class UsViewModel: ObservableObject {
         }.map(Optional.some)
     }
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, api: APIClient? = nil) {
         self.defaults = defaults
+        self.api = api
         let today = calendar.startOfDay(for: .now)
         if let stored = defaults.dictionary(forKey: savedShiftsKey) as? [String: String] {
             savedShifts = stored.reduce(into: [:]) { result, entry in
@@ -971,11 +1063,13 @@ final class UsViewModel: ObservableObject {
             Anniversary(id: "ke", title: "柯的生日", date: calendar.date(byAdding: .day, value: 204, to: today) ?? today),
         ]
 
-        let medicineTime = calendar.date(bySettingHour: 15, minute: 0, second: 0, of: today) ?? today
-        reminders = [
-            Reminder(id: "r1", text: "吃维生素 D", dueAt: medicineTime, category: .medicine),
-            Reminder(id: "r2", text: "周一有安排，提前半小时出发。", dueAt: Date().addingTimeInterval(86400), category: .work),
-        ]
+        if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("-ui-test") || $0.hasPrefix("-preview-us") }) {
+            let medicineTime = calendar.date(bySettingHour: 15, minute: 0, second: 0, of: today) ?? today
+            reminders = [
+                Reminder(id: "r1", text: "吃维生素 D", dueAt: medicineTime, category: .medicine),
+                Reminder(id: "r2", text: "周一有安排，提前半小时出发。", dueAt: Date().addingTimeInterval(86400), category: .work),
+            ]
+        }
 
         let weekday = calendar.component(.weekday, from: today)
         let monday = calendar.date(byAdding: .day, value: -((weekday + 5) % 7), to: today) ?? today
@@ -988,6 +1082,31 @@ final class UsViewModel: ObservableObject {
             let kind = isCleared ? nil : (savedShifts[key] ?? kinds[index])
             let note = isCleared ? nil : (savedShiftNotes[key] ?? notes[index])
             return ShiftDay(id: "s\(index)", date: date, kind: kind, note: note)
+        }
+    }
+
+    func loadReminders() async {
+        guard let api else { return }
+        loadingReminders = true
+        defer { loadingReminders = false }
+        do {
+            let schedule = try await api.fetchSchedule()
+            reminders = Self.reminders(from: schedule.current)
+            reminderLoadError = nil
+        } catch {
+            reminderLoadError = "提醒暂时没有接上，请点重新连接或稍后再试。"
+        }
+    }
+
+    static func reminders(from rows: [RemoteReminder]) -> [Reminder] {
+        rows.map { row in
+            Reminder(
+                id: String(row.id),
+                text: row.text,
+                dueAt: CompanionDate.parse(row.scheduled_for) ?? .now,
+                dismissedByKe: row.status != "pending",
+                category: .other
+            )
         }
     }
 
