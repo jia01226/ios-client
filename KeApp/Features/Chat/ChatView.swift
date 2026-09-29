@@ -262,8 +262,18 @@ struct ChatView: View {
             HStack(spacing: 12) {
                 if line == .test1 {
                     Button { workDrawerOpen = true } label: {
-                        Image(systemName: "moon").font(.title3)
-                            .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
+                        HStack(spacing: 6) {
+                            Image(systemName: "moon").font(.title3)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("柯的小空间")
+                                    .font(.caption.weight(.semibold))
+                                Text("看看她收下了什么")
+                                    .font(.caption2)
+                                    .foregroundStyle(theme.color.textSecondary)
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .frame(minHeight: theme.metric.touchTarget)
                             .background(FloatingGlassSurface(cornerRadius: 22))
                     }
                     .buttonStyle(.plain)
