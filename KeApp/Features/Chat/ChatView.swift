@@ -212,7 +212,7 @@ struct ChatView: View {
             TarotView(line: line).environmentObject(theme)
         }
         .fullScreenCover(isPresented: $workDrawerOpen) {
-            WorkDrawerView(line: line).environmentObject(theme)
+            DrawerView(line: line).environmentObject(theme)
         }
         .fullScreenCover(item: $previewedImage) { attachment in
             AttachmentImageViewer(attachment: attachment) {
@@ -267,7 +267,7 @@ struct ChatView: View {
                             .background(FloatingGlassSurface(cornerRadius: 22))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("抽屉")
+                    .accessibilityLabel("柯的小空间")
                     .accessibilityIdentifier("chat-drawer")
                 } else {
                     Image(systemName: "moon").font(.title3)
