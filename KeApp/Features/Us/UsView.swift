@@ -6,7 +6,7 @@ struct UsView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let line: ChatLine
     @StateObject private var vm: UsViewModel
-    @State private var selectedAnniversaryIndex = 1
+    @State private var selectedAnniversaryIndex = 0
     @State private var selectedWeekIndex = min(6, max(0, (Calendar.current.component(.weekday, from: .now) + 5) % 7))
     @State private var showingCompanionHub = false
 
@@ -1090,11 +1090,31 @@ final class UsViewModel: ObservableObject {
         loadingReminders = true
         defer { loadingReminders = false }
         do {
-            let schedule = try await api.fetchSchedule()
+            async let scheduleTask = api.fetchSchedule()
+            async let anniversariesTask = api.fetchAnniversaries()
+            let (schedule, remoteAnniversaries) = try await (scheduleTask, anniversariesTask)
             reminders = Self.reminders(from: schedule.current)
+            let resolvedAnniversaries = Self.anniversaries(from: remoteAnniversaries)
+            if !resolvedAnniversaries.isEmpty {
+                anniversaries = resolvedAnniversaries
+            }
             reminderLoadError = nil
         } catch {
             reminderLoadError = "提醒暂时没有接上，请点重新连接或稍后再试。"
+        }
+    }
+
+    static func anniversaries(from rows: [RemoteAnniversary]) -> [Anniversary] {
+        let preferredOrder = ["表白的日子", "在一起的日子", "佳佳的生日", "柯的生日"]
+        let byName = Dictionary(uniqueKeysWithValues: rows.map { ($0.name, $0) })
+        return preferredOrder.compactMap { name in
+            guard let row = byName[name], let date = CompanionDate.parse(row.date) else { return nil }
+            return Anniversary(
+                id: String(row.id),
+                title: row.name,
+                date: date,
+                isYearly: name.contains("生日")
+            )
         }
     }
 
