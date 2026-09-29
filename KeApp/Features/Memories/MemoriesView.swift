@@ -45,13 +45,26 @@ struct MemoriesView: View {
                     .accessibilityIdentifier("memory-review-entry")
 
                     NavigationLink {
-                        AppQuotesView(line: review.line)
+                        KeMemoryLibraryView(line: review.line) {
+                            Task { await review.sync() }
+                        }
                     } label: {
-                        Label("App 柯味语录", systemImage: "quote.bubble")
-                            .font(theme.font.sectionTitle)
-                            .frame(minHeight: theme.metric.touchTarget)
+                        HStack(spacing: theme.metric.gapM) {
+                            Image(systemName: "bubble.left.and.bubble.right")
+                                .font(.system(size: 20, weight: .medium))
+                            VStack(alignment: .leading, spacing: theme.metric.gapS) {
+                                Text("柯的记忆").font(theme.font.sectionTitle)
+                                Text("他从共同聊天里记住的事与语录，不会替代你的原话。")
+                                    .font(theme.font.reviewCaption)
+                                    .foregroundStyle(theme.reviewSecondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .foregroundStyle(theme.reviewSecondary)
+                        }
+                        .frame(minHeight: theme.metric.touchTarget)
                     }
-                    .accessibilityIdentifier("app-quotes-entry")
+                    .accessibilityIdentifier("ke-memory-library-entry")
                     NavigationLink {
                         MemoryUsageView(line: review.line)
                     } label: {
@@ -84,7 +97,12 @@ struct MemoriesView: View {
 
                     VStack(alignment: .leading, spacing: theme.metric.gapM) {
                         HStack {
-                            Text("已收下的记忆").font(theme.font.sectionTitle)
+                            VStack(alignment: .leading, spacing: theme.metric.gapXS) {
+                                Text("我的记忆库").font(theme.font.sectionTitle)
+                                Text("你确认过的资料、经历与变化，随时可以核对和更正。")
+                                    .font(theme.font.reviewCaption)
+                                    .foregroundStyle(theme.reviewSecondary)
+                            }
                             Spacer()
                             Picker("类型", selection: $category) {
                                 ForEach(["全部", "身体用药", "安排", "关系约定", "喜好", "生活日常"], id: \.self) { Text($0) }
@@ -184,5 +202,45 @@ struct MemoriesView: View {
                             .padding(.vertical, theme.metric.gapS)
                             Divider()
                         }
+    }
+}
+
+/// 柯的“会想起什么”与用户事实库分开呈现，避免把角色的说话参考误认为用户资料。
+private struct KeMemoryLibraryView: View {
+    @EnvironmentObject private var theme: Theme
+    let line: ChatLine
+    let onChanged: () -> Void
+
+    var body: some View {
+        List {
+            Section {
+                Text("这里放的是柯在相处中会参考的共同聊天线索与被你收下的语录。它们不等同于你的事实资料；有不对的地方，请回到“我的记忆库”核对或更正。")
+                    .font(theme.font.body)
+                    .foregroundStyle(theme.color.textSecondary)
+            } header: {
+                Text("柯会想起的")
+            }
+
+            Section {
+                NavigationLink {
+                    AppQuotesView(line: line)
+                } label: {
+                    Label("柯味语录", systemImage: "quote.bubble")
+                }
+
+                NavigationLink {
+                    MemoryRetrievalView(line: line) {
+                        onChanged()
+                    }
+                } label: {
+                    Label("他这次怎么找到记忆", systemImage: "magnifyingglass")
+                }
+            } footer: {
+                Text("柯不会因为看过一段旧聊天，就把它当成你的新事实。")
+            }
+        }
+        .navigationTitle("柯的记忆")
+        .navigationBarTitleDisplayMode(.inline)
+        .tint(theme.effectiveAccent)
     }
 }
