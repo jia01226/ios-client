@@ -149,16 +149,8 @@ final class ChatViewModel: ObservableObject {
             uiTestFixture = .modelGroups
             phase = .ready
             sessionID = 1
-            selectedModel = "claude2-subscription-opus-5"
+            selectedModel = "codex-subscription:gpt-5.5"
             modelGroups = [
-                ChatModelGroup(
-                    id: "claude_1", label: "Claude 1", available: true,
-                    configured: true, message: nil
-                ),
-                ChatModelGroup(
-                    id: "claude_2", label: "Claude 2", available: false,
-                    configured: true, message: "额度冷却中"
-                ),
                 ChatModelGroup(
                     id: "gpt", label: "GPT", available: true,
                     configured: true, message: nil
@@ -170,18 +162,8 @@ final class ChatViewModel: ObservableObject {
             ]
             modelOptions = [
                 ChatModelOption(
-                    id: "claude-subscription-opus-5", provider: "claude_subscription",
-                    label: "Opus 5", description: "Claude Max 1 号账号",
-                    group: "claude_subscription", family: "claude_1", available: true
-                ),
-                ChatModelOption(
-                    id: "claude2-subscription-opus-5", provider: "claude_subscription",
-                    label: "Opus 5", description: "Claude Max 2 号账号",
-                    group: "claude_subscription", family: "claude_2", available: false
-                ),
-                ChatModelOption(
-                    id: "codex-subscription:gpt-5.6-terra", provider: "codex_subscription",
-                    label: "GPT-5.6 Terra", description: "ChatGPT 的 Codex 订阅额度",
+                    id: "codex-subscription:gpt-5.5", provider: "codex_subscription",
+                    label: "GPT-5.5", description: "ChatGPT 的 Codex 订阅额度",
                     group: "codex_subscription", family: "gpt", available: true
                 ),
                 ChatModelOption(
@@ -192,23 +174,9 @@ final class ChatViewModel: ObservableObject {
             ]
             modelQuotaCatalog = ChatModelQuotaCatalog(
                 updatedAt: Date.now.timeIntervalSince1970,
-                selectedGroup: "claude_2",
-                currentRouteGroup: "claude_1",
+                selectedGroup: "gpt",
+                currentRouteGroup: "gpt",
                 groups: [
-                    ChatModelQuotaGroup(
-                        id: "claude_1", label: "Claude 1", configured: true,
-                        available: true, status: "available", usedPercent: nil,
-                        remainingPercent: nil, resetAt: nil, stale: false,
-                        source: "circuit_breaker", windows: []
-                    ),
-                    ChatModelQuotaGroup(
-                        id: "claude_2", label: "Claude 2", configured: true,
-                        available: false, status: "cooldown", usedPercent: nil,
-                        remainingPercent: nil,
-                        resetAt: Date.now.addingTimeInterval(3_600).timeIntervalSince1970,
-                        stale: false,
-                        source: "circuit_breaker", windows: []
-                    ),
                     ChatModelQuotaGroup(
                         id: "gpt", label: "GPT", configured: true,
                         available: true, status: "available", usedPercent: 4,
@@ -774,7 +742,10 @@ final class ChatViewModel: ObservableObject {
                 }
                 : catalog.options
             modelGroups = catalog.groups ?? []
-            if selectedModel == nil { selectedModel = catalog.default }
+            let availableModelIDs = Set(modelOptions.map(\.id))
+            if selectedModel == nil || !availableModelIDs.contains(selectedModel ?? "") {
+                selectedModel = catalog.default
+            }
         } catch {
             modelError = error.localizedDescription
         }

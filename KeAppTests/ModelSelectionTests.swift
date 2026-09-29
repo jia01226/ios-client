@@ -35,7 +35,7 @@ final class ModelSelectionTests: XCTestCase {
         XCTAssertTrue(result.refreshed)
     }
 
-    func testCatalogDecodesFourOrderedProviderGroups() throws {
+    func testCatalogOnlyRendersGPTAndDeepSeekGroups() throws {
         let data = Data(#"""
         {
           "models":["claude-subscription-opus-5","claude2-subscription-opus-5","codex-subscription:gpt-5.6-terra","deepseek-v4-pro"],
@@ -61,13 +61,13 @@ final class ModelSelectionTests: XCTestCase {
             groups: catalog.groups ?? []
         )
 
-        XCTAssertEqual(sections.map(\.id), ["claude_1", "claude_2", "gpt", "deepseek"])
-        XCTAssertEqual(sections.map(\.title), ["Claude 1", "Claude 2", "GPT", "DPSK"])
-        XCTAssertEqual(sections.map { $0.options.count }, [1, 1, 1, 1])
-        XCTAssertEqual(sections[1].options.first?.id, "claude2-subscription-opus-5")
+        XCTAssertEqual(sections.map(\.id), ["gpt", "deepseek"])
+        XCTAssertEqual(sections.map(\.title), ["GPT", "DPSK"])
+        XCTAssertEqual(sections.map { $0.options.count }, [1, 1])
+        XCTAssertFalse(sections.flatMap(\.options).contains { $0.id.contains("claude") })
     }
 
-    func testLegacyProviderNamesStillLandInTheNewFourGroups() {
+    func testRetiredClaudeOptionsNeverCreateAnEmptyOrLegacySection() {
         let options = [
             ChatModelOption(
                 id: "old-claude", provider: "claude_subscription", label: nil,
@@ -83,13 +83,13 @@ final class ModelSelectionTests: XCTestCase {
 
         let sections = ChatModelSection.make(options: options)
 
-        XCTAssertEqual(sections[0].options.map(\.id), ["old-claude"])
-        XCTAssertEqual(sections[2].options.map(\.id), ["old-codex"])
-        XCTAssertEqual(sections[1].statusMessage, "尚未接入")
-        XCTAssertEqual(sections[3].statusMessage, "尚未接入")
+        XCTAssertEqual(sections.map(\.id), ["gpt", "deepseek"])
+        XCTAssertEqual(sections[0].options.map(\.id), ["old-codex"])
+        XCTAssertTrue(sections[1].options.isEmpty)
+        XCTAssertFalse(sections.flatMap(\.options).contains { $0.id == "old-claude" })
     }
 
-    func testUnavailableAccountKeepsItsCollapsibleSectionAndStatus() {
+    func testRetiredClaudeMetadataDoesNotReserveASection() {
         let groups = [
             ChatModelGroup(
                 id: "claude_2", label: "Claude 2", available: false,
@@ -102,11 +102,10 @@ final class ModelSelectionTests: XCTestCase {
             family: "claude_2", available: false
         )
 
-        let section = ChatModelSection.make(options: [option], groups: groups)[1]
+        let sections = ChatModelSection.make(options: [option], groups: groups)
 
-        XCTAssertFalse(section.isAvailable)
-        XCTAssertEqual(section.statusMessage, "额度冷却中")
-        XCTAssertFalse(section.options[0].isAvailable)
+        XCTAssertEqual(sections.map(\.id), ["gpt", "deepseek"])
+        XCTAssertFalse(sections.flatMap(\.options).contains { $0.id == option.id })
     }
 
     func testQuotaCatalogKeepsUnknownClaudePercentagesAndProviderGPTWindow() throws {

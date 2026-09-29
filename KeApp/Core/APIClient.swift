@@ -172,7 +172,7 @@ struct ChatModelSection: Identifiable, Hashable, Sendable {
     let isAvailable: Bool
     let statusMessage: String?
 
-    static let orderedIDs = ["claude_1", "claude_2", "gpt", "deepseek"]
+    static let orderedIDs = ["gpt", "deepseek"]
 
     static func make(
         options: [ChatModelOption],
@@ -186,8 +186,6 @@ struct ChatModelSection: Identifiable, Hashable, Sendable {
             normalizedGroup($0.family ?? $0.group ?? $0.provider ?? "")
         }
         let titles = [
-            "claude_1": "Claude 1",
-            "claude_2": "Claude 2",
             "gpt": "GPT",
             "deepseek": "DPSK",
         ]

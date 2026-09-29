@@ -403,45 +403,38 @@ final class ThinkingInteractionTests: XCTestCase {
         XCTAssertTrue(app.buttons["模型选择"].waitForExistence(timeout: 2))
         app.buttons["模型选择"].tap()
 
-        for id in ["claude_1", "claude_2", "gpt", "deepseek"] {
+        for id in ["gpt", "deepseek"] {
             XCTAssertTrue(app.buttons["model-group-\(id)"].waitForExistence(timeout: 2))
         }
-        let claude1Quota = app.buttons["model-group-claude_1"].value as? String ?? ""
-        let claude2Quota = app.buttons["model-group-claude_2"].value as? String ?? ""
+        XCTAssertFalse(app.buttons["model-group-claude_1"].exists)
+        XCTAssertFalse(app.buttons["model-group-claude_2"].exists)
         let gptQuota = app.buttons["model-group-gpt"].value as? String ?? ""
         let deepseekQuota = app.buttons["model-group-deepseek"].value as? String ?? ""
-        XCTAssertTrue(claude1Quota.contains("可用"))
-        XCTAssertTrue(claude2Quota.contains("额度已用完"))
         XCTAssertTrue(gptQuota.contains("剩余 96%"))
         XCTAssertTrue(deepseekQuota.isEmpty, "DPSK 分栏不显示额度")
 
         let routeSummary = app.descendants(matching: .any)
             .matching(identifier: "model-route-summary")
             .firstMatch
-        XCTAssertTrue(routeSummary.waitForExistence(timeout: 2))
-        XCTAssertTrue(routeSummary.label.contains("当前自动接到 Claude 1"))
-        XCTAssertTrue(routeSummary.label.contains("恢复后会自动回来"))
+        XCTAssertFalse(routeSummary.exists)
 
         let refresh = app.buttons["refresh-model-quotas"]
         XCTAssertTrue(refresh.exists)
         XCTAssertGreaterThanOrEqual(refresh.frame.width, 44)
         XCTAssertGreaterThanOrEqual(refresh.frame.height, 44)
-        let claude2 = app.buttons["model-group-claude_2"]
-        let claude2Model = app.buttons["model-option-claude2-subscription-opus-5"]
         let stableBubble = app.descendants(matching: .any)
             .matching(identifier: "message-bubble-ui-test-model-groups-message-0")
             .firstMatch
-        XCTAssertTrue(claude2Model.waitForExistence(timeout: 2), "当前模型所属分栏应默认展开")
+        let gptModel = app.buttons["model-option-codex-subscription:gpt-5.5"]
+        XCTAssertTrue(gptModel.waitForExistence(timeout: 2), "当前模型所属分栏应默认展开")
         XCTAssertTrue(stableBubble.exists, "模型抽屉下方应保留原聊天时间线")
         attachScreenshot(named: "15-model-groups-current-open")
 
-        claude2.tap()
-        XCTAssertTrue(claude2Model.waitForNonExistence(timeout: 2))
-
         let gpt = app.buttons["model-group-gpt"]
         gpt.tap()
+        XCTAssertTrue(gptModel.waitForNonExistence(timeout: 2))
+        gpt.tap()
         XCTAssertTrue(app.staticTexts["7 天额度"].waitForExistence(timeout: 2))
-        let gptModel = app.buttons["model-option-codex-subscription:gpt-5.6-terra"]
         XCTAssertTrue(gptModel.waitForExistence(timeout: 2))
         gptModel.tap()
         XCTAssertTrue(stableBubble.exists, "切换模型期间不应重建或清空底下的聊天时间线")
@@ -450,7 +443,7 @@ final class ThinkingInteractionTests: XCTestCase {
             .matching(identifier: "selected-model-summary")
             .firstMatch
         XCTAssertTrue(summary.waitForExistence(timeout: 2))
-        XCTAssertTrue(summary.label.contains("GPT-5.6 Terra"))
+        XCTAssertTrue(summary.label.contains("GPT-5.5"))
         XCTAssertTrue(
             routeSummary.waitForNonExistence(timeout: 2),
             "切到 GPT 后不能继续显示旧 Claude 的临时接线路由"
