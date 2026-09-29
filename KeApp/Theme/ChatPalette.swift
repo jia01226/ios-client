@@ -13,8 +13,8 @@ struct ChatPalette: Identifiable {
         case "champagne": return 0xDCCFBB
         case "oat": return 0xD2CABE
         // 佳佳选中的 J 版：只加深柯的回复气泡。自己的气泡仍使用
-        // `tint`（雾粉白茶为 0xE6C6D0），两边不会串色。
-        case "pink": return 0xC9B6C6
+        // 佳佳是轻雾粉（tint=0xE6C6D0）；柯用更饱和的玫瑰粉，聊天双方一眼分开。
+        case "pink": return 0xD893A8
         default: return 0xD8C8BE
         }
     }
