@@ -5,7 +5,7 @@ struct RootTabView: View {
 
     @EnvironmentObject private var theme: Theme
     @State private var selection: Tab
-    @State private var chatLine: ChatLine = .main
+    @State private var chatLine: ChatLine = .test1
     @State private var keyboardIsVisible = false
     @State private var chatSettingsOpen = false
 

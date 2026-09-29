@@ -24,11 +24,7 @@ final class CompanionInteractionTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-app.skin", "day"]
         app.launch()
-        let switcher = app.buttons["chat-line-switcher-main"]
-        XCTAssertTrue(switcher.waitForExistence(timeout: 8))
-        switcher.tap()
-        XCTAssertTrue(app.buttons["测试1"].waitForExistence(timeout: 3))
-        app.buttons["测试1"].tap()
+        XCTAssertTrue(app.buttons["chat-line-switcher-test1"].waitForExistence(timeout: 8))
         let entry = app.buttons["chat-drawer"]
         XCTAssertTrue(entry.waitForExistence(timeout: 10))
         entry.tap()

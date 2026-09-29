@@ -24,6 +24,10 @@ enum ChatLine: String, CaseIterable, Identifiable {
     case test1
     case test2
 
+    // 原版与精简版仍保留为兼容旧缓存和深链的内部线路；聊天页只给佳佳
+    // 暴露当前实际使用的两个窗口，避免旧入口继续占位置。
+    static let allCases: [ChatLine] = [.test1, .test2]
+
     var id: String { rawValue }
 
     var title: String {
