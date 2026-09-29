@@ -2,6 +2,13 @@ import XCTest
 @testable import KeApp
 
 final class MessagePresentationTests: XCTestCase {
+    func testPinkPaletteUsesJReplyColorWithoutChangingMyBubbleColor() {
+        let palette = try! XCTUnwrap(ChatPalette.all.first { $0.id == "pink" })
+
+        XCTAssertEqual(palette.reply, 0xC9B6C6)
+        XCTAssertEqual(palette.tint, 0xE6C6D0)
+    }
+
     func testSendFeedbackRequiresServerReceiptAndDoesNotRepeatOnRetry() {
         var gate = SendReceiptFeedbackGate()
         XCTAssertFalse(gate.consume(clientID: "a", serverID: nil))
