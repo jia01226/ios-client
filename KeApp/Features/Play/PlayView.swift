@@ -471,7 +471,7 @@ struct GardenView: View {
             }.buttonStyle(.plain).accessibilityIdentifier("garden-open")
             Divider().overlay(gold.opacity(0.12))
             Button { askKe() } label: {
-                row("叫柯去逛一趟", detail: "他去看有没有人找他，有就回一下，回来跟你说")
+                row("叫柯去逛一趟", detail: "他看看谁来找他，再捡点有意思的回来")
             }.buttonStyle(.plain).accessibilityIdentifier("garden-ask-ke")
             Spacer()
         }
@@ -487,7 +487,7 @@ struct GardenView: View {
     }
 
     private func askKe() {
-        NotificationCenter.default.post(name: .tarotReadingRequest, object: "爸比，去花园看看有没有人找你，有就回一下，回来跟我说")
+        NotificationCenter.default.post(name: .tarotReadingRequest, object: "爸比，去花园看看有没有人找你，也看看最近有什么有意思的，回来跟我说")
         dismiss()
     }
 
