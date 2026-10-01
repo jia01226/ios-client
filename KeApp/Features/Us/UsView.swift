@@ -1,12 +1,12 @@
 import SwiftUI
 
-// 【我们】—— 两个人的日期、提醒与排班，由同一条月相轨迹串起来。
+// 【我们】—— 两个人的日期、提醒与排班。
 
 struct UsView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let line: ChatLine
     @StateObject private var vm: UsViewModel
-    @State private var selectedAnniversaryIndex = 1
+    @SceneStorage("us.selected-anniversary-index") private var selectedAnniversaryIndex = 0
     @State private var selectedWeekIndex = min(6, max(0, (Calendar.current.component(.weekday, from: .now) + 5) % 7))
     @State private var showingCompanionHub = false
 
@@ -19,18 +19,12 @@ struct UsView: View {
         ScrollViewReader { scrollProxy in
             ScrollView {
                 VStack(spacing: 0) {
-                if dynamicTypeSize.isAccessibilitySize {
-                    AccessibleAnniversaryHero(display: selectedDisplay)
-                        .padding(.horizontal, 30)
-                        .padding(.vertical, 28)
-                } else {
-                    WatercolorAnniversaryHero(
-                        events: vm.anniversaries,
-                        selectedIndex: $selectedAnniversaryIndex,
-                        display: selectedDisplay
-                    )
-                    .frame(height: 405)
-                }
+                AnniversaryPager(
+                    events: vm.anniversaries,
+                    selectedIndex: $selectedAnniversaryIndex,
+                    displayFor: vm.display
+                )
+                .frame(height: dynamicTypeSize.isAccessibilitySize ? 390 : 360)
 
                 reminder
                     .padding(.horizontal, 30)
@@ -61,7 +55,6 @@ struct UsView: View {
                         .padding(.horizontal, 24)
                         .padding(.bottom, 34)
                         .id("moon-calendar")
-                        .accessibilityIdentifier("moon-calendar")
                 }
             }
             .scrollIndicators(.hidden)
@@ -82,11 +75,6 @@ struct UsView: View {
                 CompanionHubView(line: line, model: vm)
             }
         }
-    }
-
-    private var selectedDisplay: AnniversaryDisplay? {
-        guard vm.anniversaries.indices.contains(selectedAnniversaryIndex) else { return nil }
-        return vm.display(for: vm.anniversaries[selectedAnniversaryIndex])
     }
 
     private var reminder: some View {
@@ -189,36 +177,6 @@ struct UsView: View {
     }
 }
 
-private struct AccessibleAnniversaryHero: View {
-    let display: AnniversaryDisplay?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top) {
-                Text("我们的时间")
-                    .font(.title.weight(.regular))
-                    .foregroundStyle(UsPalette.ink)
-                Spacer()
-                Image("WatercolorMoon")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 92, height: 92)
-                    .accessibilityHidden(true)
-            }
-            Text(display?.title ?? "")
-                .font(.headline)
-                .foregroundStyle(UsPalette.mutedInk)
-            Text("\(display?.number ?? "—") \(display?.unit ?? "")")
-                .font(.largeTitle.monospacedDigit())
-                .foregroundStyle(UsPalette.coral)
-            Text(display?.dateLabel ?? "")
-                .font(.body)
-                .foregroundStyle(UsPalette.mutedInk)
-        }
-        .accessibilityElement(children: .combine)
-    }
-}
-
 private enum UsPalette {
     static let paper = Color(red: 0.992, green: 0.982, blue: 0.955)
     static let ink = Color(red: 0.25, green: 0.20, blue: 0.24)
@@ -230,207 +188,84 @@ private enum UsPalette {
     static let hairline = Color(red: 0.88, green: 0.72, blue: 0.48)
 }
 
-private struct WatercolorAnniversaryHero: View {
+private struct AnniversaryPager: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let events: [Anniversary]
     @Binding var selectedIndex: Int
-    let display: AnniversaryDisplay?
+    let displayFor: (Anniversary) -> AnniversaryDisplay
+
+    var body: some View {
+        VStack(spacing: 6) {
+            TabView(selection: $selectedIndex) {
+                ForEach(Array(events.enumerated()), id: \.element.id) { index, event in
+                    AnniversaryPage(display: displayFor(event))
+                        .tag(index)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: selectedIndex)
+            .accessibilityIdentifier("us-anniversary-pager")
+
+            HStack(spacing: 7) {
+                ForEach(events.indices, id: \.self) { index in
+                    Capsule(style: .continuous)
+                        .fill(index == selectedIndex ? UsPalette.coral : UsPalette.hairline.opacity(0.42))
+                        .frame(width: index == selectedIndex ? 22 : 7, height: 5)
+                }
+            }
+            .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 1), value: selectedIndex)
+            .accessibilityHidden(true)
+        }
+        .sensoryFeedback(.alignment, trigger: selectedIndex)
+    }
+}
+
+private struct AnniversaryPage: View {
+    let display: AnniversaryDisplay
 
     var body: some View {
         GeometryReader { proxy in
-            let width = proxy.size.width
-
             ZStack(alignment: .topLeading) {
                 Image("WatercolorMoon")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 430, height: 430)
-                    .position(x: width + 20, y: 102)
-                    .opacity(0.97)
-                    .shadow(color: UsPalette.gold.opacity(0.10), radius: 28, x: -14, y: 12)
+                    .frame(width: min(proxy.size.width * 0.82, 320))
+                    .position(x: proxy.size.width * 0.83, y: 132)
+                    .opacity(0.72)
                     .accessibilityHidden(true)
-
-                WatercolorOrbit(width: width)
-                    .accessibilityHidden(true)
-
-                ForEach(Array(events.enumerated()), id: \.element.id) { index, event in
-                    Button { select(index) } label: {
-                        WatercolorOrbitBody(index: index, selected: index == selectedIndex)
-                    }
-                    .buttonStyle(.plain)
-                    .position(markerPoint(index: index, width: width))
-                    .accessibilityLabel(event.title)
-                }
 
                 VStack(alignment: .leading, spacing: 0) {
                     Text("我们的时间")
                         .font(.custom("STSongti-SC-Light", size: 27, relativeTo: .title))
                         .tracking(2.8)
-                        .foregroundStyle(UsPalette.ink)
-
-                    Text(display?.title ?? "")
+                    Text(display.title)
                         .font(.custom("STSongti-SC-Light", size: 14, relativeTo: .subheadline))
-                        .tracking(2.0)
+                        .tracking(2)
                         .foregroundStyle(UsPalette.mutedInk)
-                        .padding(.top, 15)
-
+                        .padding(.top, 27)
                     HStack(alignment: .lastTextBaseline, spacing: 7) {
-                        Text(display?.number ?? "—")
+                        Text(display.number)
                             .font(.custom("Didot", size: 72, relativeTo: .largeTitle))
                             .tracking(-2)
                             .monospacedDigit()
                             .foregroundStyle(UsPalette.coral)
-                            .contentTransition(.numericText())
-
-                        Text(display?.unit ?? "")
+                        Text(display.unit)
                             .font(.custom("STSongti-SC-Light", size: 16, relativeTo: .body))
-                            .tracking(1)
-                            .foregroundStyle(UsPalette.ink)
                             .padding(.bottom, 9)
                     }
-
-                    Text(display?.dateLabel ?? "")
+                    Text(display.dateLabel)
                         .font(.custom("STSongti-SC-Light", size: 13, relativeTo: .caption))
                         .tracking(1)
                         .foregroundStyle(UsPalette.mutedInk)
                 }
-                .padding(.leading, 31)
-                .padding(.top, 166)
-                .animation(
-                    reduceMotion ? .easeOut(duration: 0.16) : .spring(response: 0.38, dampingFraction: 1),
-                    value: selectedIndex
-                )
-
-                Capsule(style: .continuous)
-                    .fill(UsPalette.blush.opacity(0.58))
-                    .frame(width: 9, height: 5)
-                    .rotationEffect(.degrees(22))
-                    .position(x: width * 0.63, y: 68)
-
-                Circle()
-                    .fill(UsPalette.sage.opacity(0.50))
-                    .frame(width: 6, height: 6)
-                    .position(x: width * 0.83, y: 345)
+                .foregroundStyle(UsPalette.ink)
+                .padding(.horizontal, 31)
+                .padding(.top, 48)
             }
-            .contentShape(Rectangle())
-            .sensoryFeedback(.alignment, trigger: selectedIndex)
-            .accessibilityElement(children: .ignore)
-            .accessibilityIdentifier("us-moon-orbit-selector")
-            .accessibilityLabel("纪念日月球")
-            .accessibilityValue(accessibilityValue)
-            .accessibilityHint("上下调整可切换日期，也可以轻点轨道上的小星球")
-            .accessibilityAdjustableAction { direction in
-                switch direction {
-                case .increment: select(min(selectedIndex + 1, events.count - 1))
-                case .decrement: select(max(selectedIndex - 1, 0))
-                @unknown default: break
-                }
-            }
-        }
-    }
-
-    private var accessibilityValue: String {
-        guard let display else { return "还没有纪念日" }
-        return "\(display.title)，\(display.number)\(display.unit)，\(display.dateLabel)"
-    }
-
-    private func markerPoint(index: Int, width: CGFloat) -> CGPoint {
-        let fractions: [CGFloat] = [0.08, 0.36, 0.67, 0.92]
-        let fraction = fractions[min(index, fractions.count - 1)]
-        let angle = Double(108 + 142 * fraction) * .pi / 180
-        return CGPoint(
-            x: width + 20 + 258 * CGFloat(cos(angle)),
-            y: 102 + 258 * CGFloat(sin(angle))
-        )
-    }
-
-    private func select(_ index: Int) {
-        guard events.indices.contains(index) else { return }
-        withAnimation(reduceMotion ? .easeOut(duration: 0.16) : .spring(response: 0.38, dampingFraction: 1)) {
-            selectedIndex = index
-        }
-    }
-}
-
-private struct WatercolorOrbit: View {
-    let width: CGFloat
-
-    var body: some View {
-        Canvas { context, _ in
-            let center = CGPoint(x: width + 20, y: 102)
-            let main = arc(center: center, radius: 258, start: 108, end: 250)
-            let soft = arc(center: CGPoint(x: center.x - 2, y: center.y + 1), radius: 262, start: 109, end: 249)
-            let inner = arc(center: CGPoint(x: center.x + 1, y: center.y), radius: 253, start: 112, end: 247)
-
-            context.stroke(soft, with: .color(UsPalette.blush.opacity(0.12)), lineWidth: 7)
-            context.stroke(main, with: .color(UsPalette.hairline.opacity(0.72)), lineWidth: 0.9)
-            context.stroke(inner, with: .color(UsPalette.coral.opacity(0.16)), style: StrokeStyle(lineWidth: 0.55, dash: [2, 5]))
-
-            for sample in pigmentSamples {
-                let radians = sample.angle * .pi / 180
-                let point = CGPoint(
-                    x: center.x + sample.radius * cos(radians),
-                    y: center.y + sample.radius * sin(radians)
-                )
-                let rect = CGRect(x: point.x - sample.size / 2, y: point.y - sample.size / 2, width: sample.size, height: sample.size)
-                context.fill(Path(ellipseIn: rect), with: .color(sample.color))
-            }
-        }
-    }
-
-    private func arc(center: CGPoint, radius: CGFloat, start: Double, end: Double) -> Path {
-        Path { path in
-            path.addArc(center: center, radius: radius, startAngle: .degrees(start), endAngle: .degrees(end), clockwise: false)
-        }
-    }
-
-    private var pigmentSamples: [(angle: CGFloat, radius: CGFloat, size: CGFloat, color: Color)] {
-        [
-            (121, 260, 2.4, UsPalette.gold.opacity(0.36)),
-            (145, 255, 1.8, UsPalette.coral.opacity(0.28)),
-            (177, 263, 2.0, UsPalette.gold.opacity(0.26)),
-            (208, 255, 2.8, UsPalette.blush.opacity(0.34)),
-            (236, 261, 1.7, UsPalette.gold.opacity(0.34)),
-        ]
-    }
-}
-
-private struct WatercolorOrbitBody: View {
-    let index: Int
-    let selected: Bool
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(UsPalette.paper.opacity(0.90))
-                .frame(width: selected ? 43 : 31, height: selected ? 43 : 31)
-                .shadow(color: UsPalette.gold.opacity(selected ? 0.19 : 0.07), radius: selected ? 9 : 3, y: 3)
-
-            Image("WatercolorMoon")
-                .resizable()
-                .scaledToFit()
-                .frame(width: selected ? 38 : 27, height: selected ? 38 : 27)
-                .colorMultiply(tint)
-                .opacity(selected ? 1 : 0.74)
-
-            if selected {
-                Ellipse()
-                    .stroke(UsPalette.coral.opacity(0.48), lineWidth: 1)
-                    .frame(width: 50, height: 17)
-                    .rotationEffect(.degrees(-18))
-            }
-        }
-        .frame(width: 52, height: 52)
-        .animation(.spring(response: 0.32, dampingFraction: 1), value: selected)
-    }
-
-    private var tint: Color {
-        switch index % 4 {
-        case 0: return Color(red: 0.74, green: 0.82, blue: 0.68)
-        case 1: return Color(red: 1.00, green: 0.78, blue: 0.73)
-        case 2: return Color(red: 0.98, green: 0.88, blue: 0.78)
-        default: return Color(red: 0.90, green: 0.84, blue: 0.75)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(display.title)，\(display.number)\(display.unit)，\(display.dateLabel)")
+            .accessibilityHint("左右滑动切换纪念日")
         }
     }
 }
@@ -646,6 +481,7 @@ private struct ShiftMoonMarker: View {
 private struct MonthCalendar: View {
     @ObservedObject var vm: UsViewModel
     @State private var editingDate: CalendarEditSelection?
+    @State private var displayedMonth = Calendar.current.dateInterval(of: .month, for: .now)?.start ?? .now
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
     private let weekdays = ["一", "二", "三", "四", "五", "六", "日"]
 
@@ -660,9 +496,18 @@ private struct MonthCalendar: View {
                     .offset(x: 18, y: -28)
                     .accessibilityHidden(true)
 
-                HStack(alignment: .firstTextBaseline) {
+                HStack(alignment: .center, spacing: 12) {
+                    Button { changeMonth(by: -1) } label: {
+                        Image(systemName: "chevron.left")
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(UsPalette.mutedInk)
+                    .accessibilityLabel("上个月")
+
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(vm.monthTitle)
+                        Text(vm.monthTitle(for: displayedMonth))
                             .font(.custom("STSongti-SC-Light", size: 29, relativeTo: .title))
                             .tracking(2)
                             .foregroundStyle(UsPalette.ink)
@@ -672,10 +517,14 @@ private struct MonthCalendar: View {
                             .foregroundStyle(UsPalette.mutedInk)
                     }
                     Spacer()
-                    Image(systemName: "sparkle")
-                        .font(.system(size: 14, weight: .light))
-                        .foregroundStyle(UsPalette.gold)
-                        .padding(.top, 7)
+                    Button { changeMonth(by: 1) } label: {
+                        Image(systemName: "chevron.right")
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(UsPalette.mutedInk)
+                    .accessibilityLabel("下个月")
                 }
             }
 
@@ -685,7 +534,7 @@ private struct MonthCalendar: View {
                         .font(.custom("STSongti-SC-Light", size: 12, relativeTo: .caption))
                         .foregroundStyle(UsPalette.mutedInk)
                 }
-                ForEach(Array(vm.monthCells.enumerated()), id: \.offset) { _, date in
+                ForEach(Array(vm.monthCells(for: displayedMonth).enumerated()), id: \.offset) { _, date in
                     if let date {
                         Button {
                             editingDate = CalendarEditSelection(date: date)
@@ -705,6 +554,28 @@ private struct MonthCalendar: View {
                         Color.clear.frame(minHeight: 50)
                     }
                 }
+            }
+            .id(vm.monthTitle(for: displayedMonth))
+            .transition(.opacity)
+            .gesture(
+                DragGesture(minimumDistance: 28)
+                    .onEnded { value in
+                        guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                        changeMonth(by: value.translation.width < 0 ? 1 : -1)
+                    }
+            )
+
+            if !vm.isCurrentMonth(displayedMonth) {
+                Button("回到本月") {
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        displayedMonth = vm.startOfMonth(for: .now)
+                    }
+                }
+                .buttonStyle(.plain)
+                .font(.custom("STSongti-SC-Light", size: 13, relativeTo: .caption))
+                .foregroundStyle(UsPalette.coral)
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("calendar-return-current-month")
             }
 
             HStack(spacing: 14) {
@@ -753,6 +624,12 @@ private struct MonthCalendar: View {
             .presentationDetents([.height(420)])
             .presentationDragIndicator(.visible)
             .presentationBackground(UsPalette.paper)
+        }
+    }
+
+    private func changeMonth(by offset: Int) {
+        withAnimation(.easeOut(duration: 0.18)) {
+            displayedMonth = vm.month(byAdding: offset, to: displayedMonth)
         }
     }
 }
@@ -1019,11 +896,11 @@ final class UsViewModel: ObservableObject {
             .sorted { $0.dueAt < $1.dueAt }
     }
 
-    var monthTitle: String {
+    func monthTitle(for date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_CN")
         formatter.dateFormat = "yyyy年 M月"
-        return formatter.string(from: .now)
+        return formatter.string(from: date)
     }
 
     var weekRangeLabel: String {
@@ -1034,13 +911,25 @@ final class UsViewModel: ObservableObject {
         return "\(formatter.string(from: first)) — \(formatter.string(from: last))"
     }
 
-    var monthCells: [Date?] {
-        guard let interval = calendar.dateInterval(of: .month, for: .now),
-              let dayRange = calendar.range(of: .day, in: .month, for: .now) else { return [] }
+    func monthCells(for date: Date) -> [Date?] {
+        guard let interval = calendar.dateInterval(of: .month, for: date),
+              let dayRange = calendar.range(of: .day, in: .month, for: date) else { return [] }
         let leading = (calendar.component(.weekday, from: interval.start) + 5) % 7
         return Array(repeating: nil, count: leading) + dayRange.compactMap { day in
             calendar.date(byAdding: .day, value: day - 1, to: interval.start)
         }.map(Optional.some)
+    }
+
+    func startOfMonth(for date: Date) -> Date {
+        calendar.dateInterval(of: .month, for: date)?.start ?? calendar.startOfDay(for: date)
+    }
+
+    func month(byAdding offset: Int, to date: Date) -> Date {
+        calendar.date(byAdding: .month, value: offset, to: startOfMonth(for: date)) ?? date
+    }
+
+    func isCurrentMonth(_ date: Date) -> Bool {
+        calendar.isDate(date, equalTo: .now, toGranularity: .month)
     }
 
     init(defaults: UserDefaults = .standard, api: APIClient? = nil) {
@@ -1089,12 +978,36 @@ final class UsViewModel: ObservableObject {
         guard let api else { return }
         loadingReminders = true
         defer { loadingReminders = false }
+        var failures: [String] = []
         do {
             let schedule = try await api.fetchSchedule()
             reminders = Self.reminders(from: schedule.current)
-            reminderLoadError = nil
         } catch {
-            reminderLoadError = "提醒暂时没有接上，请点重新连接或稍后再试。"
+            failures.append("提醒")
+        }
+        do {
+            let rows = try await api.fetchAnniversaries()
+            let resolved = Self.anniversaries(from: rows)
+            if !resolved.isEmpty {
+                anniversaries = resolved
+            }
+        } catch {
+            failures.append("纪念日")
+        }
+        reminderLoadError = failures.isEmpty ? nil : failures.joined(separator: "、") + "暂时没有接上，请下拉重试。"
+    }
+
+    static func anniversaries(from rows: [RemoteAnniversary]) -> [Anniversary] {
+        let preferredOrder = ["表白的日子", "在一起的日子", "佳佳的生日", "柯的生日"]
+        let byName = Dictionary(uniqueKeysWithValues: rows.map { ($0.name, $0) })
+        return preferredOrder.compactMap { name in
+            guard let row = byName[name], let date = CompanionDate.parse(row.date) else { return nil }
+            return Anniversary(
+                id: String(row.id),
+                title: row.name,
+                date: date,
+                isYearly: name.contains("生日")
+            )
         }
     }
 
@@ -1254,20 +1167,6 @@ final class UsViewModel: ObservableObject {
         formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: date)
-    }
-}
-
-enum OrbitSelectionMath {
-    static func nearestIndex(position: CGFloat, count: Int) -> Int {
-        guard count > 0 else { return 0 }
-        return min(max(Int(position.rounded()), 0), count - 1)
-    }
-
-    static func isVisible(relativePosition: CGFloat) -> Bool { abs(relativePosition) <= 1.24 }
-
-    static func visibleIndices(count: Int, position: CGFloat) -> [Int] {
-        guard count > 0 else { return [] }
-        return (0..<count).filter { isVisible(relativePosition: CGFloat($0) - position) }
     }
 }
 

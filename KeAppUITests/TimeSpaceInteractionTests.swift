@@ -10,7 +10,7 @@ final class TimeSpaceInteractionTests: XCTestCase {
         XCTAssertTrue(app.buttons["time-anniversary-tab"].waitForExistence(timeout: 5))
         capture("us-time-reminders")
         app.buttons["time-anniversary-tab"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["us-moon-orbit-selector"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["us-anniversary-pager"].waitForExistence(timeout: 5))
         capture("us-time-anniversaries")
         app.buttons["time-reminder-tab"].tap()
         app.buttons["open-calendar"].tap()

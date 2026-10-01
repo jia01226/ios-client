@@ -14,25 +14,17 @@ final class UsOrbitTests: XCTestCase {
         XCTAssertTrue(viewModel.anniversaries[3].isYearly)
     }
 
-    func testOrbitLeavesMissingNeighborSlotsEmptyAtBothEnds() {
-        XCTAssertEqual(
-            OrbitSelectionMath.visibleIndices(count: 3, position: 0),
-            [0, 1]
-        )
-        XCTAssertEqual(
-            OrbitSelectionMath.visibleIndices(count: 3, position: 1),
-            [0, 1, 2]
-        )
-        XCTAssertEqual(
-            OrbitSelectionMath.visibleIndices(count: 3, position: 2),
-            [1, 2]
-        )
-    }
+    func testCalendarCanRenderAdjacentMonths() throws {
+        let viewModel = UsViewModel()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let january = try XCTUnwrap(formatter.date(from: "2026-01-12"))
+        let february = viewModel.month(byAdding: 1, to: january)
 
-    func testProjectedSelectionDoesNotWrapPastOrbitEnds() {
-        XCTAssertEqual(OrbitSelectionMath.nearestIndex(position: -2, count: 3), 0)
-        XCTAssertEqual(OrbitSelectionMath.nearestIndex(position: 9, count: 3), 2)
-        XCTAssertEqual(OrbitSelectionMath.nearestIndex(position: 0, count: 0), 0)
+        XCTAssertEqual(viewModel.monthTitle(for: january), "2026年 1月")
+        XCTAssertEqual(viewModel.monthTitle(for: february), "2026年 2月")
+        XCTAssertEqual(viewModel.monthCells(for: january).compactMap { $0 }.count, 31)
+        XCTAssertEqual(viewModel.monthCells(for: february).compactMap { $0 }.count, 28)
     }
 
     func testWritingAndClearingShiftPersists() throws {

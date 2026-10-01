@@ -5,7 +5,7 @@ final class UsInteractionTests: XCTestCase {
         continueAfterFailure = false
     }
 
-    func testMoonOrbitSelectionRotationAndTabRoundTrip() throws {
+    func testAnniversaryPagerSwipesAndKeepsSelectionAcrossTabRoundTrip() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-scroll-control"]
         app.launch()
@@ -14,18 +14,36 @@ final class UsInteractionTests: XCTestCase {
         XCTAssertTrue(usTab.waitForExistence(timeout: 5))
         usTab.tap()
 
-        let moon = app.descendants(matching: .any)["us-moon-orbit-selector"]
-        XCTAssertTrue(moon.waitForExistence(timeout: 3))
-        XCTAssertTrue((moon.value as? String)?.hasPrefix("表白的日子，320天") == true)
+        let pager = app.descendants(matching: .any)["us-anniversary-pager"]
+        XCTAssertTrue(pager.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["表白的日子"].exists)
         attachScreenshot(named: "20-us-default-anniversary")
+
+        pager.swipeLeft()
+        XCTAssertTrue(app.staticTexts["在一起的日子"].waitForExistence(timeout: 2))
+        attachScreenshot(named: "21-us-next-anniversary")
 
         app.buttons["柯"].tap()
         XCTAssertTrue(app.buttons["我们"].waitForExistence(timeout: 2))
         app.buttons["我们"].tap()
 
-        XCTAssertTrue(moon.waitForExistence(timeout: 2))
-        XCTAssertTrue((moon.value as? String)?.hasPrefix("表白的日子，320天") == true)
+        XCTAssertTrue(pager.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["在一起的日子"].exists)
         attachScreenshot(named: "23-us-tab-round-trip")
+    }
+
+    func testCalendarCanMoveToAnotherMonthAndReturn() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-preview-us", "-preview-us-calendar"]
+        app.launch()
+
+        let nextMonth = app.buttons["下个月"]
+        XCTAssertTrue(nextMonth.waitForExistence(timeout: 5))
+        nextMonth.tap()
+        XCTAssertTrue(app.buttons["calendar-return-current-month"].waitForExistence(timeout: 2))
+        attachScreenshot(named: "22-us-next-month")
+        app.buttons["calendar-return-current-month"].tap()
+        XCTAssertFalse(app.buttons["calendar-return-current-month"].exists)
     }
 
     func testCalendarDayCanWriteShift() throws {

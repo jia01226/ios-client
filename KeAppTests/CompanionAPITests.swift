@@ -146,6 +146,25 @@ final class CompanionAPITests: XCTestCase {
         XCTAssertEqual(store.error, "纪念日没有刷新成功，请重试。")
     }
 
+    @MainActor func testUsHomeLoadsRealAnniversariesInsteadOfDemoDates() async {
+        CompanionStub.handler = { request in
+            switch request.url!.lastPathComponent {
+            case "schedule": return (200, #"{"current":[],"history":[]}"#)
+            case "anniversaries":
+                return (200, #"[{"id":1,"name":"佳佳的生日","date":"2001-02-26"},{"id":2,"name":"柯的生日","date":"1992-10-26"},{"id":3,"name":"在一起的日子","date":"2026-06-25"},{"id":4,"name":"表白的日子","date":"2026-08-09"}]"#)
+            default: return (404, "{}")
+            }
+        }
+        let viewModel = UsViewModel(api: api())
+        await viewModel.loadReminders()
+        XCTAssertEqual(viewModel.anniversaries.map(\.title), ["表白的日子", "在一起的日子", "佳佳的生日", "柯的生日"])
+        let dates = viewModel.anniversaries.map {
+            let parts = CompanionDate.calendar.dateComponents([.year, .month, .day], from: $0.date)
+            return String(format: "%04d-%02d-%02d", parts.year!, parts.month!, parts.day!)
+        }
+        XCTAssertEqual(dates, ["2026-08-09", "2026-06-25", "2001-02-26", "1992-10-26"])
+    }
+
     func testDateParsingRejectsImpossibleDatesAndUsesChinaTime() {
         XCTAssertNil(CompanionDate.parse("2026-02-30"))
         let date = CompanionDate.parse("2026-09-09 00:30:00")!

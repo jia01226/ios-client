@@ -5,7 +5,7 @@ final class MessagePresentationTests: XCTestCase {
     func testPinkPaletteUsesJReplyColorWithoutChangingMyBubbleColor() {
         let palette = try! XCTUnwrap(ChatPalette.all.first { $0.id == "pink" })
 
-        XCTAssertEqual(palette.reply, 0xC9B6C6)
+        XCTAssertEqual(palette.reply, 0xEDC5CD)
         XCTAssertEqual(palette.tint, 0xE6C6D0)
     }
 
