@@ -126,17 +126,17 @@ final class CompanionInteractionTests: XCTestCase {
         capture("diary-paper-error-reader")
     }
 
-    func testDiaryAuthorFindsOlderPages() {
+    func testDiaryAutomaticallyLoadsAllPagesIncludingLockedRows() {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-ui-test-diary-paging", "-app.skin", "day"]
         app.launch()
         app.buttons["玩"].tap()
         app.buttons["play-diary"].tap()
         XCTAssertTrue(app.buttons["diary-filter-我"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["diary-row-1"].exists)
-        app.buttons["diary-filter-我"].tap()
         XCTAssertTrue(app.buttons["diary-row-1"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["diary-row-100"].exists)
+        let august = app.buttons["2026年8月"]
+        XCTAssertTrue(august.waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["再翻一些"].exists)
     }
 
     func testTarotDrawShowsCardsAndHandsToKe() {

@@ -411,10 +411,6 @@ struct CompanionPages: View {
                 Text(diaryHasMore ? "已翻到的日记里没有匹配，可以再翻一些" : (diaries.isEmpty && diaryQuery.isEmpty ? "还没有日记，点下方写一篇" : "没有找到相关日记，换个词或筛选试试"))
                     .foregroundStyle(diaryMuted).padding(.vertical, 32)
             }
-            if diaryHasMore && !loading {
-                Button("再翻一些") { Task { await reloadDiaries(reset: false) } }
-                    .frame(maxWidth: .infinity, minHeight: 44).padding(.top, 16)
-            }
         }
     }
 
@@ -632,12 +628,18 @@ struct CompanionPages: View {
         diaryRetry = nil
         loading = true
         let query = diaryQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        let offset = reset ? 0 : diaries.count
+        var loaded = reset ? [] : diaries
+        var offset = loaded.count
         do {
-            let rows = try await api.fetchDiaries(query: query, offset: offset, limit: diaryPageSize)
-            guard diaryRequestID == requestID else { return }
-            diaries = reset ? rows : diaries + rows
-            diaryHasMore = rows.count == diaryPageSize
+            while true {
+                let rows = try await api.fetchDiaries(query: query, offset: offset, limit: diaryPageSize)
+                guard diaryRequestID == requestID else { return }
+                loaded.append(contentsOf: rows)
+                if rows.count < diaryPageSize { break }
+                offset += rows.count
+            }
+            diaries = loaded
+            diaryHasMore = false
             error = nil
             loading = false
         } catch is CancellationError {

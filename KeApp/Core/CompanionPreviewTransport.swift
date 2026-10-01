@@ -73,7 +73,7 @@ final class CompanionPreviewTransport: URLProtocol {
                              "created_at": "2026-09-08 20:00:00", "locked_hidden": false, "comments": 0]
                         }
                         body = String(data: try! JSONSerialization.data(withJSONObject: pageRows), encoding: .utf8)!
-                    } else { body = "[" + rows[0] + "]" }
+                    } else { body = "[" + [rows[0], rows[3]].joined(separator: ",") + "]" }
                 } else {
                     body = "[" + rows.filter { query.isEmpty || $0.contains(query) }.joined(separator: ",") + "]"
                 }
