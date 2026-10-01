@@ -139,6 +139,21 @@ final class CompanionInteractionTests: XCTestCase {
         XCTAssertFalse(app.buttons["再翻一些"].exists)
     }
 
+    func testLockedDiaryHasAskKeShortcut() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-app.skin", "day"]
+        app.launch()
+        app.buttons["玩"].tap()
+        app.buttons["play-diary"].tap()
+        XCTAssertTrue(app.buttons["2026年8月"].waitForExistence(timeout: 5))
+        app.buttons["2026年8月"].tap()
+        XCTAssertTrue(app.buttons["diary-row-4"].waitForExistence(timeout: 3))
+        app.buttons["diary-row-4"].tap()
+        XCTAssertTrue(app.buttons["diary-ask-ke"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["这一页还锁着，可以在聊天里问柯。"].exists)
+        XCTAssertFalse(app.staticTexts["窗外有风，心里很静。"].exists)
+    }
+
     func testTarotDrawShowsCardsAndHandsToKe() {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-app.skin", "day"]

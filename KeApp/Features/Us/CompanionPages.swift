@@ -431,6 +431,23 @@ struct CompanionPages: View {
                         Text(item.locked_hidden ? "这一页还锁着，可以在聊天里问柯。" : item.content)
                             .font(diaryFont(19)).lineSpacing(9)
                             .frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
+                        if item.locked_hidden {
+                            Button {
+                                NotificationCenter.default.post(
+                                    name: .tarotReadingRequest,
+                                    object: lockedDiaryQuestion(item)
+                                )
+                            } label: {
+                                Label("去问柯", systemImage: "bubble.left.and.bubble.right")
+                                    .font(diaryFont(17, .headline))
+                                    .frame(maxWidth: .infinity, minHeight: 50)
+                                    .background(journalInk.opacity(0.07), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.top, 24)
+                            .accessibilityIdentifier("diary-ask-ke")
+                            .accessibilityHint("带着这篇日记的日期和标题去聊天询问柯")
+                        }
                         if showingDiaryComments && !item.locked_hidden {
                             Divider().padding(.top, 36).padding(.bottom, 18)
                             ForEach(comments[item.id] ?? []) { comment in
@@ -497,6 +514,10 @@ struct CompanionPages: View {
         selectedDiaryID = visibleDiaries[index].id
         showingDiaryComments = false
         diaryRetry = nil; error = nil
+    }
+
+    private func lockedDiaryQuestion(_ item: RemoteDiary) -> String {
+        "爸比，我想看 \(diaryDate(item, format: "yyyy年M月d日")) 锁起来的《\(item.title)》，可以把这一页给我看吗？"
     }
 
     @MainActor private func retryDiaryAction() async {
