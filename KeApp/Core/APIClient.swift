@@ -798,6 +798,19 @@ actor APIClient {
         return try decoder.decode([RemoteDiary].self, from: data)
     }
 
+    func fetchArchivedMessages(query: String = "", beforeID: Int? = nil, limit: Int = 50) async throws -> [ArchivedChatMessage] {
+        var queryItems = [
+            URLQueryItem(name: "query", value: query),
+            URLQueryItem(name: "limit", value: String(limit)),
+        ]
+        if let beforeID {
+            queryItems.append(URLQueryItem(name: "before_id", value: String(beforeID)))
+        }
+        let request = try makeRequest(path: "/api/history/archive", queryItems: queryItems)
+        let (data, _) = try await perform(request)
+        return try decoder.decode([ArchivedChatMessage].self, from: data)
+    }
+
     func fetchMoments() async throws -> [RemoteMoment] {
         try await readResource("/api/moments")
     }
@@ -967,8 +980,7 @@ actor APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        if includeCookieHeader,
-           let cookies = HTTPCookieStorage.shared.cookies(for: url),
+        if let cookies = HTTPCookieStorage.shared.cookies(for: url),
            !cookies.isEmpty {
             for (field, value) in HTTPCookie.requestHeaderFields(with: cookies) {
                 request.setValue(value, forHTTPHeaderField: field)

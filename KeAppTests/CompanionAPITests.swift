@@ -86,6 +86,32 @@ final class CompanionAPITests: XCTestCase {
         XCTAssertEqual(rows.map(\.id), [8])
     }
 
+    func testArchiveHistoryStaysInsideSelectedLine() async throws {
+        CompanionStub.handler = { request in
+            XCTAssertEqual(request.url?.path, "/ke-test2/api/history/archive")
+            return (200, #"[{"id":1,"author":"user","content":"最开始","msg_type":"text","created_at":"2026-07-01 10:00:00"}]"#)
+        }
+        let rows = try await api().fetchArchivedMessages(query: "开始")
+        XCTAssertEqual(rows.first?.content, "最开始")
+    }
+
+    func testCompanionRequestsCarryExistingHouseKey() async throws {
+        let cookie = try XCTUnwrap(HTTPCookie(properties: [
+            .domain: "example.invalid",
+            .path: "/",
+            .name: "ke_home",
+            .value: "saved-house-key",
+            .secure: "TRUE",
+        ]))
+        HTTPCookieStorage.shared.setCookie(cookie)
+        defer { HTTPCookieStorage.shared.deleteCookie(cookie) }
+        CompanionStub.handler = { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Cookie"), "ke_home=saved-house-key")
+            return (200, "[]")
+        }
+        _ = try await api().fetchDiaries()
+    }
+
     func testWebReadingAnnotationSendsOnlyCurrentExcerpt() async throws {
         CompanionStub.handler = { request in
             XCTAssertEqual(request.httpMethod, "POST")

@@ -72,6 +72,15 @@ struct MemoriesView: View {
                     }
                     .accessibilityIdentifier("memory-retrieval-entry")
 
+                    NavigationLink {
+                        ArchiveHistoryView(line: review.line)
+                    } label: {
+                        Label("最初的聊天", systemImage: "clock.arrow.circlepath")
+                            .font(theme.font.sectionTitle)
+                            .frame(minHeight: theme.metric.touchTarget)
+                    }
+                    .accessibilityIdentifier("archive-history-entry")
+
                     VStack(alignment: .leading, spacing: theme.metric.gapS) {
                         Text(review.syncLabel).font(theme.font.reviewCaption)
                         if let error = review.error {
@@ -184,5 +193,75 @@ struct MemoriesView: View {
                             .padding(.vertical, theme.metric.gapS)
                             Divider()
                         }
+    }
+}
+
+private struct ArchiveHistoryView: View {
+    @EnvironmentObject private var theme: Theme
+    let line: ChatLine
+    @State private var messages: [ArchivedChatMessage] = []
+    @State private var query = ""
+    @State private var loading = false
+    @State private var error: String?
+
+    var body: some View {
+        List {
+            if let error {
+                ContentUnavailableView(
+                    "旧聊天没有打开",
+                    systemImage: "exclamationmark.bubble",
+                    description: Text(error)
+                )
+                Button("再试一次") { Task { await load(reset: true) } }
+            } else if messages.isEmpty && !loading {
+                ContentUnavailableView("还没有找到旧聊天", systemImage: "clock.arrow.circlepath")
+            } else {
+                ForEach(messages) { message in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text(message.author == "user" ? "佳佳" : "柯")
+                                .font(theme.font.reviewCaption)
+                            Spacer()
+                            Text(message.created_at)
+                                .font(theme.font.reviewCaption)
+                                .foregroundStyle(theme.reviewSecondary)
+                        }
+                        Text(message.content)
+                            .font(theme.font.reviewBody)
+                            .textSelection(.enabled)
+                    }
+                    .padding(.vertical, 5)
+                }
+                if !messages.isEmpty && query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Button(loading ? "正在往前翻…" : "再往前翻") {
+                        Task { await load(reset: false) }
+                    }
+                    .disabled(loading)
+                }
+            }
+        }
+        .navigationTitle("最初的聊天")
+        .searchable(text: $query, prompt: "搜索旧聊天")
+        .task { await load(reset: true) }
+        .onSubmit(of: .search) { Task { await load(reset: true) } }
+        .refreshable { await load(reset: true) }
+        .overlay { if loading && messages.isEmpty { ProgressView("正在翻旧记录…") } }
+    }
+
+    @MainActor
+    private func load(reset: Bool) async {
+        guard !loading else { return }
+        loading = true
+        error = nil
+        defer { loading = false }
+        do {
+            let value = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            let beforeID = reset || !value.isEmpty ? nil : messages.first?.id
+            let rows = try await APIClient(baseURL: line.apiBaseURL)
+                .fetchArchivedMessages(query: value, beforeID: beforeID)
+            messages = reset || !value.isEmpty ? rows : rows + messages
+        } catch {
+            self.error = "记录仍在服务器，连接没有接稳。"
+        }
     }
 }

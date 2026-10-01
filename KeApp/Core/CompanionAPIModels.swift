@@ -99,3 +99,11 @@ struct RemotePrivateRecord: Decodable, Identifiable, Sendable {
     let date: String
     let note: String
 }
+
+struct ArchivedChatMessage: Decodable, Identifiable, Sendable {
+    let id: Int
+    let author: String
+    let content: String
+    let msg_type: String
+    let created_at: String
+}
