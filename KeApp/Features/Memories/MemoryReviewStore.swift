@@ -44,8 +44,18 @@ final class MemoryReviewStore: ObservableObject {
 
     deinit { monitor?.cancel() }
 
-    var pending: [ReviewCard] { archive.cards.filter { ["pending", "held"].contains($0.status) && !$0.deferred } }
-    var deferred: [ReviewCard] { archive.cards.filter { ["pending", "held"].contains($0.status) && $0.deferred } }
+    var pending: [ReviewCard] {
+        archive.cards.filter {
+            ["pending", "held"].contains($0.status) && !$0.deferred
+                && MemoryFactBoundary.isReviewableFact(key: $0.fact_key, value: $0.fact)
+        }
+    }
+    var deferred: [ReviewCard] {
+        archive.cards.filter {
+            ["pending", "held"].contains($0.status) && $0.deferred
+                && MemoryFactBoundary.isReviewableFact(key: $0.fact_key, value: $0.fact)
+        }
+    }
     var canUndo: Bool { archive.undo != nil && storageReadable && blockedOperation == nil && !archive.needsReconciliation }
     var canReview: Bool { archive.storeID != nil && storageReadable && blockedOperation == nil && !archive.needsReconciliation }
     var syncLabel: String {

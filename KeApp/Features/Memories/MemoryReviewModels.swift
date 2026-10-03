@@ -72,6 +72,23 @@ struct ReviewedFactsPage: Codable, Sendable {
     var next_offset: Int?
 }
 
+enum MemoryFactBoundary {
+    private static let behaviorKeys = ["提醒", "待办", "任务", "行为建议", "生活建议", "行动计划"]
+    private static let directivePrefixes = [
+        "记得", "别忘", "不要忘", "请记得", "要记得", "需要记得",
+        "务必", "千万要", "应该", "应当", "该去", "该吃", "该睡",
+        "早点睡", "按时吃药", "多喝水", "去吃饭", "去睡觉", "去休息",
+    ]
+
+    static func isReviewableFact(key: String, value: String) -> Bool {
+        let normalizedKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedValue.isEmpty else { return false }
+        if behaviorKeys.contains(where: normalizedKey.contains) { return false }
+        return !directivePrefixes.contains(where: normalizedValue.hasPrefix)
+    }
+}
+
 struct ReviewStats: Codable, Sendable {
     var store_id: String
     var pending: Int

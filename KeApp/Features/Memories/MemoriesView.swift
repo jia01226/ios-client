@@ -135,7 +135,9 @@ struct MemoriesView: View {
 
     @ViewBuilder
     private var featuredMemory: some View {
-        let fact = review.archive.facts.first
+        let fact = review.archive.facts.first {
+            MemoryFactBoundary.isReviewableFact(key: $0.group ?? $0.category, value: $0.fact)
+        }
         VStack(alignment: .leading, spacing: theme.metric.gapM) {
             HStack {
                 Text(fact == nil ? "今天想起" : "最近收下").font(theme.font.sectionTitle)
@@ -173,7 +175,10 @@ struct MemoriesView: View {
     }
 
     private var filteredFacts: [ReviewedFact] {
-        review.archive.facts.filter { category == .all || MemoryShelf(fact: $0) == category }
+        review.archive.facts.filter {
+            MemoryFactBoundary.isReviewableFact(key: $0.group ?? $0.category, value: $0.fact)
+                && (category == .all || MemoryShelf(fact: $0) == category)
+        }
     }
 
     private var syncSummary: String {
