@@ -195,6 +195,18 @@ final class CompanionInteractionTests: XCTestCase {
         capture("garden-handoff-chat")
     }
 
+    func testDuelEntryOpensPrivateGameRoom() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-app.skin", "day"]
+        app.launch()
+        XCTAssertTrue(app.buttons["玩"].waitForExistence(timeout: 5))
+        app.buttons["玩"].tap()
+        XCTAssertTrue(app.buttons["play-duel"].waitForExistence(timeout: 5))
+        app.buttons["play-duel"].tap()
+        XCTAssertTrue(app.staticTexts["你和柯的牌桌已经摆好。"].waitForExistence(timeout: 5))
+        capture("duel-entry")
+    }
+
     func testFortuneRunsAndHandsToKe() {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-app.skin", "day"]

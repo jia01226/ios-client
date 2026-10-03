@@ -14,6 +14,7 @@ struct PlayView: View {
     @State private var fortuneOpen = false
     @State private var gardenOpen = false
     @State private var readingOpen = false
+    @State private var duelOpen = false
 
     init(line: ChatLine = .main) { self.line = line }
 
@@ -129,15 +130,32 @@ struct PlayView: View {
         .fullScreenCover(isPresented: $readingOpen) {
             CoReadingView(line: line).environmentObject(theme)
         }
+        .fullScreenCover(isPresented: $duelOpen) {
+            DuelView().environmentObject(theme)
+        }
     }
 
     private var footer: some View {
-        HStack(spacing: 12) {
+        Button { duelOpen = true } label: {
+            HStack(spacing: 12) {
                 Rectangle().fill(gold.opacity(0.28)).frame(width: 34, height: 0.8)
-                Text("风来时，轻轻选一个")
+                VStack(spacing: 2) {
+                    Text("双弈")
+                        .font(serif(17))
+                    Text("和柯开一局")
+                        .font(serif(12))
+                        .foregroundStyle(ink.opacity(0.52))
+                }
                     .font(serif(15)).foregroundStyle(ink.opacity(0.62))
                 Rectangle().fill(gold.opacity(0.28)).frame(width: 34, height: 0.8)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("play-duel")
+        .accessibilityLabel("双弈，和柯开一局")
     }
 }
 
