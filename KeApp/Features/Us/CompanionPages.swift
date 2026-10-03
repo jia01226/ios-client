@@ -53,6 +53,7 @@ struct CompanionPages: View {
     private let diaryPageSize = 50
     private var diaryPaper: Color { theme.skin == .night ? theme.effectiveBackground : Color(hex: 0xFFFCF7) }
     private var diaryMuted: Color { theme.skin == .night ? theme.color.textSecondary : Color(hex: 0x77716A) }
+    private var diaryDateInk: Color { theme.skin == .night ? Color(hex: 0xF2D699) : Color(hex: 0x765548) }
     private func diaryFont(_ size: CGFloat, _ style: Font.TextStyle = .body) -> Font {
         .custom("NotoSerifSC-Regular", size: size, relativeTo: style)
     }
@@ -257,6 +258,15 @@ struct CompanionPages: View {
         Array(Set(visibleDiaries.map { String($0.created_at.prefix(7)) })).sorted(by: >)
     }
 
+    private var preferredDiaryMonth: String? {
+        let components = CompanionDate.calendar.dateComponents([.year, .month], from: .now)
+        if let year = components.year, let month = components.month {
+            let currentMonth = String(format: "%04d-%02d", year, month)
+            if diaryMonths.contains(currentMonth) { return currentMonth }
+        }
+        return diaryMonths.first
+    }
+
     private func diaryDate(_ item: RemoteDiary, format: String) -> String {
         guard let date = CompanionDate.parse(item.created_at) else { return String(item.created_at.prefix(10)) }
         let formatter = DateFormatter()
@@ -299,6 +309,12 @@ struct CompanionPages: View {
                 }.font(diaryFont(15, .subheadline))
             }.padding(.horizontal, 26)
                 .foregroundStyle(journalInk).background(diaryPaper)
+                .onChange(of: selectedMonth) { _, month in
+                    guard let month else { return }
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo(month, anchor: .top)
+                    }
+                }
         }
     }
 
@@ -330,24 +346,37 @@ struct CompanionPages: View {
                     .background(journalInk.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
                     .padding(.bottom, 8)
             }
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 22) {
-                    ForEach(diaryMonths.reversed(), id: \.self) { month in
-                        Button {
-                            selectedMonth = month
-                            diarySearchFocused = false
-                            proxy.scrollTo(month, anchor: .top)
-                        } label: {
-                            Text("\(Int(month.suffix(2)) ?? 0)月")
-                                .font(diaryFont(22, .title3))
-                                .foregroundStyle((selectedMonth ?? diaryMonths.first) == month ? journalInk : diaryMuted)
-                                .frame(minWidth: 56, minHeight: 44)
-                                .overlay(alignment: .bottom) {
-                                    if (selectedMonth ?? diaryMonths.first) == month {
-                                        Rectangle().fill(Color(hex: 0xA4826B)).frame(height: 1.5)
+            ScrollViewReader { monthProxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 22) {
+                        ForEach(diaryMonths.reversed(), id: \.self) { month in
+                            Button {
+                                selectedMonth = month
+                                diarySearchFocused = false
+                                proxy.scrollTo(month, anchor: .top)
+                            } label: {
+                                Text("\(Int(month.suffix(2)) ?? 0)月")
+                                    .font(diaryFont(22, .title3))
+                                    .foregroundStyle((selectedMonth ?? preferredDiaryMonth) == month ? journalInk : diaryMuted)
+                                    .frame(minWidth: 56, minHeight: 44)
+                                    .overlay(alignment: .bottom) {
+                                        if (selectedMonth ?? preferredDiaryMonth) == month {
+                                            Rectangle().fill(Color(hex: 0xA4826B)).frame(height: 1.5)
+                                        }
                                     }
-                                }
-                        }.accessibilityLabel("\(month.prefix(4))年\(Int(month.suffix(2)) ?? 0)月")
+                            }.id(month)
+                                .accessibilityLabel("\(month.prefix(4))年\(Int(month.suffix(2)) ?? 0)月")
+                        }
+                    }
+                }
+                .onAppear {
+                    guard let month = selectedMonth ?? preferredDiaryMonth else { return }
+                    monthProxy.scrollTo(month, anchor: .trailing)
+                }
+                .onChange(of: selectedMonth ?? preferredDiaryMonth) { _, month in
+                    guard let month else { return }
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        monthProxy.scrollTo(month, anchor: .trailing)
                     }
                 }
             }
@@ -382,8 +411,9 @@ struct CompanionPages: View {
                                  ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
                                  : AnyLayout(HStackLayout(alignment: .top, spacing: 12))) {
                                     Text(diaryDate(item, format: "M月d日"))
-                                        .font(diaryFont(14, .caption)).padding(.horizontal, 11).padding(.vertical, 3)
-                                        .background(journalInk.opacity(0.045), in: Capsule())
+                                        .font(diaryFont(14, .caption)).foregroundStyle(diaryDateInk)
+                                        .padding(.horizontal, 11).padding(.vertical, 3)
+                                        .background(diaryDateInk.opacity(theme.skin == .night ? 0.13 : 0.08), in: Capsule())
                                         .fixedSize()
                                     VStack(alignment: .leading, spacing: 6) {
                                         if let date = CompanionDate.parse(item.created_at), CompanionDate.calendar.isDateInToday(date) {
@@ -421,9 +451,10 @@ struct CompanionPages: View {
                 ScrollView {
                     VStack(spacing: 0) {
                         Text(diaryDate(item, format: "yyyy年M月"))
-                            .font(diaryFont(17)).padding(.top, 34)
+                            .font(diaryFont(17)).foregroundStyle(diaryDateInk).padding(.top, 34)
                         Text(diaryDate(item, format: "dd"))
                             .font(.custom("Didot", size: 92, relativeTo: .largeTitle))
+                            .foregroundStyle(diaryDateInk)
                             .padding(.top, 4)
                         Rectangle().fill(Color(hex: 0xA4826B)).frame(width: 40, height: 1).padding(.top, 8)
                         Text(item.title).font(diaryFont(32, .largeTitle))
@@ -661,6 +692,7 @@ struct CompanionPages: View {
             }
             diaries = loaded
             diaryHasMore = false
+            if reset { selectedMonth = preferredDiaryMonth }
             error = nil
             loading = false
         } catch is CancellationError {

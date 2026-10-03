@@ -139,6 +139,34 @@ final class CompanionInteractionTests: XCTestCase {
         XCTAssertFalse(app.buttons["再翻一些"].exists)
     }
 
+    func testDiaryOpensAtCurrentMonth() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-ui-test-diary-paging", "-app.skin", "day"]
+        app.launch()
+        app.buttons["玩"].tap()
+        app.buttons["play-diary"].tap()
+
+        let components = Calendar(identifier: .gregorian).dateComponents([.year, .month], from: .now)
+        let currentMonth = app.buttons["\(components.year!)年\(components.month!)月"]
+        XCTAssertTrue(currentMonth.waitForExistence(timeout: 5))
+        XCTAssertTrue(currentMonth.isHittable)
+        XCTAssertTrue(app.staticTexts["\(components.month!)月"].firstMatch.waitForExistence(timeout: 3))
+    }
+
+    func testDiaryDatesRemainVisibleAtNight() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-ui-test-diary-paging", "-app.skin", "night"]
+        app.launch()
+        app.buttons["玩"].tap()
+        app.buttons["play-diary"].tap()
+
+        XCTAssertTrue(app.buttons["diary-row-1"].waitForExistence(timeout: 5))
+        app.buttons["diary-row-1"].tap()
+        let currentDay = Calendar(identifier: .gregorian).component(.day, from: .now)
+        XCTAssertTrue(app.staticTexts[String(format: "%02d", currentDay)].waitForExistence(timeout: 3))
+        capture("diary-night-date-contrast")
+    }
+
     func testLockedDiaryHasAskKeShortcut() {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-app.skin", "day"]

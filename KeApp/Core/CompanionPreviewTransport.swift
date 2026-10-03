@@ -55,8 +55,15 @@ final class CompanionPreviewTransport: URLProtocol {
             case let p where p.hasSuffix("/companion/intimate-counts"):
                 body = #"[{"date":"2026-09-09","count":2}]"#
             case let p where p.hasSuffix("/diary"):
+                let currentDiaryDate: String = {
+                    let formatter = DateFormatter()
+                    formatter.locale = Locale(identifier: "en_US_POSIX")
+                    formatter.timeZone = TimeZone(identifier: "Asia/Shanghai")
+                    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+                    return formatter.string(from: .now)
+                }()
                 let rows = [
-                    #"{"id":1,"title":"匿名日记","content":"今天一起散步。","author":"佳佳","created_at":"2026-09-09 10:00:00","locked_hidden":false,"comments":0}"#,
+                    "{\"id\":1,\"title\":\"匿名日记\",\"content\":\"今天一起散步。\",\"author\":\"佳佳\",\"created_at\":\"(currentDiaryDate)\",\"locked_hidden\":false,\"comments\":0}",
                     #"{"id":2,"title":"枕边的一页","content":"夜色很静，月光落在窗边，\n像轻轻的问候。\n世界慢了下来，心里也柔软了许多。\n愿明天，也是好的一天。","author":"柯","created_at":"2026-09-08 23:00:00","locked_hidden":false,"comments":0}"#,
                     #"{"id":3,"title":"晚风","content":"窗外有风，心里很静。","author":"柯","created_at":"2026-08-28 20:00:00","locked_hidden":false,"comments":0}"#,
                     #"{"id":4,"title":"锁着的一页","content":"","author":"柯","created_at":"2026-08-14 20:00:00","locked_hidden":true,"comments":0}"#,
@@ -68,12 +75,16 @@ final class CompanionPreviewTransport: URLProtocol {
                     let offset = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
                         .queryItems?.first(where: { $0.name == "offset" })?.value ?? "0"
                     if offset == "0" {
-                        let pageRows: [[String: Any]] = (100..<150).map { id in
+                        var pageRows: [[String: Any]] = (100..<150).map { id in
                             ["id": id, "title": "柯的日记", "content": "分页测试", "author": "柯",
                              "created_at": "2026-09-08 20:00:00", "locked_hidden": false, "comments": 0]
                         }
+                        pageRows[0] = [
+                            "id": 1, "title": "匿名日记", "content": "今天一起散步。", "author": "佳佳",
+                            "created_at": currentDiaryDate, "locked_hidden": false, "comments": 0,
+                        ]
                         body = String(data: try! JSONSerialization.data(withJSONObject: pageRows), encoding: .utf8)!
-                    } else { body = "[" + [rows[0], rows[3]].joined(separator: ",") + "]" }
+                    } else { body = "[" + rows[3] + "]" }
                 } else {
                     body = "[" + rows.filter { query.isEmpty || $0.contains(query) }.joined(separator: ",") + "]"
                 }
