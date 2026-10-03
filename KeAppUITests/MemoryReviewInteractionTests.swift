@@ -18,6 +18,7 @@ final class MemoryReviewInteractionTests: XCTestCase {
         app.launchArguments = ["-ui-test-scroll-control", "-ui-test-memory-review", "-ui-test-memory-usage", "-app.skin", "day"]
         app.launch()
         app.buttons["回忆"].tap()
+        app.buttons["更多回忆工具"].tap()
         let entry = app.buttons["memory-usage-entry"]
         XCTAssertTrue(entry.waitForExistence(timeout: 5))
         entry.tap()
@@ -33,6 +34,7 @@ final class MemoryReviewInteractionTests: XCTestCase {
         app.launchArguments = ["-ui-test-scroll-control", "-ui-test-memory-review", "-ui-test-memory-retrieval", "-app.skin", "day"]
         app.launch()
         app.buttons["回忆"].tap()
+        app.buttons["更多回忆工具"].tap()
         let entry = app.buttons["memory-retrieval-entry"]
         XCTAssertTrue(entry.waitForExistence(timeout: 5))
         entry.tap()

@@ -4,7 +4,7 @@ struct MemoriesView: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var review: MemoryReviewStore
-    @State private var category = "全部"
+    @State private var category = MemoryShelf.all
     @State private var updating: ReviewCard?
 
     init(line: ChatLine = .main) {
@@ -18,119 +18,102 @@ struct MemoriesView: View {
                     HStack {
                         Text("回忆").font(theme.font.pageTitle)
                         Spacer()
-                        Text(review.line.title).font(theme.font.reviewCaption)
-                            .foregroundStyle(theme.reviewSecondary)
-                    }
-                    NavigationLink {
-                        MemoryReviewDeck(store: review)
-                    } label: {
-                        HStack(spacing: theme.metric.gapM) {
-                            Image(systemName: "rectangle.on.rectangle.angled")
-                            VStack(alignment: .leading, spacing: theme.metric.gapS) {
-                                Text("一起核对记忆").font(theme.font.sectionTitle)
-                                Text(review.hasLoaded || review.archive.storeID != nil
-                                     ? "\(review.pending.count) 张待审 · \(review.deferred.count) 张暂缓"
-                                     : "连接后查看待审卡片")
-                                    .font(theme.font.reviewCaption)
-                                    .foregroundStyle(theme.reviewSecondary)
+                        Menu {
+                            NavigationLink("柯味语录") { AppQuotesView(line: review.line) }
+                                .accessibilityIdentifier("app-quotes-entry")
+                            NavigationLink("整理用量") { MemoryUsageView(line: review.line) }
+                                .accessibilityIdentifier("memory-usage-entry")
+                            NavigationLink("记忆怎么找的") {
+                                MemoryRetrievalView(line: review.line) {
+                                    Task { await review.sync() }
+                                }
                             }
-                            Spacer()
-                            Image(systemName: "chevron.right")
+                            .accessibilityIdentifier("memory-retrieval-entry")
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .font(theme.font.menuIcon)
+                                .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
+                                .background(theme.color.cardElevated, in: Circle())
                         }
-                        .padding(theme.metric.gapL)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(theme.color.cardElevated, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
+                        .accessibilityLabel("更多回忆工具")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("memory-review-entry")
 
-                    NavigationLink {
-                        AppQuotesView(line: review.line)
-                    } label: {
-                        Label("App 柯味语录", systemImage: "quote.bubble")
-                            .font(theme.font.sectionTitle)
-                            .frame(minHeight: theme.metric.touchTarget)
-                    }
-                    .accessibilityIdentifier("app-quotes-entry")
-                    NavigationLink {
-                        MemoryUsageView(line: review.line)
-                    } label: {
-                        Label("整理用量", systemImage: "chart.bar")
-                            .font(theme.font.sectionTitle)
-                            .frame(minHeight: theme.metric.touchTarget)
-                    }
-                    .accessibilityIdentifier("memory-usage-entry")
+                    featuredMemory
 
-                    NavigationLink {
-                        MemoryRetrievalView(line: review.line) {
-                            Task { await review.sync() }
+                    HStack(spacing: theme.metric.gapS) {
+                        NavigationLink {
+                            MemoryReviewDeck(store: review)
+                        } label: {
+                            memoryShortcut(
+                                title: "一起核对",
+                                subtitle: review.hasLoaded || review.archive.storeID != nil
+                                    ? "\(review.pending.count) 张待审"
+                                    : "看看待审卡片",
+                                icon: "rectangle.on.rectangle.angled"
+                            )
                         }
-                    } label: {
-                        Label("记忆怎么找的", systemImage: "magnifyingglass")
-                            .font(theme.font.sectionTitle)
-                            .frame(minHeight: theme.metric.touchTarget)
-                    }
-                    .accessibilityIdentifier("memory-retrieval-entry")
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("memory-review-entry")
 
-                    NavigationLink {
-                        ArchiveHistoryView(line: review.line)
-                    } label: {
-                        Label("最初的聊天", systemImage: "clock.arrow.circlepath")
-                            .font(theme.font.sectionTitle)
-                            .frame(minHeight: theme.metric.touchTarget)
-                    }
-                    .accessibilityIdentifier("archive-history-entry")
-
-                    VStack(alignment: .leading, spacing: theme.metric.gapS) {
-                        Text(review.syncLabel).font(theme.font.reviewCaption)
-                        if let error = review.error {
-                            Text(error).font(theme.font.reviewCaption)
-                            Button("重试同步") { Task { await review.sync() } }
-                                .frame(minHeight: theme.metric.touchTarget)
+                        NavigationLink {
+                            ArchiveHistoryView(line: review.line)
+                        } label: {
+                            memoryShortcut(title: "找一段话", subtitle: "搜索我们的回忆", icon: "magnifyingglass")
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("archive-search-entry")
+
+                        NavigationLink {
+                            ArchiveHistoryView(line: review.line)
+                        } label: {
+                            memoryShortcut(title: "最初聊天", subtitle: "回到开始那天", icon: "clock.arrow.circlepath")
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("archive-history-entry")
                     }
-                    .foregroundStyle(theme.reviewSecondary)
+
+                    if review.error != nil || !review.hasLoaded || review.isSyncing {
+                        HStack(spacing: theme.metric.gapS) {
+                            Image(systemName: review.isSyncing ? "arrow.triangle.2.circlepath" : "wifi.exclamationmark")
+                            Text(syncSummary).lineLimit(1)
+                            Spacer(minLength: 0)
+                            if !review.isSyncing {
+                                Button("重试") { Task { await review.sync() } }
+                            }
+                        }
+                        .font(theme.font.reviewCaption)
+                        .foregroundStyle(theme.reviewSecondary)
+                        .padding(.horizontal, theme.metric.gapM)
+                        .padding(.vertical, theme.metric.gapS)
+                        .background(theme.color.cardElevated, in: Capsule())
+                    }
 
                     VStack(alignment: .leading, spacing: theme.metric.gapM) {
                         HStack {
-                            Text("已收下的记忆").font(theme.font.sectionTitle)
+                            Text("我们收下的").font(theme.font.sectionTitle)
                             Spacer()
                             Picker("类型", selection: $category) {
-                                ForEach(["全部", "身体用药", "安排", "关系约定", "喜好", "生活日常"], id: \.self) { Text($0) }
+                                ForEach(MemoryShelf.allCases) { Text($0.title).tag($0) }
                             }.pickerStyle(.menu)
                         }
-                        let facts = review.archive.facts.filter { category == "全部" || ($0.group ?? $0.category) == category }
-                        if facts.isEmpty {
-                            Text(review.archive.outbox.isEmpty ? "收下并同步的记忆会留在这里。" : "审核已存本机，同步后更新这里。")
-                                .font(theme.font.reviewBody).foregroundStyle(theme.reviewSecondary)
-                        }
-                        let groupOrder = ["身体用药", "安排", "关系约定", "喜好", "生活日常"]
-                        let layerRank = ["现行": 0, "长期": 1, "零碎": 2, "旧账": 3]
-                        let grouped = Dictionary(grouping: facts) { $0.group ?? "生活日常" }
-                        let names = groupOrder.filter { grouped[$0] != nil } + grouped.keys.filter { !groupOrder.contains($0) }.sorted()
-                        ForEach(names, id: \.self) { name in
-                            let items = (grouped[name] ?? []).sorted {
-                                let a = ($0.changed_when != nil || !($0.history ?? []).isEmpty) ? 0 : 1
-                                let b = ($1.changed_when != nil || !($1.history ?? []).isEmpty) ? 0 : 1
-                                if a != b { return a < b }
-                                return (layerRank[$0.layer ?? ""] ?? 9) < (layerRank[$1.layer ?? ""] ?? 9)
-                            }
-                            let changedCount = items.filter { $0.changed_when != nil || !($0.history ?? []).isEmpty }.count
-                            Section {
-                                factsList(items)
-                            } header: {
-                                HStack(spacing: theme.metric.gapS) {
-                                    Text(name).font(theme.font.sectionTitle)
-                                    Text("\(items.count)").font(theme.font.reviewCaption)
-                                        .foregroundStyle(theme.reviewSecondary)
-                                    if changedCount > 0 {
-                                        Text("变过 \(changedCount)").font(theme.font.reviewCaption)
-                                            .padding(.horizontal, theme.metric.gapS)
-                                            .background(theme.effectiveAccent.opacity(0.16), in: Capsule())
-                                    }
-                                    Spacer()
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: theme.metric.gapS) {
+                                ForEach(MemoryShelf.visibleCases) { shelf in
+                                    Button(shelf.title) { category = shelf }
+                                        .font(theme.font.reviewCaption)
+                                        .foregroundStyle(category == shelf ? theme.color.textOnAccent : theme.color.textPrimary)
+                                        .padding(.horizontal, theme.metric.gapM)
+                                        .frame(minHeight: 34)
+                                        .background(category == shelf ? theme.effectiveAccent : theme.color.cardElevated, in: Capsule())
                                 }
-                                .padding(.top, theme.metric.gapM)
+                            }
+                        }
+                        let facts = filteredFacts
+                        if facts.isEmpty {
+                            emptyShelf
+                        } else {
+                            ForEach(facts) { fact in
+                                memoryFactCard(fact)
                             }
                         }
                     }
@@ -151,48 +134,140 @@ struct MemoriesView: View {
     }
 
     @ViewBuilder
-    private func factsList(_ facts: [ReviewedFact]) -> some View {
-                        ForEach(facts) { fact in
-                            VStack(alignment: .leading, spacing: theme.metric.gapS) {
-                                Text(fact.fact).font(theme.font.reviewBody)
-                                if !fact.note.isEmpty {
-                                    Text("你的备注 · \(fact.note)").font(theme.font.reviewCaption)
-                                }
-                                if let when = fact.changed_when { Text("变化时间 · \(when)").font(theme.font.reviewCaption) }
-                                if let history = fact.history, !history.isEmpty {
-                                    DisclosureGroup("以前的情况") {
-                                        ForEach(history) { old in
-                                            VStack(alignment: .leading, spacing: theme.metric.gapS) {
-                                                Text(old.fact).font(theme.font.reviewBody)
-                                                Text("历史记录 · \(old.observed_at)").font(theme.font.reviewCaption)
-                                                if !old.note.isEmpty { Text(old.note).font(theme.font.reviewCaption) }
-                                            }
-                                        }
-                                    }
-                                }
-                                if let card = fact.review_card {
-                                    Button("以前是，现在变了") { review.prepareUpdate(card); updating = card }
-                                        .frame(minHeight: theme.metric.touchTarget)
-                                }
-                                HStack(spacing: theme.metric.gapS) {
-                                    if let layer = fact.layer {
-                                        Text(layer).font(theme.font.reviewCaption)
-                                            .padding(.horizontal, theme.metric.gapS)
-                                            .background(theme.color.cardElevated, in: Capsule())
-                                    }
-                                    if fact.changed_when != nil || !(fact.history ?? []).isEmpty {
-                                        Text("变过").font(theme.font.reviewCaption)
-                                            .padding(.horizontal, theme.metric.gapS)
-                                            .background(theme.effectiveAccent.opacity(0.16), in: Capsule())
-                                    }
-                                    Text(fact.observed_at)
-                                        .font(theme.font.reviewCaption).foregroundStyle(theme.reviewSecondary)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, theme.metric.gapS)
-                            Divider()
-                        }
+    private var featuredMemory: some View {
+        let fact = review.archive.facts.first
+        VStack(alignment: .leading, spacing: theme.metric.gapM) {
+            HStack {
+                Text(fact == nil ? "今天想起" : "最近收下").font(theme.font.sectionTitle)
+                    .foregroundStyle(theme.effectiveAccent)
+                Spacer()
+                Image(systemName: "sparkles")
+                    .foregroundStyle(theme.effectiveAccent.opacity(0.58))
+            }
+            Text(fact?.fact ?? "等我们收下一些回忆，柯会在有由头的时候，替你翻出一页。")
+                .font(theme.font.quote)
+                .lineSpacing(5)
+            Divider().overlay(theme.color.separator)
+            Text(fact.map { "柯主动想起 · \($0.observed_at)" } ?? "不是随机抽一张，是想起了才翻出来")
+                .font(theme.font.reviewCaption)
+                .foregroundStyle(theme.reviewSecondary)
+        }
+        .padding(theme.metric.gapL)
+        .background(theme.color.cardElevated, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
+    }
+
+    private func memoryShortcut(title: String, subtitle: String, icon: String) -> some View {
+        VStack(spacing: theme.metric.gapS) {
+            Image(systemName: icon)
+                .font(.system(size: 23, weight: .regular))
+                .foregroundStyle(theme.effectiveAccent)
+            Text(title).font(theme.font.sectionTitle).lineLimit(1)
+            Text(subtitle)
+                .font(theme.font.reviewCaption)
+                .foregroundStyle(theme.reviewSecondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, minHeight: 112)
+        .padding(.horizontal, theme.metric.gapXS)
+        .background(theme.color.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
+    }
+
+    private var filteredFacts: [ReviewedFact] {
+        review.archive.facts.filter { category == .all || MemoryShelf(fact: $0) == category }
+    }
+
+    private var syncSummary: String {
+        if review.isSyncing { return "正在把回忆收好" }
+        if !review.archive.outbox.isEmpty { return "已保留本机内容，联网后同步" }
+        return "暂时没连上，已保留本机内容"
+    }
+
+    private var emptyShelf: some View {
+        VStack(alignment: .leading, spacing: theme.metric.gapS) {
+            Image(systemName: category.icon)
+                .font(.system(size: 24, weight: .regular))
+                .foregroundStyle(theme.effectiveAccent)
+            Text(category == .all ? "这里会慢慢装满" : "“\(category.title)”还没有收进来的记忆")
+                .font(theme.font.sectionTitle)
+            Text("核对并收下的内容会留在这里，不会因为暂时断线消失。")
+                .font(theme.font.reviewBody)
+                .foregroundStyle(theme.reviewSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(theme.metric.gapL)
+        .background(theme.color.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
+    }
+
+    @ViewBuilder
+    private func memoryFactCard(_ fact: ReviewedFact) -> some View {
+        let shelf = MemoryShelf(fact: fact)
+        VStack(alignment: .leading, spacing: theme.metric.gapM) {
+            Label(shelf.title, systemImage: shelf.icon)
+                .font(theme.font.reviewCaption)
+                .foregroundStyle(theme.effectiveAccent)
+                .padding(.horizontal, theme.metric.gapS)
+                .padding(.vertical, theme.metric.gapXS)
+                .background(theme.effectiveAccent.opacity(0.11), in: Capsule())
+            Text(fact.fact).font(theme.font.reviewBody).lineSpacing(3)
+            if !fact.note.isEmpty {
+                Text("你的备注 · \(fact.note)")
+                    .font(theme.font.reviewCaption)
+                    .foregroundStyle(theme.reviewSecondary)
+            }
+            if let history = fact.history, !history.isEmpty {
+                DisclosureGroup("以前的情况") {
+                    ForEach(history) { old in
+                        Text(old.fact).font(theme.font.reviewBody)
+                        Text(old.observed_at).font(theme.font.reviewCaption).foregroundStyle(theme.reviewSecondary)
+                    }
+                }
+            }
+            HStack {
+                Text(fact.observed_at).font(theme.font.reviewCaption).foregroundStyle(theme.reviewSecondary)
+                Spacer()
+                if let card = fact.review_card {
+                    Button("情况变了") { review.prepareUpdate(card); updating = card }
+                        .font(theme.font.reviewCaption)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(theme.metric.gapL)
+        .background(theme.color.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
+    }
+}
+
+private enum MemoryShelf: String, CaseIterable, Identifiable {
+    case all, medicine, preference, life, relationship
+
+    static let visibleCases: [MemoryShelf] = [.all, .medicine, .preference, .life, .relationship]
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .all: return "全部"
+        case .medicine: return "我的药"
+        case .preference: return "我的喜好"
+        case .life: return "生活"
+        case .relationship: return "关系"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .all: return "sparkles"
+        case .medicine: return "cross.case"
+        case .preference: return "heart"
+        case .life: return "cup.and.saucer"
+        case .relationship: return "person.2"
+        }
+    }
+
+    init(fact: ReviewedFact) {
+        switch fact.group ?? fact.category {
+        case "身体用药": self = .medicine
+        case "喜好": self = .preference
+        case "关系约定": self = .relationship
+        default: self = .life
+        }
     }
 }
 

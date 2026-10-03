@@ -7,7 +7,7 @@ final class RootTabBarTests: XCTestCase {
 
     func testCustomNavigationHasNoSystemTabBarAcrossTabs() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-ui-test-scroll-control"]
+        app.launchArguments = ["-ui-test-scroll-control", "-ui-test-memory-review", "-app.skin", "day"]
         app.launch()
 
         let customBar = app.descendants(matching: .any)
