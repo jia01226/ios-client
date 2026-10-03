@@ -87,6 +87,13 @@ enum MemoryFactBoundary {
         if behaviorKeys.contains(where: normalizedKey.contains) { return false }
         return !directivePrefixes.contains(where: normalizedValue.hasPrefix)
     }
+
+    static func shelfTitle(key: String) -> String {
+        if ["药", "用药", "服药", "剂量", "处方"].contains(where: key.contains) { return "我的药" }
+        if ["喜好", "偏好", "喜欢", "不喜欢"].contains(where: key.contains) { return "我的喜好" }
+        if ["关系", "约定", "相处", "称呼"].contains(where: key.contains) { return "关系" }
+        return "生活"
+    }
 }
 
 struct ReviewStats: Codable, Sendable {

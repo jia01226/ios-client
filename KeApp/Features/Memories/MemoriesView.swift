@@ -267,10 +267,10 @@ private enum MemoryShelf: String, CaseIterable, Identifiable {
     }
 
     init(fact: ReviewedFact) {
-        switch fact.group ?? fact.category {
-        case "身体用药": self = .medicine
-        case "喜好": self = .preference
-        case "关系约定": self = .relationship
+        switch MemoryFactBoundary.shelfTitle(key: fact.group ?? fact.category) {
+        case "我的药": self = .medicine
+        case "我的喜好": self = .preference
+        case "关系": self = .relationship
         default: self = .life
         }
     }

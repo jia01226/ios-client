@@ -177,5 +177,9 @@ final class MemoryReviewTests: XCTestCase {
         XCTAssertFalse(MemoryFactBoundary.isReviewableFact(key: "生活", value: "记得按时吃药"))
         XCTAssertFalse(MemoryFactBoundary.isReviewableFact(key: "生活", value: "早点睡"))
         XCTAssertFalse(MemoryFactBoundary.isReviewableFact(key: "待办", value: "明天预约复诊"))
+        XCTAssertEqual(MemoryFactBoundary.shelfTitle(key: "当前用药与剂量"), "我的药")
+        XCTAssertEqual(MemoryFactBoundary.shelfTitle(key: "身体状态"), "生活")
+        XCTAssertEqual(MemoryFactBoundary.shelfTitle(key: "饮食偏好"), "我的喜好")
+        XCTAssertEqual(MemoryFactBoundary.shelfTitle(key: "关系约定"), "关系")
     }
 }
