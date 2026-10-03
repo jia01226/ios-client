@@ -172,7 +172,7 @@ struct ChatModelSection: Identifiable, Hashable, Sendable {
     let isAvailable: Bool
     let statusMessage: String?
 
-    static let orderedIDs = ["gpt", "deepseek"]
+    static let orderedIDs = ["claude_1", "claude_2", "gpt", "deepseek"]
 
     static func make(
         options: [ChatModelOption],
@@ -182,15 +182,24 @@ struct ChatModelSection: Identifiable, Hashable, Sendable {
         for group in groups {
             metadata[normalizedGroup(group.id)] = group
         }
-        let grouped = Dictionary(grouping: options) {
+        let visibleOptions = options.filter {
+            !$0.id.lowercased().contains("fable")
+                && !$0.displayName.lowercased().contains("fable")
+        }
+        let grouped = Dictionary(grouping: visibleOptions) {
             normalizedGroup($0.family ?? $0.group ?? $0.provider ?? "")
         }
         let titles = [
+            "claude_1": "Claude 1",
+            "claude_2": "Claude 2",
             "gpt": "GPT",
             "deepseek": "DPSK",
         ]
 
-        return orderedIDs.map { id in
+        let availableIDs = orderedIDs.filter { id in
+            id == "gpt" || id == "deepseek" || grouped[id] != nil || metadata[id] != nil
+        }
+        return availableIDs.map { id in
             let rows = grouped[id] ?? []
             let group = metadata[id]
             let available = group?.available ?? rows.contains(where: \.isAvailable)

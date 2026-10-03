@@ -403,10 +403,9 @@ final class ThinkingInteractionTests: XCTestCase {
         XCTAssertTrue(app.buttons["模型选择"].waitForExistence(timeout: 2))
         app.buttons["模型选择"].tap()
 
-        for id in ["gpt", "deepseek"] {
+        for id in ["claude_1", "gpt", "deepseek"] {
             XCTAssertTrue(app.buttons["model-group-\(id)"].waitForExistence(timeout: 2))
         }
-        XCTAssertFalse(app.buttons["model-group-claude_1"].exists)
         XCTAssertFalse(app.buttons["model-group-claude_2"].exists)
         let gptQuota = app.buttons["model-group-gpt"].value as? String ?? ""
         let deepseekQuota = app.buttons["model-group-deepseek"].value as? String ?? ""

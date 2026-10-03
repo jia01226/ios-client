@@ -152,6 +152,10 @@ final class ChatViewModel: ObservableObject {
             selectedModel = "codex-subscription:gpt-5.5"
             modelGroups = [
                 ChatModelGroup(
+                    id: "claude_1", label: "Claude 1", available: true,
+                    configured: true, message: nil
+                ),
+                ChatModelGroup(
                     id: "gpt", label: "GPT", available: true,
                     configured: true, message: nil
                 ),
@@ -161,6 +165,16 @@ final class ChatViewModel: ObservableObject {
                 ),
             ]
             modelOptions = [
+                ChatModelOption(
+                    id: "claude-subscription-opus-5-5", provider: "claude_subscription",
+                    label: "Opus 5.5", description: "Claude Max 模型",
+                    group: "claude_subscription", family: "claude_1", available: true
+                ),
+                ChatModelOption(
+                    id: "claude-subscription-sonnet-4-6", provider: "claude_subscription",
+                    label: "Sonnet 4.6", description: "Claude Max 备用模型",
+                    group: "claude_subscription_backup", family: "claude_1", available: true
+                ),
                 ChatModelOption(
                     id: "codex-subscription:gpt-5.5", provider: "codex_subscription",
                     label: "GPT-5.5", description: "ChatGPT 的 Codex 订阅额度",
