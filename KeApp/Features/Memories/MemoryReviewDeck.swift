@@ -51,14 +51,21 @@ struct MemoryReviewDeck: View {
                                 .accessibilityHidden(true)
                         }
                         cardFace(card)
-                            .overlay(alignment: .topTrailing) {
+                            .overlay(alignment: .top) {
                                 if let action = previewAction {
-                                    Text(action.label)
-                                        .font(theme.font.sectionTitle)
-                                        .padding(theme.metric.gapM)
-                                        .background(theme.color.cardElevated, in: Capsule())
-                                        .padding(theme.metric.gapM)
-                                        .accessibilityHidden(true)
+                                    HStack {
+                                        if action == .accept { Spacer() }
+                                        Label(action == .accept ? "收下" : action == .reject ? "不对" : action.label,
+                                              systemImage: action == .accept ? "checkmark.circle.fill" : action == .reject ? "xmark.circle.fill" : "arrow.up.and.down")
+                                            .font(theme.font.sectionTitle)
+                                            .foregroundStyle(action == .accept ? theme.effectiveAccent : theme.color.textPrimary)
+                                            .padding(.horizontal, theme.metric.gapM)
+                                            .padding(.vertical, theme.metric.gapS)
+                                            .background(theme.color.cardElevated, in: Capsule())
+                                        if action == .reject { Spacer() }
+                                    }
+                                    .padding(theme.metric.gapM)
+                                    .accessibilityHidden(true)
                                 }
                             }
                             .offset(translation)
@@ -93,9 +100,16 @@ struct MemoryReviewDeck: View {
                     }
                     .disabled(isDeparting || !store.canReview)
                     .opacity(store.canReview && !isDeparting ? 1 : 0.35)
-                    Text("左划不对 · 右划收下\n上划暂缓 · 填好现在的情况下划更新")
-                        .font(theme.font.reviewCaption).foregroundStyle(theme.reviewSecondary)
-                        .multilineTextAlignment(.center)
+                    HStack {
+                        Label("左划 · 不对", systemImage: "xmark.circle")
+                        Spacer()
+                        Label("收下 · 右划", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(theme.effectiveAccent)
+                    }
+                    .font(theme.font.reviewCaption)
+                    Text("上划暂缓 · 填好现在的情况下划更新")
+                        .font(theme.font.reviewCaption)
+                        .foregroundStyle(theme.reviewSecondary)
                 } else {
                     Spacer()
                     Image(systemName: "rectangle.stack.badge.checkmark").font(theme.font.pageTitle)
