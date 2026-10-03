@@ -9,7 +9,7 @@ struct RootTabView: View {
     @State private var keyboardIsVisible = false
 
     enum Tab: Hashable {
-        case us, ke, play, memories, jiajia
+        case us, ke, play, memories
     }
 
     init() {
@@ -69,8 +69,6 @@ struct RootTabView: View {
             PlayView()
         case .memories:
             MemoriesView()
-        case .jiajia:
-            JiajiaView()
         }
     }
 
@@ -80,7 +78,6 @@ struct RootTabView: View {
             tabButton(.ke, label: "柯")
             tabButton(.play, label: "玩")
             tabButton(.memories, label: "回忆")
-            tabButton(.jiajia, label: "佳佳")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
@@ -145,8 +142,6 @@ private struct NavArtwork: View {
         case (.play, true): return Image("NavPlaySelected")
         case (.memories, false): return Image("NavMemoryIdle")
         case (.memories, true): return Image("NavMemorySelected")
-        case (.jiajia, false): return Image(systemName: "person.crop.circle")
-        case (.jiajia, true): return Image(systemName: "person.crop.circle.fill")
         }
     }
 }
