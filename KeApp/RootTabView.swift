@@ -99,21 +99,8 @@ struct RootTabView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
-        .background {
-            if selection == .us || selection == .play {
-                theme.effectiveBackground
-            } else {
-                FloatingGlassSurface(cornerRadius: theme.metric.radiusDock)
-            }
-        }
-        .overlay(alignment: .top) {
-            if selection == .us || selection == .play {
-                Rectangle()
-                    .fill(theme.color.separator.opacity(0.72))
-                    .frame(height: 0.5)
-            }
-        }
-        .padding(.horizontal, (selection == .us || selection == .play) ? 0 : theme.metric.pagePadding)
+        .background(FloatingGlassSurface(cornerRadius: theme.metric.radiusDock))
+        .padding(.horizontal, theme.metric.pagePadding)
         .padding(.top, 6)
         .padding(.bottom, 4)
     }
