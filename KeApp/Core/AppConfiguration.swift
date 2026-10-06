@@ -24,9 +24,9 @@ enum ChatLine: String, CaseIterable, Identifiable {
     case test1
     case test2
 
-    // 原版与精简版仍保留为兼容旧缓存和深链的内部线路；聊天页只给佳佳
-    // 暴露当前实际使用的两个窗口，避免旧入口继续占位置。
-    static let allCases: [ChatLine] = [.test1, .test2]
+    // 原版、精简版、测试2 仍保留为兼容旧缓存和深链的内部线路。
+    // 佳佳 2026-10-06：「只留一个就可以了」——聊天页只剩这一个窗口，测试2 的内容并进柯的记忆。
+    static let allCases: [ChatLine] = [.test1]
 
     var id: String { rawValue }
 
@@ -34,7 +34,8 @@ enum ChatLine: String, CaseIterable, Identifiable {
         switch self {
         case .main: return "原版"
         case .compact: return "精简版"
-        case .test1: return "测试1"
+        // 她要的是不叫任何名字；别处拼成「保存到柯的…」「柯 · 已收下」读着自然。
+        case .test1: return "柯"
         case .test2: return "测试2"
         }
     }

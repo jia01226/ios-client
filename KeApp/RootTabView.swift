@@ -10,7 +10,8 @@ struct RootTabView: View {
     @State private var chatSettingsOpen = false
 
     enum Tab: Hashable {
-        case us, ke, play, memories
+        // 佳佳 2026-10-06：原来「佳佳」那一格换成柯的抽屉——他自己的地方。
+        case us, ke, play, memories, drawer
     }
 
     init() {
@@ -87,6 +88,8 @@ struct RootTabView: View {
             PlayView(line: chatLine).id(chatLine)
         case .memories:
             MemoriesView(line: chatLine).id(chatLine)
+        case .drawer:
+            DrawerView(line: chatLine, showsClose: false).id(chatLine)
         }
     }
 
@@ -96,6 +99,7 @@ struct RootTabView: View {
             tabButton(.ke, label: "柯")
             tabButton(.play, label: "玩")
             tabButton(.memories, label: "回忆")
+            tabButton(.drawer, label: "抽屉")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
@@ -129,6 +133,7 @@ struct RootTabView: View {
         case .ke: return "bubble.left.and.bubble.right.fill"
         case .play: return "sparkles"
         case .memories: return "clock.arrow.circlepath"
+        case .drawer: return "archivebox.fill"
         }
     }
 
@@ -158,6 +163,7 @@ private struct NavArtwork: View {
         case (.play, true): return Image("NavPlaySelected")
         case (.memories, false): return Image("NavMemoryIdle")
         case (.memories, true): return Image("NavMemorySelected")
+        case (.drawer, _): return Image(systemName: "archivebox.fill")
         }
     }
 }

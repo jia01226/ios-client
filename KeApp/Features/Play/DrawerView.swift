@@ -15,6 +15,8 @@ struct RemoteDrawer: Decodable, Sendable {
 
 struct DrawerView: View {
     let line: ChatLine
+    /// 从「我们」页弹出来时要能关；放在底部标签栏里就不需要关闭按钮。
+    var showsClose = true
     @EnvironmentObject private var theme: Theme
     @Environment(\.dismiss) private var dismiss
     @State private var drawer: RemoteDrawer?
@@ -38,7 +40,11 @@ struct DrawerView: View {
             .background(theme.effectiveBackground)
             .tint(theme.effectiveAccent)
             .navigationTitle("抽屉")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("关闭") { dismiss() } } }
+            .toolbar {
+                if showsClose {
+                    ToolbarItem(placement: .cancellationAction) { Button("关闭") { dismiss() } }
+                }
+            }
             .task { await load() }
             .refreshable { await load() }
         }
