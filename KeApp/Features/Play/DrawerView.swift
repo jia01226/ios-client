@@ -37,8 +37,8 @@ struct DrawerView: View {
                 } else if error == nil { ProgressView("正在打开") }
             }
             .scrollContentBackground(.hidden)
-            .background(theme.effectiveBackground)
-            .tint(theme.effectiveAccent)
+            .background(theme.pageBackground)
+            .tint(theme.pageAccent)
             .navigationTitle("抽屉")
             .toolbar {
                 if showsClose {

@@ -45,7 +45,7 @@ struct RootTabView: View {
             }
             .background {
                 if selection == .us || selection == .play {
-                    theme.effectiveBackground.ignoresSafeArea()
+                    theme.pageBackground.ignoresSafeArea()
                 }
             }
         }
@@ -120,7 +120,7 @@ struct RootTabView: View {
                 Text(label)
                     .font(.caption2.weight(selection == tab ? .semibold : .regular))
             }
-            .foregroundStyle(selection == tab ? theme.effectiveAccent : theme.color.textSecondary)
+            .foregroundStyle(selection == tab ? (selection == .ke ? theme.effectiveAccent : theme.pageAccent) : (selection == .ke ? theme.color.textSecondary : theme.pageColor.textSecondary))
             .frame(maxWidth: .infinity, minHeight: 48)
             .background(selection == tab ? theme.color.textPrimary.opacity(0.055) : Color.clear, in: Capsule())
             .contentShape(Rectangle())

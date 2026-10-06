@@ -8,7 +8,7 @@ final class MorandiAppearanceTests: XCTestCase {
         XCTAssertTrue(app.buttons["我们"].waitForExistence(timeout: 15))
         capture("01-chat")
         for (label, name) in [("我们", "02-us"), ("玩", "03-play"), ("回忆", "04-memories"), ("抽屉", "05-drawer")] {
-            app.buttons[label].tap()
+            app.descendants(matching: .any).matching(identifier: "root-tab-bar").firstMatch.buttons[label].tap()
             XCTAssertTrue(app.buttons["柯"].waitForExistence(timeout: 5))
             Thread.sleep(forTimeInterval: 2)
             capture(name)

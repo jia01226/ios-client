@@ -82,9 +82,7 @@ enum Morandi {
 // MARK: - 两套皮的实际取值
 
 extension Palette {
-
-    /// 浅色 —— 第一版默认
-    static let day = Palette(
+    static let morandi = Palette(
         bg: Color(hex: Morandi.background), card: Color(hex: Morandi.surface),
         cardElevated: Color(hex: Morandi.reply), separator: Color(hex: Morandi.separator),
         textPrimary: Color(hex: Morandi.ink), textSecondary: Color(hex: Morandi.muted),
@@ -99,6 +97,39 @@ extension Palette {
         glassShadow: Color(hex: Morandi.ink).opacity(0.04),
         bedroomBg: Color(hex: Morandi.background), bedroomAccent: Color(hex: Morandi.deepRose),
         playPetal: Color(hex: Morandi.paleRose)
+    )
+
+
+
+    /// 浅色 —— 第一版默认
+    static let day = Palette(
+        bg:            Color(hex: 0xFBF7F2),
+        card:          Color(hex: 0xFFFFFF),
+        cardElevated:  Color(hex: 0xFDF6EC),
+        separator:     Color(hex: 0xEDE3D6),
+
+        textPrimary:   Color(hex: 0x4C4056),
+        textSecondary: Color(hex: 0x766B82),
+        textOnAccent:  Color(hex: 0xFFFFFF),
+
+        accent:        Color(hex: 0xC79A4B),   // 金
+        accentSoft:    Color(hex: 0xE3CDA1),
+
+        bubbleKe:      Color(hex: 0xFFFFFF),
+        bubbleKeText:  Color(hex: 0x4C4056),
+        bubbleMe:      Color(hex: 0xF3E4D2),
+        bubbleMeText:  Color(hex: 0x4C4056),
+
+        glassTint:       Color.white,
+        glassTintStrong: Color.white.opacity(0.17),
+        glassEdge:       Color.white.opacity(0.72),
+        glassInnerLight: Color.white.opacity(0.46),
+        glassShadow:     Color(hex: 0x6D5670).opacity(0.14),
+
+        bedroomBg:     Color(hex: 0x2A1D1F),
+        bedroomAccent: Color(hex: 0xC79A4B),
+
+        playPetal:     Color(hex: 0xF2A9B4)
     )
 
     /// 深夜蓝 + 金 —— 跟 App 图标同源
@@ -265,11 +296,11 @@ final class Theme: ObservableObject {
         set { storedSkin = newValue.rawValue; objectWillChange.send() }
     }
 
-    @AppStorage("app.chatPalette") private var storedPalette = "morandi"
+    @AppStorage("app.chatPalette") private var storedPalette = "rose"
     @AppStorage("app.chatTypeface") private var storedTypeface = "regular"
 
     var chatPalette: ChatPalette {
-        get { ChatPalette.all.first { $0.id == storedPalette } ?? ChatPalette.all[0] }
+        get { ChatPalette.all.first { $0.id == storedPalette } ?? ChatPalette.all[1] }
         set { objectWillChange.send(); storedPalette = newValue.id }
     }
     var chatTypeface: ChatTypography {
@@ -277,6 +308,10 @@ final class Theme: ObservableObject {
         set { objectWillChange.send(); storedTypeface = newValue.id }
     }
     var reviewSecondary: Color { color.textPrimary.opacity(0.82) }
+
+    var pageColor: Palette { skin == .night ? .night : .morandi }
+    var pageBackground: Color { skin == .night ? effectiveBackground : pageColor.bg }
+    var pageAccent: Color { skin == .night ? effectiveAccent : pageColor.accent }
 
     var sendColor: Color { skin == .night ? color.accentSoft : Color(hex: chatPalette.send) }
 
@@ -324,12 +359,6 @@ final class Theme: ObservableObject {
         bubbleOpacity = min(max(migratedOpacity, 0), 0.06)
         glassBlur = min(max(savedBlur ?? 9, 0), 20)
         bubbleCornerRadius = min(max(savedRadius ?? 20, 12), 34)
-
-        // One-time migration; later palette choices remain the user's choice.
-        if !defaults.bool(forKey: "app.morandiPaletteMigration.v1") {
-            defaults.set("morandi", forKey: "app.chatPalette")
-            defaults.set(true, forKey: "app.morandiPaletteMigration.v1")
-        }
 
         defaults.set(bubbleOpacity, forKey: "app.bubbleOpacity")
     }

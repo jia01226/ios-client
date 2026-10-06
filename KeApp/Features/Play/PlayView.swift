@@ -18,13 +18,13 @@ struct PlayView: View {
 
     init(line: ChatLine = .main) { self.line = line }
 
-    private var ink: Color { theme.skin == .night ? theme.color.textPrimary : PageColors.ink2 }
-    private var gold: Color { theme.skin == .night ? theme.color.accentSoft : PageColors.tea5 }
+    private var ink: Color { theme.skin == .night ? theme.pageColor.textPrimary : PageColors.ink2 }
+    private var gold: Color { theme.skin == .night ? theme.pageColor.accentSoft : PageColors.tea5 }
     private func serif(_ size: CGFloat) -> Font { .custom("NotoSerifSC-Regular", size: size, relativeTo: .body).weight(.light) }
 
     var body: some View {
         ZStack(alignment: .top) {
-            theme.effectiveBackground.ignoresSafeArea()
+            theme.pageBackground.ignoresSafeArea()
 
             // 她画的水彩纸：纸纹、花瓣、金点都在这张图里。
             Image("PlayPaper")
@@ -33,7 +33,7 @@ struct PlayView: View {
                 .ignoresSafeArea()
 
             // 图上的花瓣是印死的，再叠几片会飘的，跟风铃一个风。
-            DriftingPetals(petal: theme.color.playPetal)
+            DriftingPetals(petal: theme.pageColor.playPetal)
                 .ignoresSafeArea()
 
             // 右串单独放在花枝【下面】：它挂的那段枝整个被花和叶盖住了。
@@ -207,8 +207,8 @@ struct TarotView: View {
 
     private enum DrawPhase { case idle, shuffling, dealing }
 
-    private var ink: Color { theme.skin == .night ? theme.color.textPrimary : PageColors.ink2 }
-    private var gold: Color { theme.skin == .night ? theme.color.accentSoft : PageColors.tea5 }
+    private var ink: Color { theme.skin == .night ? theme.pageColor.textPrimary : PageColors.ink2 }
+    private var gold: Color { theme.skin == .night ? theme.pageColor.accentSoft : PageColors.tea5 }
     private func serif(_ size: CGFloat) -> Font { .custom("NotoSerifSC-Regular", size: size, relativeTo: .body).weight(.light) }
     private var api: APIClient { APIClient(baseURL: line.apiBaseURL) }
     private var back: TarotBack { TarotBack.find(backThemeID) }
@@ -301,7 +301,7 @@ struct TarotView: View {
             }
             .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 40)
         }
-        .foregroundStyle(ink).background(theme.effectiveBackground.ignoresSafeArea())
+        .foregroundStyle(ink).background(theme.pageBackground.ignoresSafeArea())
         .scrollDismissesKeyboard(.interactively)
         .sheet(isPresented: $showThemePicker) { themePicker }
     }
@@ -354,7 +354,7 @@ struct TarotView: View {
         .padding(28)
         .frame(maxWidth: .infinity, alignment: .leading)
         .foregroundStyle(ink)
-        .background(theme.effectiveBackground.ignoresSafeArea())
+        .background(theme.pageBackground.ignoresSafeArea())
     }
 
     @MainActor private func draw() async {
@@ -469,8 +469,8 @@ struct GardenView: View {
     @Environment(\.dismiss) private var dismiss
     static let url = URL(string: "https://galatea.abysslumina.com")!
 
-    private var ink: Color { theme.skin == .night ? theme.color.textPrimary : PageColors.ink2 }
-    private var gold: Color { theme.skin == .night ? theme.color.accentSoft : PageColors.tea5 }
+    private var ink: Color { theme.skin == .night ? theme.pageColor.textPrimary : PageColors.ink2 }
+    private var gold: Color { theme.skin == .night ? theme.pageColor.accentSoft : PageColors.tea5 }
     private func serif(_ size: CGFloat) -> Font { .custom("NotoSerifSC-Regular", size: size, relativeTo: .body).weight(.light) }
 
     var body: some View {
@@ -494,7 +494,7 @@ struct GardenView: View {
             Spacer()
         }
         .padding(.horizontal, 28).padding(.top, 8)
-        .foregroundStyle(ink).background(theme.effectiveBackground)
+        .foregroundStyle(ink).background(theme.pageBackground)
     }
 
     private func row(_ title: String, detail: String) -> some View {
@@ -556,8 +556,8 @@ struct FortuneView: View {
     @State private var running = false
     @State private var error: String?
 
-    private var ink: Color { theme.skin == .night ? theme.color.textPrimary : PageColors.ink2 }
-    private var gold: Color { theme.skin == .night ? theme.color.accentSoft : PageColors.tea5 }
+    private var ink: Color { theme.skin == .night ? theme.pageColor.textPrimary : PageColors.ink2 }
+    private var gold: Color { theme.skin == .night ? theme.pageColor.accentSoft : PageColors.tea5 }
     private func serif(_ size: CGFloat) -> Font { .custom("NotoSerifSC-Regular", size: size, relativeTo: .body).weight(.light) }
     private var api: APIClient { APIClient(baseURL: line.apiBaseURL) }
 
@@ -635,7 +635,7 @@ struct FortuneView: View {
             }
             .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 40)
         }
-        .foregroundStyle(ink).background(theme.effectiveBackground.ignoresSafeArea())
+        .foregroundStyle(ink).background(theme.pageBackground.ignoresSafeArea())
         .scrollDismissesKeyboard(.interactively)
     }
 

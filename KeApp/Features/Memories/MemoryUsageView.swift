@@ -58,7 +58,7 @@ struct UsageDashboardView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("订阅额度").font(theme.font.sectionTitle)
                         Text("额度暂时没读到：\(quotaError)")
-                            .font(.caption).foregroundStyle(theme.color.textSecondary)
+                            .font(.caption).foregroundStyle(theme.pageColor.textSecondary)
                     }
                 }
                 if let report {
@@ -73,10 +73,10 @@ struct UsageDashboardView: View {
                     if !report.daily.isEmpty { trendSection(report.daily) }
                     modelSection(report.models)
                     Text(report.notice)
-                        .font(.caption).foregroundStyle(theme.color.textSecondary)
+                        .font(.caption).foregroundStyle(theme.pageColor.textSecondary)
                     if let started = report.started_at {
                         Text("从 \(started.prefix(10)) 开始统计")
-                            .font(.caption).foregroundStyle(theme.color.textSecondary)
+                            .font(.caption).foregroundStyle(theme.pageColor.textSecondary)
                     }
                     NavigationLink("查看 DeepSeek 记忆整理明细") {
                         MemoryUsageView(line: line).environmentObject(theme)
@@ -91,11 +91,11 @@ struct UsageDashboardView: View {
             }
             .padding()
         }
-        .background(theme.color.bg.ignoresSafeArea())
+        .background(theme.pageColor.bg.ignoresSafeArea())
         .navigationTitle("用量与额度")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { dismiss() } } }
-        .tint(theme.effectiveAccent)
+        .tint(theme.pageAccent)
         .task { await load() }
         .refreshable { await load() }
         .accessibilityIdentifier("usage-dashboard-page")
@@ -113,20 +113,20 @@ struct UsageDashboardView: View {
                                 Text(windowLabel(window.windowMinutes))
                                 Spacer()
                                 Text(remainingText(window.remainingPercent))
-                            }.font(.caption).foregroundStyle(theme.color.textSecondary)
+                            }.font(.caption).foregroundStyle(theme.pageColor.textSecondary)
                             if let remaining = window.remainingPercent {
-                                ProgressView(value: max(0, min(100, remaining)), total: 100).tint(theme.effectiveAccent)
+                                ProgressView(value: max(0, min(100, remaining)), total: 100).tint(theme.pageAccent)
                             }
-                            if let reset = resetText(window.resetAt) { Text(reset).font(.caption2).foregroundStyle(theme.color.textSecondary) }
+                            if let reset = resetText(window.resetAt) { Text(reset).font(.caption2).foregroundStyle(theme.pageColor.textSecondary) }
                         }
                     }
                     if group.windows.isEmpty {
                         Text("官方额度暂时没读到，稍后下拉刷新。")
-                            .font(.caption).foregroundStyle(theme.color.textSecondary)
+                            .font(.caption).foregroundStyle(theme.pageColor.textSecondary)
                     }
                 }
                 .padding(14)
-                .background(theme.color.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .background(theme.pageColor.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
         }
     }
@@ -146,10 +146,10 @@ struct UsageDashboardView: View {
 
     private func metric(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(label).font(.caption).foregroundStyle(theme.color.textSecondary)
+            Text(label).font(.caption).foregroundStyle(theme.pageColor.textSecondary)
             Text(value).font(.title3.weight(.semibold)).monospacedDigit().minimumScaleFactor(0.7)
         }.frame(maxWidth: .infinity, minHeight: 66, alignment: .leading)
-            .padding(12).background(theme.color.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(12).background(theme.pageColor.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func trendSection(_ days: [UsageDay]) -> some View {
@@ -157,7 +157,7 @@ struct UsageDashboardView: View {
             Text("近 30 天").font(theme.font.sectionTitle)
             Chart(days) { day in
                 BarMark(x: .value("日期", day.day), y: .value("Token", day.tokens))
-                    .foregroundStyle(theme.effectiveAccent.gradient)
+                    .foregroundStyle(theme.pageAccent.gradient)
             }.frame(height: 150).chartXAxis(.hidden)
         }
     }
@@ -265,15 +265,15 @@ struct MemoryUsageView: View {
             Section {
                 Text("DeepSeek · \(line.title)").font(theme.font.sectionTitle)
                 Text("记忆整理的用量，包含 App 新对话和 CC 实录。")
-                    .font(theme.font.caption).foregroundStyle(theme.color.textSecondary)
+                    .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
             }
             if let report {
                 Section("今天") { totals(report.today) }
                 Section("接入以来") {
                     totals(report.total)
                     Text(report.started_at.map { "统计开始于 \(dateText($0))" } ?? "第一笔整理调用后开始计数。")
-                        .font(theme.font.caption).foregroundStyle(theme.color.textSecondary)
-                    Text(report.notice).font(theme.font.caption).foregroundStyle(theme.color.textSecondary)
+                        .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
+                    Text(report.notice).font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
                     Text("单价核实于 \(report.price_version)").font(theme.font.caption)
                     Link("查看 DeepSeek 官方单价", destination: URL(string: "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/")!)
                 }
@@ -288,7 +288,7 @@ struct MemoryUsageView: View {
                             Text("输入 \(count(call.input_tokens)) · 输出 \(count(call.output_tokens)) · 缓存 \(count(call.cache_hit_tokens))")
                                 .font(theme.font.caption)
                             Text(dateText(call.started_at)).font(theme.font.caption)
-                                .foregroundStyle(theme.color.textSecondary)
+                                .foregroundStyle(theme.pageColor.textSecondary)
                             if call.status != "received" {
                                 Text(call.status == "requesting" ? "请求已发出，用量尚未确认" : "未取得完整用量，费用未知")
                                     .font(theme.font.caption)
@@ -305,7 +305,7 @@ struct MemoryUsageView: View {
         }
         .font(theme.font.body)
         .navigationTitle("整理用量")
-        .tint(theme.effectiveAccent)
+        .tint(theme.pageAccent)
         .task { await load() }
         .refreshable { await load() }
         .accessibilityIdentifier("memory-usage-page")
@@ -323,11 +323,11 @@ struct MemoryUsageView: View {
         LabeledContent("缓存命中 token", value: count(value.cache_hit_tokens))
         if let hit = value.cache_hit_percent {
             LabeledContent("输入缓存命中率", value: String(format: "%.1f%%", hit))
-            ProgressView(value: min(100, max(0, hit)), total: 100).tint(theme.effectiveAccent)
+            ProgressView(value: min(100, max(0, hit)), total: 100).tint(theme.pageAccent)
         }
         if value.priced_calls < value.calls {
             Text("\(value.calls - value.priced_calls) 次尚无可核实费用，未计入上方估算。")
-                .font(theme.font.caption).foregroundStyle(theme.color.textSecondary)
+                .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
         }
     }
     private func count(_ value: Int?) -> String { value.map { $0.formatted() } ?? "未知" }

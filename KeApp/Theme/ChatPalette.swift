@@ -10,7 +10,6 @@ struct ChatPalette: Identifiable {
     let send: UInt32
     var reply: UInt32 {
         switch id {
-        case "morandi": return Morandi.reply
         case "champagne": return 0xDCCFBB
         case "oat": return 0xD2CABE
         // 佳佳是轻雾粉（tint=0xE6C6D0）；柯使用定稿的浅玫瑰粉。
@@ -19,7 +18,6 @@ struct ChatPalette: Identifiable {
         }
     }
     static let all: [ChatPalette] = [
-        .init(id: "morandi", name: "莫兰迪粉", base: Morandi.background, ink: Morandi.ink, accent: Morandi.rose, tint: Morandi.own, send: Morandi.rose),
         .init(id: "champagne", name: "奶油香槟", base: 0xFFFCF7, ink: 0x40382E, accent: 0xA58E63, tint: 0xE8D6B5, send: 0xE1CFA8),
         .init(id: "rose", name: "焦糖玫瑰", base: 0xFCF7F3, ink: 0x493A35, accent: 0xA0796E, tint: 0xDDBEB0, send: 0xD9B4A5),
         .init(id: "oat", name: "燕麦奶咖", base: 0xFAF8F3, ink: 0x423B33, accent: 0x93816A, tint: 0xD7CAB6, send: 0xD3C2A8),
@@ -38,7 +36,6 @@ extension Color {
 
 extension Palette {
     static func chat(_ choice: ChatPalette) -> Palette {
-        if choice.id == "morandi" { return .day }
         let ink = Color(hex: choice.ink)
         let tint = Color(hex: choice.tint)
         return Palette(

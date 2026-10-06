@@ -42,8 +42,8 @@ struct WorkDrawerView: View {
     @State private var openTasks: Set<String> = []
     @State private var openDetails: Set<String> = []
 
-    private var ink: Color { theme.skin == .night ? theme.color.textPrimary : PageColors.ink2 }
-    private var gold: Color { theme.skin == .night ? theme.color.accentSoft : PageColors.tea5 }
+    private var ink: Color { theme.skin == .night ? theme.pageColor.textPrimary : PageColors.ink2 }
+    private var gold: Color { theme.skin == .night ? theme.pageColor.accentSoft : PageColors.tea5 }
     private func serif(_ size: CGFloat) -> Font { .custom("NotoSerifSC-Regular", size: size, relativeTo: .body).weight(.light) }
     private var api: APIClient { APIClient(baseURL: line.apiBaseURL) }
 
@@ -85,7 +85,7 @@ struct WorkDrawerView: View {
             .padding(.horizontal, 28).padding(.top, 8).padding(.bottom, 40)
         }
         .refreshable { await load() }
-        .foregroundStyle(ink).background(theme.effectiveBackground.ignoresSafeArea())
+        .foregroundStyle(ink).background(theme.pageBackground.ignoresSafeArea())
         .task { if !loaded { await load() } }
     }
 

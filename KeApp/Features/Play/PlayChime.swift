@@ -159,7 +159,7 @@ struct ChimeStrand: View {
             // 名字不跟着摆，晃着读着累。
             Text(label)
                 .font(.custom("NotoSerifSC-Regular", size: 16, relativeTo: .body).weight(.light))
-                .foregroundStyle(theme.color.textPrimary.opacity(0.88))
+                .foregroundStyle(theme.pageColor.textPrimary.opacity(0.88))
         }
     }
 

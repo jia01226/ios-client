@@ -33,7 +33,7 @@ struct MemoriesView: View {
                             Image(systemName: "ellipsis")
                                 .font(theme.font.menuIcon)
                                 .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
-                                .background(theme.color.cardElevated, in: Circle())
+                                .background(theme.pageColor.cardElevated, in: Circle())
                         }
                         .accessibilityLabel("更多回忆工具")
                     }
@@ -85,7 +85,7 @@ struct MemoriesView: View {
                         .foregroundStyle(theme.reviewSecondary)
                         .padding(.horizontal, theme.metric.gapM)
                         .padding(.vertical, theme.metric.gapS)
-                        .background(theme.color.cardElevated, in: Capsule())
+                        .background(theme.pageColor.cardElevated, in: Capsule())
                     }
 
                     VStack(alignment: .leading, spacing: theme.metric.gapM) {
@@ -101,10 +101,10 @@ struct MemoriesView: View {
                                 ForEach(MemoryShelf.visibleCases) { shelf in
                                     Button(shelf.title) { category = shelf }
                                         .font(theme.font.reviewCaption)
-                                        .foregroundStyle(category == shelf ? theme.color.textOnAccent : theme.color.textPrimary)
+                                        .foregroundStyle(category == shelf ? theme.pageColor.textOnAccent : theme.pageColor.textPrimary)
                                         .padding(.horizontal, theme.metric.gapM)
                                         .frame(minHeight: 34)
-                                        .background(category == shelf ? theme.effectiveAccent : theme.color.cardElevated, in: Capsule())
+                                        .background(category == shelf ? theme.pageAccent : theme.pageColor.cardElevated, in: Capsule())
                                 }
                             }
                         }
@@ -118,15 +118,15 @@ struct MemoriesView: View {
                         }
                     }
                 }
-                .foregroundStyle(theme.color.textPrimary)
+                .foregroundStyle(theme.pageColor.textPrimary)
                 .padding(theme.metric.pagePadding)
             }
-            .background(theme.color.bg)
+            .background(theme.pageColor.bg)
             .toolbar(.hidden, for: .navigationBar)
             .refreshable { await review.sync() }
         }
         .sheet(item: $updating) { card in ReviewNoteEditor(store: review, card: card) }
-        .tint(theme.effectiveAccent)
+        .tint(theme.pageAccent)
         .task { await review.sync() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await review.sync() } }
@@ -141,28 +141,28 @@ struct MemoriesView: View {
         VStack(alignment: .leading, spacing: theme.metric.gapM) {
             HStack {
                 Text(fact == nil ? "今天想起" : "最近收下").font(theme.font.sectionTitle)
-                    .foregroundStyle(theme.effectiveAccent)
+                    .foregroundStyle(theme.pageAccent)
                 Spacer()
                 Image(systemName: "sparkles")
-                    .foregroundStyle(theme.effectiveAccent.opacity(0.58))
+                    .foregroundStyle(theme.pageAccent.opacity(0.58))
             }
             Text(fact?.fact ?? "等我们收下一些回忆，柯会在有由头的时候，替你翻出一页。")
                 .font(theme.font.quote)
                 .lineSpacing(5)
-            Divider().overlay(theme.color.separator)
+            Divider().overlay(theme.pageColor.separator)
             Text(fact.map { "柯主动想起 · \($0.observed_at)" } ?? "不是随机抽一张，是想起了才翻出来")
                 .font(theme.font.reviewCaption)
                 .foregroundStyle(theme.reviewSecondary)
         }
         .padding(theme.metric.gapL)
-        .background(theme.color.cardElevated, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
+        .background(theme.pageColor.cardElevated, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
     }
 
     private func memoryShortcut(title: String, subtitle: String, icon: String) -> some View {
         VStack(spacing: theme.metric.gapS) {
             Image(systemName: icon)
                 .font(.system(size: 23, weight: .regular))
-                .foregroundStyle(theme.effectiveAccent)
+                .foregroundStyle(theme.pageAccent)
             Text(title).font(theme.font.sectionTitle).lineLimit(1)
             Text(subtitle)
                 .font(theme.font.reviewCaption)
@@ -171,7 +171,7 @@ struct MemoriesView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 112)
         .padding(.horizontal, theme.metric.gapXS)
-        .background(theme.color.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
+        .background(theme.pageColor.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
     }
 
     private var filteredFacts: [ReviewedFact] {
@@ -191,7 +191,7 @@ struct MemoriesView: View {
         VStack(alignment: .leading, spacing: theme.metric.gapS) {
             Image(systemName: category.icon)
                 .font(.system(size: 24, weight: .regular))
-                .foregroundStyle(theme.effectiveAccent)
+                .foregroundStyle(theme.pageAccent)
             Text(category == .all ? "这里会慢慢装满" : "“\(category.title)”还没有收进来的记忆")
                 .font(theme.font.sectionTitle)
             Text("核对并收下的内容会留在这里，不会因为暂时断线消失。")
@@ -200,7 +200,7 @@ struct MemoriesView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(theme.metric.gapL)
-        .background(theme.color.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
+        .background(theme.pageColor.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
     }
 
     @ViewBuilder
@@ -209,10 +209,10 @@ struct MemoriesView: View {
         VStack(alignment: .leading, spacing: theme.metric.gapM) {
             Label(shelf.title, systemImage: shelf.icon)
                 .font(theme.font.reviewCaption)
-                .foregroundStyle(theme.effectiveAccent)
+                .foregroundStyle(theme.pageAccent)
                 .padding(.horizontal, theme.metric.gapS)
                 .padding(.vertical, theme.metric.gapXS)
-                .background(theme.effectiveAccent.opacity(0.11), in: Capsule())
+                .background(theme.pageAccent.opacity(0.11), in: Capsule())
             Text(fact.fact).font(theme.font.reviewBody).lineSpacing(3)
             if !fact.note.isEmpty {
                 Text("你的备注 · \(fact.note)")
@@ -238,7 +238,7 @@ struct MemoriesView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(theme.metric.gapL)
-        .background(theme.color.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
+        .background(theme.pageColor.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
     }
 }
 
