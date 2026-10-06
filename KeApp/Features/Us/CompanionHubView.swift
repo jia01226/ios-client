@@ -28,12 +28,12 @@ struct CompanionHubView: View {
         ]),
     ]
 
-    private var paper: Color { Color(red: 0.992, green: 0.982, blue: 0.955) }
-    private var ink: Color { Color(red: 0.25, green: 0.20, blue: 0.24) }
-    private var muted: Color { Color(red: 0.52, green: 0.46, blue: 0.45) }
-    private var coral: Color { Color(red: 0.91, green: 0.43, blue: 0.40) }
-    private var gold: Color { Color(red: 0.78, green: 0.57, blue: 0.27) }
-    private var mauve: Color { Color(red: 0.66, green: 0.45, blue: 0.57) }
+    private var paper: Color { PageColors.background }
+    private var ink: Color { PageColors.ink }
+    private var muted: Color { PageColors.muted }
+    private var coral: Color { PageColors.rose }
+    private var gold: Color { PageColors.tea }
+    private var mauve: Color { PageColors.mauve }
     private func song(_ size: CGFloat, _ style: Font.TextStyle = .body) -> Font {
         .custom("STSongti-SC-Light", size: size, relativeTo: style)
     }

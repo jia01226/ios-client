@@ -193,6 +193,8 @@ final class CompanionInteractionTests: XCTestCase {
         XCTAssertTrue(app.buttons["柯"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "去花园看看")).firstMatch.waitForExistence(timeout: 8))
         capture("garden-handoff-chat")
+        app.terminate()
+        MorandiAppearanceTests().testFiveDayPages()
     }
 
     func testDuelEntryOpensPrivateGameRoom() {

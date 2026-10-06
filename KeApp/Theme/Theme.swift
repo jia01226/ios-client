@@ -63,39 +63,42 @@ struct Palette {
     let playPetal: Color
 }
 
+enum Morandi {
+    static let background: UInt32 = 0xF5EEEE
+    static let surface: UInt32 = 0xEDE2E1
+    static let ink: UInt32 = 0x4F4447
+    static let muted: UInt32 = 0x8E8083
+    static let separator: UInt32 = 0xE2D3D3
+    static let rose: UInt32 = 0xC9A0A3
+    static let deepRose: UInt32 = 0xA97F84
+    static let paleRose: UInt32 = 0xEBD3D3
+    static let mauve: UInt32 = 0xB8A3B0
+    static let tea: UInt32 = 0xCDB9AE
+    static let sage: UInt32 = 0xA9B5A6
+    static let reply: UInt32 = 0xEFE4E3
+    static let own: UInt32 = 0xE3C6C8
+}
+
 // MARK: - 两套皮的实际取值
 
 extension Palette {
 
     /// 浅色 —— 第一版默认
     static let day = Palette(
-        bg:            Color(hex: 0xFBF7F2),
-        card:          Color(hex: 0xFFFFFF),
-        cardElevated:  Color(hex: 0xFDF6EC),
-        separator:     Color(hex: 0xEDE3D6),
-
-        textPrimary:   Color(hex: 0x4C4056),
-        textSecondary: Color(hex: 0x766B82),
-        textOnAccent:  Color(hex: 0xFFFFFF),
-
-        accent:        Color(hex: 0xC79A4B),   // 金
-        accentSoft:    Color(hex: 0xE3CDA1),
-
-        bubbleKe:      Color(hex: 0xFFFFFF),
-        bubbleKeText:  Color(hex: 0x4C4056),
-        bubbleMe:      Color(hex: 0xF3E4D2),
-        bubbleMeText:  Color(hex: 0x4C4056),
-
-        glassTint:       Color.white,
-        glassTintStrong: Color.white.opacity(0.17),
-        glassEdge:       Color.white.opacity(0.72),
-        glassInnerLight: Color.white.opacity(0.46),
-        glassShadow:     Color(hex: 0x6D5670).opacity(0.14),
-
-        bedroomBg:     Color(hex: 0x2A1D1F),
-        bedroomAccent: Color(hex: 0xC79A4B),
-
-        playPetal:     Color(hex: 0xF2A9B4)
+        bg: Color(hex: Morandi.background), card: Color(hex: Morandi.surface),
+        cardElevated: Color(hex: Morandi.reply), separator: Color(hex: Morandi.separator),
+        textPrimary: Color(hex: Morandi.ink), textSecondary: Color(hex: Morandi.muted),
+        textOnAccent: Color(hex: Morandi.ink), accent: Color(hex: Morandi.rose),
+        accentSoft: Color(hex: Morandi.paleRose),
+        bubbleKe: Color(hex: Morandi.reply), bubbleKeText: Color(hex: Morandi.ink),
+        bubbleMe: Color(hex: Morandi.own), bubbleMeText: Color(hex: Morandi.ink),
+        glassTint: Color(hex: Morandi.background),
+        glassTintStrong: Color(hex: Morandi.surface).opacity(0.17),
+        glassEdge: Color(hex: Morandi.paleRose).opacity(0.72),
+        glassInnerLight: Color(hex: Morandi.background).opacity(0.46),
+        glassShadow: Color(hex: Morandi.ink).opacity(0.04),
+        bedroomBg: Color(hex: Morandi.background), bedroomAccent: Color(hex: Morandi.deepRose),
+        playPetal: Color(hex: Morandi.paleRose)
     )
 
     /// 深夜蓝 + 金 —— 跟 App 图标同源
@@ -262,11 +265,11 @@ final class Theme: ObservableObject {
         set { storedSkin = newValue.rawValue; objectWillChange.send() }
     }
 
-    @AppStorage("app.chatPalette") private var storedPalette = "rose"
+    @AppStorage("app.chatPalette") private var storedPalette = "morandi"
     @AppStorage("app.chatTypeface") private var storedTypeface = "regular"
 
     var chatPalette: ChatPalette {
-        get { ChatPalette.all.first { $0.id == storedPalette } ?? ChatPalette.all[1] }
+        get { ChatPalette.all.first { $0.id == storedPalette } ?? ChatPalette.all[0] }
         set { objectWillChange.send(); storedPalette = newValue.id }
     }
     var chatTypeface: ChatTypography {
@@ -322,6 +325,12 @@ final class Theme: ObservableObject {
         glassBlur = min(max(savedBlur ?? 9, 0), 20)
         bubbleCornerRadius = min(max(savedRadius ?? 20, 12), 34)
 
+        // One-time migration; later palette choices remain the user's choice.
+        if !defaults.bool(forKey: "app.morandiPaletteMigration.v1") {
+            defaults.set("morandi", forKey: "app.chatPalette")
+            defaults.set(true, forKey: "app.morandiPaletteMigration.v1")
+        }
+
         defaults.set(bubbleOpacity, forKey: "app.bubbleOpacity")
     }
 
@@ -376,4 +385,39 @@ extension Color {
         }
         self.init(.sRGB, red: r, green: g, blue: b, opacity: a)
     }
+}
+
+@MainActor
+enum UsPalette {
+    static var paper: Color { PageColors.background }
+    static var ink: Color { PageColors.ink }
+    static var mutedInk: Color { PageColors.muted }
+    static var coral: Color { PageColors.rose }
+    static var blush: Color { PageColors.paleRose }
+    static var sage: Color { PageColors.sage }
+    static var gold: Color { PageColors.tea }
+    static var hairline: Color { PageColors.separator }
+}
+
+@MainActor
+enum PageColors {
+    static var background: Color { Theme.shared.skin == .day ? Color(hex: Morandi.background) : Color(red: 0.992, green: 0.982, blue: 0.955) }
+    static var ink: Color { Theme.shared.skin == .day ? Color(hex: Morandi.ink) : Color(red: 0.25, green: 0.20, blue: 0.24) }
+    static var muted: Color { Theme.shared.skin == .day ? Color(hex: Morandi.muted) : Color(red: 0.52, green: 0.46, blue: 0.45) }
+    static var rose: Color { Theme.shared.skin == .day ? Color(hex: Morandi.rose) : Color(red: 0.91, green: 0.43, blue: 0.40) }
+    static var paleRose: Color { Theme.shared.skin == .day ? Color(hex: Morandi.paleRose) : Color(red: 0.96, green: 0.71, blue: 0.68) }
+    static var sage: Color { Theme.shared.skin == .day ? Color(hex: Morandi.sage) : Color(red: 0.49, green: 0.59, blue: 0.45) }
+    static var tea: Color { Theme.shared.skin == .day ? Color(hex: Morandi.tea) : Color(red: 0.78, green: 0.57, blue: 0.27) }
+    static var separator: Color { Theme.shared.skin == .day ? Color(hex: Morandi.separator) : Color(red: 0.88, green: 0.72, blue: 0.48) }
+    static var mauve: Color { Theme.shared.skin == .day ? Color(hex: Morandi.mauve) : Color(red: 0.66, green: 0.45, blue: 0.57) }
+    static var ink2: Color { Theme.shared.skin == .day ? Color(hex: Morandi.ink) : Color(hex: 0x302D28) }
+    static var background2: Color { Theme.shared.skin == .day ? Color(hex: Morandi.background) : Color(hex: 0xFFFCF7) }
+    static var muted2: Color { Theme.shared.skin == .day ? Color(hex: Morandi.muted) : Color(hex: 0x77716A) }
+    static var tea2: Color { Theme.shared.skin == .day ? Color(hex: Morandi.tea) : Color(hex: 0xA4826B) }
+    static var tea3: Color { Theme.shared.skin == .day ? Color(hex: Morandi.tea) : Color(hex: 0x947055) }
+    static var tea4: Color { Theme.shared.skin == .day ? Color(hex: Morandi.tea) : Color(hex: 0xB78D68) }
+    static var tea5: Color { Theme.shared.skin == .day ? Color(hex: Morandi.tea) : Color(hex: 0x947343) }
+    static var tea6: Color { Theme.shared.skin == .day ? Color(hex: Morandi.tea) : Color(hex: 0xD3A04A) }
+    static var tea7: Color { Theme.shared.skin == .day ? Color(hex: Morandi.tea) : Color(hex: 0xB8721F) }
+    static var calendarText: Color { Theme.shared.skin == .day ? Color(hex: Morandi.ink) : .white }
 }

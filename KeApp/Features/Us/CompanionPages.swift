@@ -10,7 +10,7 @@ struct CompanionPages: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    private var journalInk: Color { theme.skin == .night ? theme.color.textPrimary : Color(hex: 0x302D28) }
+    private var journalInk: Color { theme.skin == .night ? theme.color.textPrimary : PageColors.ink2 }
     let page: CompanionPage
     private let api: APIClient
     @State private var anniversaries: [RemoteAnniversary] = []
@@ -51,8 +51,8 @@ struct CompanionPages: View {
     @State private var showingDiaryComments = false
     @FocusState private var diarySearchFocused: Bool
     private let diaryPageSize = 50
-    private var diaryPaper: Color { theme.skin == .night ? theme.effectiveBackground : Color(hex: 0xFFFCF7) }
-    private var diaryMuted: Color { theme.skin == .night ? theme.color.textSecondary : Color(hex: 0x77716A) }
+    private var diaryPaper: Color { theme.skin == .night ? theme.effectiveBackground : PageColors.background2 }
+    private var diaryMuted: Color { theme.skin == .night ? theme.color.textSecondary : PageColors.muted2 }
     private func diaryFont(_ size: CGFloat, _ style: Font.TextStyle = .body) -> Font {
         .custom("NotoSerifSC-Regular", size: size, relativeTo: style)
     }
@@ -344,7 +344,7 @@ struct CompanionPages: View {
                                 .frame(minWidth: 56, minHeight: 44)
                                 .overlay(alignment: .bottom) {
                                     if (selectedMonth ?? diaryMonths.first) == month {
-                                        Rectangle().fill(Color(hex: 0xA4826B)).frame(height: 1.5)
+                                        Rectangle().fill(PageColors.tea2).frame(height: 1.5)
                                     }
                                 }
                         }.accessibilityLabel("\(month.prefix(4))年\(Int(month.suffix(2)) ?? 0)月")
@@ -388,9 +388,9 @@ struct CompanionPages: View {
                                     VStack(alignment: .leading, spacing: 6) {
                                         if let date = CompanionDate.parse(item.created_at), CompanionDate.calendar.isDateInToday(date) {
                                             Text("今天").font(diaryFont(13, .caption))
-                                                .foregroundStyle(Color(hex: 0x947055))
+                                                .foregroundStyle(PageColors.tea3)
                                                 .padding(.horizontal, 10).padding(.vertical, 3)
-                                                .background(Color(hex: 0xB78D68).opacity(0.10), in: Capsule())
+                                                .background(PageColors.tea4.opacity(0.10), in: Capsule())
                                         }
                                         Text(item.title).font(diaryFont(20, .title3)).lineLimit(2)
                                         Text(item.locked_hidden ? "暂时锁着的一页" : item.content.replacingOccurrences(of: "\n", with: " "))
@@ -425,7 +425,7 @@ struct CompanionPages: View {
                         Text(diaryDate(item, format: "dd"))
                             .font(.custom("Didot", size: 92, relativeTo: .largeTitle))
                             .padding(.top, 4)
-                        Rectangle().fill(Color(hex: 0xA4826B)).frame(width: 40, height: 1).padding(.top, 8)
+                        Rectangle().fill(PageColors.tea2).frame(width: 40, height: 1).padding(.top, 8)
                         Text(item.title).font(diaryFont(32, .largeTitle))
                             .multilineTextAlignment(.center).padding(.top, 24).padding(.bottom, 30)
                         Text(item.locked_hidden ? "这一页还锁着，可以在聊天里问柯。" : item.content)

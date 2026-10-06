@@ -177,16 +177,7 @@ struct UsView: View {
     }
 }
 
-private enum UsPalette {
-    static let paper = Color(red: 0.992, green: 0.982, blue: 0.955)
-    static let ink = Color(red: 0.25, green: 0.20, blue: 0.24)
-    static let mutedInk = Color(red: 0.52, green: 0.46, blue: 0.45)
-    static let coral = Color(red: 0.91, green: 0.43, blue: 0.40)
-    static let blush = Color(red: 0.96, green: 0.71, blue: 0.68)
-    static let sage = Color(red: 0.49, green: 0.59, blue: 0.45)
-    static let gold = Color(red: 0.78, green: 0.57, blue: 0.27)
-    static let hairline = Color(red: 0.88, green: 0.72, blue: 0.48)
-}
+
 
 private struct AnniversaryPager: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -743,7 +734,7 @@ private struct ScheduleEditorSheet: View {
                         .frame(height: 48)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(Color.white)
+                .foregroundStyle(PageColors.calendarText)
                 .background(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .fill(UsPalette.coral.opacity(0.88))
@@ -834,10 +825,10 @@ private struct CalendarDay: View {
             VStack(spacing: 2) {
                 Text("\(Calendar.current.component(.day, from: date))")
                     .font(.custom("Didot", size: 15, relativeTo: .body))
-                    .foregroundStyle(isToday ? Color.white : UsPalette.ink)
+                    .foregroundStyle(isToday ? PageColors.calendarText : UsPalette.ink)
                 Text(shiftText ?? " ")
                     .font(.custom("STSongti-SC-Light", size: 9, relativeTo: .caption2))
-                    .foregroundStyle(isToday ? Color.white.opacity(0.90) : markerColor)
+                    .foregroundStyle(isToday ? PageColors.calendarText.opacity(0.90) : markerColor)
                     .lineLimit(1)
                     .minimumScaleFactor(0.65)
                     .frame(maxWidth: 42)

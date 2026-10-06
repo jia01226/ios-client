@@ -42,8 +42,8 @@ struct WorkDrawerView: View {
     @State private var openTasks: Set<String> = []
     @State private var openDetails: Set<String> = []
 
-    private var ink: Color { theme.skin == .night ? theme.color.textPrimary : Color(hex: 0x302D28) }
-    private var gold: Color { theme.skin == .night ? theme.color.accentSoft : Color(hex: 0x947343) }
+    private var ink: Color { theme.skin == .night ? theme.color.textPrimary : PageColors.ink2 }
+    private var gold: Color { theme.skin == .night ? theme.color.accentSoft : PageColors.tea5 }
     private func serif(_ size: CGFloat) -> Font { .custom("NotoSerifSC-Regular", size: size, relativeTo: .body).weight(.light) }
     private var api: APIClient { APIClient(baseURL: line.apiBaseURL) }
 

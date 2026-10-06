@@ -5,7 +5,7 @@ struct DuelView: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.dismiss) private var dismiss
 
-    private var ink: Color { theme.skin == .night ? theme.color.textPrimary : Color(hex: 0x302D28) }
+    private var ink: Color { theme.skin == .night ? theme.color.textPrimary : PageColors.ink2 }
     private func serif(_ size: CGFloat) -> Font {
         .custom("NotoSerifSC-Regular", size: size, relativeTo: .body).weight(.light)
     }

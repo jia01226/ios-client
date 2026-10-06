@@ -18,8 +18,8 @@ struct PlayView: View {
 
     init(line: ChatLine = .main) { self.line = line }
 
-    private var ink: Color { theme.skin == .night ? theme.color.textPrimary : Color(hex: 0x302D28) }
-    private var gold: Color { theme.skin == .night ? theme.color.accentSoft : Color(hex: 0x947343) }
+    private var ink: Color { theme.skin == .night ? theme.color.textPrimary : PageColors.ink2 }
+    private var gold: Color { theme.skin == .night ? theme.color.accentSoft : PageColors.tea5 }
     private func serif(_ size: CGFloat) -> Font { .custom("NotoSerifSC-Regular", size: size, relativeTo: .body).weight(.light) }
 
     var body: some View {
@@ -207,8 +207,8 @@ struct TarotView: View {
 
     private enum DrawPhase { case idle, shuffling, dealing }
 
-    private var ink: Color { theme.skin == .night ? theme.color.textPrimary : Color(hex: 0x302D28) }
-    private var gold: Color { theme.skin == .night ? theme.color.accentSoft : Color(hex: 0x947343) }
+    private var ink: Color { theme.skin == .night ? theme.color.textPrimary : PageColors.ink2 }
+    private var gold: Color { theme.skin == .night ? theme.color.accentSoft : PageColors.tea5 }
     private func serif(_ size: CGFloat) -> Font { .custom("NotoSerifSC-Regular", size: size, relativeTo: .body).weight(.light) }
     private var api: APIClient { APIClient(baseURL: line.apiBaseURL) }
     private var back: TarotBack { TarotBack.find(backThemeID) }
@@ -469,8 +469,8 @@ struct GardenView: View {
     @Environment(\.dismiss) private var dismiss
     static let url = URL(string: "https://galatea.abysslumina.com")!
 
-    private var ink: Color { theme.skin == .night ? theme.color.textPrimary : Color(hex: 0x302D28) }
-    private var gold: Color { theme.skin == .night ? theme.color.accentSoft : Color(hex: 0x947343) }
+    private var ink: Color { theme.skin == .night ? theme.color.textPrimary : PageColors.ink2 }
+    private var gold: Color { theme.skin == .night ? theme.color.accentSoft : PageColors.tea5 }
     private func serif(_ size: CGFloat) -> Font { .custom("NotoSerifSC-Regular", size: size, relativeTo: .body).weight(.light) }
 
     var body: some View {
@@ -556,8 +556,8 @@ struct FortuneView: View {
     @State private var running = false
     @State private var error: String?
 
-    private var ink: Color { theme.skin == .night ? theme.color.textPrimary : Color(hex: 0x302D28) }
-    private var gold: Color { theme.skin == .night ? theme.color.accentSoft : Color(hex: 0x947343) }
+    private var ink: Color { theme.skin == .night ? theme.color.textPrimary : PageColors.ink2 }
+    private var gold: Color { theme.skin == .night ? theme.color.accentSoft : PageColors.tea5 }
     private func serif(_ size: CGFloat) -> Font { .custom("NotoSerifSC-Regular", size: size, relativeTo: .body).weight(.light) }
     private var api: APIClient { APIClient(baseURL: line.apiBaseURL) }
 

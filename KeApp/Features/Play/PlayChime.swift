@@ -122,8 +122,8 @@ struct ChimeStrand: View {
     private var ringAnchor: UnitPoint { UnitPoint(x: 0.5 + cordOffsetX / displayWidth, y: ringCenterInHead * scale / totalHeight) }
 
     // 接线的金色，取自原图那根线；图案的金色取自原图玉坠上的线描。
-    private let cordGold = Color(hex: 0xD3A04A)
-    private let glyphGold = Color(hex: 0xB8721F)
+    private var cordGold: Color { PageColors.tea6 }
+    private var glyphGold: Color { PageColors.tea7 }
 
     var body: some View {
         VStack(spacing: 10) {
