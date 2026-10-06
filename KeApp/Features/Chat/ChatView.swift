@@ -221,43 +221,58 @@ struct ChatView: View {
         }
     }
 
-    private var header: some View {
-        ZStack {
-            Menu {
-                ForEach(ChatLine.allCases) { option in
-                    Button {
-                        selectedLine = option
-                    } label: {
-                        Label(
-                            option.title,
-                            systemImage: selectedLine == option ? "checkmark.circle.fill" : "circle"
-                        )
-                    }
-                }
-            } label: {
-                VStack(spacing: 3) {
-                    HStack(spacing: 4) {
-                        Text("柯")
-                            .font(theme.font.chatHeader)
-                        Image(systemName: "chevron.down")
-                            .font(.caption2.weight(.semibold))
-                    }
-                    .foregroundStyle(theme.color.textPrimary)
-
-                    if vm.isSending {
-                        WaitingShimmer(color: theme.color.textPrimary)
-                            .transition(.opacity)
-                    } else {
-                        Text(vm.isShowingCachedMessages ? "\(line.title) · 离线记录" : "\(line.title) · 在线")
-                            .font(.caption2)
-                            .foregroundStyle(theme.color.textSecondary)
-                            .transition(.opacity)
-                    }
+    private func headerTitle(showsSwitcher: Bool) -> some View {
+        VStack(spacing: 3) {
+            HStack(spacing: 4) {
+                Text("柯")
+                    .font(theme.font.chatHeader)
+                if showsSwitcher {
+                    Image(systemName: "chevron.down")
+                        .font(.caption2.weight(.semibold))
                 }
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("切换柯的聊天窗口，当前\(line.title)")
-            .accessibilityIdentifier("chat-line-switcher-\(line.rawValue)")
+            .foregroundStyle(theme.color.textPrimary)
+
+            if vm.isSending {
+                WaitingShimmer(color: theme.color.textPrimary)
+                    .transition(.opacity)
+            } else {
+                let status = vm.isShowingCachedMessages ? "离线记录" : "在线"
+                Text(showsSwitcher ? "\(line.title) · \(status)" : status)
+                    .font(.caption2)
+                    .foregroundStyle(theme.color.textSecondary)
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    private var header: some View {
+        ZStack {
+            // 佳佳 2026-10-06：「只留一个就可以了……就不需要叫什么」。只剩一个窗口时
+            // 顶上只写「柯」，不再给切换菜单，也不显示窗口名。
+            if ChatLine.allCases.count > 1 {
+                Menu {
+                    ForEach(ChatLine.allCases) { option in
+                        Button {
+                            selectedLine = option
+                        } label: {
+                            Label(
+                                option.title,
+                                systemImage: selectedLine == option ? "checkmark.circle.fill" : "circle"
+                            )
+                        }
+                    }
+                } label: {
+                    headerTitle(showsSwitcher: true)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("切换柯的聊天窗口，当前\(line.title)")
+                .accessibilityIdentifier("chat-line-switcher-\(line.rawValue)")
+            } else {
+                headerTitle(showsSwitcher: false)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("chat-header-\(line.rawValue)")
+            }
 
             HStack(spacing: 12) {
                 if line == .test1 {
