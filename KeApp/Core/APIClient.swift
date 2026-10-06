@@ -241,6 +241,8 @@ private struct ChatRequestBody: Encodable {
     let clientMessageID: String
     let model: String?
     let attachments: [ChatAttachment]
+    /// 柯还在回时她接着发的几条，服务器可以并进最后一条一起回（旧版 App 不带这个字段，照旧排队）。
+    let supportsMerge = true
 
     enum CodingKeys: String, CodingKey {
         case text
@@ -248,6 +250,7 @@ private struct ChatRequestBody: Encodable {
         case clientMessageID = "client_msg_id"
         case model
         case attachments
+        case supportsMerge = "supports_merge"
     }
 }
 

@@ -551,7 +551,11 @@ final class ChatViewModel: ObservableObject {
     }
 
     func send(_ text: String, reduceMotion: Bool = false) async {
-        guard let sessionID, !isSending, !isRefreshingClaude, !isClearingWindow else { return }
+        guard let sessionID, !isRefreshingClaude, !isClearingWindow else { return }
+        if isSending {
+            await sendWhileReplying(text, sessionID: sessionID)
+            return
+        }
         let attachments = pendingAttachments
         guard !text.isEmpty || !attachments.isEmpty else { return }
 
@@ -614,6 +618,88 @@ final class ChatViewModel: ObservableObject {
             reduceMotion: reduceMotion,
             retryCount: 0
         )
+        await drainQueuedFollowUps()
+    }
+
+    /// 柯还在回上一句时她接着发的那几条：已经送到服务器排队，等这一句回完再接着回。
+    private var queuedFollowUps: [(clientID: String, jobID: String)] = []
+
+    /// 她在柯回话途中接着发：消息立刻送到服务器、立刻显示，不再锁发送键。
+    /// 服务器把排在前面的几条并进最后一条（status=merged），柯看完一起回。
+    private func sendWhileReplying(_ text: String, sessionID: Int) async {
+        let attachments = pendingAttachments
+        guard !text.isEmpty || !attachments.isEmpty else { return }
+        pendingAttachments = []
+        let clientID = "ios-\(UUID().uuidString.lowercased())"
+        let userLocalID = "user-\(clientID)"
+        messages.append(
+            Message(
+                id: userLocalID,
+                clientID: clientID,
+                sender: .me,
+                text: text,
+                time: .now,
+                attachments: attachments,
+                deliveryState: .sending
+            )
+        )
+        do {
+            let stream = try await api.streamMessage(
+                text: text,
+                sessionID: sessionID,
+                clientMessageID: clientID,
+                model: selectedModel,
+                attachments: attachments
+            )
+            // 只等服务器回执（消息已落库、任务已排上），然后放手；回复由后台线程照常生成。
+            for try await event in stream {
+                if case let .receipt(userMessageID, jobID, _) = event {
+                    updateMessage(id: userLocalID) {
+                        $0.serverID = userMessageID ?? $0.serverID
+                        $0.deliveryState = .sent
+                    }
+                    if let jobID {
+                        queuedFollowUps.append((clientID: clientID, jobID: jobID))
+                    }
+                    break
+                }
+            }
+        } catch {
+            updateMessage(id: userLocalID) { $0.deliveryState = .failed }
+        }
+        // 回执到的时候上一句恰好已经回完：没人会再来接，自己接上。
+        if !isSending {
+            await drainQueuedFollowUps()
+        }
+    }
+
+    /// 上一句回完以后，跟着回她途中补发的那几条：只盯最后一条，前面的服务器已经并进来了。
+    private func drainQueuedFollowUps() async {
+        while let last = queuedFollowUps.last {
+            queuedFollowUps.removeAll()
+            let assistantLocalID = "assistant-\(last.clientID)"
+            isSending = true
+            messages.append(
+                Message(
+                    id: assistantLocalID,
+                    clientID: last.clientID,
+                    sender: .ke,
+                    text: "",
+                    time: .now,
+                    isStreaming: true,
+                    deliveryState: .sending
+                )
+            )
+            activeJobID = last.jobID
+            await pollForCompletion(
+                jobID: last.jobID,
+                fallbackClientID: last.clientID,
+                fallbackUserMessageID: messages.first(where: {
+                    $0.clientID == last.clientID && $0.sender == .me
+                })?.serverID,
+                assistantLocalID: assistantLocalID
+            )
+        }
     }
 
     func addAttachment(data: Data, fileName: String, mimeType: String) async {
@@ -1172,6 +1258,9 @@ final class ChatViewModel: ObservableObject {
                         if let completed = messages.first(where: { $0.id == assistantLocalID }) {
                             stageSegments(for: completed, reduceMotion: reduceMotion)
                         }
+                    } else if status == "merged" {
+                        // 这一条已经并进她后面补发的那条，由那条一起回；空位直接收起，不算失败。
+                        removeEmptyAssistant(id: assistantLocalID)
                     } else {
                         updateMessage(id: assistantLocalID) {
                             $0.isStreaming = false
