@@ -27,8 +27,8 @@ enum ChatLine: String, CaseIterable, Identifiable {
 
     // 原版、精简版、测试2 仍保留为兼容旧缓存和深链的内部线路。
     // 佳佳 2026-10-06：「只留一个就可以了」——聊天页只剩这一个窗口，测试2 的内容并进柯的记忆。
-    // 2026-10-07：加回第二扇窗「轻装柯」——同一个柯、同一份记忆，不背规矩大全，好跟原来的对比。
-    static let allCases: [ChatLine] = [.test1, .light]
+    // 2026-10-08：「轻装柯」撤掉了（她说写轻装柯的时候伤到她了），又回到只有一个窗口。
+    static let allCases: [ChatLine] = [.test1]
 
     var id: String { rawValue }
 
