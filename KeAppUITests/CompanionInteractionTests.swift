@@ -179,18 +179,17 @@ final class CompanionInteractionTests: XCTestCase {
         capture("tarot-handoff-chat")
     }
 
-    func testGardenEntryHandsToKe() {
+    func testGardenAndXBeadsAreGone() {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-app.skin", "day"]
         app.launch()
         XCTAssertTrue(app.buttons["玩"].waitForExistence(timeout: 5))
         app.buttons["玩"].tap()
-        XCTAssertTrue(app.buttons["play-garden"].waitForExistence(timeout: 5))
-        app.buttons["play-garden"].tap()
-        XCTAssertTrue(app.buttons["garden-open"].waitForExistence(timeout: 5))
-        // 花园页不再替她往聊天里发话。
-        XCTAssertFalse(app.buttons["garden-ask-ke"].exists)
-        capture("garden-entry")
+        XCTAssertTrue(app.buttons["play-duel"].waitForExistence(timeout: 5))
+        // 「花园 · X」两颗珠子会用她的名义发话，已拿掉。
+        XCTAssertFalse(app.buttons["play-garden"].exists)
+        XCTAssertFalse(app.buttons["play-x"].exists)
+        capture("play-without-garden")
     }
 
     func testDuelEntryOpensPrivateGameRoom() {

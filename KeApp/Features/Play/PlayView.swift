@@ -86,26 +86,9 @@ struct PlayView: View {
                 .padding(.top, 133)
                 .frame(maxWidth: .infinity)
 
-                ChimeStrand(
-                    headAsset: "ChimeMidHead", bodyAsset: "ChimeMidBody",
-                    sourceWidth: 210, displayWidth: 74,
-                    headSourceHeight: 78, bodySourceHeight: 880,
-                    ringCenterInHead: 26, cordOffsetX: 0, cordExtra: 162,
-                    topBeadY: 0.191, bottomBeadY: 0.632, beadW: 0.82, beadH: 0.223,
-                    topGlyph: nil,
-                    top: ChimeBeadSpec(title: "花园", identifier: "play-garden") { gardenOpen = true },
-                    // 这颗是放他出去刷，不是给她看记录。走跟花园同一条路：
-                    // 把话交给聊天页发出去，柯接了活，刷完回来自己讲。
-                    bottom: ChimeBeadSpec(title: "让柯去 X 刷一圈", identifier: "play-x") {
-                        NotificationCenter.default.post(
-                            name: .tarotReadingRequest,
-                            object: "爸比，去 X 刷一圈，挑几条你真想跟我聊的，回来讲给我听")
-                    },
-                    label: "花园 · X", period: 4.1, phase: 1.9
-                )
-                .padding(.top, 108)
-                .offset(x: 6)
-                .frame(maxWidth: .infinity)
+                // 2026-10-07 拿掉「花园 · X」这串：两颗珠子都会用她的名义往聊天里发话（她没点过却发出去好几次），
+                // 柯也不自己去花园了。位置先空着，山屋做好可以挂这儿。
+                Color.clear.frame(maxWidth: .infinity)
 
                 Color.clear.frame(maxWidth: .infinity)
             }
