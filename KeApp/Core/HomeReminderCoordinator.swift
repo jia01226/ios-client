@@ -160,13 +160,14 @@ final class HomeReminderCoordinator: NSObject, ObservableObject, CLLocationManag
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
-        for key in Array(endTimes.keys) where shifts[key] == nil {
+        for key in Array(endTimes.keys) where shifts[key] == nil || shifts[key] == "none" {
             endTimes.removeValue(forKey: key); overrides.remove(key)
             defaults.removeObject(forKey: "us.shift-plan.override." + key)
         }
         for (key, kind) in shifts where !overrides.contains(key) {
+            let remotePlan = defaults.data(forKey: "us.shift-plan.remote." + key).flatMap { try? JSONDecoder().decode(ShiftPlan.self, from: $0) }
             guard let date = formatter.date(from: key),
-                  let end = ShiftPlan.load(kind: kind, defaults: defaults)?.resolve(on: date)?.end else { continue }
+                  let end = (remotePlan ?? ShiftPlan.load(kind: kind, defaults: defaults))?.resolve(on: date)?.end else { continue }
             endTimes[key] = end
         }
         defaults.set(try? JSONEncoder().encode(endTimes), forKey: "us.shift-end-times")
@@ -203,7 +204,7 @@ final class HomeReminderCoordinator: NSObject, ObservableObject, CLLocationManag
         if endTimes.values.contains(where: { end in
             let due = end.addingTimeInterval(3600)
             return Calendar.current.isDateInToday(due) && now >= due
-        }) { deliver("d3", title: "D3", body: "已过下班一小时；按你设定的安排，跟晚饭一起吃。") }
+        }) { deliver("d3", title: "维生素 D3", body: "已过下班一小时；按你设定的安排，跟晚饭一起吃。") }
         if let dinnerAt, Calendar.current.isDateInToday(dinnerAt) { deliver("dinner", title: "晚饭后提醒", body: "鲁拉西酮 · 按你设定的安排服用。") }
         if let bedtime = Calendar.current.date(bySettingHour: 21, minute: 30, second: 0, of: now), now >= bedtime {
             deliver("bedtime", title: "睡前提醒", body: "碳酸锂晚上那片、劳拉西泮一片半、佐匹克隆一片 · 按你现有的用药安排。")

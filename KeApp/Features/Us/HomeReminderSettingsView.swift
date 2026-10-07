@@ -7,8 +7,8 @@ struct HomeReminderSettingsView: View {
     @ObservedObject var model: UsViewModel
     @ObservedObject private var reminders = HomeReminderCoordinator.shared
     @State private var selectedDate: Date
-    @State private var plan = ShiftPlan.example
-    @State private var shiftKind = ShiftDay.Kind.early
+    @State private var plan = ShiftPlan.preset(kind: "normal")!
+    @State private var shiftKind = ShiftDay.Kind.normal
     @State private var showingDay = false
     @State private var saved = false
     @State private var editingClock: ClockSelection?
@@ -71,7 +71,7 @@ struct HomeReminderSettingsView: View {
                             timelineRow(period.start, text: index == 0 ? "上班" : "继续上班", icon: index == 0 ? "circle.fill" : "circle")
                             timelineRow(period.end, text: index == resolved.periods.count - 1 ? "下班" : "休息", icon: "circle")
                         }
-                        timelineRow(resolved.end.addingTimeInterval(3600), text: "惦记 D3", icon: "moon")
+                        timelineRow(resolved.end.addingTimeInterval(3600), text: "惦记维生素 D3", icon: "moon")
                     }
                     .padding(.vertical, 8)
                     .background(alignment: .leading) {
@@ -84,13 +84,22 @@ struct HomeReminderSettingsView: View {
                         .font(theme.font.journalCaption).foregroundStyle(theme.pageAccent)
                 }
                 Button {
-                    plan.save(kind: shiftKind.rawValue); applyProfiles(); saved = true
+                    model.saveShiftProfile(plan, kind: shiftKind); applyProfiles(); saved = true
                 } label: {
                     HStack(spacing: 10) {
                         Text(saved ? "这个班次记好了" : "记住这个班次").underline()
                         Image(systemName: saved ? "checkmark" : "chevron.right").font(.system(size: 10, weight: .light))
                     }.foregroundStyle(theme.pageAccent).frame(maxWidth: .infinity)
                 }.disabled(resolved == nil).accessibilityIdentifier("shift-profile-save")
+                if let preset = ShiftPlan.preset(kind: shiftKind.rawValue), plan != preset {
+                    Button("恢复这个班次的默认时间") { plan = preset; saved = false }
+                        .font(theme.font.journalCaption).foregroundStyle(theme.pageAccent)
+                }
+                if let status = model.shiftSyncStatus {
+                    Button(status) { Task { await model.syncShifts() } }
+                        .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
+                        .disabled(model.syncingShifts)
+                }
                 hairline
                 Button { showingDay.toggle() } label: {
                     HStack(spacing: 10) {
@@ -103,15 +112,13 @@ struct HomeReminderSettingsView: View {
                     Text(model.shift(on: selectedDate).map { "当天班次：" + model.shiftLabel($0) } ?? "这天还没排班，请先在月历填班次。")
                         .font(theme.font.journalCaption)
                     Button("只记这一天的时间") {
-                        guard let resolved else { return }
-                        UserDefaults.standard.set(try? JSONEncoder().encode(plan), forKey: overrideKey)
-                        reminders.setEndTime(resolved.end, on: selectedDate)
+                        model.saveShiftOverride(plan, on: selectedDate)
                     }.disabled(resolved == nil || model.shift(on: selectedDate) == nil).accessibilityIdentifier("shift-day-save")
                     if let end = reminders.endTime(on: selectedDate) {
                         Text("已记：\(end.formatted(date: .abbreviated, time: .shortened)) 下班")
                             .font(theme.font.journalCaption)
                         Button("清除当天的单独调整", role: .destructive) {
-                            reminders.clearEndTime(on: selectedDate); loadProfile(); applyProfiles()
+                            model.saveShiftOverride(nil, on: selectedDate); loadDay(); applyProfiles()
                         }
                     }
                 }
@@ -135,7 +142,6 @@ struct HomeReminderSettingsView: View {
         .onChange(of: selectedDate) { _, _ in loadDay() }
     }
     private var hairline: some View { Rectangle().fill(theme.pageColor.separator).frame(height: 0.5) }
-    private var overrideKey: String { "us.shift-plan.override." + HomeReminderCoordinator.dayKey(selectedDate) }
     private func modeButton(_ title: String, split: Bool) -> some View {
         let selected = (plan.periods.count == 2) == split
         return Button { setSplit(split) } label: {
@@ -148,6 +154,12 @@ struct HomeReminderSettingsView: View {
         guard split != (plan.periods.count == 2) else { return }
         if split {
             let first = plan.periods[0]
+            if let preset = ShiftPlan.preset(kind: shiftKind.rawValue), preset.periods.count == 2,
+               first.startMinutes == preset.periods.first?.startMinutes,
+               first.endMinutes == preset.periods.last?.endMinutes {
+                plan = preset
+                return
+            }
             let duration = (first.endMinutes - first.startMinutes + 1440) % 1440
             let middle = (first.startMinutes + max(30, duration / 2)) % 1440
             plan.periods = [ShiftPeriod(startMinutes: first.startMinutes, endMinutes: middle),
@@ -200,20 +212,18 @@ struct HomeReminderSettingsView: View {
             if !Calendar.current.isDate(time, inSameDayAs: selectedDate) { Text("次日").font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary) }
         }.font(theme.font.journalQuote)
     }
-    private func loadProfile() { plan = ShiftPlan.load(kind: shiftKind.rawValue) ?? .example; saved = false }
+    private func loadProfile() { plan = model.shiftProfile(shiftKind); saved = false }
     private func loadDay() {
-        shiftKind = model.shift(on: selectedDate) ?? .early
+        shiftKind = model.shift(on: selectedDate) ?? .normal
         loadProfile()
-        if let data = UserDefaults.standard.data(forKey: overrideKey), let override = try? JSONDecoder().decode(ShiftPlan.self, from: data) {
-            plan = override
-        }
+        if let dayPlan = model.shiftPlan(on: selectedDate) { plan = dayPlan }
     }
     private func applyProfiles() {
         let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.dateFormat = "yyyy-MM-dd"
         let dates = Set(model.thisWeek.map(\.date) + model.savedShifts.keys.compactMap { formatter.date(from: $0) } + reminders.endTimes.keys.compactMap { formatter.date(from: $0) })
         for date in dates {
-            guard let kind = model.shift(on: date) else { reminders.clearEndTime(on: date); continue }
-            guard let end = ShiftPlan.load(kind: kind.rawValue)?.resolve(on: date)?.end else { continue }
+            guard model.shift(on: date) != nil else { reminders.clearEndTime(on: date); continue }
+            guard let end = model.shiftPlan(on: date)?.resolve(on: date)?.end else { continue }
             reminders.setEndTime(end, on: date, override: false)
         }
     }
@@ -245,9 +255,9 @@ struct ReminderJournalView: View {
                     Text(reminders.status).font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
                 }.padding(.top, 10)
                 HStack(spacing: 9) {
-                    Text("D3 · 下班后 1 小时").font(theme.font.journalCaption)
+                    Text("维生素 D3 · 下班后 1 小时").font(theme.font.journalCaption)
                     Spacer()
-                    completion("d3", title: "D3")
+                    completion("d3", title: "维生素 D3")
                 }.padding(.top, 22)
                 journalHeading("饭后", symbol: "moon.fill").padding(.top, 26)
                 HStack {

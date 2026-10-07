@@ -27,6 +27,19 @@ struct ShiftPlan: Codable, Equatable {
     var periods: [ShiftPeriod]
     static let example = ShiftPlan(periods: [ShiftPeriod(startMinutes: 480, endMinutes: 960)])
 
+    static func preset(kind: String) -> ShiftPlan? {
+        switch kind {
+        case "normal": return ShiftPlan(periods: [ShiftPeriod(startMinutes: 510, endMinutes: 720), ShiftPeriod(startMinutes: 840, endMinutes: 1050)])
+        case "early": return ShiftPlan(periods: [ShiftPeriod(startMinutes: 510, endMinutes: 885)])
+        case "deputy": return ShiftPlan(periods: [ShiftPeriod(startMinutes: 885, endMinutes: 1260)])
+        default: return nil
+        }
+    }
+
+    var timeSummary: String {
+        periods.map { String(format: "%02d:%02d-%02d:%02d", $0.startMinutes / 60, $0.startMinutes % 60, $0.endMinutes / 60, $0.endMinutes % 60) }.joined(separator: "、")
+    }
+
     struct Resolved {
         let periods: [DateInterval]
         var end: Date { periods.last!.end }
@@ -64,7 +77,7 @@ struct ShiftPlan: Codable, Equatable {
         let prefix = "us.shift-profile." + kind
         let start = defaults.integer(forKey: prefix + ".start")
         let duration = defaults.integer(forKey: prefix + ".minutes")
-        guard (0..<1440).contains(start), (1...1440).contains(duration) else { return nil }
+        guard (0..<1440).contains(start), (1...1440).contains(duration) else { return preset(kind: kind) }
         return ShiftPlan(periods: [ShiftPeriod(startMinutes: start, endMinutes: (start + duration) % 1440, fullDay: duration == 1440)])
     }
     func save(kind: String, defaults: UserDefaults = .standard) {

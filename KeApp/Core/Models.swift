@@ -219,6 +219,7 @@ struct Anniversary: Identifiable, Hashable, Codable {
 /// 她几点起、什么时候在上班、什么时候刚下夜班需要睡。
 struct ShiftDay: Identifiable, Hashable, Codable {
     enum Kind: String, Codable, CaseIterable {
+        case normal     // 正常班，中午休息
         case early      // 早班
         case deputy     // 副班
         case other      // 其它班次，配合 note 使用

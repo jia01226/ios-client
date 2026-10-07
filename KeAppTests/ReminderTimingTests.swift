@@ -45,7 +45,8 @@ final class ReminderTimingTests: XCTestCase {
         let split = ShiftPlan(periods: [ShiftPeriod(startMinutes: 480, endMinutes: 720), ShiftPeriod(startMinutes: 780, endMinutes: 1020)])
         split.save(kind: "early", defaults: defaults)
         XCTAssertEqual(ShiftPlan.load(kind: "early", defaults: defaults), split)
-        XCTAssertNil(ShiftPlan.load(kind: "deputy", defaults: defaults))
+        XCTAssertEqual(ShiftPlan.load(kind: "deputy", defaults: defaults), ShiftPlan.preset(kind: "deputy"))
+        XCTAssertNil(ShiftPlan.load(kind: "other", defaults: defaults))
     }
     func testHomeGateRejectsDrivingUnknownAndStaleSignals() {
         let now = Date(timeIntervalSince1970: 1000)

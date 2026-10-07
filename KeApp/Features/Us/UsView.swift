@@ -7,6 +7,7 @@ struct UsView: View {
     @ObservedObject private var notebook = QuoteNotebook.shared
     @ObservedObject private var homeReminders = HomeReminderCoordinator.shared
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.scenePhase) private var scenePhase
     let line: ChatLine
     @StateObject private var vm: UsViewModel
     @SceneStorage("us.selected-anniversary-index") private var selectedAnniversaryIndex = 0
@@ -17,6 +18,7 @@ struct UsView: View {
     @State private var showingReminderSettings = false
     @State private var showingReminderJournal = false
     @State private var shiftEditDate = Date()
+    @State private var weeklyScheduleDate: CalendarEditSelection?
 
     init(line: ChatLine = .test1) {
         self.line = line
@@ -26,6 +28,9 @@ struct UsView: View {
     var body: some View {
         Group {
             if theme.skin == .day { dayHome } else { legacyHome }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await vm.loadReminders() } }
         }
     }
 
@@ -168,11 +173,18 @@ struct UsView: View {
                     HStack {
                         Text("本周班表").font(theme.font.journalHeading)
                         Spacer()
-                        Button("编辑") { shiftEditDate = .now; showingReminderSettings = true }
+                        Button("班次设置") { shiftEditDate = .now; showingReminderSettings = true }
                             .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
                             .accessibilityIdentifier("us-shift-edit")
                     }.padding(.top, 20).padding(.bottom, 18)
                     dayWeek
+                    Text("空白日排班 · 再点已排日期可取消")
+                        .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary).padding(.top, 10)
+                    if let status = vm.shiftSyncStatus {
+                        Button(status) { Task { await vm.syncShifts(); await vm.refreshShifts() } }
+                            .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
+                            .disabled(vm.syncingShifts).accessibilityIdentifier("shift-sync-status").padding(.top, 6)
+                    }
                     Button { showingReminderJournal = true } label: {
                         HStack(spacing: 14) {
                             Image(systemName: "moon.fill").font(.system(size: 23, weight: .ultraLight)).foregroundStyle(theme.pageAccent)
@@ -236,6 +248,12 @@ struct UsView: View {
                 journalAnniversaryIndex = min(journalAnniversaryIndex, max(0, ids.count - 1))
             }
             .fullScreenCover(isPresented: $showingReminderSettings) { NavigationStack { HomeReminderSettingsView(model: vm, date: shiftEditDate) }.presentationBackground(theme.pageBackground) }
+            .sheet(item: $weeklyScheduleDate) { selection in
+                ScheduleEditorSheet(date: selection.date, currentShift: nil, currentNote: nil) { shift, note in
+                    vm.setShift(shift, note: note, on: selection.date)
+                    weeklyScheduleDate = nil
+                }.presentationDetents([.height(420)]).presentationBackground(theme.pageBackground)
+            }
             .fullScreenCover(isPresented: $showingReminderJournal) { NavigationStack { ReminderJournalView() }.presentationBackground(theme.pageBackground) }
             .sheet(isPresented: $showingNotebook) { NavigationStack { QuoteNotebookView() } }
             .sheet(isPresented: $showingCompanionHub) { CompanionHubView(line: line, model: vm) }
@@ -247,25 +265,29 @@ struct UsView: View {
     private var dayWeek: some View {
         HStack(alignment: .top, spacing: 5) {
             ForEach(vm.thisWeek) { day in
-                Button { shiftEditDate = day.date; showingReminderSettings = true } label: {
+                Button {
+                    if vm.shift(on: day.date) != nil { vm.setShift(nil, on: day.date) }
+                    else { weeklyScheduleDate = CalendarEditSelection(date: day.date) }
+                } label: {
                     VStack(spacing: 5) {
                         Text("周" + vm.weekdayLabel(day.date)).font(theme.font.journalCaption)
                         Text(day.date.formatted(.dateTime.month(.defaultDigits).day())).font(.custom("NotoSerifSC-ExtraLight", size: 10))
-                        Text(vm.shift(on: day.date).map { vm.shiftDisplay($0, on: day.date) } ?? (vm.clearedShiftKeys.contains(HomeReminderCoordinator.dayKey(day.date)) ? "休息" : "未排"))
+                        Text(vm.shift(on: day.date).map { vm.shiftDisplay($0, on: day.date) } ?? "未排")
                             .font(theme.font.journalCaption).lineLimit(1).minimumScaleFactor(0.7)
                             .frame(maxWidth: .infinity).padding(.vertical, 7)
                             .background(theme.pageAccent.opacity(0.10), in: Capsule()).padding(.top, 5)
                     }.frame(maxWidth: .infinity).contentShape(Rectangle())
-                }
+                }.accessibilityIdentifier("week-day-" + HomeReminderCoordinator.dayKey(day.date))
+                    .accessibilityLabel(vm.calendarDayAccessibilityLabel(day.date))
             }
         }.accessibilityIdentifier("curved-week-schedule")
     }
 
     private var todayReminderLabel: String {
         if let end = homeReminders.endTime(on: .now) {
-            return "\(end.addingTimeInterval(3600).formatted(date: .omitted, time: .shortened)) · 惦记 D3；睡前 21:30"
+            return "\(end.addingTimeInterval(3600).formatted(date: .omitted, time: .shortened)) · 惦记维生素 D3；睡前 21:30"
         }
-        return "下班后 1 小时，记得 D3"
+        return "下班后 1 小时，记得维生素 D3"
     }
 
     private var reminder: some View {
@@ -721,7 +743,8 @@ private struct MonthCalendar: View {
                 ForEach(Array(vm.monthCells(for: displayedMonth).enumerated()), id: \.offset) { _, date in
                     if let date {
                         Button {
-                            editingDate = CalendarEditSelection(date: date)
+                            if vm.shift(on: date) != nil { vm.setShift(nil, on: date) }
+                            else { editingDate = CalendarEditSelection(date: date) }
                         } label: {
                             let shift = vm.shift(on: date)
                             CalendarDay(
@@ -734,7 +757,7 @@ private struct MonthCalendar: View {
                         .buttonStyle(CalendarDayButtonStyle())
                         .accessibilityIdentifier(vm.calendarDayIdentifier(date))
                         .accessibilityLabel(vm.calendarDayAccessibilityLabel(date))
-                        .accessibilityHint("轻点写班表")
+                        .accessibilityHint(vm.shift(on: date) == nil ? "轻点写班表" : "轻点直接取消当天排班")
                     } else {
                         Color.clear.frame(minHeight: 50)
                     }
@@ -989,6 +1012,7 @@ private struct ShiftChoice: View {
 
     private var label: String {
         switch kind {
+        case .normal: return "正常班"
         case .early: return "早班"
         case .deputy: return "副班"
         case .other: return "其他"
@@ -997,6 +1021,7 @@ private struct ShiftChoice: View {
 
     private var icon: String {
         switch kind {
+        case .normal: return "sun.max"
         case .early: return "sunrise"
         case .deputy: return "person.2"
         case .other: return "ellipsis"
@@ -1037,6 +1062,7 @@ private struct CalendarDay: View {
     private func dayDisc(isToday: Bool) -> Color {
         if isToday { return UsPalette.coral.opacity(0.84) }
         switch shift {
+        case .normal: return UsPalette.blush.opacity(0.11)
         case .early: return UsPalette.gold.opacity(0.11)
         case .deputy: return UsPalette.sage.opacity(0.10)
         case .other: return UsPalette.blush.opacity(0.13)
@@ -1046,6 +1072,7 @@ private struct CalendarDay: View {
 
     private var markerColor: Color {
         switch shift {
+        case .normal: return UsPalette.coral
         case .early: return UsPalette.gold
         case .deputy: return UsPalette.sage
         case .other: return UsPalette.coral
@@ -1075,6 +1102,13 @@ final class UsViewModel: ObservableObject {
     private let savedShiftNotesKey = "us.saved-shift-notes.v2"
     private let defaults: UserDefaults
     private let api: APIClient?
+    private let shiftAPI: (any ShiftAPI)?
+    @Published private(set) var shiftSyncStatus: String?
+    @Published private(set) var syncingShifts = false
+    private var pendingShifts: [String: PendingShiftChange] = [:]
+    private var shiftRevision = 0
+    private let pendingShiftsKey = "us.shift-sync.pending.v1"
+    private let knownRemoteShiftsKey = "us.shift-sync.remote-keys.v1"
     @Published private(set) var reminderLoadError: String?
     @Published private(set) var loadingReminders = false
 
@@ -1120,9 +1154,15 @@ final class UsViewModel: ObservableObject {
         calendar.isDate(date, equalTo: .now, toGranularity: .month)
     }
 
-    init(defaults: UserDefaults = .standard, api: APIClient? = nil) {
+    init(defaults: UserDefaults = .standard, api: APIClient? = nil, shiftAPI: (any ShiftAPI)? = nil) {
         self.defaults = defaults
         self.api = api
+        self.shiftAPI = shiftAPI ?? api
+        if let data = defaults.data(forKey: pendingShiftsKey),
+           let pending = try? JSONDecoder().decode([String: PendingShiftChange].self, from: data) {
+            pendingShifts = pending
+            if !pending.isEmpty { shiftSyncStatus = "班表已存到本机，等待同步给柯" }
+        }
         let today = calendar.startOfDay(for: .now)
         if let stored = defaults.dictionary(forKey: savedShiftsKey) as? [String: String] {
             savedShifts = stored.reduce(into: [:]) { result, entry in
@@ -1153,7 +1193,8 @@ final class UsViewModel: ObservableObject {
 
         let weekday = calendar.component(.weekday, from: today)
         let monday = calendar.date(byAdding: .day, value: -((weekday + 5) % 7), to: today) ?? today
-        let kinds: [ShiftDay.Kind?] = [nil, .early, .deputy, nil, .early, nil, .other]
+        let preview = ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("-ui-test") || $0.hasPrefix("-preview-us") })
+        let kinds: [ShiftDay.Kind?] = preview ? [nil, .early, .deputy, nil, .early, nil, .other] : Array(repeating: nil, count: 7)
         let notes: [String?] = [nil, nil, nil, nil, nil, nil, "培训"]
         thisWeek = (0..<7).map { index in
             let date = calendar.date(byAdding: .day, value: index, to: monday) ?? today
@@ -1166,6 +1207,8 @@ final class UsViewModel: ObservableObject {
     }
 
     func loadReminders() async {
+        await syncShifts()
+        await refreshShifts()
         guard let api else { return }
         loadingReminders = true
         defer { loadingReminders = false }
@@ -1242,6 +1285,7 @@ final class UsViewModel: ObservableObject {
 
     func shiftLabel(_ kind: ShiftDay.Kind) -> String {
         switch kind {
+        case .normal: return "正常班"
         case .early: return "早班"
         case .deputy: return "副班"
         case .other: return "其他"
@@ -1255,6 +1299,7 @@ final class UsViewModel: ObservableObject {
 
     func shiftDetail(_ kind: ShiftDay.Kind, on date: Date) -> String {
         switch kind {
+        case .normal: return "正常班"
         case .early: return "早班"
         case .deputy: return "副班"
         case .other: return shiftNote(on: date) ?? "其他班次"
@@ -1291,7 +1336,7 @@ final class UsViewModel: ObservableObject {
         let key = dateKey(date)
         if let kind {
             savedShifts[key] = kind
-            if kind == .other, let note, !note.isEmpty {
+            if let note, !note.isEmpty {
                 savedShiftNotes[key] = note
             } else {
                 savedShiftNotes.removeValue(forKey: key)
@@ -1316,6 +1361,160 @@ final class UsViewModel: ObservableObject {
         for key in clearedShiftKeys { stored[key] = "none" }
         defaults.set(stored, forKey: savedShiftsKey)
         defaults.set(savedShiftNotes, forKey: savedShiftNotesKey)
+        defaults.removeObject(forKey: "us.shift-plan.override." + key)
+        defaults.removeObject(forKey: "us.shift-plan.remote." + key)
+        updateEndTime(on: date)
+        queueShift(on: date)
+        Task { await syncShifts() }
+    }
+
+    func shiftPlan(on date: Date) -> ShiftPlan? {
+        let key = dateKey(date)
+        guard let kind = shift(on: date) else { return nil }
+        for prefix in ["us.shift-plan.override.", "us.shift-plan.remote."] {
+            if let data = defaults.data(forKey: prefix + key),
+               let plan = try? JSONDecoder().decode(ShiftPlan.self, from: data) { return plan }
+        }
+        return ShiftPlan.load(kind: kind.rawValue, defaults: defaults)
+    }
+
+    func shiftProfile(_ kind: ShiftDay.Kind) -> ShiftPlan {
+        ShiftPlan.load(kind: kind.rawValue, defaults: defaults) ?? .example
+    }
+
+    func saveShiftProfile(_ plan: ShiftPlan, kind: ShiftDay.Kind) {
+        guard plan.resolve(on: .now) != nil else { return }
+        plan.save(kind: kind.rawValue, defaults: defaults)
+        for (key, storedKind) in savedShifts where storedKind == kind {
+            guard let date = shiftDate(key), date >= calendar.startOfDay(for: .now),
+                  defaults.data(forKey: "us.shift-plan.override." + key) == nil else { continue }
+            defaults.removeObject(forKey: "us.shift-plan.remote." + key)
+            updateEndTime(on: date)
+            queueShift(on: date)
+        }
+        Task { await syncShifts() }
+    }
+
+    func saveShiftOverride(_ plan: ShiftPlan?, on date: Date) {
+        guard shift(on: date) != nil, plan == nil || plan?.resolve(on: date) != nil else { return }
+        let key = dateKey(date)
+        if let plan { defaults.set(try? JSONEncoder().encode(plan), forKey: "us.shift-plan.override." + key) }
+        else { defaults.removeObject(forKey: "us.shift-plan.override." + key) }
+        defaults.removeObject(forKey: "us.shift-plan.remote." + key)
+        updateEndTime(on: date)
+        queueShift(on: date)
+        Task { await syncShifts() }
+    }
+
+    private func queueShift(on date: Date) {
+        let key = dateKey(date)
+        if let kind = shift(on: date) {
+            let plan = shiftPlan(on: date)
+            if let plan {
+                defaults.set(try? JSONEncoder().encode(plan), forKey: "us.shift-plan.remote." + key)
+            }
+            let adjusted = plan != nil && plan != ShiftPlan.preset(kind: kind.rawValue)
+            pendingShifts[key] = PendingShiftChange(
+                shift: shiftLabel(kind) + (adjusted ? "（已调整）" : ""),
+                note: ShiftNote.encode(plan: plan, note: savedShiftNotes[key],
+                                      dayOverride: defaults.data(forKey: "us.shift-plan.override." + key) != nil))
+        } else { pendingShifts[key] = PendingShiftChange(shift: nil) }
+        shiftRevision += 1
+        persistPendingShifts()
+        shiftSyncStatus = "班表已存好，等待同步给柯"
+    }
+
+    private func persistPendingShifts() {
+        defaults.set(try? JSONEncoder().encode(pendingShifts), forKey: pendingShiftsKey)
+    }
+
+    func syncShifts() async {
+        guard let shiftAPI, !syncingShifts, !pendingShifts.isEmpty else { return }
+        syncingShifts = true
+        shiftSyncStatus = "正在同步班表给柯…"
+        defer { syncingShifts = false }
+        while let key = pendingShifts.keys.sorted().first, let change = pendingShifts[key] {
+            do {
+                if let shift = change.shift { try await shiftAPI.setShift(date: key, shift: shift, note: change.note) }
+                else { try await shiftAPI.deleteShift(date: key) }
+                // A tap while this request was in flight must remain queued.
+                if pendingShifts[key] == change {
+                    pendingShifts.removeValue(forKey: key)
+                    shiftRevision += 1
+                    persistPendingShifts()
+                    var known = Set(defaults.stringArray(forKey: knownRemoteShiftsKey) ?? [])
+                    if change.shift == nil { known.remove(key) } else { known.insert(key) }
+                    defaults.set(Array(known), forKey: knownRemoteShiftsKey)
+                }
+            } catch {
+                shiftSyncStatus = "已存到本机，暂未同步给柯。点这里重试"
+                return
+            }
+        }
+        shiftSyncStatus = "班表已同步，柯能看到"
+    }
+
+    func refreshShifts() async {
+        guard let shiftAPI else { return }
+        let revision = shiftRevision
+        do {
+            let rows = try await shiftAPI.fetchShifts()
+            guard revision == shiftRevision else { return }
+            let remoteKeys = Set(rows.map(\.date))
+            let oldKeys = Set(defaults.stringArray(forKey: knownRemoteShiftsKey) ?? [])
+            for key in oldKeys.subtracting(remoteKeys) where pendingShifts[key] == nil {
+                savedShifts.removeValue(forKey: key); savedShiftNotes.removeValue(forKey: key)
+                clearedShiftKeys.insert(key)
+                defaults.removeObject(forKey: "us.shift-plan.override." + key)
+                defaults.removeObject(forKey: "us.shift-plan.remote." + key)
+                if let date = shiftDate(key) { updateEndTime(on: date) }
+            }
+            for row in rows where pendingShifts[row.date] == nil {
+                guard let date = shiftDate(row.date) else { continue }
+                let label = row.shift.replacingOccurrences(of: "（已调整）", with: "")
+                let kind = ShiftDay.Kind.allCases.first { shiftLabel($0) == label } ?? .other
+                savedShifts[row.date] = kind
+                clearedShiftKeys.remove(row.date)
+                let note = row.note ?? ""
+                savedShiftNotes[row.date] = kind == .other ? (ShiftNote.userNote(from: note) ?? label) : ShiftNote.userNote(from: note)
+                defaults.removeObject(forKey: "us.shift-plan.override." + row.date)
+                defaults.removeObject(forKey: "us.shift-plan.remote." + row.date)
+                if let plan = ShiftNote.plan(from: note) {
+                    let prefix = note.contains("\n范围：当天单独调整") ? "us.shift-plan.override." : "us.shift-plan.remote."
+                    defaults.set(try? JSONEncoder().encode(plan), forKey: prefix + row.date)
+                }
+                updateEndTime(on: date)
+            }
+            defaults.set(Array(remoteKeys), forKey: knownRemoteShiftsKey)
+            var stored = savedShifts.mapValues(\.rawValue)
+            for key in clearedShiftKeys { stored[key] = "none" }
+            defaults.set(stored, forKey: savedShiftsKey)
+            defaults.set(savedShiftNotes, forKey: savedShiftNotesKey)
+            thisWeek = thisWeek.map { day in
+                let key = dateKey(day.date)
+                return ShiftDay(id: day.id, date: day.date, kind: savedShifts[key], note: savedShiftNotes[key])
+            }
+        } catch {
+            if pendingShifts.isEmpty { shiftSyncStatus = "班表暂未接上，请下拉重试" }
+        }
+    }
+
+    private func shiftDate(_ key: String) -> Date? {
+        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"; formatter.isLenient = false
+        return formatter.date(from: key)
+    }
+
+    private func updateEndTime(on date: Date) {
+        guard defaults === UserDefaults.standard else { return }
+        // Clear the coordinator's previous day override before recomputing it.
+        let overrideData = defaults.data(forKey: "us.shift-plan.override." + dateKey(date))
+        let plan = shiftPlan(on: date)
+        HomeReminderCoordinator.shared.clearEndTime(on: date)
+        if let overrideData { defaults.set(overrideData, forKey: "us.shift-plan.override." + dateKey(date)) }
+        if let end = plan?.resolve(on: date)?.end {
+            HomeReminderCoordinator.shared.setEndTime(end, on: date, override: overrideData != nil)
+        }
     }
 
     func calendarDayAccessibilityLabel(_ date: Date) -> String {
