@@ -1,0 +1,121 @@
+--- a/db.py
++++ b/db.py
+@@ -1115,6 +1115,11 @@
+ def init_db():
+     conn = get_db()
+     conn.executescript(SCHEMA)
++    # End dates preserve the original period record; serialize old-schema migration.
++    conn.execute("BEGIN IMMEDIATE")
++    if "end_date" not in {r["name"] for r in conn.execute("PRAGMA table_info(period_logs)")}:
++        conn.execute("ALTER TABLE period_logs ADD COLUMN end_date TEXT")
++    conn.commit()
+     # FTS 是检查点 3 才加的；旧库已有原始事件时一次性补齐。以后新增事件由触发器同步。
+     event_count = int(conn.execute("SELECT COUNT(*) FROM memory_events").fetchone()[0])
+     fts_count = int(conn.execute("SELECT COUNT(*) FROM memory_events_fts").fetchone()[0])
+@@ -2571,18 +2576,51 @@
+     conn.commit(); conn.close()
+ 
+ # ---- 姨妈记录 ----
+-def add_period(start_date, note=""):
+-    conn = get_db()
+-    cur = conn.execute("INSERT INTO period_logs (start_date,note) VALUES (?,?)", (start_date, note))
+-    conn.commit(); pid = cur.lastrowid; conn.close()
+-    return pid
++def add_period(start_date, note="", end_date=""):
++    conn = get_db()
++    try:
++        conn.execute("BEGIN IMMEDIATE")
++        # Retry of a start must not create a second cycle or erase an existing end.
++        row = conn.execute("SELECT id FROM period_logs WHERE start_date=? ORDER BY id DESC LIMIT 1", (start_date,)).fetchone()
++        if row:
++            conn.commit()
++            return row["id"]
++        cur = conn.execute("INSERT INTO period_logs (start_date,note,end_date) VALUES (?,?,?)",
++                           (start_date, note, end_date or None))
++        conn.commit()
++        return cur.lastrowid
++    finally:
++        conn.close()
++
+ 
+ def recent_periods(limit=12):
+     conn = get_db()
+-    rows = conn.execute("SELECT id,start_date,note FROM period_logs ORDER BY start_date DESC LIMIT ?",
+-                        (limit,)).fetchall()
+-    conn.close()
+-    return [dict(r) for r in rows]
++    try:
++        rows = conn.execute("SELECT id,start_date,NULLIF(end_date,'') AS end_date,note FROM period_logs ORDER BY start_date DESC,id DESC LIMIT ?",
++                            (limit,)).fetchall()
++        return [dict(r) for r in rows]
++    finally:
++        conn.close()
++
++
++def end_period(pid, end_date):
++    """Update the existing record in this line's DB, never delete or recreate it."""
++    conn = get_db()
++    try:
++        conn.execute("BEGIN IMMEDIATE")
++        row = conn.execute("SELECT start_date,end_date FROM period_logs WHERE id=?", (pid,)).fetchone()
++        if row is None:
++            raise LookupError("period not found")
++        end = datetime.date.fromisoformat(end_date)
++        if end < datetime.date.fromisoformat(row["start_date"]):
++            raise ValueError("end precedes start")
++        if row["end_date"] and row["end_date"] != end_date:
++            raise ValueError("period already ended on a different date")
++        conn.execute("UPDATE period_logs SET end_date=? WHERE id=?", (end_date, pid))
++        conn.commit()
++    finally:
++        conn.close()
++
+ 
+ def delete_period(pid):
+     conn = get_db()
+--- a/routes/daily.py
++++ b/routes/daily.py
+@@ -65,6 +65,28 @@
+     if end_value < start_value or (end_value - start_value).days > 14:
+         return jsonify({"error": "invalid period range"}), 400
+     return jsonify({"id": db.add_period(date, d.get("note", ""), end_date)})
++
++
++@bp.post("/api/periods/end")
++@guard
++def api_period_end():
++    d = jbody()
++    if not isinstance(d, dict):
++        return jsonify({"error": "need id+end_date"}), 400
++    pid, value = d.get("id"), d.get("end_date")
++    if type(pid) is not int or pid <= 0 or not isinstance(value, str):
++        return jsonify({"error": "need id+end_date"}), 400
++    try:
++        end = datetime.date.fromisoformat(value)
++        today = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).date()
++        if value != end.isoformat() or end > today:
++            raise ValueError("invalid end date")
++        db.end_period(pid, value)
++    except LookupError:
++        return jsonify({"error": "period not found"}), 404
++    except (ValueError, TypeError):
++        return jsonify({"error": "invalid period end"}), 400
++    return jsonify({"ok": True})
+ 
+ 
+ @bp.post("/api/periods/delete")
+--- a/context.py
++++ b/context.py
+@@ -56,7 +56,11 @@
+         cycle = DEFAULT_CYCLE
+     day_in = (today - last).days
+     lines = []
+-    if 0 <= day_in < PERIOD_DAYS:
++    latest = max(logs, key=lambda row: (row["start_date"], row["id"]))
++    recorded_end = latest.get("end_date")
++    if recorded_end and recorded_end <= today.isoformat():
++        lines.append(f"- 用户已记录这次经期结束：{last.isoformat()} 来，{recorded_end} 结束。以她的实际记录为准。")
++    elif 0 <= day_in < PERIOD_DAYS:
+         lines.append(
+             f"- 用户现在很可能正在经期（第 {day_in + 1} 天），可体贴地关心一下（保暖、休息、注意身体）。")
+     else:

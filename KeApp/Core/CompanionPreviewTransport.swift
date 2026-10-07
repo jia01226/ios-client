@@ -78,6 +78,8 @@ final class CompanionPreviewTransport: URLProtocol {
                 } else {
                     body = "[" + rows.filter { query.isEmpty || $0.contains(query) }.joined(separator: ",") + "]"
                 }
+            case let p where p.hasSuffix("/api/drawer"):
+                body = #"{"sealed":true,"outside":[{"id":1,"title":"给你留的一页","teaser":"窗边的灯还亮着。","content":"窗边的灯还亮着。","visibility":"released","created_at":"2026-10-07"}]}"#
             case let p where p.hasSuffix("/work/drawer"):
                 body = ##"{"summary":{"running":1,"today":4,"last_dispatch":"2026-09-19 19:05","last_dispatch_ago":"3小时前"},"tasks":[{"id":"work-a1","status":"running","instruction":"把抽屉页接上真实的派活记录，跑完告诉我","created_at":"2026-09-19 19:05","updated_at":"2026-09-19 19:32","steps":38,"runs":[{"title":"跑：读现有接口","detail":"先看了已有接口，确认字段名和落库的表对得上。","status":"succeeded","created_at":"2026-09-19 19:06"}]}]}"##
             case let p where p.hasSuffix("/moments"):

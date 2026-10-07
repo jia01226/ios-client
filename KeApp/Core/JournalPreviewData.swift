@@ -13,7 +13,11 @@ enum JournalPreviewData {
         lock.lock(); defer { lock.unlock() }
         let fields = (body(request).flatMap { try? JSONSerialization.jsonObject(with: $0) }) as? [String: Any] ?? [:]
         func json(_ value: Any) -> String { String(data: try! JSONSerialization.data(withJSONObject: value), encoding: .utf8)! }
-        if path.hasSuffix("/api/periods/end") { return (404, "{\"error\":\"end-date API not deployed\"}") }
+        if path.hasSuffix("/api/periods/end") {
+            guard let index = periods.firstIndex(where: { $0["id"] as? Int == fields["id"] as? Int }), let date = fields["end_date"] as? String else { return (404, "{\"error\":\"period not found\"}") }
+            periods[index]["end_date"] = date
+            return (200, "{\"ok\":true}")
+        }
         if path.hasSuffix("/api/periods/delete") {
             periods.removeAll { $0["id"] as? Int == fields["id"] as? Int }
             return (200, "{\"ok\":true}")

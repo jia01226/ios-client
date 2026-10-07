@@ -13,6 +13,10 @@ final class MorandiAppearanceTests: XCTestCase {
             app.descendants(matching: .any).matching(identifier: "root-tab-bar").firstMatch.buttons[label].tap()
             XCTAssertTrue(app.buttons["柯"].waitForExistence(timeout: 5))
             Thread.sleep(forTimeInterval: 2)
+            if label == "抽屉" {
+                XCTAssertTrue(app.staticTexts["给你留的一页"].waitForExistence(timeout: 5))
+                XCTAssertFalse(app.staticTexts["没有打开成功，请重试。"].exists)
+            }
             capture(name, in: testCase)
             if label == "我们" { captureUsDetails(app, in: testCase) }
             if label == "玩" { captureHut(app, in: testCase) }
@@ -23,6 +27,12 @@ final class MorandiAppearanceTests: XCTestCase {
     private static func captureUsDetails(_ app: XCUIApplication, in testCase: XCTestCase) {
         XCTAssertTrue(app.buttons["period-start"].isHittable)
         XCTAssertTrue(app.buttons["period-end"].isHittable)
+        app.buttons["period-start"].tap()
+        XCTAssertTrue(app.staticTexts["今天来了，已经记给柯。"].waitForExistence(timeout: 5))
+        let canEnd = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: app.buttons["period-end"])
+        XCTAssertEqual(XCTWaiter.wait(for: [canEnd], timeout: 5), .completed)
+        app.buttons["period-end"].tap()
+        XCTAssertTrue(app.staticTexts["结束日期已同步给柯。"].waitForExistence(timeout: 5))
         capture("14-calendar-first-screen", in: testCase)
         app.buttons["calendar-section-周班表"].tap()
         verifyQuickCancellation(app, in: testCase)

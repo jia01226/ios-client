@@ -9,3 +9,5 @@
 - 后续替换 IPA 时应保持 Bundle ID `love.jiagude.ke`，并同步更新 build number。
 
 服务器目录为 `/var/www/ke-ota/`。安装地址使用不可猜路径，避免把私人 IPA 暴露在固定 URL 下。
+
+Build 73 起首页显示版本号，安装按钮使用版本固定的 manifest/IPA，避免旧链接缓存混包。使用 `deployment/deploy_ota.py` 的哈希预检与备份流程；旧 `deploy-on-vps.sh` 中含历史包的固定哈希，不用于本次升级。
