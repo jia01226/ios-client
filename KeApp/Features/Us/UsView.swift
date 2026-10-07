@@ -675,7 +675,7 @@ private struct MonthCalendar: View {
                 Image("WatercolorMoon")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 118, height: 118)
+                    .frame(width: journal ? 0 : 118, height: journal ? 0 : 118)
                     .opacity(journal ? 0 : 0.12)
                     .offset(x: 18, y: -28)
                     .accessibilityHidden(true)
