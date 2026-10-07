@@ -1,37 +1,27 @@
 import SwiftUI
 
-/// A quiet shift journal; home and medication controls live on their own page.
+/// One or two work periods; breaks never count towards worked time.
 struct HomeReminderSettingsView: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var model: UsViewModel
     @ObservedObject private var reminders = HomeReminderCoordinator.shared
     @State private var selectedDate: Date
-    @State private var start = Calendar.current.date(bySettingHour: 8, minute: 0, second: 0, of: Date())!
-    @State private var hours = 8.0
+    @State private var plan = ShiftPlan.example
     @State private var shiftKind = ShiftDay.Kind.early
     @State private var showingDay = false
     @State private var saved = false
-    @State private var showingStart = false
-    @AppStorage("us.shift-profile.early.start") private var earlyStart = -1
-    @AppStorage("us.shift-profile.early.minutes") private var earlyMinutes = 0
-    @AppStorage("us.shift-profile.deputy.start") private var deputyStart = -1
-    @AppStorage("us.shift-profile.deputy.minutes") private var deputyMinutes = 0
-    @AppStorage("us.shift-profile.other.start") private var otherStart = -1
-    @AppStorage("us.shift-profile.other.minutes") private var otherMinutes = 0
-
+    @State private var editingClock: ClockSelection?
+    private struct ClockSelection: Identifiable {
+        let period: Int
+        let isEnd: Bool
+        var id: String { "\(period)-\(isEnd)" }
+    }
     init(model: UsViewModel, date: Date = .now) {
         self.model = model
         _selectedDate = State(initialValue: date)
     }
-    private var beginning: Date {
-        let p = Calendar.current.dateComponents([.hour, .minute], from: start)
-        return Calendar.current.date(bySettingHour: p.hour!, minute: p.minute!, second: 0, of: selectedDate)!
-    }
-    private var calculatedEnd: Date {
-        let p = Calendar.current.dateComponents([.hour, .minute], from: start)
-        return ShiftTiming.end(on: selectedDate, startMinutes: p.hour! * 60 + p.minute!, durationMinutes: Int(hours * 60)) ?? beginning
-    }
+    private var resolved: ShiftPlan.Resolved? { plan.resolve(on: selectedDate) }
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
@@ -39,141 +29,182 @@ struct HomeReminderSettingsView: View {
                 Text("先写下你的班次。")
                     .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
                 Text("班次小记").font(theme.font.journalTitle)
-                VStack(alignment: .leading, spacing: 18) {
-                    HStack(spacing: 28) {
-                        Text("班次").foregroundStyle(theme.pageColor.textSecondary).frame(width: 36)
-                        Menu {
-                            ForEach(ShiftDay.Kind.allCases, id: \.self) { kind in
-                                Button(model.shiftLabel(kind)) { shiftKind = kind }
-                            }
-                        } label: {
-                            Text(model.shiftLabel(shiftKind)).frame(width: 110, alignment: .leading)
-                                .padding(.bottom, 5).overlay(alignment: .bottom) { Rectangle().fill(theme.pageAccent).frame(height: 0.5) }
-                        }.accessibilityIdentifier("shift-profile-kind")
-                    }
-                    HStack(spacing: 28) {
-                        Text("上班").foregroundStyle(theme.pageColor.textSecondary).frame(width: 36)
-                        Button(clockText(start)) { showingStart = true }
-                            .frame(width: 110, alignment: .leading).padding(.bottom, 5)
-                            .overlay(alignment: .bottom) { Rectangle().fill(theme.pageAccent).frame(height: 0.5) }
-                            .accessibilityIdentifier("shift-start-time")
-                    }
-                    HStack(spacing: 18) {
-                        Text("时长").foregroundStyle(theme.pageColor.textSecondary).frame(width: 36).padding(.trailing, 10)
-                        Text("\(hours.formatted(.number.precision(.fractionLength(0...1)))) 小时")
-                            .frame(width: 75, alignment: .leading).padding(.bottom, 5)
-                            .overlay(alignment: .bottom) { Rectangle().fill(theme.pageAccent).frame(height: 0.5) }
-                        durationButton("minus", label: "减少半小时", enabled: hours > 0.5) { hours -= 0.5 }
-                        durationButton("plus", label: "增加半小时", enabled: hours < 24) { hours += 0.5 }
-                    }.accessibilityIdentifier("shift-duration")
-                }.padding(.leading, 18).padding(.top, 14)
-                .onChange(of: shiftKind) { _, _ in loadProfile() }
-                VStack(alignment: .leading, spacing: 44) {
-                    timelineRow(beginning, text: "上班", icon: "circle.fill")
-                    timelineRow(calculatedEnd, text: "下班", icon: "circle")
-                    timelineRow(calculatedEnd.addingTimeInterval(3600), text: "惦记 D3", icon: "moon")
-                    Text("下班后一个小时，跟晚饭一起。")
-                        .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
-                        .padding(.leading, 28)
+                HStack(spacing: 24) {
+                    Text("班次").foregroundStyle(theme.pageColor.textSecondary)
+                    Menu {
+                        ForEach(ShiftDay.Kind.allCases, id: \.self) { kind in
+                            Button(model.shiftLabel(kind)) { shiftKind = kind; loadProfile() }
+                        }
+                    } label: {
+                        Text(model.shiftLabel(shiftKind)).frame(width: 110, alignment: .leading)
+                            .padding(.bottom, 5).overlay(alignment: .bottom) { hairline }
+                    }.accessibilityIdentifier("shift-profile-kind")
+                }.padding(.top, 8)
+                HStack(spacing: 12) {
+                    modeButton("连续上班", split: false)
+                    modeButton("分两段", split: true)
                 }
-                .padding(.vertical, 16)
-                .background(alignment: .leading) {
-                    MoonOrbitGuide().stroke(theme.pageColor.separator, lineWidth: 0.7)
-                        .frame(width: 12).padding(.bottom, 38).allowsHitTesting(false)
+                VStack(spacing: 20) {
+                    ForEach(plan.periods.indices, id: \.self) { index in
+                        VStack(alignment: .leading, spacing: 12) {
+                            if plan.periods.count == 2 {
+                                Text(index == 0 ? "第一段" : "第二段").font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
+                            }
+                            HStack(spacing: 24) {
+                                clockButton(index, isEnd: false)
+                                Text("—").foregroundStyle(theme.pageColor.separator)
+                                clockButton(index, isEnd: true)
+                            }
+                        }
+                    }
+                }
+                if let resolved {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("合计上班 \(durationText(resolved.workMinutes))")
+                        if resolved.breakMinutes > 0 {
+                            Text("中间休息 \(durationText(resolved.breakMinutes))，不计入工时。")
+                                .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
+                        }
+                    }.accessibilityIdentifier("shift-work-duration")
+                    VStack(alignment: .leading, spacing: plan.periods.count == 2 ? 20 : 38) {
+                        ForEach(Array(resolved.periods.enumerated()), id: \.offset) { index, period in
+                            timelineRow(period.start, text: index == 0 ? "上班" : "继续上班", icon: index == 0 ? "circle.fill" : "circle")
+                            timelineRow(period.end, text: index == resolved.periods.count - 1 ? "下班" : "休息", icon: "circle")
+                        }
+                        timelineRow(resolved.end.addingTimeInterval(3600), text: "惦记 D3", icon: "moon")
+                    }
+                    .padding(.vertical, 8)
+                    .background(alignment: .leading) {
+                        MoonOrbitGuide().stroke(theme.pageColor.separator, lineWidth: 0.7).frame(width: 12).allowsHitTesting(false)
+                    }
+                    Text("最后一段下班后一个小时，跟晚饭一起。")
+                        .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
+                } else {
+                    Text("请检查起止时间：每段结束不能与开始相同，两段需按顺序填写，整班不超过一天。")
+                        .font(theme.font.journalCaption).foregroundStyle(theme.pageAccent)
                 }
                 Button {
-                    saveProfile(); applyProfiles(); saved = true
+                    plan.save(kind: shiftKind.rawValue); applyProfiles(); saved = true
                 } label: {
-                    HStack(spacing: 10) { Text(saved ? "这个班次记好了" : "记住这个班次").underline(); Image(systemName: saved ? "checkmark" : "chevron.right").font(.system(size: 10, weight: .light)) }.font(theme.font.journalBody).foregroundStyle(theme.pageAccent).frame(maxWidth: .infinity)
-                }.accessibilityIdentifier("shift-profile-save")
-                Divider().overlay(theme.pageColor.separator)
+                    HStack(spacing: 10) {
+                        Text(saved ? "这个班次记好了" : "记住这个班次").underline()
+                        Image(systemName: saved ? "checkmark" : "chevron.right").font(.system(size: 10, weight: .light))
+                    }.foregroundStyle(theme.pageAccent).frame(maxWidth: .infinity)
+                }.disabled(resolved == nil).accessibilityIdentifier("shift-profile-save")
+                hairline
                 Button { showingDay.toggle() } label: {
-                    HStack(spacing: 10) { Text("某一天不一样？单独记").underline(); Image(systemName: "chevron.right").font(.system(size: 10, weight: .light)) }.font(theme.font.journalCaption).foregroundStyle(theme.pageAccent).frame(maxWidth: .infinity)
+                    HStack(spacing: 10) {
+                        Text("某一天不一样？单独记").underline()
+                        Image(systemName: "chevron.right").font(.system(size: 10, weight: .light))
+                    }.font(theme.font.journalCaption).foregroundStyle(theme.pageAccent).frame(maxWidth: .infinity)
                 }.accessibilityIdentifier("shift-day-adjust")
                 if showingDay {
                     DatePicker("日期", selection: $selectedDate, displayedComponents: .date)
                     Text(model.shift(on: selectedDate).map { "当天班次：" + model.shiftLabel($0) } ?? "这天还没排班，请先在月历填班次。")
                         .font(theme.font.journalCaption)
-                    Text("按上面的起点与时长，算到 \(calculatedEnd.formatted(date: .abbreviated, time: .shortened)) 下班。")
-                        .font(theme.font.journalCaption)
-                    Button("只记这一天的下班时间") { reminders.setEndTime(calculatedEnd, on: selectedDate) }
-                        .disabled(model.shift(on: selectedDate) == nil)
-                        .accessibilityIdentifier("shift-day-save")
+                    Button("只记这一天的时间") {
+                        guard let resolved else { return }
+                        UserDefaults.standard.set(try? JSONEncoder().encode(plan), forKey: overrideKey)
+                        reminders.setEndTime(resolved.end, on: selectedDate)
+                    }.disabled(resolved == nil || model.shift(on: selectedDate) == nil).accessibilityIdentifier("shift-day-save")
                     if let end = reminders.endTime(on: selectedDate) {
-                        Text("已记：\(end.formatted(date: .abbreviated, time: .shortened)) 下班，\(end.addingTimeInterval(3600).formatted(date: .omitted, time: .shortened)) 提醒 D3")
+                        Text("已记：\(end.formatted(date: .abbreviated, time: .shortened)) 下班")
                             .font(theme.font.journalCaption)
-                        Button("清除当天的单独调整", role: .destructive) { reminders.clearEndTime(on: selectedDate) }
+                        Button("清除当天的单独调整", role: .destructive) {
+                            reminders.clearEndTime(on: selectedDate); loadProfile(); applyProfiles()
+                        }
                     }
                 }
-                Text("数值由你填写，点“记住”才用于计算。跨午夜会算到次日；单独调整的日期优先。")
+                Text("时间由你填写，点“记住”才保存。跨午夜会标为次日；单独调整的日期优先。")
                     .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
-            }
-            .padding(.horizontal, 28).padding(.vertical, 20)
+            }.padding(.horizontal, 28).padding(.vertical, 20)
         }
-        .font(theme.font.journalBody).buttonStyle(.plain)
-        .foregroundStyle(theme.pageColor.textPrimary)
-        .tint(theme.pageAccent)
+        .font(theme.font.journalBody).buttonStyle(.plain).foregroundStyle(theme.pageColor.textPrimary).tint(theme.pageAccent)
         .background { MoonJournalBackground().overlay(alignment: .topTrailing) { JournalMoonArtwork().frame(width: 180, height: 180).offset(x: 75, y: -55) }.clipped() }
-        .background(theme.pageBackground.ignoresSafeArea())
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .navigationBar)
-        .sheet(isPresented: $showingStart) {
+        .background(theme.pageBackground.ignoresSafeArea()).navigationBarTitleDisplayMode(.inline).toolbar(.hidden, for: .navigationBar)
+        .sheet(item: $editingClock) { selection in
             VStack(spacing: 12) {
-                DatePicker("上班时间", selection: $start, displayedComponents: .hourAndMinute)
+                DatePicker(selection.isEnd ? "结束时间" : "开始时间", selection: clockBinding(selection), displayedComponents: .hourAndMinute)
                     .datePickerStyle(.wheel).labelsHidden().environment(\.locale, Locale(identifier: "zh_CN"))
-                Button("记好了") { showingStart = false }.font(theme.font.journalBody)
+                Button("记好了") { editingClock = nil }.font(theme.font.journalBody)
             }.presentationDetents([.height(290)]).presentationBackground(theme.pageBackground).tint(theme.pageAccent)
         }
-        .onAppear {
-            shiftKind = model.shift(on: selectedDate) ?? .early
-            loadProfile(); applyProfiles()
-        }
+        .onAppear { loadDay(); applyProfiles() }
         .onChange(of: model.savedShifts) { _, _ in applyProfiles() }
-        .onChange(of: start) { _, _ in saved = false }
-        .onChange(of: hours) { _, _ in saved = false }
+        .onChange(of: plan) { _, _ in saved = false }
+        .onChange(of: selectedDate) { _, _ in loadDay() }
+    }
+    private var hairline: some View { Rectangle().fill(theme.pageColor.separator).frame(height: 0.5) }
+    private var overrideKey: String { "us.shift-plan.override." + HomeReminderCoordinator.dayKey(selectedDate) }
+    private func modeButton(_ title: String, split: Bool) -> some View {
+        let selected = (plan.periods.count == 2) == split
+        return Button { setSplit(split) } label: {
+            Text(title).font(theme.font.journalCaption).padding(.horizontal, 16).padding(.vertical, 9)
+                .background(theme.pageAccent.opacity(selected ? 0.18 : 0), in: Capsule())
+                .overlay(Capsule().stroke(theme.pageColor.separator, lineWidth: 0.5))
+        }.accessibilityIdentifier(split ? "shift-mode-split" : "shift-mode-continuous")
+    }
+    private func setSplit(_ split: Bool) {
+        guard split != (plan.periods.count == 2) else { return }
+        if split {
+            let first = plan.periods[0]
+            let duration = (first.endMinutes - first.startMinutes + 1440) % 1440
+            let middle = (first.startMinutes + max(30, duration / 2)) % 1440
+            plan.periods = [ShiftPeriod(startMinutes: first.startMinutes, endMinutes: middle),
+                            ShiftPeriod(startMinutes: (middle + 60) % 1440, endMinutes: first.endMinutes)]
+        } else {
+            plan.periods = [ShiftPeriod(startMinutes: plan.periods[0].startMinutes, endMinutes: plan.periods.last!.endMinutes)]
+        }
+    }
+    private func clockButton(_ index: Int, isEnd: Bool) -> some View {
+        let minutes = isEnd ? plan.periods[index].endMinutes : plan.periods[index].startMinutes
+        return Button { editingClock = ClockSelection(period: index, isEnd: isEnd) } label: {
+            VStack(alignment: .leading, spacing: 7) {
+                Text(isEnd ? "结束" : "开始").font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
+                HStack(spacing: 6) {
+                    Text(String(format: "%02d:%02d", minutes / 60, minutes % 60))
+                    if let resolved, resolved.periods.indices.contains(index) {
+                        let date = isEnd ? resolved.periods[index].end : resolved.periods[index].start
+                        if !Calendar.current.isDate(date, inSameDayAs: selectedDate) {
+                            Text("次日").font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
+                        }
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(.bottom, 5).overlay(alignment: .bottom) { hairline }
+            }
+        }.accessibilityIdentifier("shift-\(index)-\(isEnd ? "end" : "start")")
+    }
+    private func clockBinding(_ selection: ClockSelection) -> Binding<Date> {
+        Binding(get: {
+            let p = plan.periods[selection.period]
+            let minutes = selection.isEnd ? p.endMinutes : p.startMinutes
+            return Calendar.current.date(bySettingHour: minutes / 60, minute: minutes % 60, second: 0, of: selectedDate)!
+        }, set: { date in
+            let c = Calendar.current.dateComponents([.hour, .minute], from: date)
+            if selection.isEnd { plan.periods[selection.period].endMinutes = c.hour! * 60 + c.minute! }
+            else { plan.periods[selection.period].startMinutes = c.hour! * 60 + c.minute! }
+            plan.periods[selection.period].fullDay = false
+        })
+    }
+    private func durationText(_ minutes: Int) -> String {
+        minutes % 60 == 0 ? "\(minutes / 60) 小时" : "\(minutes / 60) 小时 \(minutes % 60) 分钟"
+    }
+    private func clockText(_ time: Date) -> String {
+        let formatter = DateFormatter(); formatter.dateFormat = "HH:mm"; return formatter.string(from: time)
     }
     private func timelineRow(_ time: Date, text: String, icon: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 16) {
             Image(systemName: icon).font(.system(size: 12)).foregroundStyle(theme.pageAccent).frame(width: 12)
             Text(clockText(time)).monospacedDigit()
             Text(text)
-            if !Calendar.current.isDate(time, inSameDayAs: selectedDate) {
-                Text("次日").font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
-            }
+            if !Calendar.current.isDate(time, inSameDayAs: selectedDate) { Text("次日").font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary) }
         }.font(theme.font.journalQuote)
     }
-    private func clockText(_ date: Date) -> String {
-        let formatter = DateFormatter(); formatter.dateFormat = "HH:mm"; return formatter.string(from: date)
-    }
-    private func durationButton(_ symbol: String, label: String, enabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 12, weight: .ultraLight))
-                .frame(width: 27, height: 27)
-                .overlay(Circle().stroke(theme.pageAccent, lineWidth: 0.6))
-                .frame(width: 36, height: 44)
-        }.foregroundStyle(theme.pageAccent).disabled(!enabled).accessibilityLabel(label)
-    }
-    private func loadProfile() {
-        saved = false
-        let p = profile(for: shiftKind)
-        guard p.0 >= 0, p.1 > 0 else { return }
-        start = Calendar.current.date(bySettingHour: p.0 / 60, minute: p.0 % 60, second: 0, of: .now)!
-        hours = Double(p.1) / 60
-    }
-    private func saveProfile() {
-        let c = Calendar.current.dateComponents([.hour, .minute], from: start)
-        let minutes = c.hour! * 60 + c.minute!
-        switch shiftKind {
-        case .early: earlyStart = minutes; earlyMinutes = Int(hours * 60)
-        case .deputy: deputyStart = minutes; deputyMinutes = Int(hours * 60)
-        case .other: otherStart = minutes; otherMinutes = Int(hours * 60)
-        }
-    }
-    private func profile(for kind: ShiftDay.Kind) -> (Int, Int) {
-        switch kind {
-        case .early: return (earlyStart, earlyMinutes)
-        case .deputy: return (deputyStart, deputyMinutes)
-        case .other: return (otherStart, otherMinutes)
+    private func loadProfile() { plan = ShiftPlan.load(kind: shiftKind.rawValue) ?? .example; saved = false }
+    private func loadDay() {
+        shiftKind = model.shift(on: selectedDate) ?? .early
+        loadProfile()
+        if let data = UserDefaults.standard.data(forKey: overrideKey), let override = try? JSONDecoder().decode(ShiftPlan.self, from: data) {
+            plan = override
         }
     }
     private func applyProfiles() {
@@ -181,9 +212,8 @@ struct HomeReminderSettingsView: View {
         let dates = Set(model.thisWeek.map(\.date) + model.savedShifts.keys.compactMap { formatter.date(from: $0) } + reminders.endTimes.keys.compactMap { formatter.date(from: $0) })
         for date in dates {
             guard let kind = model.shift(on: date) else { reminders.clearEndTime(on: date); continue }
-            let p = profile(for: kind)
-            guard p.0 >= 0, p.1 > 0, let start = Calendar.current.date(bySettingHour: p.0 / 60, minute: p.0 % 60, second: 0, of: date) else { continue }
-            reminders.setEndTime(start.addingTimeInterval(Double(p.1) * 60), on: date, override: false)
+            guard let end = ShiftPlan.load(kind: kind.rawValue)?.resolve(on: date)?.end else { continue }
+            reminders.setEndTime(end, on: date, override: false)
         }
     }
 }

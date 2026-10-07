@@ -26,6 +26,12 @@ final class MorandiAppearanceTests: XCTestCase {
         edit.tap()
         XCTAssertTrue(app.staticTexts["班次小记"].waitForExistence(timeout: 5))
         capture("06-shift-journal", in: testCase)
+        app.buttons["shift-mode-split"].tap()
+        XCTAssertTrue(app.buttons["shift-1-end"].waitForExistence(timeout: 5))
+        app.buttons["shift-1-end"].tap()
+        XCTAssertTrue(app.buttons["记好了"].waitForExistence(timeout: 5))
+        app.buttons["记好了"].tap()
+        capture("10-split-shift", in: testCase)
         app.buttons["返回"].firstMatch.tap()
         let reminder = app.buttons["us-reminder-journal"]
         for _ in 0..<3 where !reminder.isHittable { app.swipeUp() }

@@ -65,6 +65,7 @@ final class HomeReminderCoordinator: NSObject, ObservableObject, CLLocationManag
         refresh()
     }
     func clearEndTime(on date: Date) {
+        defaults.removeObject(forKey: "us.shift-plan.override." + Self.dayKey(date))
         overrides.remove(Self.dayKey(date))
         defaults.set(Array(overrides), forKey: "us.shift-end-overrides")
         endTimes.removeValue(forKey: Self.dayKey(date))
@@ -161,13 +162,11 @@ final class HomeReminderCoordinator: NSObject, ObservableObject, CLLocationManag
         formatter.dateFormat = "yyyy-MM-dd"
         for key in Array(endTimes.keys) where shifts[key] == nil {
             endTimes.removeValue(forKey: key); overrides.remove(key)
+            defaults.removeObject(forKey: "us.shift-plan.override." + key)
         }
         for (key, kind) in shifts where !overrides.contains(key) {
-            let prefix = "us.shift-profile." + kind
-            let start = defaults.integer(forKey: prefix + ".start")
-            let minutes = defaults.integer(forKey: prefix + ".minutes")
             guard let date = formatter.date(from: key),
-                  let end = ShiftTiming.end(on: date, startMinutes: start, durationMinutes: minutes) else { continue }
+                  let end = ShiftPlan.load(kind: kind, defaults: defaults)?.resolve(on: date)?.end else { continue }
             endTimes[key] = end
         }
         defaults.set(try? JSONEncoder().encode(endTimes), forKey: "us.shift-end-times")
