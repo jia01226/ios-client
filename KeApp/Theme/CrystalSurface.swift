@@ -151,6 +151,7 @@ struct JournalMoonArtwork: View {
             Image(systemName: "sparkle").font(.system(size: 9, weight: .ultraLight))
                 .foregroundStyle(theme.pageAccent).offset(x: -118, y: 8)
         }
+        .opacity(theme.skin == .day ? 1 : 0)
         .allowsHitTesting(false).accessibilityHidden(true)
     }
 }

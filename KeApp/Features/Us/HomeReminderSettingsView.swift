@@ -39,33 +39,36 @@ struct HomeReminderSettingsView: View {
                 Text("先写下你的班次。")
                     .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
                 Text("班次小记").font(theme.font.journalTitle)
-                VStack(spacing: 22) {
-                    HStack {
-                        Text("班次").foregroundStyle(theme.pageColor.textSecondary)
-                        Spacer()
-                        Picker("班次", selection: $shiftKind) {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 28) {
+                        Text("班次").foregroundStyle(theme.pageColor.textSecondary).frame(width: 36)
+                        Menu {
                             ForEach(ShiftDay.Kind.allCases, id: \.self) { kind in
-                                Text(model.shiftLabel(kind)).tag(kind)
+                                Button(model.shiftLabel(kind)) { shiftKind = kind }
                             }
-                        }.pickerStyle(.menu)
-                        .accessibilityIdentifier("shift-profile-kind")
+                        } label: {
+                            Text(model.shiftLabel(shiftKind)).frame(width: 110, alignment: .leading)
+                                .padding(.bottom, 5).overlay(alignment: .bottom) { Rectangle().fill(theme.pageAccent).frame(height: 0.5) }
+                        }.accessibilityIdentifier("shift-profile-kind")
                     }
-                    HStack {
-                        Text("上班").foregroundStyle(theme.pageColor.textSecondary)
-                        Spacer()
+                    HStack(spacing: 28) {
+                        Text("上班").foregroundStyle(theme.pageColor.textSecondary).frame(width: 36)
                         Button(clockText(start)) { showingStart = true }
-                            .underline().accessibilityIdentifier("shift-start-time")
+                            .frame(width: 110, alignment: .leading).padding(.bottom, 5)
+                            .overlay(alignment: .bottom) { Rectangle().fill(theme.pageAccent).frame(height: 0.5) }
+                            .accessibilityIdentifier("shift-start-time")
                     }
                     HStack(spacing: 18) {
-                        Text("时长").foregroundStyle(theme.pageColor.textSecondary)
-                        Spacer()
+                        Text("时长").foregroundStyle(theme.pageColor.textSecondary).frame(width: 36).padding(.trailing, 10)
                         Text("\(hours.formatted(.number.precision(.fractionLength(0...1)))) 小时")
+                            .frame(width: 75, alignment: .leading).padding(.bottom, 5)
+                            .overlay(alignment: .bottom) { Rectangle().fill(theme.pageAccent).frame(height: 0.5) }
                         durationButton("minus", label: "减少半小时", enabled: hours > 0.5) { hours -= 0.5 }
                         durationButton("plus", label: "增加半小时", enabled: hours < 24) { hours += 0.5 }
                     }.accessibilityIdentifier("shift-duration")
-                }
+                }.padding(.leading, 18).padding(.top, 14)
                 .onChange(of: shiftKind) { _, _ in loadProfile() }
-                VStack(alignment: .leading, spacing: 34) {
+                VStack(alignment: .leading, spacing: 44) {
                     timelineRow(beginning, text: "上班", icon: "circle.fill")
                     timelineRow(calculatedEnd, text: "下班", icon: "circle")
                     timelineRow(calculatedEnd.addingTimeInterval(3600), text: "惦记 D3", icon: "moon")
@@ -81,12 +84,11 @@ struct HomeReminderSettingsView: View {
                 Button {
                     saveProfile(); applyProfiles(); saved = true
                 } label: {
-                    Label(saved ? "这个班次记好了" : "记住这个班次", systemImage: saved ? "checkmark" : "chevron.right")
-                        .underline()
+                    HStack(spacing: 10) { Text(saved ? "这个班次记好了" : "记住这个班次").underline(); Image(systemName: saved ? "checkmark" : "chevron.right").font(.system(size: 10, weight: .light)) }.font(theme.font.journalBody).foregroundStyle(theme.pageAccent).frame(maxWidth: .infinity)
                 }.accessibilityIdentifier("shift-profile-save")
                 Divider().overlay(theme.pageColor.separator)
                 Button { showingDay.toggle() } label: {
-                    Label("某一天不一样？单独记", systemImage: "chevron.down")
+                    HStack(spacing: 10) { Text("某一天不一样？单独记").underline(); Image(systemName: "chevron.right").font(.system(size: 10, weight: .light)) }.font(theme.font.journalCaption).foregroundStyle(theme.pageAccent).frame(maxWidth: .infinity)
                 }.accessibilityIdentifier("shift-day-adjust")
                 if showingDay {
                     DatePicker("日期", selection: $selectedDate, displayedComponents: .date)
@@ -193,64 +195,67 @@ struct ReminderJournalView: View {
     @State private var promise = ""
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                Button("返回") { dismiss() }.font(theme.font.journalCaption).padding(.bottom, 8)
-                HStack {
-                    Text("到家了，再慢慢来。")
-                        .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
+            VStack(alignment: .leading, spacing: 0) {
+                Button("返回") { dismiss() }.font(theme.font.journalCaption).padding(.bottom, 24)
+                HStack(alignment: .top) {
+                    Text("到家了，再慢慢来。").font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
                     Spacer()
-                    Button { showingHome = true } label: { Image(systemName: "gearshape") }
-                        .accessibilityLabel("家的位置和提醒设置").accessibilityIdentifier("reminder-home-settings")
+                    Button { showingHome = true } label: {
+                        VStack(spacing: 5) {
+                            Image(systemName: "gearshape").font(.system(size: 18, weight: .ultraLight))
+                            Text("家的位置").font(.custom("NotoSerifSC-ExtraLight", size: 9))
+                        }
+                    }.accessibilityLabel("家的位置和提醒设置").accessibilityIdentifier("reminder-home-settings")
                 }
-                Text("今晚的惦记").font(theme.font.journalTitle)
-                Text(reminders.status).font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
-                journalHeading("下班后一小时", symbol: "moon")
-                Text("D3 · 跟晚饭一起")
-                if let end = reminders.endTime(on: .now) {
-                    Text(end.addingTimeInterval(3600).formatted(date: .abbreviated, time: .shortened))
-                        .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
-                } else {
-                    Text("先在班次小记里填下班时间。")
-                        .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
-                }
-                completion("d3", title: "D3")
-                journalHeading("饭后", symbol: "moon")
+                Text("今晚的惦记").font(theme.font.journalTitle).padding(.top, 10)
+                HStack(spacing: 7) {
+                    Circle().stroke(theme.pageAccent, lineWidth: 0.6).frame(width: 9, height: 9)
+                    Text(reminders.status).font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
+                }.padding(.top, 10)
+                HStack(spacing: 9) {
+                    Text("D3 · 下班后 1 小时").font(theme.font.journalCaption)
+                    Spacer()
+                    completion("d3", title: "D3")
+                }.padding(.top, 22)
+                journalHeading("饭后", symbol: "moon.fill").padding(.top, 26)
                 HStack {
                     Text("鲁拉西酮")
                     Spacer()
                     Button("我吃过晚饭了") { reminders.dinnerFinished() }
-                        .font(theme.font.journalCaption).padding(.horizontal, 14).padding(.vertical, 8)
+                        .font(theme.font.journalCaption).padding(.horizontal, 16).padding(.vertical, 9)
                         .overlay(Capsule().stroke(theme.pageAccent, lineWidth: 0.6))
                         .accessibilityIdentifier("reminder-dinner-finished")
-                }
-                completion("dinner", title: "饭后这一拨")
-                journalHeading("睡前 · 21:30", symbol: "moon")
-                VStack(alignment: .leading, spacing: 16) {
+                }.padding(.top, 24)
+                completion("dinner", title: "饭后这一拨").padding(.top, 13)
+                journalHeading("睡前 · 21:30", symbol: "moon.fill").padding(.top, 28)
+                VStack(alignment: .leading, spacing: 14) {
                     Text("碳酸锂 · 晚上那片")
                     Text("劳拉西泮 · 一片半")
                     Text("佐匹克隆 · 一片")
-                }
-                completion("bedtime", title: "睡前这一拨")
-                Text("到家、没在开车时才提醒。位置或活动状态不明时先暂缓；后台检查可能延后。")
-                    .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
-                journalHeading("答应你的事", symbol: "circle")
+                }.padding(.top, 23)
+                completion("bedtime", title: "睡前这一拨").padding(.top, 15)
+                Text("到家、没在开车时才提醒。")
+                    .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary).padding(.top, 15)
+                journalHeading("答应你的事", symbol: "circle").padding(.top, 30)
                 ForEach(reminders.promises) { item in
                     Button { reminders.togglePromise(item.id) } label: {
                         Label(item.text, systemImage: item.done ? "checkmark.circle" : "circle")
-                    }
+                    }.padding(.top, 20)
                 }
                 HStack {
                     TextField("添一句答应的事", text: $promise)
                     Button("记下") { reminders.addPromise(promise); promise = "" }
                         .disabled(promise.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-            .padding(.horizontal, 28).padding(.vertical, 20)
+                }.padding(.top, 20)
+            }.padding(.horizontal, 28).padding(.top, 14).padding(.bottom, 30)
         }
         .font(theme.font.journalBody).buttonStyle(.plain).foregroundStyle(theme.pageColor.textPrimary).tint(theme.pageAccent)
-        .background { MoonJournalBackground().overlay(alignment: .topTrailing) { JournalMoonArtwork().frame(width: 180, height: 180).offset(x: 75, y: -55) }.clipped() }
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .navigationBar)
+        .background {
+            MoonJournalBackground().overlay(alignment: .bottomTrailing) {
+                JournalMoonArtwork().frame(width: 280, height: 280).offset(x: 135, y: 80).opacity(0.65)
+            }.clipped()
+        }
+        .navigationBarTitleDisplayMode(.inline).toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showingHome) {
             NavigationStack {
                 Form {
@@ -281,7 +286,7 @@ struct ReminderJournalView: View {
         Button { reminders.markCompleted(kind) } label: {
             Label(reminders.isCompleted(kind) ? "今天记好了" : "确认\(title)已完成",
                   systemImage: reminders.isCompleted(kind) ? "checkmark.circle" : "circle")
-                .font(theme.font.journalCaption)
+                .font(.custom("NotoSerifSC-ExtraLight", size: 10)).foregroundStyle(theme.pageColor.textSecondary)
         }.disabled(reminders.isCompleted(kind))
     }
 }

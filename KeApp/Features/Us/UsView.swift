@@ -235,8 +235,8 @@ struct UsView: View {
             .onChange(of: journalEvents.map(\.id)) { _, ids in
                 journalAnniversaryIndex = min(journalAnniversaryIndex, max(0, ids.count - 1))
             }
-            .sheet(isPresented: $showingReminderSettings) { NavigationStack { HomeReminderSettingsView(model: vm, date: shiftEditDate) } }
-            .sheet(isPresented: $showingReminderJournal) { NavigationStack { ReminderJournalView() } }
+            .fullScreenCover(isPresented: $showingReminderSettings) { NavigationStack { HomeReminderSettingsView(model: vm, date: shiftEditDate) } }
+            .fullScreenCover(isPresented: $showingReminderJournal) { NavigationStack { ReminderJournalView() } }
             .sheet(isPresented: $showingNotebook) { NavigationStack { QuoteNotebookView() } }
             .sheet(isPresented: $showingCompanionHub) { CompanionHubView(line: line, model: vm) }
         }
