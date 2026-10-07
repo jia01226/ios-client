@@ -1462,12 +1462,13 @@ final class UsViewModel: ObservableObject {
             guard revision == shiftRevision else { return }
             let remoteKeys = Set(rows.map(\.date))
             let oldKeys = Set(defaults.stringArray(forKey: knownRemoteShiftsKey) ?? [])
+            var changedDates = Set<Date>()
             for key in oldKeys.subtracting(remoteKeys) where pendingShifts[key] == nil {
                 savedShifts.removeValue(forKey: key); savedShiftNotes.removeValue(forKey: key)
                 clearedShiftKeys.insert(key)
                 defaults.removeObject(forKey: "us.shift-plan.override." + key)
                 defaults.removeObject(forKey: "us.shift-plan.remote." + key)
-                if let date = shiftDate(key) { updateEndTime(on: date) }
+                if let date = shiftDate(key) { changedDates.insert(date) }
             }
             for row in rows where pendingShifts[row.date] == nil {
                 guard let date = shiftDate(row.date) else { continue }
@@ -1483,13 +1484,16 @@ final class UsViewModel: ObservableObject {
                     let prefix = note.contains("\n范围：当天单独调整") ? "us.shift-plan.override." : "us.shift-plan.remote."
                     defaults.set(try? JSONEncoder().encode(plan), forKey: prefix + row.date)
                 }
-                updateEndTime(on: date)
+                changedDates.insert(date)
             }
             defaults.set(Array(remoteKeys), forKey: knownRemoteShiftsKey)
             var stored = savedShifts.mapValues(\.rawValue)
             for key in clearedShiftKeys { stored[key] = "none" }
             defaults.set(stored, forKey: savedShiftsKey)
             defaults.set(savedShiftNotes, forKey: savedShiftNotesKey)
+            // The reminder coordinator reloads this cache when its end time changes.
+            // Persist the whole snapshot first so newly downloaded overrides survive.
+            for date in changedDates { updateEndTime(on: date) }
             thisWeek = thisWeek.map { day in
                 let key = dateKey(day.date)
                 return ShiftDay(id: day.id, date: day.date, kind: savedShifts[key], note: savedShiftNotes[key])
