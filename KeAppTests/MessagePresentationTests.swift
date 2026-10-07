@@ -2,6 +2,15 @@ import XCTest
 @testable import KeApp
 
 final class MessagePresentationTests: XCTestCase {
+    func testDefaultChatAndAllPagesShareOneMorandiPalette() throws {
+        let palette = try XCTUnwrap(ChatPalette.all.first)
+        XCTAssertEqual(palette.id, "moonlight-pink")
+        XCTAssertEqual(palette.base, Morandi.background)
+        XCTAssertEqual(palette.ink, Morandi.ink)
+        XCTAssertEqual(palette.accent, Morandi.rose)
+        XCTAssertEqual(palette.reply, Morandi.reply)
+    }
+
     func testPinkPaletteUsesJReplyColorWithoutChangingMyBubbleColor() {
         let palette = try! XCTUnwrap(ChatPalette.all.first { $0.id == "pink" })
 

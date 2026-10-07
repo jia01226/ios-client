@@ -39,7 +39,7 @@ struct RootTabView: View {
 
                 if !keyboardIsVisible && !chatSettingsOpen {
                     Group {
-                        if theme.skin == .day && selection != .ke { journalTabBar } else { crystalTabBar }
+                        if theme.skin == .day { journalTabBar } else { crystalTabBar }
                     }
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("root-tab-bar")
