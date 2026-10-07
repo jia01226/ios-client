@@ -23,3 +23,9 @@
 `deploy_ota.py <暂存目录>` 在 VPS 执行。暂存目录需 `KeApp.ipa`、`index.html`、`manifest.plist` 和 `expected.json`。expected 中含 `ipa_sha256` 和线上原三文件的 `before` 哈希。部署拒绝同号/降级及并行修改；先备份，再发布版本固定的 IPA/manifest，最后切换首页。不会重写 Nginx 配置。
 
 73 的 IPA SHA256：`32f0eed469c41759b3ada111f2838c01effd39ff5013df524aaa6ba45c0bb248`。
+
+正式上架完成于 2026-10-07 05:48 UTC。OTA 回滚备份：`/root/ota-deploy-backups/20261007T054800Z-build73/`。公网下载完整 `KeApp-73.ipa` 的 SHA256 与上面的构建产物一致，首页、安装按钮及 `manifest-73.plist` 均为73；默认 manifest 也已更新。
+
+正式 IPA 来自提交 `9664f8a`、[Build iOS run 37576556340](https://github.com/jia01226/ios-client/actions/runs/37576556340)。后续提交只补测试专用匿名数据（`#if DEBUG`）、UI测试、部署脚本与文档，不改变 Release 业务代码。
+
+第一次模拟器检查 [37576554341](https://github.com/jia01226/ios-client/actions/runs/37576554341) 通过74项单元测试和1套UI流程；原有抽屉样例缺失导致截图显示重试，已确认线上真实抽屉可被现有Swift模型解析，并补齐匿名响应后再次核验。
