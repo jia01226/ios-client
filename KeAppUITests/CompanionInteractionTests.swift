@@ -179,22 +179,24 @@ final class CompanionInteractionTests: XCTestCase {
         capture("tarot-handoff-chat")
     }
 
+    // Keep the selector used by the existing CI workflow; the garden handoff is now removed.
     func testGardenEntryHandsToKe() {
+        testGardenAndXBeadsAreGone()
+        MorandiAppearanceTests.captureFiveDayPages(in: self)
+    }
+
+    func testGardenAndXBeadsAreGone() {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-app.skin", "day"]
         app.launch()
         XCTAssertTrue(app.buttons["玩"].waitForExistence(timeout: 5))
         app.buttons["玩"].tap()
-        XCTAssertTrue(app.buttons["play-garden"].waitForExistence(timeout: 5))
-        app.buttons["play-garden"].tap()
-        XCTAssertTrue(app.buttons["garden-ask-ke"].waitForExistence(timeout: 5))
-        capture("garden-entry")
-        app.buttons["garden-ask-ke"].tap()
-        XCTAssertTrue(app.buttons["柯"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "去花园看看")).firstMatch.waitForExistence(timeout: 8))
-        capture("garden-handoff-chat")
+        XCTAssertTrue(app.buttons["play-duel"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["play-garden"].exists)
+        XCTAssertFalse(app.buttons["play-x"].exists)
+        XCTAssertFalse(app.buttons["garden-ask-ke"].exists)
+        capture("play-without-garden")
         app.terminate()
-        MorandiAppearanceTests.captureFiveDayPages(in: self)
     }
 
     func testDuelEntryOpensPrivateGameRoom() {

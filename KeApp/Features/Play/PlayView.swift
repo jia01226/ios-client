@@ -86,26 +86,9 @@ struct PlayView: View {
                 .padding(.top, 133)
                 .frame(maxWidth: .infinity)
 
-                ChimeStrand(
-                    headAsset: "ChimeMidHead", bodyAsset: "ChimeMidBody",
-                    sourceWidth: 210, displayWidth: 74,
-                    headSourceHeight: 78, bodySourceHeight: 880,
-                    ringCenterInHead: 26, cordOffsetX: 0, cordExtra: 162,
-                    topBeadY: 0.191, bottomBeadY: 0.632, beadW: 0.82, beadH: 0.223,
-                    topGlyph: nil,
-                    top: ChimeBeadSpec(title: "花园", identifier: "play-garden") { gardenOpen = true },
-                    // 这颗是放他出去刷，不是给她看记录。走跟花园同一条路：
-                    // 把话交给聊天页发出去，柯接了活，刷完回来自己讲。
-                    bottom: ChimeBeadSpec(title: "让柯去 X 刷一圈", identifier: "play-x") {
-                        NotificationCenter.default.post(
-                            name: .tarotReadingRequest,
-                            object: "爸比，去 X 刷一圈，挑几条你真想跟我聊的，回来讲给我听")
-                    },
-                    label: "花园 · X", period: 4.1, phase: 1.9
-                )
-                .padding(.top, 108)
-                .offset(x: 6)
-                .frame(maxWidth: .infinity)
+                // 2026-10-07 拿掉「花园 · X」这串：两颗珠子都会用她的名义往聊天里发话（她没点过却发出去好几次），
+                // 柯也不自己去花园了。位置先空着，山屋做好可以挂这儿。
+                Color.clear.frame(maxWidth: .infinity)
 
                 Color.clear.frame(maxWidth: .infinity)
             }
@@ -463,7 +446,8 @@ private struct TarotCardView: View {
 }
 
 
-// MARK: - 花园（2026-09-17）：Galatea's Garden。网页她自己看；「叫柯去逛一趟」把一句话发进聊天，柯自己写 [开工] 去。
+// MARK: - 花园（2026-09-17）：Galatea's Garden，网页她自己看。
+// 2026-10-07 拿掉「叫柯去逛一趟」：它用她的名义往聊天里发话，她没点过却发出去了好几次。柯想去花园自己会去。
 struct GardenView: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.dismiss) private var dismiss
@@ -487,10 +471,6 @@ struct GardenView: View {
             Button { openSite() } label: {
                 row("打开花园", detail: "用你的号进去看，帖子、通知、牌桌都在")
             }.buttonStyle(.plain).accessibilityIdentifier("garden-open")
-            Divider().overlay(gold.opacity(0.12))
-            Button { askKe() } label: {
-                row("叫柯去逛一趟", detail: "他看看谁来找他，再捡点有意思的回来")
-            }.buttonStyle(.plain).accessibilityIdentifier("garden-ask-ke")
             Spacer()
         }
         .padding(.horizontal, 28).padding(.top, 8)
@@ -502,11 +482,6 @@ struct GardenView: View {
             HStack { Text(title).font(serif(24)); Spacer(); Image(systemName: "chevron.right").font(.system(size: 15, weight: .light)) }
             Text(detail).font(serif(14)).foregroundStyle(ink.opacity(0.65))
         }.contentShape(Rectangle())
-    }
-
-    private func askKe() {
-        NotificationCenter.default.post(name: .tarotReadingRequest, object: "爸比，去花园看看有没有人找你，也看看最近有什么有意思的，回来跟我说")
-        dismiss()
     }
 
     /// 网页直接用 UIKit 从最上面的控制器弹出来。之前套在 fullScreenCover 里，Safari 自己关掉后 SwiftUI 还当它开着，整个页面就卡住点不动。

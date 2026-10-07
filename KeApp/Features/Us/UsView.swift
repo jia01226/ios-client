@@ -1133,11 +1133,14 @@ final class UsViewModel: ObservableObject {
             clearedShiftKeys = Set(stored.compactMap { $0.value == "none" ? $0.key : nil })
         }
         savedShiftNotes = defaults.dictionary(forKey: savedShiftNotesKey) as? [String: String] ?? [:]
+        func fixedDay(_ y: Int, _ m: Int, _ d: Int) -> Date {
+            calendar.date(from: DateComponents(year: y, month: m, day: d)) ?? today
+        }
         anniversaries = [
-            Anniversary(id: "mine", title: "我的生日", date: calendar.date(byAdding: .day, value: 113, to: today) ?? today),
-            Anniversary(id: "confession", title: "表白的日子", date: calendar.date(byAdding: .day, value: -320, to: today) ?? today, isYearly: false),
-            Anniversary(id: "together", title: "在一起的日子", date: calendar.date(byAdding: .day, value: -286, to: today) ?? today, isYearly: false),
-            Anniversary(id: "ke", title: "柯的生日", date: calendar.date(byAdding: .day, value: 204, to: today) ?? today),
+            Anniversary(id: "confession", title: "表白的日子", date: fixedDay(2026, 8, 9), isYearly: false),
+            Anniversary(id: "together", title: "在一起的日子", date: fixedDay(2026, 6, 25), isYearly: false),
+            Anniversary(id: "mine", title: "佳佳的生日", date: fixedDay(2001, 2, 26)),
+            Anniversary(id: "ke", title: "柯的生日", date: fixedDay(2000, 10, 26)),
         ]
 
         if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("-ui-test") || $0.hasPrefix("-preview-us") }) {

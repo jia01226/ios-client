@@ -10,11 +10,11 @@ struct ChatPalette: Identifiable {
     let send: UInt32
     var reply: UInt32 {
         switch id {
-        case "champagne": return 0xDCCFBB
-        case "oat": return 0xD2CABE
-        // 佳佳是轻雾粉（tint=0xE6C6D0）；柯使用定稿的浅玫瑰粉。
-        case "pink": return 0xEDC5CD
-        default: return 0xD8C8BE
+        case "champagne": return 0xF1E9DE
+        case "oat": return 0xEDE7DE
+        // 佳佳是轻雾粉（tint=0xE6C6D0）；柯用更浅的灰粉（她嫌原来太深）。
+        case "pink": return 0xF5E4E7
+        default: return 0xF0E4E2
         }
     }
     static let all: [ChatPalette] = [

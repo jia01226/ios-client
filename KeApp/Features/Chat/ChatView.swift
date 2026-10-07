@@ -492,15 +492,9 @@ struct ChatView: View {
                 .padding(.vertical, 11)
 
             Button { send() } label: {
-                Group {
-                    if vm.isSending {
-                        ProgressView()
-                            .tint(theme.color.textOnAccent)
-                    } else {
-                        Image(systemName: "arrow.up")
-                            .font(theme.font.sendIcon)
-                    }
-                }
+                // 佳佳 2026-10-06：「先回消息 不要等消息」——柯回着的时候也能接着发。
+                Image(systemName: "arrow.up")
+                    .font(theme.font.sendIcon)
                 .foregroundStyle(theme.color.textOnAccent)
                 .frame(width: 40, height: 40)
                 .background(
@@ -508,8 +502,8 @@ struct ChatView: View {
                         .fill(theme.sendColor)
                 )
             }
-            .disabled(!canSend || vm.isSending || vm.isUploading)
-            .opacity(!canSend || vm.isSending || vm.isUploading ? 0.45 : 1)
+            .disabled(!canSend || vm.isUploading)
+            .opacity(!canSend || vm.isUploading ? 0.45 : 1)
             .accessibilityLabel("发送消息")
             .accessibilityIdentifier("send-message")
         }
@@ -1616,7 +1610,7 @@ struct ChatView: View {
 
     private func send() {
         let text = trimmedDraft
-        guard canSend, !vm.isSending, !vm.isUploading, !vm.isRefreshingClaude else { return }
+        guard canSend, !vm.isUploading, !vm.isRefreshingClaude else { return }
         draft = ""
         scrollToLatestRequest &+= 1
         Task { await vm.send(text, reduceMotion: reduceMotion) }
