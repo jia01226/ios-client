@@ -171,6 +171,7 @@ struct HomeReminderSettingsView: View {
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(.bottom, 5).overlay(alignment: .bottom) { hairline }
             }
+            .contentShape(Rectangle())
         }.accessibilityIdentifier("shift-\(index)-\(isEnd ? "end" : "start")")
     }
     private func clockBinding(_ selection: ClockSelection) -> Binding<Date> {

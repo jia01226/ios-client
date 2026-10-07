@@ -30,6 +30,7 @@ final class MorandiAppearanceTests: XCTestCase {
         XCTAssertTrue(app.buttons["shift-1-end"].waitForExistence(timeout: 5))
         app.buttons["shift-1-end"].tap()
         XCTAssertTrue(app.buttons["记好了"].waitForExistence(timeout: 5))
+        capture("11-shift-time-picker", in: testCase)
         app.buttons["记好了"].tap()
         capture("10-split-shift", in: testCase)
         app.buttons["返回"].firstMatch.tap()
