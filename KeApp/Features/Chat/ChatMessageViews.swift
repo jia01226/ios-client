@@ -357,18 +357,6 @@ struct MessageRow: View {
                     }
                     .accessibilityIdentifier("message-action-copy")
                 }
-                if message.sender == .ke && message.serverID != nil && !message.isStreaming && !message.text.isEmpty {
-                    Divider()
-                    Button {
-                        quoteAfterDismiss = true
-                        actionsPresented = false
-                    } label: {
-                        Label("收进 App 柯味语录", systemImage: "quote.bubble")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(14)
-                    }
-                    .accessibilityIdentifier("message-action-save-quote")
-                }
                 if message.canRecall {
                     if !message.text.isEmpty { Divider() }
                     Button(role: .destructive) {

@@ -84,7 +84,7 @@ private struct MoonDiaryView: View {
                     VStack(spacing: 9) {
                         Text("dear diary").font(Moonlight.script(min(32, g.size.width * 0.12))).tracking(1)
                         Text("柯的日记").font(Moonlight.serif(12)).tracking(3)
-                        Text("\(CompanionDate.calendar.component(.year, from: selected))").font(Moonlight.serif(9)).tracking(2)
+                        Text(String(CompanionDate.calendar.component(.year, from: selected))).font(Moonlight.serif(9)).tracking(2)
                     }.foregroundStyle(theme.skin == .day ? Moonlight.deepRose : theme.pageColor.textPrimary)
                         .position(x: g.size.width * 0.52, y: g.size.height * 0.72)
                 }

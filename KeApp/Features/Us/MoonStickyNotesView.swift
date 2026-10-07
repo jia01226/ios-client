@@ -7,6 +7,11 @@ struct MoonStickyNotesView: View {
     @State private var selected: StickyNote?
     @State private var text = ""
     @State private var allOpen = false
+    @State private var editAfterList = false
+    private var featured: [StickyNote] {
+        let pair = [store.all.first { $0.author == .user }, store.all.first { $0.author == .ai }].compactMap { $0 }
+        return pair.count == 2 ? pair : Array(store.all.prefix(2))
+    }
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 10) {
@@ -29,7 +34,7 @@ struct MoonStickyNotesView: View {
                 }.accessibilityIdentifier("notes-empty")
             } else {
                 HStack(alignment: .top, spacing: 14) {
-                    ForEach(Array(store.all.prefix(2).enumerated()), id: \.element.id) { index, note in
+                    ForEach(Array(featured.enumerated()), id: \.element.id) { index, note in
                         noteCard(note).padding(.top, index == 1 ? 8 : 0)
                     }
                 }
@@ -37,7 +42,7 @@ struct MoonStickyNotesView: View {
         }
         .buttonStyle(.plain).foregroundStyle(theme.pageColor.textPrimary)
         .sheet(isPresented: $editor) { editorView }
-        .sheet(isPresented: $allOpen) {
+        .sheet(isPresented: $allOpen, onDismiss: { if editAfterList { editAfterList = false; editor = true } }) {
             NavigationStack {
                 ScrollView {
                     VStack(spacing: 16) {
@@ -49,6 +54,14 @@ struct MoonStickyNotesView: View {
                                 if store.isLocal(note) { Text("本机 · 待同步").font(Moonlight.serif(12)) }
                             }.frame(maxWidth: .infinity, alignment: .leading).padding(20)
                                 .background(paper(note.author), in: NotePaperShape())
+                                .contentShape(Rectangle())
+                                .onTapGesture { selected = note; text = note.content; editAfterList = true; allOpen = false }
+                                .contextMenu {
+                                    if note.author == .user {
+                                        Button("编辑") { selected = note; text = note.content; editAfterList = true; allOpen = false }
+                                        Button("删除", role: .destructive) { Task { await store.delete(note) } }
+                                    }
+                                }
                         }
                         if store.all.isEmpty { Text("这里还没有便利贴。") }
                     }.font(Moonlight.serif(17)).padding(24)

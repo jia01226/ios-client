@@ -34,6 +34,7 @@ final class StickyNotesStore: ObservableObject {
     }
     init(api: any StickyNotesAPI, scope: String, defaults: UserDefaults = .standard) {
         self.api = api; self.defaults = defaults; key = "moonlight.notes.drafts." + scope
+        notes = defaults.data(forKey: key + ".confirmed").flatMap { try? JSONDecoder().decode([StickyNote].self, from: $0) } ?? []
         drafts = defaults.data(forKey: key).flatMap { try? JSONDecoder().decode([StickyNote].self, from: $0) } ?? []
     }
     func isLocal(_ note: StickyNote) -> Bool { drafts.contains { $0.id == note.id } }
@@ -77,5 +78,8 @@ final class StickyNotesStore: ObservableObject {
             drafts.removeAll { $0.id == note.id }; notes.removeAll { $0.id == note.id }; persist(); status = nil
         } catch { status = "删除尚未确认，便利贴先保留。" }
     }
-    private func persist() { defaults.set(try? JSONEncoder().encode(drafts), forKey: key) }
+    private func persist() {
+        defaults.set(try? JSONEncoder().encode(drafts), forKey: key)
+        defaults.set(try? JSONEncoder().encode(notes), forKey: key + ".confirmed")
+    }
 }

@@ -301,11 +301,11 @@ final class Theme: ObservableObject {
         set { storedSkin = newValue.rawValue; objectWillChange.send() }
     }
 
-    @AppStorage("app.chatPalette") private var storedPalette = "rose"
+    @AppStorage("app.chatPalette") private var storedPalette = "moonlight-pink"
     @AppStorage("app.chatTypeface") private var storedTypeface = "regular"
 
     var chatPalette: ChatPalette {
-        get { ChatPalette.all.first { $0.id == storedPalette } ?? ChatPalette.all[1] }
+        get { ChatPalette.all.first { $0.id == storedPalette } ?? ChatPalette.all[0] }
         set { objectWillChange.send(); storedPalette = newValue.id }
     }
     var chatTypeface: ChatTypography {
@@ -350,6 +350,10 @@ final class Theme: ObservableObject {
 
     private init() {
         let defaults = UserDefaults.standard
+        if !defaults.bool(forKey: "app.moonlight-pink.migrated.v76") {
+            defaults.set("moonlight-pink", forKey: "app.chatPalette")
+            defaults.set(true, forKey: "app.moonlight-pink.migrated.v76")
+        }
         let savedFont = defaults.object(forKey: "app.chatFontSize") as? Double
         let savedOpacity = defaults.object(forKey: "app.bubbleOpacity") as? Double
         let savedBlur = defaults.object(forKey: "app.glassBlur") as? Double

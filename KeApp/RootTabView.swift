@@ -137,7 +137,7 @@ struct RootTabView: View {
         } label: {
             VStack(spacing: 1) {
                 Image(systemName: symbol(for: tab))
-                    .font(.system(size: 23, weight: .medium))
+                    .font(.system(size: 23, weight: .light))
                     .frame(width: 42, height: 30)
                 Text(label)
                     .font(.caption2.weight(selection == tab ? .semibold : .regular))
@@ -152,10 +152,10 @@ struct RootTabView: View {
     }
     private func symbol(for tab: Tab) -> String {
         switch tab {
-        case .us: return "moon.stars.fill"
+        case .us: return selection == tab ? "heart.fill" : "heart"
         case .ke: return "bubble.left.and.bubble.right.fill"
-        case .play: return "sparkles"
-        case .drawer: return "archivebox.fill"
+        case .play: return selection == tab ? "gamecontroller.fill" : "gamecontroller"
+        case .drawer: return selection == tab ? "archivebox.fill" : "archivebox"
         }
     }
 
