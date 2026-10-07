@@ -180,8 +180,7 @@ final class CompanionInteractionTests: XCTestCase {
 
     // Keep the selector used by the existing CI workflow; the garden handoff is now removed.
     func testGardenEntryHandsToKe() {
-        testGardenAndXBeadsAreGone()
-        MorandiAppearanceTests.captureFiveDayPages(in: self)
+        MoonlightInteractionTests.verify(in: self)
     }
 
     func testGardenAndXBeadsAreGone() {

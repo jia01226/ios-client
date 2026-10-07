@@ -1,8 +1,12 @@
 import XCTest
 
 final class MoonlightInteractionTests: XCTestCase {
-    func testFourTabsDiaryDateAndDrawerPrivacy() {
-        continueAfterFailure = false
+    func testFourTabsDiaryDateAndDrawerPrivacy() { Self.verify(in: self) }
+    static func verify(in testCase: XCTestCase) {
+        func capture(_ name: String) {
+            let a = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); a.name = name; a.lifetime = .keepAlways; testCase.add(a)
+        }
+        testCase.continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-ui-test-moonlight", "-app.skin", "day"]
         app.launch()
@@ -30,8 +34,8 @@ final class MoonlightInteractionTests: XCTestCase {
         let page = app.otherElements["diary-paper-page"]
         if page.exists { page.swipeLeft() } else { app.swipeLeft() }
         let changed = NSPredicate(format: "label != %@", before)
-        expectation(for: changed, evaluatedWith: app.staticTexts["diary-page-date"])
-        waitForExpectations(timeout: 5)
+        testCase.expectation(for: changed, evaluatedWith: app.staticTexts["diary-page-date"])
+        testCase.waitForExpectations(timeout: 5)
         capture("06-diary-turned")
         app.buttons["diary-date-picker"].tap()
         XCTAssertTrue(app.buttons["diary-date-done"].waitForExistence(timeout: 5))
@@ -48,8 +52,5 @@ final class MoonlightInteractionTests: XCTestCase {
         app.buttons["drawer-letter-501"].tap()
         XCTAssertTrue(app.staticTexts["慢慢来，我会陪着你。"].waitForExistence(timeout: 5))
         capture("10-drawer-letter")
-    }
-    private func capture(_ name: String) {
-        let a = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a)
     }
 }

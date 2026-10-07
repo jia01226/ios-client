@@ -1,0 +1,46 @@
+diff --git a/.github/workflows/ios-thinking-simulator.yml b/.github/workflows/ios-thinking-simulator.yml
+index a897969..646b81c 100644
+--- a/.github/workflows/ios-thinking-simulator.yml
++++ b/.github/workflows/ios-thinking-simulator.yml
+@@ -30,19 +30,18 @@ jobs:
+       - name: 模拟器核验聊天与我们页交互
+         run: |
+           set -euo pipefail
+-          SIMULATOR_ID=$(xcrun simctl list devices available -j | python3 -c '
+-          import json, sys
+-          devices = json.load(sys.stdin)["devices"]
+-          iphones = [
+-              device["udid"]
+-              for runtime in devices.values()
+-              for device in runtime
+-              if device.get("isAvailable") and device.get("name", "").startswith("iPhone")
+-          ]
+-          if not iphones:
+-              raise SystemExit("没有可用的 iPhone 模拟器")
+-          print(iphones[0])
+-          ')
++          SIMULATOR_ID=$(python3 - <<'PYCODE'
++          import json, subprocess
++          def read(*args): return json.loads(subprocess.check_output(["xcrun", "simctl", "list", *args, "-j"]))
++          runtimes = [r for r in read("runtimes")["runtimes"] if r.get("isAvailable") and ".iOS-" in r["identifier"]]
++          runtime = max(runtimes, key=lambda r: tuple(map(int, r["version"].split("."))))
++          devices = read("devices")["devices"].get(runtime["identifier"], [])
++          matching = [d for d in devices if d.get("isAvailable") and d["name"] == "iPhone 14 Pro Max"]
++          if matching: print(matching[0]["udid"])
++          else:
++              print(subprocess.check_output(["xcrun", "simctl", "create", "iPhone 14 Pro Max", "com.apple.CoreSimulator.SimDeviceType.iPhone-14-Pro-Max", runtime["identifier"]], text=True).strip())
++          PYCODE
++          )
+           echo "使用模拟器 $SIMULATOR_ID"
+           xcodebuild test \
+             -project KeApp.xcodeproj \
+@@ -50,7 +49,8 @@ jobs:
+             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+             -resultBundlePath "$RUNNER_TEMP/iOSSimulator.xcresult" \
+             -only-testing:KeAppTests \
+-            -only-testing:KeAppUITests/CompanionInteractionTests/testGardenEntryHandsToKe \
++            -only-testing:KeAppUITests/MoonlightInteractionTests \
++            -only-testing:KeAppUITests/RootTabBarTests \
+             CODE_SIGNING_ALLOWED=NO
+ 
+       - name: 导出 UI 核验截图

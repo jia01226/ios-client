@@ -70,6 +70,7 @@ private struct MoonDiaryView: View {
             }.scrollIndicators(.hidden)
         }
         .task { await store.load(); if !selectedOnce { selected = store.pages.last?.date ?? selected; selectedOnce = true } }
+        .onChange(of: selected) { _, _ in selectedOnce = true }
         .sheet(isPresented: $datePicker) {
             MoonDiaryDatePicker(date: $selected, markedDates: store.pages.map(\.date))
         }
@@ -136,7 +137,7 @@ private struct MoonlightDateRail: View {
                 MoonlightBeam().stroke(Moonlight.pearl.opacity(glowing ? 0.85 : 0.45), lineWidth: 1).blur(radius: 0.4)
             }.padding(.top, 42).opacity(theme.skin == .day ? 1 : 0.1).allowsHitTesting(false)
         }
-        .onAppear { if !reduceMotion { withAnimation(.easeInOut(duration: 3.8).repeatForever(autoreverses: true)) { glowing = true } } }
+        .onAppear { if !reduceMotion && !ProcessInfo.processInfo.arguments.contains("-ui-test-moonlight") { withAnimation(.easeInOut(duration: 3.8).repeatForever(autoreverses: true)) { glowing = true } } }
         .gesture(DragGesture(minimumDistance: 28).onEnded { value in
             guard abs(value.translation.height) > abs(value.translation.width), let day = calendar.date(byAdding: .day, value: value.translation.height < 0 ? 1 : -1, to: date), day <= .now else { return }
             date = day
