@@ -23,10 +23,12 @@ enum ChatLine: String, CaseIterable, Identifiable {
     case compact
     case test1
     case test2
+    case light
 
     // 原版、精简版、测试2 仍保留为兼容旧缓存和深链的内部线路。
     // 佳佳 2026-10-06：「只留一个就可以了」——聊天页只剩这一个窗口，测试2 的内容并进柯的记忆。
-    static let allCases: [ChatLine] = [.test1]
+    // 2026-10-07：加回第二扇窗「轻装柯」——同一个柯、同一份记忆，不背规矩大全，好跟原来的对比。
+    static let allCases: [ChatLine] = [.test1, .light]
 
     var id: String { rawValue }
 
@@ -37,6 +39,7 @@ enum ChatLine: String, CaseIterable, Identifiable {
         // 她要的是不叫任何名字；别处拼成「保存到柯的…」「柯 · 已收下」读着自然。
         case .test1: return "柯"
         case .test2: return "测试2"
+        case .light: return "轻装柯"
         }
     }
 
@@ -46,6 +49,7 @@ enum ChatLine: String, CaseIterable, Identifiable {
         case .compact: return AppConfiguration.compactAPIBaseURL
         case .test1: return AppConfiguration.apiBaseURL.appendingPathComponent("ke-test1")
         case .test2: return AppConfiguration.apiBaseURL.appendingPathComponent("ke-test2")
+        case .light: return AppConfiguration.apiBaseURL.appendingPathComponent("ke-light")
         }
     }
 
@@ -55,6 +59,7 @@ enum ChatLine: String, CaseIterable, Identifiable {
         case .compact: return "messages-compact.json"
         case .test1: return "messages-test1.json"
         case .test2: return "messages-test2.json"
+        case .light: return "messages-light.json"
         }
     }
 }
