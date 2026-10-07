@@ -149,3 +149,14 @@ struct MoonJournalBackground: View {
         }.clipped()
     }
 }
+
+struct MoonOrbitGuide: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { path in
+            path.move(to: CGPoint(x: rect.minX + rect.width * 0.35, y: rect.minY))
+            path.addCurve(to: CGPoint(x: rect.minX + rect.width * 0.35, y: rect.maxY),
+                          control1: CGPoint(x: rect.maxX, y: rect.height * 0.3),
+                          control2: CGPoint(x: rect.minX, y: rect.height * 0.7))
+        }
+    }
+}

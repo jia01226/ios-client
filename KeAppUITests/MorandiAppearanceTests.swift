@@ -39,7 +39,7 @@ final class MorandiAppearanceTests: XCTestCase {
         notebook.tap()
         XCTAssertTrue(app.navigationBars["小本子"].waitForExistence(timeout: 5))
         capture("09-notebook", in: testCase)
-        app.swipeDown()
+        app.buttons["返回"].firstMatch.tap()
     }
 
     private static func capture(_ name: String, in testCase: XCTestCase) {

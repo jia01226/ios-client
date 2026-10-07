@@ -47,6 +47,7 @@ final class QuoteNotebook: ObservableObject {
 
 struct QuoteNotebookView: View {
     @EnvironmentObject private var theme: Theme
+    @Environment(\.dismiss) private var dismiss
     @ObservedObject private var notebook = QuoteNotebook.shared
 
     var body: some View {
@@ -59,15 +60,15 @@ struct QuoteNotebookView: View {
                     ForEach(notebook.pages) { page in
                         ScrollView {
                             VStack(alignment: .leading, spacing: theme.metric.gapL) {
-                                Text(page.text).font(theme.font.quote).textSelection(.enabled)
+                                Text(page.text).font(theme.font.journalQuote).textSelection(.enabled)
                                 Text("\(page.speaker) · \(page.spokenAt.formatted(date: .abbreviated, time: .shortened))")
-                                    .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
+                                    .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
                                 Divider().overlay(theme.pageColor.separator)
                                 TextField("留一行心情…", text: Binding(
                                     get: { notebook.pages.first(where: { $0.id == page.id })?.mood ?? "" },
                                     set: { notebook.writeMood($0, for: page.id) }
                                 ), axis: .vertical)
-                                .font(theme.font.body)
+                                .font(theme.font.journalBody)
                             }
                             .padding(theme.metric.pagePadding)
                         }
@@ -81,5 +82,6 @@ struct QuoteNotebookView: View {
         .background(theme.pageBackground.ignoresSafeArea())
         .navigationTitle("小本子")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("返回") { dismiss() } } }
     }
 }
