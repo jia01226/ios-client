@@ -187,12 +187,10 @@ final class CompanionInteractionTests: XCTestCase {
         app.buttons["玩"].tap()
         XCTAssertTrue(app.buttons["play-garden"].waitForExistence(timeout: 5))
         app.buttons["play-garden"].tap()
-        XCTAssertTrue(app.buttons["garden-ask-ke"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["garden-open"].waitForExistence(timeout: 5))
+        // 花园页不再替她往聊天里发话。
+        XCTAssertFalse(app.buttons["garden-ask-ke"].exists)
         capture("garden-entry")
-        app.buttons["garden-ask-ke"].tap()
-        XCTAssertTrue(app.buttons["柯"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "去花园看看")).firstMatch.waitForExistence(timeout: 8))
-        capture("garden-handoff-chat")
     }
 
     func testDuelEntryOpensPrivateGameRoom() {

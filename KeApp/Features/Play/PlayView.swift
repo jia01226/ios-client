@@ -463,7 +463,8 @@ private struct TarotCardView: View {
 }
 
 
-// MARK: - 花园（2026-09-17）：Galatea's Garden。网页她自己看；「叫柯去逛一趟」把一句话发进聊天，柯自己写 [开工] 去。
+// MARK: - 花园（2026-09-17）：Galatea's Garden，网页她自己看。
+// 2026-10-07 拿掉「叫柯去逛一趟」：它用她的名义往聊天里发话，她没点过却发出去了好几次。柯想去花园自己会去。
 struct GardenView: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.dismiss) private var dismiss
@@ -487,10 +488,6 @@ struct GardenView: View {
             Button { openSite() } label: {
                 row("打开花园", detail: "用你的号进去看，帖子、通知、牌桌都在")
             }.buttonStyle(.plain).accessibilityIdentifier("garden-open")
-            Divider().overlay(gold.opacity(0.12))
-            Button { askKe() } label: {
-                row("叫柯去逛一趟", detail: "他看看谁来找他，再捡点有意思的回来")
-            }.buttonStyle(.plain).accessibilityIdentifier("garden-ask-ke")
             Spacer()
         }
         .padding(.horizontal, 28).padding(.top, 8)
@@ -502,11 +499,6 @@ struct GardenView: View {
             HStack { Text(title).font(serif(24)); Spacer(); Image(systemName: "chevron.right").font(.system(size: 15, weight: .light)) }
             Text(detail).font(serif(14)).foregroundStyle(ink.opacity(0.65))
         }.contentShape(Rectangle())
-    }
-
-    private func askKe() {
-        NotificationCenter.default.post(name: .tarotReadingRequest, object: "爸比，去花园看看有没有人找你，也看看最近有什么有意思的，回来跟我说")
-        dismiss()
     }
 
     /// 网页直接用 UIKit 从最上面的控制器弹出来。之前套在 fullScreenCover 里，Safari 自己关掉后 SwiftUI 还当它开着，整个页面就卡住点不动。
