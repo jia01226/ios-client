@@ -122,7 +122,7 @@ struct UsView: View {
                     HStack(spacing: 18) {
                         ForEach(Array(vm.anniversaries.enumerated()), id: \.element.id) { index, event in
                             Button { selectedAnniversaryIndex = index } label: {
-                                Text(vm.display(event).title)
+                                Text(vm.display(for: event).title)
                                     .font(theme.font.caption)
                                     .foregroundStyle(index == selectedAnniversaryIndex ? theme.pageAccent : theme.pageColor.textSecondary)
                                     .underline(index == selectedAnniversaryIndex)
@@ -131,7 +131,7 @@ struct UsView: View {
                     }
                     TabView(selection: $selectedAnniversaryIndex) {
                         ForEach(Array(vm.anniversaries.enumerated()), id: \.element.id) { index, event in
-                            let display = vm.display(event)
+                            let display = vm.display(for: event)
                             VStack(spacing: 14) {
                                 Text(display.title).font(theme.font.body)
                                 HStack(alignment: .firstTextBaseline, spacing: 8) {
