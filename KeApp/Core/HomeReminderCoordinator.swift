@@ -21,6 +21,7 @@ final class HomeReminderCoordinator: NSObject, ObservableObject, CLLocationManag
     private var home: CLLocationCoordinate2D?
     private var location: CLLocation?
     private var safeMotionAt: Date?
+    private var motionRevision = 0
     private var timer: Timer?
     private var settingHome = false
     private var inFlight = Set<String>()
@@ -114,6 +115,7 @@ final class HomeReminderCoordinator: NSObject, ObservableObject, CLLocationManag
             motion.startActivityUpdates(to: .main) { [weak self] activity in
                 Task { @MainActor in
                     guard let self else { return }
+                    self.motionRevision += 1
                     if let a = activity, a.confidence != .low, !a.automotive, !a.cycling, (a.stationary || a.walking) {
                         self.safeMotionAt = .now
                     } else { self.safeMotionAt = nil }
@@ -134,6 +136,23 @@ final class HomeReminderCoordinator: NSObject, ObservableObject, CLLocationManag
         reloadShiftPlans()
         guard enabled, home != nil else { return }
         manager.requestLocation()
+        refreshMotion()
+    }
+    private func refreshMotion() {
+        guard CMMotionActivityManager.isActivityAvailable() else { safeMotionAt = nil; return }
+        let checkedAt = Date()
+        let revision = motionRevision
+        motion.queryActivityStarting(from: checkedAt.addingTimeInterval(-120), to: checkedAt, to: .main) { [weak self] activities, error in
+            Task { @MainActor in
+                guard let self, self.motionRevision == revision else { return }
+                if error == nil, let activity = activities?.last,
+                   activity.confidence != .low, !activity.automotive, !activity.cycling,
+                   activity.stationary || activity.walking {
+                    self.safeMotionAt = checkedAt
+                } else { self.safeMotionAt = nil }
+                self.evaluate()
+            }
+        }
     }
     private func reloadShiftPlans() {
         guard let shifts = defaults.dictionary(forKey: "us.saved-shifts.v2") as? [String: String] else { return }
