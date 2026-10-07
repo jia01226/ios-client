@@ -71,10 +71,9 @@ final class CompanionInteractionTests: XCTestCase {
         let closeDiary = app.buttons["companion-close"]
         XCTAssertTrue(closeDiary.waitForExistence(timeout: 3))
         closeDiary.tap()
-        app.buttons["play-moments"].tap()
-        XCTAssertTrue(app.staticTexts["今天的天空很好看。"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["评论"].exists)
-        capture("companion-moments")
+        // 朋友圈拿掉了，这颗换成本子。
+        XCTAssertFalse(app.buttons["play-moments"].exists)
+        XCTAssertTrue(app.buttons["play-notebook"].exists)
     }
     func testDiaryAuthorsAndAccessibleReading() {
         let app = XCUIApplication()

@@ -45,7 +45,7 @@ struct CompanionHubView: View {
                     header
                     reminderSection
                     drawerSection
-                    ForEach(groups) { group in capabilitySection(group) }
+                    // 2026-10-07 拿掉功能介绍：大半写着「正在接通」，点进去什么也做不了。
                     Text("需要照片、邮箱、社交或购买权限时，柯会先告诉你要做什么；没有授权，就不会读取或执行。")
                         .font(song(13, .caption))
                         .lineSpacing(5)

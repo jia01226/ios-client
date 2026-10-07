@@ -80,8 +80,8 @@ final class UsInteractionTests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["hub-reminders"].exists)
         XCTAssertTrue(app.buttons["hub-work-drawer"].exists)
         XCTAssertTrue(app.buttons["hub-personal-drawer"].exists)
-        XCTAssertTrue(app.staticTexts["邮箱、笔友与群聊"].exists)
-        XCTAssertTrue(app.staticTexts["照片与相册"].exists)
+        // 「正在接通」那堆功能介绍拿掉了。
+        XCTAssertFalse(app.staticTexts["邮箱、笔友与群聊"].exists)
         attachScreenshot(named: "26-us-companion-hub")
     }
 

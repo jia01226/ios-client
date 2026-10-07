@@ -11,6 +11,7 @@ struct PlayView: View {
     @EnvironmentObject private var theme: Theme
     let line: ChatLine
     @State private var destination: CompanionPage?
+    @State private var notebookOpen = false
     @State private var fortuneOpen = false
     @State private var gardenOpen = false
     @State private var readingOpen = false
@@ -49,8 +50,9 @@ struct PlayView: View {
                     topBeadY: 0.194, bottomBeadY: 0.621, beadW: 0.82, beadH: 0.233,
                     topGlyph: nil,
                     top: ChimeBeadSpec(title: "日记", identifier: "play-diary") { destination = .diary },
-                    bottom: ChimeBeadSpec(title: "朋友圈", identifier: "play-moments") { destination = .moments },
-                    label: "日记 · 朋友圈", period: 3.7, phase: 3.4
+                    // 2026-10-07 朋友圈不要了（她和柯一起定的），这颗换成本子。
+                    bottom: ChimeBeadSpec(title: "本子", identifier: "play-notebook") { notebookOpen = true },
+                    label: "日记 · 本子", period: 3.7, phase: 3.4
                 )
                 .padding(.top, 134)
                 .offset(x: 14)
@@ -101,6 +103,9 @@ struct PlayView: View {
             }
         }
         .foregroundStyle(ink)
+        .sheet(isPresented: $notebookOpen) {
+            NavigationStack { QuoteNotebookView() }.environmentObject(theme)
+        }
         .fullScreenCover(item: $destination) { page in
             CompanionPages(page: page, line: line).environmentObject(theme)
         }

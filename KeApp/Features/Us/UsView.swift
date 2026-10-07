@@ -228,7 +228,7 @@ struct UsView: View {
                     Text("长按聊天里的话，收进本子。")
                         .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary).padding(.top, 14)
                     Button { showingCompanionHub = true } label: {
-                        Label("柯的接口", systemImage: "ellipsis").font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
+                        Label("柯在忙什么", systemImage: "ellipsis").font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
                     }.accessibilityIdentifier("us-companion-hub").padding(.top, 28)
                 }
                 .padding(.horizontal, 24).padding(.bottom, 26)
@@ -335,7 +335,7 @@ struct UsView: View {
         Button { showingCompanionHub = true } label: {
             VStack(alignment: .leading, spacing: 13) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("柯的接口")
+                    Text("柯在忙什么")
                         .font(.custom("STSongti-SC-Regular", size: 20, relativeTo: .headline))
                         .tracking(1.8)
                     Spacer()
@@ -346,7 +346,7 @@ struct UsView: View {
                         .font(.system(size: 11, weight: .medium))
                 }
 
-                Text("提醒你的事 · 柯在忙什么 · 柯的抽屉")
+                Text("他手边正在跑的活 · 柯的抽屉")
                     .font(.custom("STSongti-SC-Light", size: 14, relativeTo: .body))
                     .tracking(0.7)
                     .foregroundStyle(UsPalette.mutedInk)
