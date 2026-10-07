@@ -38,7 +38,9 @@ struct RootTabView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 if !keyboardIsVisible && !chatSettingsOpen {
-                    crystalTabBar
+                    Group {
+                        if theme.skin == .day && selection != .ke { journalTabBar } else { crystalTabBar }
+                    }
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("root-tab-bar")
                 }
@@ -91,6 +93,30 @@ struct RootTabView: View {
         case .drawer:
             DrawerView(line: chatLine, showsClose: false).id(chatLine)
         }
+    }
+
+    private var journalTabBar: some View {
+        HStack(spacing: 0) {
+            journalTab(.us, label: "我们", symbol: "house")
+            journalTab(.ke, label: "柯", symbol: "moon")
+            journalTab(.play, label: "玩", symbol: "gamecontroller")
+            journalTab(.memories, label: "回忆", symbol: "photo")
+            journalTab(.drawer, label: "抽屉", symbol: "archivebox")
+        }
+        .padding(.horizontal, 12).padding(.top, 9).padding(.bottom, 3)
+        .background(theme.pageBackground.opacity(0.96))
+        .overlay(alignment: .top) { Rectangle().fill(theme.pageColor.separator.opacity(0.55)).frame(height: 0.5) }
+    }
+    private func journalTab(_ tab: Tab, label: String, symbol: String) -> some View {
+        Button { selection = tab } label: {
+            VStack(spacing: 5) {
+                Image(systemName: tab == selection ? symbol + ".fill" : symbol)
+                    .font(.system(size: 18, weight: .ultraLight)).frame(height: 22)
+                Text(label).font(.custom("NotoSerifSC-ExtraLight", size: 11))
+            }
+            .foregroundStyle(tab == selection ? theme.pageAccent : theme.pageColor.textSecondary)
+            .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+        }.buttonStyle(.plain)
     }
 
     private var crystalTabBar: some View {

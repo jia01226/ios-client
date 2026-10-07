@@ -1,8 +1,13 @@
 import XCTest
+import UIKit
 @testable import KeApp
 
 @MainActor
 final class QuoteNotebookTests: XCTestCase {
+    func testJournalFontIsBundled() {
+        XCTAssertNotNil(UIFont(name: "NotoSerifSC-ExtraLight", size: 16), "Journal must not silently fall back to sans serif")
+    }
+
     func testDifferentBubbleSegmentsPersistWithSpeakerDateAndMood() {
         let suite = "notebook-test-" + UUID().uuidString
         let defaults = UserDefaults(suiteName: suite)!

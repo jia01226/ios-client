@@ -132,21 +132,41 @@ struct FloatingGlassSurface: View {
     }
 }
 
-/// Reuses the existing moon renderer without changing its lighting or materials.
+/// Decorative day artwork is separate from the interactive 3D moon.
 struct MoonJournalBackground: View {
     @EnvironmentObject private var theme: Theme
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            theme.pageBackground.ignoresSafeArea()
-            if theme.skin == .day {
-                MoonSceneView(yaw: 0.2, pitch: 0.05)
-                    .frame(width: 250, height: 250)
-                    .offset(x: 95, y: -50)
-                    .opacity(0.14)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
-        }.clipped()
+        theme.pageBackground.ignoresSafeArea()
+    }
+}
+
+struct JournalMoonArtwork: View {
+    @EnvironmentObject private var theme: Theme
+    var body: some View {
+        ZStack {
+            Image("JournalMoon").resizable().scaledToFit().opacity(0.48)
+            Ellipse().stroke(theme.pageAccent.opacity(0.45), lineWidth: 0.5)
+                .frame(width: 220, height: 58).rotationEffect(.degrees(-22))
+                .offset(x: -28, y: 24)
+            Image(systemName: "sparkle").font(.system(size: 9, weight: .ultraLight))
+                .foregroundStyle(theme.pageAccent).offset(x: -118, y: 8)
+        }
+        .allowsHitTesting(false).accessibilityHidden(true)
+    }
+}
+
+struct JournalBookCover: View {
+    @EnvironmentObject private var theme: Theme
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 6).fill(theme.pageAccent.opacity(0.48))
+            RoundedRectangle(cornerRadius: 5).stroke(theme.pageAccent.opacity(0.65), lineWidth: 0.6).padding(3)
+            Rectangle().fill(theme.pageColor.separator).frame(width: 1).padding(.leading, 8).frame(maxWidth: .infinity, alignment: .leading)
+            VStack(spacing: 8) {
+                Image(systemName: "moon.fill").font(.system(size: 16, weight: .ultraLight))
+                Text("MOONLIGHT\nJOURNAL").font(.custom("Didot", size: 7)).tracking(1.1).multilineTextAlignment(.center)
+            }.foregroundStyle(theme.pageColor.textPrimary.opacity(0.55))
+        }.frame(width: 74, height: 100)
     }
 }
 

@@ -16,6 +16,7 @@ final class MorandiAppearanceTests: XCTestCase {
             capture(name, in: testCase)
             if label == "我们" { captureUsDetails(app, in: testCase) }
         }
+        app.terminate()
     }
 
     private static func captureUsDetails(_ app: XCUIApplication, in testCase: XCTestCase) {

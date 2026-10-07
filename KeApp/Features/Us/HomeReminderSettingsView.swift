@@ -12,6 +12,7 @@ struct HomeReminderSettingsView: View {
     @State private var shiftKind = ShiftDay.Kind.early
     @State private var showingDay = false
     @State private var saved = false
+    @State private var showingStart = false
     @AppStorage("us.shift-profile.early.start") private var earlyStart = -1
     @AppStorage("us.shift-profile.early.minutes") private var earlyMinutes = 0
     @AppStorage("us.shift-profile.deputy.start") private var deputyStart = -1
@@ -33,7 +34,8 @@ struct HomeReminderSettingsView: View {
     }
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 22) {
+                Button("返回") { dismiss() }.font(theme.font.journalCaption).padding(.bottom, 8)
                 Text("先写下你的班次。")
                     .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
                 Text("班次小记").font(theme.font.journalTitle)
@@ -51,15 +53,15 @@ struct HomeReminderSettingsView: View {
                     HStack {
                         Text("上班").foregroundStyle(theme.pageColor.textSecondary)
                         Spacer()
-                        DatePicker("上班时间", selection: $start, displayedComponents: .hourAndMinute)
-                            .labelsHidden().accessibilityIdentifier("shift-start-time")
+                        Button(clockText(start)) { showingStart = true }
+                            .underline().accessibilityIdentifier("shift-start-time")
                     }
-                    Stepper(value: $hours, in: 0.5...24, step: 0.5) {
-                        HStack {
-                            Text("时长").foregroundStyle(theme.pageColor.textSecondary)
-                            Spacer()
-                            Text("\(hours, specifier: "%.1f") 小时")
-                        }
+                    HStack(spacing: 18) {
+                        Text("时长").foregroundStyle(theme.pageColor.textSecondary)
+                        Spacer()
+                        Text("\(hours.formatted(.number.precision(.fractionLength(0...1)))) 小时")
+                        durationButton("minus", label: "减少半小时", enabled: hours > 0.5) { hours -= 0.5 }
+                        durationButton("plus", label: "增加半小时", enabled: hours < 24) { hours += 0.5 }
                     }.accessibilityIdentifier("shift-duration")
                 }
                 .onChange(of: shiftKind) { _, _ in loadProfile() }
@@ -104,13 +106,21 @@ struct HomeReminderSettingsView: View {
                 Text("数值由你填写，点“记住”才用于计算。跨午夜会算到次日；单独调整的日期优先。")
                     .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
             }
-            .padding(.horizontal, 28).padding(.vertical, 24)
+            .padding(.horizontal, 28).padding(.vertical, 20)
         }
+        .font(theme.font.journalBody).buttonStyle(.plain)
         .foregroundStyle(theme.pageColor.textPrimary)
         .tint(theme.pageAccent)
-        .background { MoonJournalBackground() }
+        .background { MoonJournalBackground().overlay(alignment: .topTrailing) { JournalMoonArtwork().frame(width: 180, height: 180).offset(x: 75, y: -55) }.clipped() }
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("返回") { dismiss() } } }
+        .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $showingStart) {
+            VStack(spacing: 12) {
+                DatePicker("上班时间", selection: $start, displayedComponents: .hourAndMinute)
+                    .datePickerStyle(.wheel).labelsHidden().environment(\.locale, Locale(identifier: "zh_CN"))
+                Button("记好了") { showingStart = false }.font(theme.font.journalBody)
+            }.presentationDetents([.height(290)]).presentationBackground(theme.pageBackground).tint(theme.pageAccent)
+        }
         .onAppear {
             shiftKind = model.shift(on: selectedDate) ?? .early
             loadProfile(); applyProfiles()
@@ -122,12 +132,23 @@ struct HomeReminderSettingsView: View {
     private func timelineRow(_ time: Date, text: String, icon: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 16) {
             Image(systemName: icon).font(.system(size: 12)).foregroundStyle(theme.pageAccent).frame(width: 12)
-            Text(time.formatted(date: .omitted, time: .shortened)).monospacedDigit()
+            Text(clockText(time)).monospacedDigit()
             Text(text)
             if !Calendar.current.isDate(time, inSameDayAs: selectedDate) {
                 Text("次日").font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
             }
         }.font(theme.font.journalQuote)
+    }
+    private func clockText(_ date: Date) -> String {
+        let formatter = DateFormatter(); formatter.dateFormat = "HH:mm"; return formatter.string(from: date)
+    }
+    private func durationButton(_ symbol: String, label: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 12, weight: .ultraLight))
+                .frame(width: 27, height: 27)
+                .overlay(Circle().stroke(theme.pageAccent, lineWidth: 0.6))
+                .frame(width: 36, height: 44)
+        }.foregroundStyle(theme.pageAccent).disabled(!enabled).accessibilityLabel(label)
     }
     private func loadProfile() {
         saved = false
@@ -172,7 +193,8 @@ struct ReminderJournalView: View {
     @State private var promise = ""
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 22) {
+                Button("返回") { dismiss() }.font(theme.font.journalCaption).padding(.bottom, 8)
                 HStack {
                     Text("到家了，再慢慢来。")
                         .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
@@ -197,7 +219,8 @@ struct ReminderJournalView: View {
                     Text("鲁拉西酮")
                     Spacer()
                     Button("我吃过晚饭了") { reminders.dinnerFinished() }
-                        .buttonStyle(.borderless)
+                        .font(theme.font.journalCaption).padding(.horizontal, 14).padding(.vertical, 8)
+                        .overlay(Capsule().stroke(theme.pageAccent, lineWidth: 0.6))
                         .accessibilityIdentifier("reminder-dinner-finished")
                 }
                 completion("dinner", title: "饭后这一拨")
@@ -222,12 +245,12 @@ struct ReminderJournalView: View {
                         .disabled(promise.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
-            .padding(.horizontal, 28).padding(.vertical, 24)
+            .padding(.horizontal, 28).padding(.vertical, 20)
         }
-        .font(theme.font.journalBody).foregroundStyle(theme.pageColor.textPrimary).tint(theme.pageAccent)
-        .background { MoonJournalBackground() }
+        .font(theme.font.journalBody).buttonStyle(.plain).foregroundStyle(theme.pageColor.textPrimary).tint(theme.pageAccent)
+        .background { MoonJournalBackground().overlay(alignment: .topTrailing) { JournalMoonArtwork().frame(width: 180, height: 180).offset(x: 75, y: -55) }.clipped() }
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("返回") { dismiss() } } }
+        .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showingHome) {
             NavigationStack {
                 Form {
