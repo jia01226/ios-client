@@ -131,9 +131,31 @@ final class HomeReminderCoordinator: NSObject, ObservableObject, CLLocationManag
         refresh()
     }
     func refresh() {
+        reloadShiftPlans()
         guard enabled, home != nil else { return }
         manager.requestLocation()
     }
+    private func reloadShiftPlans() {
+        guard let shifts = defaults.dictionary(forKey: "us.saved-shifts.v2") as? [String: String] else { return }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        for key in Array(endTimes.keys) where shifts[key] == nil {
+            endTimes.removeValue(forKey: key); overrides.remove(key)
+        }
+        for (key, kind) in shifts where !overrides.contains(key) {
+            let prefix = "us.shift-profile." + kind
+            let start = defaults.integer(forKey: prefix + ".start")
+            let minutes = defaults.integer(forKey: prefix + ".minutes")
+            guard start >= 0, start < 1440, minutes > 0, minutes <= 1440,
+                  let date = formatter.date(from: key),
+                  let beginning = Calendar.current.date(bySettingHour: start / 60, minute: start % 60, second: 0, of: date) else { continue }
+            endTimes[key] = beginning.addingTimeInterval(Double(minutes) * 60)
+        }
+        defaults.set(try? JSONEncoder().encode(endTimes), forKey: "us.shift-end-times")
+        defaults.set(Array(overrides), forKey: "us.shift-end-overrides")
+    }
+
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         if settingHome, manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse { manager.requestLocation() }
         configure()
