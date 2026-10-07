@@ -11,7 +11,7 @@ struct RootTabView: View {
 
     enum Tab: Hashable {
         // 佳佳 2026-10-06：原来「佳佳」那一格换成柯的抽屉——他自己的地方。
-        case us, ke, play, memories, drawer
+        case ke, us, play, drawer
     }
 
     init() {
@@ -46,7 +46,7 @@ struct RootTabView: View {
                 }
             }
             .background {
-                if selection == .us || selection == .play {
+                if selection != .ke {
                     theme.pageBackground.ignoresSafeArea()
                 }
             }
@@ -88,20 +88,17 @@ struct RootTabView: View {
             Color.clear.allowsHitTesting(false)
         case .play:
             PlayView(line: chatLine).id(chatLine)
-        case .memories:
-            MemoriesView(line: chatLine).id(chatLine)
         case .drawer:
-            DrawerView(line: chatLine, showsClose: false).id(chatLine)
+            KeSpaceView(line: chatLine).id(chatLine)
         }
     }
 
     private var journalTabBar: some View {
         HStack(spacing: 0) {
-            journalTab(.us, label: "我们", symbol: "house")
-            journalTab(.ke, label: "柯", symbol: "moon")
+            journalTab(.ke, label: "柯", symbol: "bubble.left")
+            journalTab(.us, label: "我们", symbol: "heart")
             journalTab(.play, label: "玩", symbol: "gamecontroller")
-            journalTab(.memories, label: "回忆", symbol: "photo")
-            journalTab(.drawer, label: "抽屉", symbol: "archivebox")
+            journalTab(.drawer, label: "柯的", symbol: "archivebox")
         }
         .padding(.horizontal, 12).padding(.top, 9).padding(.bottom, 3)
         .background(theme.pageBackground.opacity(0.96))
@@ -116,16 +113,15 @@ struct RootTabView: View {
             }
             .foregroundStyle(tab == selection ? theme.pageAccent : theme.pageColor.textSecondary)
             .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
-        }.buttonStyle(.plain)
+        }.buttonStyle(.plain).accessibilityIdentifier("tab-\(tab)")
     }
 
     private var crystalTabBar: some View {
         HStack(spacing: 0) {
-            tabButton(.us, label: "我们")
             tabButton(.ke, label: "柯")
+            tabButton(.us, label: "我们")
             tabButton(.play, label: "玩")
-            tabButton(.memories, label: "回忆")
-            tabButton(.drawer, label: "抽屉")
+            tabButton(.drawer, label: "柯的")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
@@ -152,46 +148,17 @@ struct RootTabView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("tab-\(tab)")
     }
     private func symbol(for tab: Tab) -> String {
         switch tab {
         case .us: return "moon.stars.fill"
         case .ke: return "bubble.left.and.bubble.right.fill"
         case .play: return "sparkles"
-        case .memories: return "clock.arrow.circlepath"
         case .drawer: return "archivebox.fill"
         }
     }
 
-}
-
-private struct NavArtwork: View {
-    let tab: RootTabView.Tab
-    let selected: Bool
-
-    var body: some View {
-        artwork
-            .resizable()
-            .scaledToFit()
-            .padding(1)
-        .scaleEffect(selected ? 1 : 0.92)
-        .animation(.easeOut(duration: 0.16), value: selected)
-        .accessibilityHidden(true)
-    }
-
-    private var artwork: Image {
-        switch (tab, selected) {
-        case (.us, false): return Image("NavUsIdle")
-        case (.us, true): return Image("NavUsSelected")
-        case (.ke, false): return Image("NavKeIdle")
-        case (.ke, true): return Image("NavKeSelected")
-        case (.play, false): return Image("NavPlayIdle")
-        case (.play, true): return Image("NavPlaySelected")
-        case (.memories, false): return Image("NavMemoryIdle")
-        case (.memories, true): return Image("NavMemorySelected")
-        case (.drawer, _): return Image(systemName: "archivebox.fill")
-        }
-    }
 }
 
 #Preview {

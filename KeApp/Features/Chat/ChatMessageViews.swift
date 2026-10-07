@@ -357,18 +357,6 @@ struct MessageRow: View {
                     }
                     .accessibilityIdentifier("message-action-copy")
                 }
-                if !message.text.isEmpty && !message.isStreaming {
-                    Divider()
-                    Button {
-                        QuoteNotebook.shared.collect(message, text: notebookText)
-                        actionsPresented = false
-                    } label: {
-                        Label("收进本子", systemImage: "book.closed")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(14)
-                    }
-                    .accessibilityIdentifier("message-action-notebook")
-                }
                 if message.sender == .ke && message.serverID != nil && !message.isStreaming && !message.text.isEmpty {
                     Divider()
                     Button {

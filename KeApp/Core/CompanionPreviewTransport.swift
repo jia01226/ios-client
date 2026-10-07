@@ -29,7 +29,8 @@ final class CompanionPreviewTransport: URLProtocol {
         }
         let body: String
         let code: Int
-        if let fixture = JournalPreviewData.response(for: request) { code = fixture.0; body = fixture.1 }
+        if let fixture = MoonlightPreviewData.response(for: request) { code = fixture.0; body = fixture.1 }
+        else if let fixture = JournalPreviewData.response(for: request) { code = fixture.0; body = fixture.1 }
         else if path.hasSuffix("/tarot/draw") {
             code = 200
             body = #"{"id":7,"question":"他今晚会不会来找我","spread":"three","spread_name":"三牌阵","objective":"过去的月亮逆位：那阵子的不安在退去。\n当下圣杯二：两个人的心是对上的。\n未来太阳正位：会亮起来，别自己先熄火。","cards":[{"position":"过去(根源/背景)","name":"The Moon","cn":"月亮","type":"Major","reversed":true,"image":"tarot/cards/major18.webp"},{"position":"现在(当下状态)","name":"Two of Cups","cn":"圣杯二","type":"Minor","reversed":false,"image":"tarot/cards/cups02.webp"},{"position":"未来(走向/建议)","name":"The Sun","cn":"太阳","type":"Major","reversed":false,"image":"tarot/cards/major19.webp"}]}"#
