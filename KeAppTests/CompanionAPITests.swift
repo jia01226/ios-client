@@ -42,6 +42,31 @@ final class CompanionAPITests: XCTestCase {
 
     override func tearDown() { CompanionStub.handler = nil; super.tearDown() }
 
+    func testHutLetterUsesExistingSessionLineAndTextOnly() async throws {
+        CompanionStub.handler = { request in
+            XCTAssertEqual(request.url?.path, "/ke-test2/api/hut/letter")
+            XCTAssertEqual(request.httpMethod, "POST")
+            let data = try XCTUnwrap(requestBody(request))
+            let fields = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: String])
+            XCTAssertEqual(fields, ["text": "这里想改一句"])
+            return (200, "{\"ok\":true,\"id\":8}")
+        }
+        try await api().sendHutLetter(text: "这里想改一句")
+    }
+
+    func testMissingPeriodEndEndpointFailsWithoutDeletingOrAddingAStart() async {
+        CompanionStub.handler = { request in
+            XCTAssertEqual(request.url?.path, "/ke-test2/api/periods/end")
+            let fields = try JSONSerialization.jsonObject(with: XCTUnwrap(requestBody(request))) as? [String: Any]
+            XCTAssertEqual(fields?["id"] as? Int, 8)
+            XCTAssertEqual(fields?["end_date"] as? String, "2026-10-07")
+            XCTAssertNil(fields?["start_date"])
+            return (404, "{\"error\":\"not deployed\"}")
+        }
+        do { try await api().endPeriod(id: 8, endDate: "2026-10-07"); XCTFail("Missing endpoint must remain a failure") }
+        catch { }
+    }
+
     func testReadsStayInsideSelectedLine() async throws {
         CompanionStub.handler = { request in
             XCTAssertEqual(request.url?.path, "/ke-test2/api/schedule")

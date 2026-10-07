@@ -11,6 +11,9 @@ struct HomeReminderSettingsView: View {
     @State private var shiftKind = ShiftDay.Kind.normal
     @State private var showingDay = false
     @State private var saved = false
+    @State private var templateName = "正常班"
+    @State private var saveError: String?
+    @State private var deletingTemplate = false
     @State private var editingClock: ClockSelection?
     private struct ClockSelection: Identifiable {
         let period: Int
@@ -32,14 +35,18 @@ struct HomeReminderSettingsView: View {
                 HStack(spacing: 24) {
                     Text("班次").foregroundStyle(theme.pageColor.textSecondary)
                     Menu {
-                        ForEach(ShiftDay.Kind.allCases, id: \.self) { kind in
+                        ForEach(model.availableShiftKinds, id: \.self) { kind in
                             Button(model.shiftLabel(kind)) { shiftKind = kind; loadProfile() }
                         }
+                        Button("新建班次") { shiftKind = .custom(); templateName = ""; plan = .example; saved = false; saveError = nil }
                     } label: {
-                        Text(model.shiftLabel(shiftKind)).frame(width: 110, alignment: .leading)
+                        Text(templateName.isEmpty ? "新班次" : templateName).frame(width: 110, alignment: .leading)
                             .padding(.bottom, 5).overlay(alignment: .bottom) { hairline }
                     }.accessibilityIdentifier("shift-profile-kind")
                 }.padding(.top, 8)
+                TextField("自己起个班名", text: $templateName)
+                    .textInputAutocapitalization(.never).submitLabel(.done)
+                    .accessibilityIdentifier("shift-template-name")
                 HStack(spacing: 12) {
                     modeButton("连续上班", split: false)
                     modeButton("分两段", split: true)
@@ -84,13 +91,20 @@ struct HomeReminderSettingsView: View {
                         .font(theme.font.journalCaption).foregroundStyle(theme.pageAccent)
                 }
                 Button {
-                    model.saveShiftProfile(plan, kind: shiftKind); applyProfiles(); saved = true
+                    saveError = model.saveShiftTemplate(kind: shiftKind, name: templateName, plan: plan)
+                    if saveError == nil { applyProfiles(); saved = true }
                 } label: {
                     HStack(spacing: 10) {
                         Text(saved ? "这个班次记好了" : "记住这个班次").underline()
                         Image(systemName: saved ? "checkmark" : "chevron.right").font(.system(size: 10, weight: .light))
                     }.foregroundStyle(theme.pageAccent).frame(maxWidth: .infinity)
                 }.disabled(resolved == nil).accessibilityIdentifier("shift-profile-save")
+                if let saveError { Text(saveError).font(theme.font.journalCaption).foregroundStyle(theme.pageAccent) }
+                if model.availableShiftKinds.contains(shiftKind) {
+                    Button("删除这个班次") { deletingTemplate = true }
+                        .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
+                        .accessibilityIdentifier("shift-template-delete")
+                }
                 if let preset = ShiftPlan.preset(kind: shiftKind.rawValue), plan != preset {
                     Button("恢复这个班次的默认时间") { plan = preset; saved = false }
                         .font(theme.font.journalCaption).foregroundStyle(theme.pageAccent)
@@ -109,7 +123,7 @@ struct HomeReminderSettingsView: View {
                 }.accessibilityIdentifier("shift-day-adjust")
                 if showingDay {
                     DatePicker("日期", selection: $selectedDate, displayedComponents: .date)
-                    Text(model.shift(on: selectedDate).map { "当天班次：" + model.shiftLabel($0) } ?? "这天还没排班，请先在月历填班次。")
+                    Text(model.shift(on: selectedDate).map { "当天班次：" + model.shiftDisplay($0, on: selectedDate) } ?? "这天还没排班，请先在月历填班次。")
                         .font(theme.font.journalCaption)
                     Button("只记这一天的时间") {
                         model.saveShiftOverride(plan, on: selectedDate)
@@ -136,9 +150,18 @@ struct HomeReminderSettingsView: View {
                 Button("记好了") { editingClock = nil }.font(theme.font.journalBody)
             }.presentationDetents([.height(290)]).presentationBackground(theme.pageBackground).tint(theme.pageAccent)
         }
+        .alert("删除这个班次？", isPresented: $deletingTemplate) {
+            Button("删除班次", role: .destructive) {
+                model.archiveShiftTemplate(shiftKind)
+                shiftKind = model.availableShiftKinds.first ?? .custom()
+                loadProfile()
+            }
+            Button("保留", role: .cancel) {}
+        } message: { Text("已排的日子会保留；以后排班时不再显示这个选项。") }
         .onAppear { loadDay(); applyProfiles() }
         .onChange(of: model.savedShifts) { _, _ in applyProfiles() }
         .onChange(of: plan) { _, _ in saved = false }
+        .onChange(of: templateName) { _, _ in saved = false; saveError = nil }
         .onChange(of: selectedDate) { _, _ in loadDay() }
     }
     private var hairline: some View { Rectangle().fill(theme.pageColor.separator).frame(height: 0.5) }
@@ -212,7 +235,7 @@ struct HomeReminderSettingsView: View {
             if !Calendar.current.isDate(time, inSameDayAs: selectedDate) { Text("次日").font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary) }
         }.font(theme.font.journalQuote)
     }
-    private func loadProfile() { plan = model.shiftProfile(shiftKind); saved = false }
+    private func loadProfile() { plan = model.shiftProfile(shiftKind); templateName = model.availableShiftKinds.contains(shiftKind) ? model.shiftLabel(shiftKind) : ""; saved = false; saveError = nil }
     private func loadDay() {
         shiftKind = model.shift(on: selectedDate) ?? .normal
         loadProfile()

@@ -16,6 +16,7 @@ struct PlayView: View {
     @State private var gardenOpen = false
     @State private var readingOpen = false
     @State private var duelOpen = false
+    @State private var hutOpen = false
 
     init(line: ChatLine = .main) { self.line = line }
 
@@ -88,9 +89,18 @@ struct PlayView: View {
                 .padding(.top, 133)
                 .frame(maxWidth: .infinity)
 
-                // 2026-10-07 拿掉「花园 · X」这串：两颗珠子都会用她的名义往聊天里发话（她没点过却发出去好几次），
-                // 柯也不自己去花园了。位置先空着，山屋做好可以挂这儿。
-                Color.clear.frame(maxWidth: .infinity)
+                VStack {
+                    Rectangle().fill(theme.pageColor.separator).frame(width: JournalLayout.line, height: JournalLayout.hutCord)
+                    Button { hutOpen = true } label: {
+                        VStack(spacing: JournalLayout.smallGap) {
+                            Image(systemName: "house").font(theme.font.journalTitle)
+                            Text("山屋").font(theme.font.journalHeading)
+                        }.padding(JournalLayout.inset)
+                            .background(theme.pageBackground.opacity(0.8), in: RoundedRectangle(cornerRadius: JournalLayout.radius))
+                            .overlay(RoundedRectangle(cornerRadius: JournalLayout.radius).stroke(theme.pageAccent, lineWidth: JournalLayout.line))
+                            .contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityIdentifier("play-hut")
+                }.padding(.top, JournalLayout.hutTop).frame(maxWidth: .infinity)
 
                 Color.clear.frame(maxWidth: .infinity)
             }
@@ -118,6 +128,7 @@ struct PlayView: View {
         .fullScreenCover(isPresented: $readingOpen) {
             CoReadingView(line: line).environmentObject(theme)
         }
+        .fullScreenCover(isPresented: $hutOpen) { HutView().environmentObject(theme) }
         .fullScreenCover(isPresented: $duelOpen) {
             DuelView().environmentObject(theme)
         }

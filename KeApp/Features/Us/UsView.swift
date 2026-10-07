@@ -10,6 +10,10 @@ struct UsView: View {
     @Environment(\.scenePhase) private var scenePhase
     let line: ChatLine
     @StateObject private var vm: UsViewModel
+    @StateObject private var periodStore: PeriodStore
+    @State private var calendarSection = CalendarSection.days
+    @State private var editingAnniversaries = false
+    private enum CalendarSection: String, CaseIterable { case days = "日子", week = "周班表", month = "月历" }
     @SceneStorage("us.selected-anniversary-index") private var selectedAnniversaryIndex = 0
     @SceneStorage("us.journal-anniversary-index.v2") private var journalAnniversaryIndex = 0
     @State private var selectedWeekIndex = min(6, max(0, (Calendar.current.component(.weekday, from: .now) + 5) % 7))
@@ -23,14 +27,19 @@ struct UsView: View {
     init(line: ChatLine = .test1) {
         self.line = line
         _vm = StateObject(wrappedValue: UsViewModel(api: APIClient(baseURL: line.apiBaseURL)))
+        _periodStore = StateObject(wrappedValue: PeriodStore(api: APIClient(baseURL: line.apiBaseURL), scope: line.rawValue))
     }
 
     var body: some View {
         Group {
             if theme.skin == .day { dayHome } else { legacyHome }
         }
+        .task(id: line) { await periodStore.load() }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await vm.loadReminders() } }
+            if phase == .active { Task { await vm.loadReminders(); await periodStore.load() } }
+        }
+        .sheet(isPresented: $editingAnniversaries, onDismiss: { Task { await vm.loadReminders() } }) {
+            CompanionPages(page: .anniversaries, line: line).environmentObject(theme)
         }
     }
 
@@ -38,6 +47,8 @@ struct UsView: View {
         ScrollViewReader { scrollProxy in
             ScrollView {
                 VStack(spacing: 0) {
+                PeriodQuickActions(store: periodStore).padding(JournalLayout.gutter)
+                Button("日历里的纪念日") { editingAnniversaries = true }.font(theme.font.journalCaption)
                 AnniversaryPager(
                     events: vm.anniversaries,
                     selectedIndex: $selectedAnniversaryIndex,
@@ -138,53 +149,7 @@ struct UsView: View {
                         Text("和你一起，把每一天都变成喜欢的日子。")
                             .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
                     }.padding(.top, 20).padding(.bottom, 28)
-                    HStack(spacing: 5) {
-                        ForEach(Array(journalEvents.enumerated()), id: \.element.id) { index, event in
-                            Button { journalAnniversaryIndex = index } label: {
-                                Text(journalLabel(event)).font(theme.font.journalCaption)
-                                    .foregroundStyle(index == journalAnniversaryIndex ? theme.pageColor.textOnAccent : theme.pageColor.textSecondary)
-                                    .frame(maxWidth: .infinity).padding(.vertical, 9)
-                                    .background(index == journalAnniversaryIndex ? theme.pageAccent : .clear, in: Capsule())
-                            }
-                        }
-                    }.padding(.bottom, 16)
-                    TabView(selection: $journalAnniversaryIndex) {
-                        ForEach(Array(journalEvents.enumerated()), id: \.element.id) { index, event in
-                            let display = vm.display(for: event)
-                            VStack(spacing: 7) {
-                                Text(journalRank(event) == 0 ? "在一起已经" : (journalRank(event) == 1 ? "表白已经" : journalLabel(event)))
-                                    .font(theme.font.journalBody)
-                                HStack(alignment: .firstTextBaseline, spacing: 9) {
-                                    Text(display.number).font(.custom("Didot", size: 58, relativeTo: .largeTitle))
-                                    Text(display.unit).font(theme.font.journalHeading)
-                                }
-                                Text(display.dateLabel).font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
-                            }.frame(maxWidth: .infinity).tag(index)
-                        }
-                    }.tabViewStyle(.page(indexDisplayMode: .never))
-                    .frame(height: dynamicTypeSize.isAccessibilitySize ? 245 : 155)
-                    .accessibilityIdentifier("us-anniversary-pager")
-                    HStack(spacing: 7) {
-                        ForEach(journalEvents.indices, id: \.self) { index in
-                            Circle().fill(theme.pageAccent.opacity(index == journalAnniversaryIndex ? 1 : 0.25)).frame(width: 5, height: 5)
-                        }
-                    }.frame(maxWidth: .infinity).padding(.bottom, 20)
-                    journalDivider
-                    HStack {
-                        Text("本周班表").font(theme.font.journalHeading)
-                        Spacer()
-                        Button("班次设置") { shiftEditDate = .now; showingReminderSettings = true }
-                            .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
-                            .accessibilityIdentifier("us-shift-edit")
-                    }.padding(.top, 20).padding(.bottom, 18)
-                    dayWeek
-                    Text("空白日排班 · 再点已排日期可取消")
-                        .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary).padding(.top, 10)
-                    if let status = vm.shiftSyncStatus {
-                        Button(status) { Task { await vm.syncShifts(); await vm.refreshShifts() } }
-                            .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
-                            .disabled(vm.syncingShifts).accessibilityIdentifier("shift-sync-status").padding(.top, 6)
-                    }
+                    calendarBlock
                     Button { showingReminderJournal = true } label: {
                         HStack(spacing: 14) {
                             Image(systemName: "moon.fill").font(.system(size: 23, weight: .ultraLight)).foregroundStyle(theme.pageAccent)
@@ -197,13 +162,6 @@ struct UsView: View {
                         }.padding(14).background(theme.pageColor.cardElevated.opacity(0.50), in: RoundedRectangle(cornerRadius: 14))
                     }.accessibilityIdentifier("us-reminder-journal").padding(.vertical, 18)
                     journalDivider
-                    HStack {
-                        Text("月班表日历").font(theme.font.journalHeading)
-                        Spacer()
-                        Text("这个月，也一起加油吧").font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
-                    }.padding(.top, 20).padding(.bottom, 18)
-                    MonthCalendar(vm: vm, journal: true).id("moon-calendar")
-                    journalDivider.padding(.vertical, 20)
                     HStack {
                         Label("小本子", systemImage: "book.closed").font(theme.font.journalHeading)
                         Spacer()
@@ -238,9 +196,10 @@ struct UsView: View {
             }
             .font(theme.font.journalBody).foregroundStyle(theme.pageColor.textPrimary).tint(theme.pageAccent)
             .buttonStyle(.plain).scrollIndicators(.hidden).background { MoonJournalBackground() }
-            .refreshable { await vm.loadReminders() }.task(id: line) { await vm.loadReminders() }
+            .refreshable { await vm.loadReminders(); await periodStore.load() }.task(id: line) { await vm.loadReminders() }
             .task {
                 if ProcessInfo.processInfo.arguments.contains("-preview-us-calendar") {
+                    calendarSection = .month
                     try? await Task.sleep(for: .milliseconds(280)); proxy.scrollTo("moon-calendar", anchor: .top)
                 }
             }
@@ -249,16 +208,97 @@ struct UsView: View {
             }
             .fullScreenCover(isPresented: $showingReminderSettings) { NavigationStack { HomeReminderSettingsView(model: vm, date: shiftEditDate) }.presentationBackground(theme.pageBackground) }
             .sheet(item: $weeklyScheduleDate) { selection in
-                ScheduleEditorSheet(date: selection.date, currentShift: nil, currentNote: nil) { shift, note in
+                ScheduleEditorSheet(model: vm, date: selection.date, currentShift: nil, currentNote: nil) { shift, note in
                     vm.setShift(shift, note: note, on: selection.date)
                     weeklyScheduleDate = nil
-                }.presentationDetents([.height(420)]).presentationBackground(theme.pageBackground)
+                }.presentationDetents([.large]).presentationBackground(theme.pageBackground)
             }
             .fullScreenCover(isPresented: $showingReminderJournal) { NavigationStack { ReminderJournalView() }.presentationBackground(theme.pageBackground) }
             .sheet(isPresented: $showingNotebook) { NavigationStack { QuoteNotebookView() } }
             .sheet(isPresented: $showingCompanionHub) { CompanionHubView(line: line, model: vm) }
         }
     }
+    private var calendarBlock: some View {
+        VStack(alignment: .leading, spacing: JournalLayout.gap) {
+            HStack {
+                Text("日历").font(theme.font.journalHeading)
+                Spacer()
+                Button("改纪念日") { editingAnniversaries = true }
+                    .font(theme.font.journalCaption).accessibilityIdentifier("calendar-edit-anniversaries")
+            }
+            PeriodQuickActions(store: periodStore)
+            HStack(spacing: JournalLayout.smallGap) {
+                ForEach(CalendarSection.allCases, id: \.self) { section in
+                    Button { calendarSection = section } label: {
+                        Text(section.rawValue).font(theme.font.journalBody)
+                            .frame(maxWidth: .infinity).padding(.vertical, JournalLayout.smallGap)
+                            .background(theme.pageAccent.opacity(calendarSection == section ? 0.14 : 0), in: Capsule())
+                    }.accessibilityIdentifier("calendar-section-" + section.rawValue)
+                        .accessibilityAddTraits(calendarSection == section ? .isSelected : [])
+                }
+            }
+            switch calendarSection {
+            case .days: journalDays
+            case .week: journalWeek
+            case .month: MonthCalendar(vm: vm, journal: true).id("moon-calendar")
+            }
+        }
+    }
+    private var journalDays: some View {
+        VStack(spacing: 0) {
+                    HStack(spacing: 5) {
+                        ForEach(Array(journalEvents.enumerated()), id: \.element.id) { index, event in
+                            Button { journalAnniversaryIndex = index } label: {
+                                Text(journalLabel(event)).font(theme.font.journalCaption)
+                                    .foregroundStyle(index == journalAnniversaryIndex ? theme.pageColor.textOnAccent : theme.pageColor.textSecondary)
+                                    .frame(maxWidth: .infinity).padding(.vertical, 9)
+                                    .background(index == journalAnniversaryIndex ? theme.pageAccent : .clear, in: Capsule())
+                            }
+                        }
+                    }.padding(.bottom, 16)
+                    TabView(selection: $journalAnniversaryIndex) {
+                        ForEach(Array(journalEvents.enumerated()), id: \.element.id) { index, event in
+                            let display = vm.display(for: event)
+                            VStack(spacing: 7) {
+                                Text(journalRank(event) == 0 ? "在一起已经" : (journalRank(event) == 1 ? "表白已经" : journalLabel(event)))
+                                    .font(theme.font.journalBody)
+                                HStack(alignment: .firstTextBaseline, spacing: 9) {
+                                    Text(display.number).font(.custom("Didot", size: 58, relativeTo: .largeTitle))
+                                    Text(display.unit).font(theme.font.journalHeading)
+                                }
+                                Text(display.dateLabel).font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
+                            }.frame(maxWidth: .infinity).tag(index)
+                        }
+                    }.tabViewStyle(.page(indexDisplayMode: .never))
+                    .frame(height: dynamicTypeSize.isAccessibilitySize ? 245 : 155)
+                    .accessibilityIdentifier("us-anniversary-pager")
+                    HStack(spacing: 7) {
+                        ForEach(journalEvents.indices, id: \.self) { index in
+                            Circle().fill(theme.pageAccent.opacity(index == journalAnniversaryIndex ? 1 : 0.25)).frame(width: 5, height: 5)
+                        }
+                    }.frame(maxWidth: .infinity).padding(.bottom, 20)
+        }
+    }
+    private var journalWeek: some View {
+        VStack(alignment: .leading, spacing: 0) {
+                    HStack {
+                        Text("本周班表").font(theme.font.journalHeading)
+                        Spacer()
+                        Button("班次设置") { shiftEditDate = .now; showingReminderSettings = true }
+                            .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
+                            .accessibilityIdentifier("us-shift-edit")
+                    }.padding(.top, 20).padding(.bottom, 18)
+                    dayWeek
+                    Text("空白日排班 · 再点已排日期可取消")
+                        .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary).padding(.top, 10)
+                    if let status = vm.shiftSyncStatus {
+                        Button(status) { Task { await vm.syncShifts(); await vm.refreshShifts() } }
+                            .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
+                            .disabled(vm.syncingShifts).accessibilityIdentifier("shift-sync-status").padding(.top, 6)
+                    }
+        }
+    }
+
     private var journalDivider: some View {
         Rectangle().fill(theme.pageColor.separator).frame(height: 0.5)
     }
@@ -280,7 +320,7 @@ struct UsView: View {
                 }.accessibilityIdentifier("week-day-" + HomeReminderCoordinator.dayKey(day.date))
                     .accessibilityLabel(vm.calendarDayAccessibilityLabel(day.date))
             }
-        }.accessibilityIdentifier("curved-week-schedule")
+        }.accessibilityElement(children: .contain).accessibilityIdentifier("curved-week-schedule")
     }
 
     private var todayReminderLabel: String {
@@ -823,7 +863,7 @@ private struct MonthCalendar: View {
         .sensoryFeedback(.selection, trigger: editingDate)
         .sheet(item: $editingDate) { selection in
             ScheduleEditorSheet(
-                date: selection.date,
+                model: vm, date: selection.date,
                 currentShift: vm.shift(on: selection.date),
                 currentNote: vm.shiftNote(on: selection.date),
                 onSave: { shift, note in
@@ -831,7 +871,7 @@ private struct MonthCalendar: View {
                     editingDate = nil
                 }
             )
-            .presentationDetents([.height(420)])
+            .presentationDetents([.large])
             .presentationDragIndicator(.visible)
             .presentationBackground(UsPalette.paper)
         }
@@ -860,6 +900,7 @@ private struct CalendarDayButtonStyle: ButtonStyle {
 }
 
 private struct ScheduleEditorSheet: View {
+    @ObservedObject var model: UsViewModel
     @Environment(\.dismiss) private var dismiss
     let date: Date
     let onSave: (ShiftDay.Kind?, String?) -> Void
@@ -867,11 +908,12 @@ private struct ScheduleEditorSheet: View {
     @State private var note: String
 
     init(
-        date: Date,
+        model: UsViewModel, date: Date,
         currentShift: ShiftDay.Kind?,
         currentNote: String?,
         onSave: @escaping (ShiftDay.Kind?, String?) -> Void
     ) {
+        self.model = model
         self.date = date
         self.onSave = onSave
         _selectedShift = State(initialValue: currentShift)
@@ -897,13 +939,14 @@ private struct ScheduleEditorSheet: View {
                     .buttonStyle(.plain)
             }
 
-            HStack(spacing: 10) {
-                ForEach(ShiftDay.Kind.allCases, id: \.self) { kind in
-                    ShiftChoice(kind: kind, selected: selectedShift == kind) {
-                        selectedShift = kind
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())]) {
+                    ForEach(model.availableShiftKinds, id: \.self) { kind in
+                        ShiftChoice(kind: kind, title: model.shiftLabel(kind), selected: selectedShift == kind) { selectedShift = kind }
                     }
                 }
             }
+            .frame(maxHeight: JournalLayout.shiftChoicesHeight)
 
             Group {
                 if selectedShift == .other {
@@ -982,6 +1025,7 @@ private struct ScheduleEditorSheet: View {
 
 private struct ShiftChoice: View {
     let kind: ShiftDay.Kind
+    let title: String
     let selected: Bool
     let action: () -> Void
 
@@ -1010,21 +1054,14 @@ private struct ShiftChoice: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
-    private var label: String {
-        switch kind {
-        case .normal: return "正常班"
-        case .early: return "早班"
-        case .deputy: return "副班"
-        case .other: return "其他"
-        }
-    }
+    private var label: String { title }
 
     private var icon: String {
         switch kind {
         case .normal: return "sun.max"
         case .early: return "sunrise"
         case .deputy: return "person.2"
-        case .other: return "ellipsis"
+        default: return "ellipsis"
         }
     }
 }
@@ -1061,22 +1098,22 @@ private struct CalendarDay: View {
 
     private func dayDisc(isToday: Bool) -> Color {
         if isToday { return UsPalette.coral.opacity(0.84) }
+        guard let shift else { return .clear }
         switch shift {
         case .normal: return UsPalette.blush.opacity(0.11)
         case .early: return UsPalette.gold.opacity(0.11)
         case .deputy: return UsPalette.sage.opacity(0.10)
-        case .other: return UsPalette.blush.opacity(0.13)
-        case .none: return .clear
+        default: return UsPalette.blush.opacity(0.13)
         }
     }
 
     private var markerColor: Color {
+        guard let shift else { return .clear }
         switch shift {
         case .normal: return UsPalette.coral
         case .early: return UsPalette.gold
         case .deputy: return UsPalette.sage
-        case .other: return UsPalette.coral
-        case .none: return .clear
+        default: return UsPalette.coral
         }
     }
 }
@@ -1096,6 +1133,11 @@ final class UsViewModel: ObservableObject {
     @Published private(set) var savedShifts: [String: ShiftDay.Kind] = [:]
     @Published private(set) var savedShiftNotes: [String: String] = [:]
     @Published private(set) var clearedShiftKeys: Set<String> = []
+    @Published private(set) var shiftTemplates: [ShiftTemplate] = []
+    @Published private(set) var savedShiftNames: [String: String] = [:]
+    var availableShiftKinds: [ShiftDay.Kind] { shiftTemplates.filter { !$0.archived }.map(\.id) }
+    private let shiftTemplatesKey = "us.shift-templates.v1"
+    private let savedShiftNamesKey = "us.shift-names.v1"
 
     private let calendar = Calendar.current
     private let savedShiftsKey = "us.saved-shifts.v2"
@@ -1158,6 +1200,8 @@ final class UsViewModel: ObservableObject {
         self.defaults = defaults
         self.api = api
         self.shiftAPI = shiftAPI ?? api
+        shiftTemplates = defaults.data(forKey: shiftTemplatesKey).flatMap { try? JSONDecoder().decode([ShiftTemplate].self, from: $0) } ?? ShiftTemplate.initial()
+        savedShiftNames = defaults.dictionary(forKey: savedShiftNamesKey) as? [String: String] ?? [:]
         if let data = defaults.data(forKey: pendingShiftsKey),
            let pending = try? JSONDecoder().decode([String: PendingShiftChange].self, from: data) {
             pendingShifts = pending
@@ -1284,26 +1328,51 @@ final class UsViewModel: ObservableObject {
     }
 
     func shiftLabel(_ kind: ShiftDay.Kind) -> String {
-        switch kind {
-        case .normal: return "正常班"
-        case .early: return "早班"
-        case .deputy: return "副班"
-        case .other: return "其他"
-        }
+        shiftTemplates.first { $0.id == kind }?.name ?? "其他"
     }
 
     func shiftDisplay(_ kind: ShiftDay.Kind, on date: Date) -> String {
+        if let name = savedShiftNames[dateKey(date)] { return name }
         if kind == .other, let note = shiftNote(on: date), !note.isEmpty { return note }
         return shiftLabel(kind)
     }
 
-    func shiftDetail(_ kind: ShiftDay.Kind, on date: Date) -> String {
-        switch kind {
-        case .normal: return "正常班"
-        case .early: return "早班"
-        case .deputy: return "副班"
-        case .other: return shiftNote(on: date) ?? "其他班次"
+    func shiftDetail(_ kind: ShiftDay.Kind, on date: Date) -> String { shiftDisplay(kind, on: date) }
+
+    /// Removing a template only removes the choice; dated records keep their snapshots.
+    func archiveShiftTemplate(_ kind: ShiftDay.Kind) {
+        guard let index = shiftTemplates.firstIndex(where: { $0.id == kind }) else { return }
+        shiftTemplates[index].archived = true
+        defaults.set(try? JSONEncoder().encode(shiftTemplates), forKey: shiftTemplatesKey)
+    }
+
+    func saveShiftTemplate(kind: ShiftDay.Kind, name: String, plan: ShiftPlan) -> String? {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name.count <= 16, !name.contains("\n") else { return "班名写 1–16 个字就好。" }
+        guard !shiftTemplates.contains(where: { $0.id != kind && !$0.archived && $0.name.caseInsensitiveCompare(name) == .orderedSame }) else { return "已经有这个班名了，换一个吧。" }
+        guard plan.resolve(on: .now) != nil else { return "请检查这个班次的起止时间。" }
+        // Preserve names and times on already assigned days before changing the template.
+        for (key, storedKind) in savedShifts where storedKind == kind {
+            guard let date = shiftDate(key) else { continue }
+            if savedShiftNames[key] == nil { savedShiftNames[key] = shiftDisplay(kind, on: date) }
+            if defaults.data(forKey: "us.shift-plan.remote." + key) == nil, let oldPlan = shiftPlan(on: date) {
+                defaults.set(try? JSONEncoder().encode(oldPlan), forKey: "us.shift-plan.remote." + key)
+            }
+            if date >= calendar.startOfDay(for: .now) { savedShiftNames[key] = name }
         }
+        if let index = shiftTemplates.firstIndex(where: { $0.id == kind }) {
+            shiftTemplates[index].name = name; shiftTemplates[index].archived = false
+        } else { shiftTemplates.append(ShiftTemplate(id: kind, name: name)) }
+        defaults.set(try? JSONEncoder().encode(shiftTemplates), forKey: shiftTemplatesKey)
+        defaults.set(savedShiftNames, forKey: savedShiftNamesKey)
+        saveShiftProfile(plan, kind: kind)
+        for (key, storedKind) in savedShifts where storedKind == kind {
+            guard let date = shiftDate(key), date >= calendar.startOfDay(for: .now),
+                  defaults.data(forKey: "us.shift-plan.override." + key) != nil else { continue }
+            queueShift(on: date)
+        }
+        Task { await syncShifts() }
+        return nil
     }
 
     func weekdayLabel(_ date: Date) -> String {
@@ -1336,6 +1405,7 @@ final class UsViewModel: ObservableObject {
         let key = dateKey(date)
         if let kind {
             savedShifts[key] = kind
+            savedShiftNames[key] = kind == .other && !(note ?? "").isEmpty ? note : shiftLabel(kind)
             if let note, !note.isEmpty {
                 savedShiftNotes[key] = note
             } else {
@@ -1344,6 +1414,7 @@ final class UsViewModel: ObservableObject {
             clearedShiftKeys.remove(key)
         } else {
             savedShifts.removeValue(forKey: key)
+            savedShiftNames.removeValue(forKey: key)
             savedShiftNotes.removeValue(forKey: key)
             clearedShiftKeys.insert(key)
         }
@@ -1361,6 +1432,7 @@ final class UsViewModel: ObservableObject {
         for key in clearedShiftKeys { stored[key] = "none" }
         defaults.set(stored, forKey: savedShiftsKey)
         defaults.set(savedShiftNotes, forKey: savedShiftNotesKey)
+        defaults.set(savedShiftNames, forKey: savedShiftNamesKey)
         defaults.removeObject(forKey: "us.shift-plan.override." + key)
         defaults.removeObject(forKey: "us.shift-plan.remote." + key)
         updateEndTime(on: date)
@@ -1415,7 +1487,7 @@ final class UsViewModel: ObservableObject {
             }
             let adjusted = plan != nil && plan != ShiftPlan.preset(kind: kind.rawValue)
             pendingShifts[key] = PendingShiftChange(
-                shift: shiftLabel(kind) + (adjusted ? "（已调整）" : ""),
+                shift: shiftDisplay(kind, on: date) + (adjusted ? "（已调整）" : ""),
                 note: ShiftNote.encode(plan: plan, note: savedShiftNotes[key],
                                       dayOverride: defaults.data(forKey: "us.shift-plan.override." + key) != nil))
         } else { pendingShifts[key] = PendingShiftChange(shift: nil) }
@@ -1464,7 +1536,7 @@ final class UsViewModel: ObservableObject {
             let oldKeys = Set(defaults.stringArray(forKey: knownRemoteShiftsKey) ?? [])
             var changedDates = Set<Date>()
             for key in oldKeys.subtracting(remoteKeys) where pendingShifts[key] == nil {
-                savedShifts.removeValue(forKey: key); savedShiftNotes.removeValue(forKey: key)
+                savedShifts.removeValue(forKey: key); savedShiftNotes.removeValue(forKey: key); savedShiftNames.removeValue(forKey: key)
                 clearedShiftKeys.insert(key)
                 defaults.removeObject(forKey: "us.shift-plan.override." + key)
                 defaults.removeObject(forKey: "us.shift-plan.remote." + key)
@@ -1472,8 +1544,10 @@ final class UsViewModel: ObservableObject {
             }
             for row in rows where pendingShifts[row.date] == nil {
                 guard let date = shiftDate(row.date) else { continue }
-                let label = row.shift.replacingOccurrences(of: "（已调整）", with: "")
-                let kind = ShiftDay.Kind.allCases.first { shiftLabel($0) == label } ?? .other
+                let label = row.shift.hasSuffix("（已调整）") ? String(row.shift.dropLast("（已调整）".count)) : row.shift
+                let previous = savedShiftNames[row.date] == label ? savedShifts[row.date] : nil
+                let kind = previous ?? shiftTemplates.first { !$0.archived && $0.name == label }?.id ?? shiftTemplates.first { $0.name == label }?.id ?? .other
+                savedShiftNames[row.date] = label
                 savedShifts[row.date] = kind
                 clearedShiftKeys.remove(row.date)
                 let note = row.note ?? ""
@@ -1491,6 +1565,7 @@ final class UsViewModel: ObservableObject {
             for key in clearedShiftKeys { stored[key] = "none" }
             defaults.set(stored, forKey: savedShiftsKey)
             defaults.set(savedShiftNotes, forKey: savedShiftNotesKey)
+            defaults.set(savedShiftNames, forKey: savedShiftNamesKey)
             // The reminder coordinator reloads this cache when its end time changes.
             // Persist the whole snapshot first so newly downloaded overrides survive.
             for date in changedDates { updateEndTime(on: date) }

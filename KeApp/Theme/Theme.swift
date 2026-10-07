@@ -455,3 +455,21 @@ enum PageColors {
     static var tea7: Color { Theme.shared.skin == .day ? Color(hex: Morandi.tea) : Color(hex: 0xB8721F) }
     static var calendarText: Color { Theme.shared.skin == .day ? Color(hex: Morandi.ink) : .white }
 }
+
+// Shared measurements for the calendar, shift library and line-drawn mountain hut.
+enum JournalLayout {
+    static let gutter: CGFloat = 24
+    static let gap: CGFloat = 20
+    static let smallGap: CGFloat = 10
+    static let inset: CGFloat = 14
+    static let radius: CGFloat = 16
+    static let line: CGFloat = 0.8
+    static let objectWidth: CGFloat = 86
+    static let drawingWidth: CGFloat = 60
+    static let drawingHeight: CGFloat = 52
+    static let letterHeight: CGFloat = 130
+    static let sceneRatio: CGFloat = 0.92
+    static let hutCord: CGFloat = 155
+    static let hutTop: CGFloat = 130
+    static let shiftChoicesHeight: CGFloat = 260
+}

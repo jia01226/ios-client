@@ -784,6 +784,9 @@ actor APIClient {
 
     func fetchDrawer() async throws -> RemoteDrawer { try await readResource("/api/drawer") }
 
+    func fetchHut() async throws -> RemoteHut { try await readResource("/api/hut") }
+    func sendHutLetter(text: String) async throws { try await writeResource("/api/hut/letter", body: ["text": text]) }
+
     func fetchAnniversaries() async throws -> [RemoteAnniversary] {
         try await readResource("/api/anniversaries")
     }
@@ -882,6 +885,12 @@ actor APIClient {
 
     func addPeriod(startDate: String, note: String) async throws {
         try await writeResource("/api/periods", body: ["start_date": startDate, "note": note])
+    }
+
+    // Requires the explicit end-date operation documented in the Build 73 handoff.
+    // A 404/400 leaves the local end date pending; it never removes the start record.
+    func endPeriod(id: Int, endDate: String) async throws {
+        try await writeResource("/api/periods/end", body: ["id": id, "end_date": endDate])
     }
 
     func deletePeriod(id: Int) async throws {
