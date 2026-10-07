@@ -9,6 +9,8 @@ struct UsView: View {
     @SceneStorage("us.selected-anniversary-index") private var selectedAnniversaryIndex = 0
     @State private var selectedWeekIndex = min(6, max(0, (Calendar.current.component(.weekday, from: .now) + 5) % 7))
     @State private var showingCompanionHub = false
+    @State private var showingNotebook = false
+    @State private var showingReminderSettings = false
 
     init(line: ChatLine = .test1) {
         self.line = line
@@ -28,6 +30,12 @@ struct UsView: View {
 
                 reminder
                     .padding(.horizontal, 30)
+                Button { showingReminderSettings = true } label: {
+                    Label("班表和提醒设置", systemImage: "clock")
+                        .foregroundStyle(UsPalette.ink)
+                        .padding(.vertical, 12)
+                }
+                .accessibilityIdentifier("us-reminder-settings")
 
                 companionEntry
                     .padding(.horizontal, 30)
@@ -51,6 +59,16 @@ struct UsView: View {
                     .padding(.bottom, 88)
                     .accessibilityHidden(true)
 
+                    Button { showingNotebook = true } label: {
+                        Label("小本子 · 收下说过的话", systemImage: "book.closed")
+                            .font(.body)
+                            .foregroundStyle(UsPalette.ink)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 18)
+                    }
+                    .accessibilityIdentifier("us-quote-notebook")
+
                     MonthCalendar(vm: vm)
                         .padding(.horizontal, 24)
                         .padding(.bottom, 34)
@@ -71,6 +89,12 @@ struct UsView: View {
                 selectedAnniversaryIndex = min(selectedAnniversaryIndex, max(0, ids.count - 1))
             }
             .task(id: line) { await vm.loadReminders() }
+            .sheet(isPresented: $showingReminderSettings) {
+                NavigationStack { HomeReminderSettingsView(model: vm) }
+            }
+            .sheet(isPresented: $showingNotebook) {
+                NavigationStack { QuoteNotebookView() }
+            }
             .sheet(isPresented: $showingCompanionHub) {
                 CompanionHubView(line: line, model: vm)
             }

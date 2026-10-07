@@ -37,6 +37,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         UNUserNotificationCenter.current().delegate = self
         PushRegistrationCoordinator.shared.prepareAtLaunch()
         LocationContextReporter.shared.prepareAtLaunch()
+        _ = HomeReminderCoordinator.shared
         return true
     }
 

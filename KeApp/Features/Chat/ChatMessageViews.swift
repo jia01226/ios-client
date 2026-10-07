@@ -278,6 +278,7 @@ struct MessageRow: View {
     @State private var actionsPresented = false
     @State private var recallAfterDismiss = false
     @State private var quoteAfterDismiss = false
+    @State private var notebookText: String?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -356,6 +357,18 @@ struct MessageRow: View {
                     }
                     .accessibilityIdentifier("message-action-copy")
                 }
+                if !message.text.isEmpty && !message.isStreaming {
+                    Divider()
+                    Button {
+                        QuoteNotebook.shared.collect(message, text: notebookText)
+                        actionsPresented = false
+                    } label: {
+                        Label("收进本子", systemImage: "book.closed")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                    }
+                    .accessibilityIdentifier("message-action-notebook")
+                }
                 if message.sender == .ke && message.serverID != nil && !message.isStreaming && !message.text.isEmpty {
                     Divider()
                     Button {
@@ -385,6 +398,7 @@ struct MessageRow: View {
             .frame(width: 180)
             .presentationCompactAdaptation(.popover)
             .onDisappear {
+                notebookText = nil
                 if quoteAfterDismiss {
                     quoteAfterDismiss = false
                     onSaveQuote(message)
@@ -421,6 +435,10 @@ struct MessageRow: View {
                     bubbleSurface(text: segment, includesAttachments: index == 0)
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("message-bubble-\(message.id)-\(index)")
+                        .highPriorityGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                            notebookText = segment
+                            actionsPresented = true
+                        })
                 }
             }
         }
