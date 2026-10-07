@@ -7,6 +7,7 @@ struct DiaryCurlReader: UIViewControllerRepresentable {
     let pages: [KeDiaryPage]
     let theme: Theme
     let reduceMotion: Bool
+    let historyIsComplete: Bool
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeUIViewController(context: Context) -> UIPageViewController {
@@ -34,7 +35,7 @@ struct DiaryCurlReader: UIViewControllerRepresentable {
         var turning = false
         init(_ parent: DiaryCurlReader) { self.parent = parent }
         func paper(_ date: Date) -> DiaryPaperPage {
-            DiaryPaperPage(date: date, entry: parent.pages.first { CompanionDate.calendar.isDate($0.date, inSameDayAs: date) }, theme: parent.theme)
+            DiaryPaperPage(date: date, entry: parent.pages.first { CompanionDate.calendar.isDate($0.date, inSameDayAs: date) }, historyIsComplete: parent.historyIsComplete, theme: parent.theme)
         }
         func page(_ date: Date) -> DiaryPageController {
             let page = DiaryPageController(date: date, rootView: paper(date))
@@ -75,6 +76,7 @@ final class DiaryPageController: UIHostingController<DiaryPaperPage> {
 struct DiaryPaperPage: View {
     let date: Date
     let entry: KeDiaryPage?
+    let historyIsComplete: Bool
     @ObservedObject var theme: Theme
     private var dayLabel: String {
         let f = DateFormatter(); f.calendar = CompanionDate.calendar; f.timeZone = CompanionDate.calendar.timeZone
@@ -92,7 +94,7 @@ struct DiaryPaperPage: View {
                     Text(entry.content).font(Moonlight.serif(16)).lineSpacing(9).textSelection(.enabled)
                         .accessibilityIdentifier("diary-page-content")
                 } else {
-                    Text("这一天还没有公开的日记。").font(Moonlight.serif(16)).foregroundStyle(theme.pageColor.textSecondary)
+                    Text(historyIsComplete ? "这一天还没有公开的日记。" : "这一天的日记尚未完整载入。").font(Moonlight.serif(16)).foregroundStyle(theme.pageColor.textSecondary)
                         .padding(.top, 20)
                 }
                 Text("柯").font(Moonlight.serif(16)).frame(maxWidth: .infinity, alignment: .trailing).padding(.top, 15)

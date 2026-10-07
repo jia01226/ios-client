@@ -8,7 +8,7 @@ struct KeDiaryPage: Identifiable, Equatable {
     var id: Date { date }
     static func collect(_ entries: [RemoteDiary]) -> [KeDiaryPage] {
         let visible = entries.filter {
-            !$0.locked_hidden && ["柯", "ai", "assistant", "ke"].contains($0.author ?? "")
+            !$0.locked_hidden && ["柯", "ai", "assistant", "ke"].contains($0.author ?? "柯")
         }
         let dated = visible.compactMap { entry -> (Date, RemoteDiary)? in
             guard let date = CompanionDate.parse(entry.created_at) else { return nil }
@@ -31,6 +31,7 @@ final class KeDiaryStore: ObservableObject {
     @Published private(set) var loading = false
     @Published private(set) var error: String?
     @Published private(set) var loaded = false
+    @Published private(set) var historyIsComplete = false
     private let api: any KeDiaryAPI
     init(api: any KeDiaryAPI) { self.api = api }
     func load() async {
@@ -39,16 +40,19 @@ final class KeDiaryStore: ObservableObject {
         defer { loading = false }
         do {
             var all: [RemoteDiary] = []; var seen = Set<Int>(); var offset = 0
+            var complete = false
             while true {
                 try Task.checkCancellation()
                 let rows = try await api.fetchDiaries(query: "", offset: offset, limit: 50)
                 let new = rows.filter { seen.insert($0.id).inserted }
                 all.append(contentsOf: new)
                 // Legacy API returns all rows without honoring pagination. Stop on repeated IDs.
-                if rows.count < 50 || new.isEmpty { break }
+                if rows.count < 50 { complete = true; break }
+                if new.isEmpty { break }
                 offset += rows.count
             }
-            pages = KeDiaryPage.collect(all); loaded = true
+            pages = KeDiaryPage.collect(all); loaded = true; historyIsComplete = complete
+            if !complete { error = "已读到现有日记；更早的记录还需要接通。" }
         } catch is CancellationError {
         } catch { self.error = "日记暂时没接上，点这里再试一次。" }
     }

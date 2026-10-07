@@ -17,6 +17,7 @@ final class MoonlightDataTests: XCTestCase {
         let store = KeDiaryStore(api: api)
         await store.load()
         XCTAssertEqual(api.calls, 2)
+        XCTAssertFalse(store.historyIsComplete)
         XCTAssertEqual(store.pages.count, 1)
         XCTAssertEqual(store.pages[0].content.components(separatedBy: "\n\n").count, 50)
     }

@@ -45,7 +45,7 @@ private struct MoonDiaryView: View {
                 VStack(spacing: 16) {
                     HStack(alignment: .center, spacing: 8) {
                         ZStack {
-                            DiaryCurlReader(date: $selected, pages: store.pages, theme: theme, reduceMotion: reduceMotion)
+                            DiaryCurlReader(date: $selected, pages: store.pages, theme: theme, reduceMotion: reduceMotion, historyIsComplete: store.historyIsComplete)
                                 .clipShape(RoundedRectangle(cornerRadius: 6))
                                 .opacity(open ? 1 : 0).allowsHitTesting(open).accessibilityHidden(!open)
                             cover
