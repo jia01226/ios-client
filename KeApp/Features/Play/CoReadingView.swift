@@ -224,15 +224,15 @@ struct CoReadingView: View {
     @State private var lastSpontaneousAt: Date?
 
     private var api: APIClient { APIClient(baseURL: line.apiBaseURL) }
-    private var ink: Color { theme.color.textPrimary }
-    private var accent: Color { theme.color.accent }
+    private var ink: Color { theme.pageColor.textPrimary }
+    private var accent: Color { theme.pageColor.accent }
 
     var body: some View {
         NavigationStack {
             Group {
                 if browserOpen { browserPage } else { libraryPage }
             }
-            .background(theme.effectiveBackground.ignoresSafeArea())
+            .background(theme.pageBackground.ignoresSafeArea())
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(browserOpen ? "书架" : "关闭") {
@@ -279,7 +279,7 @@ struct CoReadingView: View {
                         .submitLabel(.search)
                         .onSubmit(search)
                         .padding(.horizontal, 16).frame(height: 50)
-                        .background(theme.color.card, in: RoundedRectangle(cornerRadius: 16))
+                        .background(theme.pageColor.card, in: RoundedRectangle(cornerRadius: 16))
                         .accessibilityIdentifier("coreading-search-field")
                     Button(action: search) {
                         Image(systemName: "magnifyingglass").font(.system(size: 18, weight: .medium))
@@ -316,7 +316,7 @@ struct CoReadingView: View {
                                 }
                                 .font(.caption).foregroundStyle(ink.opacity(0.5))
                             }
-                            .padding(16).background(theme.color.card, in: RoundedRectangle(cornerRadius: 18))
+                            .padding(16).background(theme.pageColor.card, in: RoundedRectangle(cornerRadius: 18))
                         }
                         .buttonStyle(.plain)
                         .contextMenu { Button("从书架移除", role: .destructive) { store.remove(page) } }

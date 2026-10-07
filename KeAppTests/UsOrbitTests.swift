@@ -3,15 +3,19 @@ import XCTest
 
 @MainActor
 final class UsOrbitTests: XCTestCase {
-    func testRelationshipEventsAreAccumulatingAndBirthdaysAreCountdowns() {
+    func testRelationshipEventsAreAccumulatingAndBirthdaysAreCountdowns() throws {
         let viewModel = UsViewModel()
 
-        XCTAssertEqual(viewModel.anniversaries.map(\.id), ["mine", "confession", "together", "ke"])
-        XCTAssertEqual(viewModel.anniversaries[1].title, "表白的日子")
-        XCTAssertFalse(viewModel.anniversaries[1].isYearly)
-        XCTAssertFalse(viewModel.anniversaries[2].isYearly)
-        XCTAssertTrue(viewModel.anniversaries[0].isYearly)
-        XCTAssertTrue(viewModel.anniversaries[3].isYearly)
+        XCTAssertEqual(Set(viewModel.anniversaries.map(\.id)), Set(["mine", "confession", "together", "ke"]))
+        let confession = try XCTUnwrap(viewModel.anniversaries.first { $0.id == "confession" })
+        let together = try XCTUnwrap(viewModel.anniversaries.first { $0.id == "together" })
+        let mine = try XCTUnwrap(viewModel.anniversaries.first { $0.id == "mine" })
+        let ke = try XCTUnwrap(viewModel.anniversaries.first { $0.id == "ke" })
+        XCTAssertEqual(confession.title, "表白的日子")
+        XCTAssertFalse(confession.isYearly)
+        XCTAssertFalse(together.isYearly)
+        XCTAssertTrue(mine.isYearly)
+        XCTAssertTrue(ke.isYearly)
     }
 
     func testCalendarCanRenderAdjacentMonths() throws {

@@ -5,7 +5,7 @@ struct DuelView: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.dismiss) private var dismiss
 
-    private var ink: Color { theme.skin == .night ? theme.color.textPrimary : Color(hex: 0x302D28) }
+    private var ink: Color { theme.skin == .night ? theme.pageColor.textPrimary : PageColors.ink2 }
     private func serif(_ size: CGFloat) -> Font {
         .custom("NotoSerifSC-Regular", size: size, relativeTo: .body).weight(.light)
     }
@@ -20,7 +20,7 @@ struct DuelView: View {
                         .foregroundStyle(ink.opacity(0.65))
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(theme.effectiveBackground)
+                .background(theme.pageBackground)
                 .accessibilityIdentifier("duel-ready")
             } else {
                 DuelWebView(url: URL(string: "https://jiagude.love/duel/")!)

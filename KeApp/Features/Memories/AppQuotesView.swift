@@ -52,7 +52,7 @@ struct AppQuoteSaveView: View {
                 }
             }
         }
-        .tint(theme.effectiveAccent)
+        .tint(theme.pageAccent)
         .interactiveDismissDisabled(saving)
     }
 }
@@ -82,7 +82,7 @@ struct AppQuotesView: View {
                     Text(quote.text).font(theme.font.body).textSelection(.enabled)
                     if !quote.note.isEmpty { Text(quote.note).font(theme.font.caption) }
                     Text(quote.created_at).font(theme.font.caption)
-                        .foregroundStyle(theme.color.textSecondary)
+                        .foregroundStyle(theme.pageColor.textSecondary)
                 }
                 .swipeActions {
                     Button("移出语录", role: .destructive) {
@@ -97,7 +97,7 @@ struct AppQuotesView: View {
             }
         }
         .navigationTitle("App 柯味语录")
-        .tint(theme.effectiveAccent)
+        .tint(theme.pageAccent)
         .task { await load() }
         .refreshable { await load() }
     }

@@ -74,9 +74,9 @@ struct MemoryRetrievalView: View {
             Section {
                 Text(line.title).font(theme.font.sectionTitle)
                 Text("看看每轮找到了什么，以及哪些记忆放进了提示词。")
-                    .font(theme.font.caption).foregroundStyle(theme.color.textSecondary)
+                    .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
                 Text("语义检索在 VPS 本地运行，不另收模型调用费。这里只查看检索，不能判断柯是否理解正确。")
-                    .font(theme.font.caption).foregroundStyle(theme.color.textSecondary)
+                    .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
             }
             Section("试着找记忆") {
                 TextField("换个说法，看看能否找到", text: $query, axis: .vertical)
@@ -85,7 +85,7 @@ struct MemoryRetrievalView: View {
                     .disabled(loading || query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityIdentifier("memory-retrieval-check")
                 Text("按当前聊天检索，不发送聊天消息。")
-                    .font(theme.font.caption).foregroundStyle(theme.color.textSecondary)
+                    .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
             }
             if loading { ProgressView("正在查找") }
             if let error {
@@ -103,9 +103,9 @@ struct MemoryRetrievalView: View {
                         VStack(alignment: .leading, spacing: theme.metric.gapS) {
                             Text(trace.query).font(theme.font.sectionTitle)
                             Text(trace.stage == "check" ? "检索测试 · 未发送聊天" : "聊天提示词已装配")
-                                .font(theme.font.caption).foregroundStyle(theme.effectiveAccent)
+                                .font(theme.font.caption).foregroundStyle(theme.pageAccent)
                             Text("\(dateText(trace.created_at)) · 聊天 \(trace.session_id)")
-                                .font(theme.font.caption).foregroundStyle(theme.color.textSecondary)
+                                .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
                             Text(trace.stage == "check"
                                  ? "选出 \(trace.fact_count) 条已审核记忆"
                                  : "\(trace.fact_count) 条已审核记忆已放入提示词")
@@ -118,7 +118,7 @@ struct MemoryRetrievalView: View {
                                     .font(theme.font.caption)
                             }
                             Text(semanticLabel(trace.semantic)).font(theme.font.caption)
-                                .foregroundStyle(theme.color.textSecondary)
+                                .foregroundStyle(theme.pageColor.textSecondary)
                             Button {
                                 correcting = trace
                             } label: {
@@ -132,27 +132,27 @@ struct MemoryRetrievalView: View {
                                 Text("原话 · \(candidate.quote)")
                                 if !candidate.note.isEmpty { Text("你的备注 · \(candidate.note)") }
                                 Text("来源时间 · \(candidate.occurred_at)")
-                                    .font(theme.font.caption).foregroundStyle(theme.color.textSecondary)
+                                    .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
                                 if let similarity = candidate.similarity {
                                     Text(String(format: "语义相似度 %.2f，仅用于排序，不是可信度。", similarity))
-                                        .font(theme.font.caption).foregroundStyle(theme.color.textSecondary)
+                                        .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
                                 }
                             } label: {
                                 VStack(alignment: .leading, spacing: theme.metric.gapS) {
                                     Text(candidate.fact)
                                     Text(candidateLabel(candidate, isCheck: trace.stage == "check"))
-                                        .font(theme.font.caption).foregroundStyle(theme.color.textSecondary)
+                                        .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
                                 }
                             }
                         }
                     }
                 }
-                Section { Text(report.notice).font(theme.font.caption).foregroundStyle(theme.color.textSecondary) }
+                Section { Text(report.notice).font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary) }
             }
         }
         .font(theme.font.body)
         .navigationTitle("记忆怎么找的")
-        .tint(theme.effectiveAccent)
+        .tint(theme.pageAccent)
         .task { await load() }
         .refreshable { await load() }
         .accessibilityIdentifier("memory-retrieval-page")
@@ -249,7 +249,7 @@ private struct MemoryFeedbackSheet: View {
                     Section("选择要更正的记忆") {
                         if trace.candidates.isEmpty {
                             Text("这轮没有可更正的已审核记忆，请改选“没找到该记忆”。")
-                                .foregroundStyle(theme.color.textSecondary)
+                                .foregroundStyle(theme.pageColor.textSecondary)
                         } else {
                             Picker("记忆", selection: $candidateID) {
                                 Text("请选择").tag(String?.none)
@@ -266,7 +266,7 @@ private struct MemoryFeedbackSheet: View {
                     Text(kind == .answerWrong
                          ? "这条只记录为回答问题，不会修改记忆库。"
                          : "提交后会进入待审卡；你收下后才会更新记忆库。")
-                        .font(theme.font.caption).foregroundStyle(theme.color.textSecondary)
+                        .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
                 }
                 if let error { Section { Text(error).foregroundStyle(.red) } }
             }

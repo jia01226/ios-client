@@ -179,6 +179,12 @@ final class CompanionInteractionTests: XCTestCase {
         capture("tarot-handoff-chat")
     }
 
+    // Keep the selector used by the existing CI workflow; the garden handoff is now removed.
+    func testGardenEntryHandsToKe() {
+        testGardenAndXBeadsAreGone()
+        MorandiAppearanceTests.captureFiveDayPages(in: self)
+    }
+
     func testGardenAndXBeadsAreGone() {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-app.skin", "day"]
@@ -186,10 +192,11 @@ final class CompanionInteractionTests: XCTestCase {
         XCTAssertTrue(app.buttons["玩"].waitForExistence(timeout: 5))
         app.buttons["玩"].tap()
         XCTAssertTrue(app.buttons["play-duel"].waitForExistence(timeout: 5))
-        // 「花园 · X」两颗珠子会用她的名义发话，已拿掉。
         XCTAssertFalse(app.buttons["play-garden"].exists)
         XCTAssertFalse(app.buttons["play-x"].exists)
+        XCTAssertFalse(app.buttons["garden-ask-ke"].exists)
         capture("play-without-garden")
+        app.terminate()
     }
 
     func testDuelEntryOpensPrivateGameRoom() {

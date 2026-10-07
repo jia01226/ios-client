@@ -45,7 +45,7 @@ struct MemoryReviewDeck: View {
                     ZStack {
                         if cards.count > 1 {
                             RoundedRectangle(cornerRadius: theme.metric.radiusCard)
-                                .fill(theme.color.card)
+                                .fill(theme.pageColor.card)
                                 .padding(.horizontal, theme.metric.gapM)
                                 .offset(y: theme.metric.gapS)
                                 .accessibilityHidden(true)
@@ -58,10 +58,10 @@ struct MemoryReviewDeck: View {
                                         Label(action == .accept ? "收下" : action == .reject ? "不对" : action.label,
                                               systemImage: action == .accept ? "checkmark.circle.fill" : action == .reject ? "xmark.circle.fill" : "arrow.up.and.down")
                                             .font(theme.font.sectionTitle)
-                                            .foregroundStyle(action == .accept ? theme.effectiveAccent : theme.color.textPrimary)
+                                            .foregroundStyle(action == .accept ? theme.pageAccent : theme.pageColor.textPrimary)
                                             .padding(.horizontal, theme.metric.gapM)
                                             .padding(.vertical, theme.metric.gapS)
-                                            .background(theme.color.cardElevated, in: Capsule())
+                                            .background(theme.pageColor.cardElevated, in: Capsule())
                                         if action == .reject { Spacer() }
                                     }
                                     .padding(theme.metric.gapM)
@@ -104,7 +104,7 @@ struct MemoryReviewDeck: View {
                         Label("左划 · 不对", systemImage: "xmark.circle")
                         Spacer()
                         Label("收下 · 右划", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(theme.effectiveAccent)
+                            .foregroundStyle(theme.pageAccent)
                     }
                     .font(theme.font.reviewCaption)
                     Text("上划暂缓 · 填好现在的情况下划更新")
@@ -134,8 +134,8 @@ struct MemoryReviewDeck: View {
                     .accessibilityIdentifier("review-undo")
             }
             .padding(theme.metric.pagePadding)
-            .foregroundStyle(theme.color.textPrimary)
-            .background(theme.color.bg)
+            .foregroundStyle(theme.pageColor.textPrimary)
+            .background(theme.pageColor.bg)
         }
         .navigationTitle("核对记忆")
         .navigationBarTitleDisplayMode(.inline)
@@ -190,7 +190,7 @@ struct MemoryReviewDeck: View {
         }
         .padding(theme.metric.gapL)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(theme.color.cardElevated, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
+        .background(theme.pageColor.cardElevated, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
         .contentShape(RoundedRectangle(cornerRadius: theme.metric.radiusCard))
     }
 
@@ -201,7 +201,7 @@ struct MemoryReviewDeck: View {
                 Text(title).font(theme.font.reviewCaption)
             }
             .frame(maxWidth: .infinity, minHeight: theme.metric.reviewActionHeight)
-            .background(theme.color.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusChip))
+            .background(theme.pageColor.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusChip))
         }.buttonStyle(.plain).accessibilityIdentifier(id)
     }
 
@@ -252,7 +252,7 @@ struct ReviewNoteEditor: View {
                 TextEditor(text: $note).font(theme.font.reviewBody)
                     .scrollContentBackground(.hidden)
                     .padding(theme.metric.gapS)
-                    .background(theme.color.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
+                    .background(theme.pageColor.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
                     .accessibilityIdentifier("review-note-editor")
                 TextField("现在的完整情况，例如现在不喜欢蓝莓了", text: $change.fact, axis: .vertical)
                     .lineLimit(1...3).accessibilityIdentifier("review-change-fact")
@@ -278,15 +278,15 @@ struct ReviewNoteEditor: View {
                     .disabled(card.status == "applied")
             }
             .padding(theme.metric.pagePadding)
-            .foregroundStyle(theme.color.textPrimary)
-            .background(theme.color.bg)
+            .foregroundStyle(theme.pageColor.textPrimary)
+            .background(theme.pageColor.bg)
             .navigationTitle("备注")
             .toolbar { Button("完成", action: saveNote) }
             .onAppear { note = store.draft(for: card); change = store.changeDraft(for: card) }
             .onChange(of: change.fact) { _, _ in store.saveChangeDraft(change, for: card) }
             .onChange(of: change.when) { _, _ in store.saveChangeDraft(change, for: card) }
             .onChange(of: note) { _, value in store.saveDraft(value, for: card) }
-        }.tint(theme.effectiveAccent)
+        }.tint(theme.pageAccent)
     }
 
     private func saveNote() {
@@ -320,8 +320,8 @@ private struct ReviewOriginalView: View {
                 .textSelection(.enabled)
                 .padding(theme.metric.pagePadding)
             }
-            .foregroundStyle(theme.color.textPrimary)
-            .background(theme.color.bg)
+            .foregroundStyle(theme.pageColor.textPrimary)
+            .background(theme.pageColor.bg)
             .navigationTitle("完整原文")
             .toolbar { Button("完成") { dismiss() } }
         }
