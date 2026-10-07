@@ -114,6 +114,7 @@ struct HomeReminderSettingsView: View {
         .foregroundStyle(theme.pageColor.textPrimary)
         .tint(theme.pageAccent)
         .background { MoonJournalBackground().overlay(alignment: .topTrailing) { JournalMoonArtwork().frame(width: 180, height: 180).offset(x: 75, y: -55) }.clipped() }
+        .background(theme.pageBackground.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showingStart) {
@@ -255,6 +256,7 @@ struct ReminderJournalView: View {
                 JournalMoonArtwork().frame(width: 280, height: 280).offset(x: 135, y: 80).opacity(0.65)
             }.clipped()
         }
+        .background(theme.pageBackground.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline).toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showingHome) {
             NavigationStack {
