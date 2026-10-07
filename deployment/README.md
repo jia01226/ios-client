@@ -29,3 +29,5 @@
 正式 IPA 来自提交 `9664f8a`、[Build iOS run 37576556340](https://github.com/jia01226/ios-client/actions/runs/37576556340)。后续提交只补测试专用匿名数据（`#if DEBUG`）、UI测试、部署脚本与文档，不改变 Release 业务代码。
 
 第一次模拟器检查 [37576554341](https://github.com/jia01226/ios-client/actions/runs/37576554341) 通过74项单元测试和1套UI流程；原有抽屉样例缺失导致截图显示重试，已确认线上真实抽屉可被现有Swift模型解析，并补齐匿名响应后再次核验。
+
+补充核验 [37578110465](https://github.com/jia01226/ios-client/actions/runs/37578110465) 于06:04 UTC成功：74单元测试+1套UI，经期开始/结束确认、抽屉内容断言和24张截图全部完成。

@@ -34,6 +34,15 @@ Content-Type: application/json
 
 安装入口：[原网页安装柯 · 73](https://jiagude.love/ios/2c9715755397490791ffbe1568d2b914/)。手机Safari打开，直接点“安装柯”。
 
-主核验：[37576554341](https://github.com/jia01226/ios-client/actions/runs/37576554341)。补充截图：[37578110465](https://github.com/jia01226/ios-client/actions/runs/37578110465)。
+主核验：[37576554341](https://github.com/jia01226/ios-client/actions/runs/37576554341)。补充核验：[37578110465](https://github.com/jia01226/ios-client/actions/runs/37578110465) 也已通过（74单元+1UI），包含经期“来了→走了”后的确认文字、抽屉正常内容与全部24张截图。下载该运行的 `iOSSimulator-screenshots` artifact 查看。
 
 下一份从 `codex/shift-hut-calendar-build73` 的交付提交接续，并先核对在线清单，Build至少74，勿回到72覆盖本轮班次库、山屋和经期整合。
+
+## 手机里的入口
+
+- 自定义班次：「我们」→「日历」→「周班表」→班次设置→班次选择菜单→「新建班次」。可改名、选择连续/分两段及各段起止时间；保存后排班时可选。点已排日期立即取消。
+- 山屋：「玩」中间的「山屋」。桌上、墙上和窗外共八个入口；小锁信写好后提交，失败保留草稿。
+- 经期：「我们」首屏「来了／走了」；点左侧「经期」看记录与重试待同步的结束日期。
+- 纪念日：「我们」→日历「日子」，依次纪念日、表白日、我的生日、柯的生日；右上「改纪念日」编辑。
+
+安装校验补充：Ad Hoc 配置仍覆盖72版的已登记设备，application-identifier与keychain-access-groups一致；配置有效期到2027-08-15。不需要先卸载旧App。
