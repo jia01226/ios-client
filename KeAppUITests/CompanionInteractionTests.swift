@@ -194,7 +194,7 @@ final class CompanionInteractionTests: XCTestCase {
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "去花园看看")).firstMatch.waitForExistence(timeout: 8))
         capture("garden-handoff-chat")
         app.terminate()
-        MorandiAppearanceTests().testFiveDayPages()
+        MorandiAppearanceTests.captureFiveDayPages(in: self)
     }
 
     func testDuelEntryOpensPrivateGameRoom() {
