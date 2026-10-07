@@ -127,6 +127,52 @@ final class ShiftSyncTests: XCTestCase {
         XCTAssertNil(vm.shift(on: today))
     }
 
+    func testCustomTemplateRenameAndDeletionPreserveAssignedHistory() async throws {
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let api = ShiftAPIFake()
+        let vm = UsViewModel(defaults: defaults, shiftAPI: api)
+        let kind = ShiftDay.Kind.custom()
+        let original = try XCTUnwrap(ShiftPlan.preset(kind: "normal"))
+        XCTAssertNil(vm.saveShiftTemplate(kind: kind, name: "小夜", plan: original))
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today)!
+        vm.setShift(kind, on: yesterday); vm.setShift(kind, on: today)
+        await vm.syncShifts()
+        let changed = ShiftPlan(periods: [.init(startMinutes: 900, endMinutes: 1380)])
+        XCTAssertNil(vm.saveShiftTemplate(kind: kind, name: "小夜新时间", plan: changed))
+        await vm.syncShifts()
+        XCTAssertEqual(vm.shiftDisplay(kind, on: yesterday), "小夜")
+        XCTAssertEqual(vm.shiftPlan(on: yesterday), original)
+        XCTAssertEqual(vm.shiftDisplay(kind, on: today), "小夜新时间")
+        XCTAssertEqual(vm.shiftPlan(on: today), changed)
+        vm.archiveShiftTemplate(kind)
+        XCTAssertFalse(vm.availableShiftKinds.contains(kind))
+        let restored = UsViewModel(defaults: defaults, shiftAPI: api)
+        await restored.refreshShifts()
+        XCTAssertEqual(restored.shift(on: today), kind)
+        XCTAssertEqual(restored.shiftDisplay(kind, on: yesterday), "小夜")
+        XCTAssertEqual(restored.shiftPlan(on: today), changed)
+        let rows = await api.fetchShifts()
+        XCTAssertTrue(rows.contains { $0.shift == "小夜新时间（已调整）" && $0.note?.contains("15:00-23:00") == true })
+        restored.setShift(nil, on: today)
+        await restored.syncShifts()
+        let after = await api.fetchShifts()
+        XCTAssertEqual(after.count, 1)
+    }
+
+    func testTemplateNamesAndOldShiftEncoding() throws {
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let vm = UsViewModel(defaults: defaults)
+        let kind = ShiftDay.Kind.custom()
+        XCTAssertNotNil(vm.saveShiftTemplate(kind: kind, name: "   ", plan: .example))
+        XCTAssertNotNil(vm.saveShiftTemplate(kind: kind, name: "早班", plan: .example))
+        XCTAssertNil(vm.saveShiftTemplate(kind: kind, name: "  白班  ", plan: .example))
+        XCTAssertEqual(vm.shiftLabel(kind), "白班")
+        let legacy = try JSONDecoder().decode(ShiftDay.Kind.self, from: Data("\"early\"".utf8))
+        XCTAssertEqual(legacy, .early)
+        XCTAssertEqual(try JSONDecoder().decode(ShiftDay.Kind.self, from: JSONEncoder().encode(kind)), kind)
+        XCTAssertNil(ShiftDay.Kind(rawValue: "none"))
+    }
+
     private func waitUntil(_ condition: () async -> Bool) async {
         for _ in 0..<200 {
             if await condition() { return }

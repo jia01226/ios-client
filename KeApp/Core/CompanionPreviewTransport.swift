@@ -29,7 +29,8 @@ final class CompanionPreviewTransport: URLProtocol {
         }
         let body: String
         let code: Int
-        if path.hasSuffix("/tarot/draw") {
+        if let fixture = JournalPreviewData.response(for: request) { code = fixture.0; body = fixture.1 }
+        else if path.hasSuffix("/tarot/draw") {
             code = 200
             body = #"{"id":7,"question":"他今晚会不会来找我","spread":"three","spread_name":"三牌阵","objective":"过去的月亮逆位：那阵子的不安在退去。\n当下圣杯二：两个人的心是对上的。\n未来太阳正位：会亮起来，别自己先熄火。","cards":[{"position":"过去(根源/背景)","name":"The Moon","cn":"月亮","type":"Major","reversed":true,"image":"tarot/cards/major18.webp"},{"position":"现在(当下状态)","name":"Two of Cups","cn":"圣杯二","type":"Minor","reversed":false,"image":"tarot/cards/cups02.webp"},{"position":"未来(走向/建议)","name":"The Sun","cn":"太阳","type":"Major","reversed":false,"image":"tarot/cards/major19.webp"}]}"#
         }
@@ -77,6 +78,8 @@ final class CompanionPreviewTransport: URLProtocol {
                 } else {
                     body = "[" + rows.filter { query.isEmpty || $0.contains(query) }.joined(separator: ",") + "]"
                 }
+            case let p where p.hasSuffix("/api/drawer"):
+                body = #"{"sealed":true,"outside":[{"id":1,"title":"给你留的一页","teaser":"窗边的灯还亮着。","content":"窗边的灯还亮着。","visibility":"released","created_at":"2026-10-07"}]}"#
             case let p where p.hasSuffix("/work/drawer"):
                 body = ##"{"summary":{"running":1,"today":4,"last_dispatch":"2026-09-19 19:05","last_dispatch_ago":"3小时前"},"tasks":[{"id":"work-a1","status":"running","instruction":"把抽屉页接上真实的派活记录，跑完告诉我","created_at":"2026-09-19 19:05","updated_at":"2026-09-19 19:32","steps":38,"runs":[{"title":"跑：读现有接口","detail":"先看了已有接口，确认字段名和落库的表对得上。","status":"succeeded","created_at":"2026-09-19 19:06"}]}]}"##
             case let p where p.hasSuffix("/moments"):

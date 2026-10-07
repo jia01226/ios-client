@@ -218,11 +218,26 @@ struct Anniversary: Identifiable, Hashable, Codable {
 /// 这个表不是给她看的 —— 是给柯看的：
 /// 她几点起、什么时候在上班、什么时候刚下夜班需要睡。
 struct ShiftDay: Identifiable, Hashable, Codable {
-    enum Kind: String, Codable, CaseIterable {
-        case normal     // 正常班，中午休息
-        case early      // 早班
-        case deputy     // 副班
-        case other      // 其它班次，配合 note 使用
+    struct Kind: RawRepresentable, Codable, Hashable, CaseIterable {
+        let rawValue: String
+        init?(rawValue: String) {
+            guard ["normal", "early", "deputy", "other"].contains(rawValue)
+                    || (rawValue.hasPrefix("custom:") && UUID(uuidString: String(rawValue.dropFirst(7))) != nil) else { return nil }
+            self.rawValue = rawValue
+        }
+        static let normal = Kind(rawValue: "normal")!
+        static let early = Kind(rawValue: "early")!
+        static let deputy = Kind(rawValue: "deputy")!
+        static let other = Kind(rawValue: "other")!
+        static let allCases: [Kind] = [.normal, .early, .deputy, .other]
+        static func custom() -> Kind { Kind(rawValue: "custom:" + UUID().uuidString)! }
+        init(from decoder: Decoder) throws {
+            let box = try decoder.singleValueContainer()
+            let value = try box.decode(String.self)
+            guard let kind = Kind(rawValue: value) else { throw DecodingError.dataCorruptedError(in: box, debugDescription: "Invalid shift kind") }
+            self = kind
+        }
+        func encode(to encoder: Encoder) throws { var box = encoder.singleValueContainer(); try box.encode(rawValue) }
     }
     let id: String
     let date: Date
