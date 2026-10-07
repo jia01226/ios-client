@@ -3,6 +3,9 @@ import SwiftUI
 // 【我们】—— 两个人的日期、提醒与排班。
 
 struct UsView: View {
+    @EnvironmentObject private var theme: Theme
+    @ObservedObject private var notebook = QuoteNotebook.shared
+    @ObservedObject private var homeReminders = HomeReminderCoordinator.shared
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let line: ChatLine
     @StateObject private var vm: UsViewModel
@@ -11,6 +14,8 @@ struct UsView: View {
     @State private var showingCompanionHub = false
     @State private var showingNotebook = false
     @State private var showingReminderSettings = false
+    @State private var showingReminderJournal = false
+    @State private var shiftEditDate = Date()
 
     init(line: ChatLine = .test1) {
         self.line = line
@@ -18,6 +23,12 @@ struct UsView: View {
     }
 
     var body: some View {
+        Group {
+            if theme.skin == .day { dayHome } else { legacyHome }
+        }
+    }
+
+    private var legacyHome: some View {
         ScrollViewReader { scrollProxy in
             ScrollView {
                 VStack(spacing: 0) {
@@ -99,6 +110,145 @@ struct UsView: View {
                 CompanionHubView(line: line, model: vm)
             }
         }
+    }
+
+    private var dayHome: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    Text("我们").font(theme.font.pageTitle)
+                    Text("和你一起，把平凡的日子过成喜欢的日子。")
+                        .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
+                    HStack(spacing: 18) {
+                        ForEach(Array(vm.anniversaries.enumerated()), id: \.element.id) { index, event in
+                            Button { selectedAnniversaryIndex = index } label: {
+                                Text(vm.display(event).title)
+                                    .font(theme.font.caption)
+                                    .foregroundStyle(index == selectedAnniversaryIndex ? theme.pageAccent : theme.pageColor.textSecondary)
+                                    .underline(index == selectedAnniversaryIndex)
+                            }
+                        }
+                    }
+                    TabView(selection: $selectedAnniversaryIndex) {
+                        ForEach(Array(vm.anniversaries.enumerated()), id: \.element.id) { index, event in
+                            let display = vm.display(event)
+                            VStack(spacing: 14) {
+                                Text(display.title).font(theme.font.body)
+                                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                    Text(display.number).font(.custom("Didot", size: 68, relativeTo: .largeTitle)).monospacedDigit()
+                                    Text(display.unit).font(theme.font.body)
+                                }
+                                Text(display.dateLabel).font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
+                            }.frame(maxWidth: .infinity).tag(index)
+                        }
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .frame(height: dynamicTypeSize.isAccessibilitySize ? 300 : 220)
+                    .accessibilityIdentifier("us-anniversary-pager")
+                    Divider().overlay(theme.pageColor.separator)
+                    HStack {
+                        Text("本周班表").font(theme.font.sectionTitle)
+                        Spacer()
+                        Button("编辑") { shiftEditDate = .now; showingReminderSettings = true }
+                            .font(theme.font.caption).accessibilityIdentifier("us-shift-edit")
+                    }
+                    dayWeek
+                    Button { showingReminderJournal = true } label: {
+                        HStack(spacing: 14) {
+                            Image(systemName: "moon").foregroundStyle(theme.pageAccent)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("今天的惦记").font(theme.font.sectionTitle)
+                                Text(todayReminderLabel).font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").font(theme.font.caption)
+                        }.padding(.vertical, 14)
+                    }.accessibilityIdentifier("us-reminder-journal")
+                    Divider().overlay(theme.pageColor.separator)
+                    Text("月班表日历").font(theme.font.sectionTitle)
+                    MonthCalendar(vm: vm).id("moon-calendar")
+                    Divider().overlay(theme.pageColor.separator)
+                    Button { showingNotebook = true } label: {
+                        VStack(alignment: .leading, spacing: 14) {
+                            HStack {
+                                Label("小本子", systemImage: "book.closed").font(theme.font.sectionTitle)
+                                Spacer()
+                                Image(systemName: "chevron.right").font(theme.font.caption)
+                            }
+                            if let page = notebook.pages.first {
+                                Text("“\(page.text)”").font(theme.font.quote).lineLimit(3)
+                                Text("\(page.speaker) · \(page.spokenAt.formatted(date: .abbreviated, time: .omitted))")
+                                    .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
+                            } else {
+                                Text("收下说过的话，一页一句，留一行心情。")
+                                    .font(theme.font.body).foregroundStyle(theme.pageColor.textSecondary)
+                            }
+                            Text("长按聊天里的话，收进本子。")
+                                .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
+                        }.padding(.vertical, 12)
+                    }.accessibilityIdentifier("us-quote-notebook")
+                    Button { showingCompanionHub = true } label: {
+                        Label("柯的接口", systemImage: "ellipsis")
+                            .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
+                    }.accessibilityIdentifier("us-companion-hub")
+                }
+                .padding(.horizontal, 26).padding(.top, 24).padding(.bottom, 36)
+            }
+            .font(theme.font.body).foregroundStyle(theme.pageColor.textPrimary).tint(theme.pageAccent)
+            .scrollIndicators(.hidden)
+            .background { MoonJournalBackground() }
+            .refreshable { await vm.loadReminders() }
+            .task(id: line) { await vm.loadReminders() }
+            .task {
+                if ProcessInfo.processInfo.arguments.contains("-preview-us-calendar") {
+                    try? await Task.sleep(for: .milliseconds(280))
+                    proxy.scrollTo("moon-calendar", anchor: .top)
+                }
+            }
+            .onChange(of: vm.anniversaries.map(\.id)) { _, ids in
+                selectedAnniversaryIndex = min(selectedAnniversaryIndex, max(0, ids.count - 1))
+            }
+            .sheet(isPresented: $showingReminderSettings) {
+                NavigationStack { HomeReminderSettingsView(model: vm, date: shiftEditDate) }
+            }
+            .sheet(isPresented: $showingReminderJournal) {
+                NavigationStack { ReminderJournalView() }
+            }
+            .sheet(isPresented: $showingNotebook) {
+                NavigationStack { QuoteNotebookView() }
+            }
+            .sheet(isPresented: $showingCompanionHub) {
+                CompanionHubView(line: line, model: vm)
+            }
+        }
+    }
+
+    private var dayWeek: some View {
+        HStack(alignment: .top, spacing: 4) {
+            ForEach(vm.thisWeek) { day in
+                Button {
+                    shiftEditDate = day.date
+                    showingReminderSettings = true
+                } label: {
+                    VStack(spacing: 9) {
+                        Text(vm.weekdayLabel(day.date)).font(theme.font.caption)
+                        Text(day.date.formatted(.dateTime.month(.twoDigits).day(.twoDigits)))
+                            .font(.system(size: 11))
+                        Text(vm.shift(on: day.date).map { vm.shiftDisplay($0, on: day.date) } ?? (vm.clearedShiftKeys.contains(HomeReminderCoordinator.dayKey(day.date)) ? "休息" : "未排"))
+                            .font(theme.font.caption)
+                            .foregroundStyle(theme.pageAccent)
+                            .lineLimit(2)
+                    }.frame(maxWidth: .infinity).contentShape(Rectangle())
+                }
+            }
+        }.accessibilityIdentifier("curved-week-schedule")
+    }
+
+    private var todayReminderLabel: String {
+        if let end = homeReminders.endTime(on: .now) {
+            return "\(end.addingTimeInterval(3600).formatted(date: .omitted, time: .shortened)) · 惦记 D3；睡前 21:30"
+        }
+        return "下班后一小时，惦记 D3；睡前 21:30"
     }
 
     private var reminder: some View {

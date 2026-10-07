@@ -14,7 +14,32 @@ final class MorandiAppearanceTests: XCTestCase {
             XCTAssertTrue(app.buttons["柯"].waitForExistence(timeout: 5))
             Thread.sleep(forTimeInterval: 2)
             capture(name, in: testCase)
+            if label == "我们" { captureUsDetails(app, in: testCase) }
         }
+    }
+
+    private static func captureUsDetails(_ app: XCUIApplication, in testCase: XCTestCase) {
+        let edit = app.buttons["us-shift-edit"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 5))
+        for _ in 0..<3 where !edit.isHittable { app.swipeUp() }
+        edit.tap()
+        XCTAssertTrue(app.staticTexts["班次小记"].waitForExistence(timeout: 5))
+        capture("06-shift-journal", in: testCase)
+        app.buttons["返回"].firstMatch.tap()
+        let reminder = app.buttons["us-reminder-journal"]
+        for _ in 0..<3 where !reminder.isHittable { app.swipeUp() }
+        reminder.tap()
+        XCTAssertTrue(app.staticTexts["今晚的惦记"].waitForExistence(timeout: 5))
+        capture("07-reminder-journal", in: testCase)
+        app.buttons["返回"].firstMatch.tap()
+        let notebook = app.buttons["us-quote-notebook"]
+        for _ in 0..<7 where !notebook.isHittable { app.swipeUp() }
+        XCTAssertTrue(notebook.isHittable)
+        capture("08-calendar-and-notebook", in: testCase)
+        notebook.tap()
+        XCTAssertTrue(app.navigationBars["小本子"].waitForExistence(timeout: 5))
+        capture("09-notebook", in: testCase)
+        app.swipeDown()
     }
 
     private static func capture(_ name: String, in testCase: XCTestCase) {

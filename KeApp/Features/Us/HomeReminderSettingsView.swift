@@ -1,14 +1,17 @@
 import SwiftUI
 
+/// A quiet shift journal; home and medication controls live on their own page.
 struct HomeReminderSettingsView: View {
     @EnvironmentObject private var theme: Theme
+    @Environment(\.dismiss) private var dismiss
     @ObservedObject var model: UsViewModel
     @ObservedObject private var reminders = HomeReminderCoordinator.shared
-    @State private var selectedDate = Date()
+    @State private var selectedDate: Date
     @State private var start = Calendar.current.date(bySettingHour: 8, minute: 0, second: 0, of: Date())!
     @State private var hours = 8.0
-    @State private var promise = ""
     @State private var shiftKind = ShiftDay.Kind.early
+    @State private var showingDay = false
+    @State private var saved = false
     @AppStorage("us.shift-profile.early.start") private var earlyStart = -1
     @AppStorage("us.shift-profile.early.minutes") private var earlyMinutes = 0
     @AppStorage("us.shift-profile.deputy.start") private var deputyStart = -1
@@ -16,76 +19,118 @@ struct HomeReminderSettingsView: View {
     @AppStorage("us.shift-profile.other.start") private var otherStart = -1
     @AppStorage("us.shift-profile.other.minutes") private var otherMinutes = 0
 
+    init(model: UsViewModel, date: Date = .now) {
+        self.model = model
+        _selectedDate = State(initialValue: date)
+    }
+    private var beginning: Date {
+        let p = Calendar.current.dateComponents([.hour, .minute], from: start)
+        return Calendar.current.date(bySettingHour: p.hour!, minute: p.minute!, second: 0, of: selectedDate)!
+    }
     private var calculatedEnd: Date {
-        let parts = Calendar.current.dateComponents([.hour, .minute], from: start)
-        let beginning = Calendar.current.date(bySettingHour: parts.hour!, minute: parts.minute!, second: 0, of: selectedDate)!
-        return beginning.addingTimeInterval(hours * 3600)
+        let p = Calendar.current.dateComponents([.hour, .minute], from: start)
+        return ShiftTiming.end(on: selectedDate, startMinutes: p.hour! * 60 + p.minute!, durationMinutes: Int(hours * 60)) ?? beginning
     }
     var body: some View {
-        Form {
-            Section("班次设置 · 时间由你填写") {
-                Picker("班次", selection: $shiftKind) {
-                    ForEach(ShiftDay.Kind.allCases, id: \.self) { kind in Text(model.shiftLabel(kind)).tag(kind) }
-                }.onChange(of: shiftKind) { _, _ in loadProfile() }
-                DatePicker("上班时间", selection: $start, displayedComponents: .hourAndMinute)
-                Stepper("工作时长 \(hours, specifier: "%.1f") 小时", value: $hours, in: 0.5...24, step: 0.5)
-                Button("保存这个班次的时间与时长") { saveProfile(); applyWeek() }
-                Text("初始数值只是输入起点，按“保存”后才用于计算。跨午夜的班次会算到次日。")
-                    .font(theme.font.caption)
-                DatePicker("单独调整日期", selection: $selectedDate, displayedComponents: .date)
-                Text("\(selectedDate.formatted(date: .abbreviated, time: .omitted))：\(model.shift(on: selectedDate).map { model.shiftLabel($0) } ?? "还没排班")")
-                Text("计算下班：\(calculatedEnd.formatted(date: .abbreviated, time: .shortened))")
-                Button("将这个下班时间用于所选日期") { reminders.setEndTime(calculatedEnd, on: selectedDate) }
-                    .disabled(model.shift(on: selectedDate) == nil)
-                if let end = reminders.endTime(on: selectedDate) {
-                    Text("D3 提醒：\(end.addingTimeInterval(3600).formatted(date: .abbreviated, time: .shortened))")
-                    Button("清除该日下班时间", role: .destructive) { reminders.clearEndTime(on: selectedDate) }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                Text("先写下你的班次。")
+                    .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
+                Text("班次小记").font(theme.font.pageTitle)
+                VStack(spacing: 22) {
+                    HStack {
+                        Text("班次").foregroundStyle(theme.pageColor.textSecondary)
+                        Spacer()
+                        Picker("班次", selection: $shiftKind) {
+                            ForEach(ShiftDay.Kind.allCases, id: \.self) { kind in
+                                Text(model.shiftLabel(kind)).tag(kind)
+                            }
+                        }.pickerStyle(.menu)
+                        .accessibilityIdentifier("shift-profile-kind")
+                    }
+                    HStack {
+                        Text("上班").foregroundStyle(theme.pageColor.textSecondary)
+                        Spacer()
+                        DatePicker("上班时间", selection: $start, displayedComponents: .hourAndMinute)
+                            .labelsHidden().accessibilityIdentifier("shift-start-time")
+                    }
+                    Stepper(value: $hours, in: 0.5...24, step: 0.5) {
+                        HStack {
+                            Text("时长").foregroundStyle(theme.pageColor.textSecondary)
+                            Spacer()
+                            Text("\(hours, specifier: "%.1f") 小时")
+                        }
+                    }.accessibilityIdentifier("shift-duration")
                 }
-            }
-            Section("到家后再提醒") {
-                Text(reminders.homeLabel)
-                Button("把当前位置设为家") { reminders.setHomeHere() }
-                Toggle("自动到家检测和提醒", isOn: $reminders.enabled)
-                Text(reminders.status)
-                Text("需要通知、始终定位与运动权限。位置或驾驶状态不明确时暂缓。iOS 后台可能延后检查；设置不会改变你的用药安排。")
-                    .font(theme.font.caption)
-            }
-            Section("晚饭与睡前") {
-                Button("已吃晚饭 · 提醒鲁拉西酮") { reminders.dinnerFinished() }
-                Text("睡前 21:30：碳酸锂、劳拉西泮一片半、佐匹克隆一片。未确认到家或正在驾驶时不催。")
-                ForEach([("d3", "D3"), ("dinner", "晚饭后这一拨"), ("bedtime", "睡前这一拨")], id: \.0) { item in
-                    Button { reminders.markCompleted(item.0) } label: {
-                        Label(reminders.isCompleted(item.0) ? "\(item.1) · 今天已完成" : "确认\(item.1)今天已完成",
-                              systemImage: reminders.isCompleted(item.0) ? "checkmark.circle.fill" : "circle")
-                    }.disabled(reminders.isCompleted(item.0))
+                .onChange(of: shiftKind) { _, _ in loadProfile() }
+                VStack(alignment: .leading, spacing: 34) {
+                    timelineRow(beginning, text: "上班", icon: "circle.fill")
+                    timelineRow(calculatedEnd, text: "下班", icon: "circle")
+                    timelineRow(calculatedEnd.addingTimeInterval(3600), text: "惦记 D3", icon: "moon")
+                    Text("下班后一个小时，跟晚饭一起。")
+                        .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
+                        .padding(.leading, 28)
                 }
-            }
-            Section("今天答应你的事") {
-                HStack {
-                    TextField("记一件答应的事", text: $promise)
-                    Button("记下") { reminders.addPromise(promise); promise = "" }
-                        .disabled(promise.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-                ForEach(reminders.promises) { item in
-                    Button { reminders.togglePromise(item.id) } label: {
-                        Label(item.text, systemImage: item.done ? "checkmark.circle.fill" : "circle")
+                .padding(.vertical, 16)
+                Button {
+                    saveProfile(); applyProfiles(); saved = true
+                } label: {
+                    Label(saved ? "这个班次记好了" : "记住这个班次", systemImage: saved ? "checkmark" : "chevron.right")
+                        .underline()
+                }.accessibilityIdentifier("shift-profile-save")
+                Divider().overlay(theme.pageColor.separator)
+                Button { showingDay.toggle() } label: {
+                    Label("某一天不一样？单独记", systemImage: "chevron.down")
+                }.accessibilityIdentifier("shift-day-adjust")
+                if showingDay {
+                    DatePicker("日期", selection: $selectedDate, displayedComponents: .date)
+                    Text(model.shift(on: selectedDate).map { "当天班次：" + model.shiftLabel($0) } ?? "这天还没排班，请先在月历填班次。")
+                        .font(theme.font.caption)
+                    Text("按上面的起点与时长，算到 \(calculatedEnd.formatted(date: .abbreviated, time: .shortened)) 下班。")
+                        .font(theme.font.caption)
+                    Button("只记这一天的下班时间") { reminders.setEndTime(calculatedEnd, on: selectedDate) }
+                        .disabled(model.shift(on: selectedDate) == nil)
+                        .accessibilityIdentifier("shift-day-save")
+                    if let end = reminders.endTime(on: selectedDate) {
+                        Text("已记：\(end.formatted(date: .abbreviated, time: .shortened)) 下班，\(end.addingTimeInterval(3600).formatted(date: .omitted, time: .shortened)) 提醒 D3")
+                            .font(theme.font.caption)
+                        Button("清除当天的单独调整", role: .destructive) { reminders.clearEndTime(on: selectedDate) }
                     }
                 }
+                Text("数值由你填写，点“记住”才用于计算。跨午夜会算到次日；单独调整的日期优先。")
+                    .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
             }
+            .padding(.horizontal, 28).padding(.vertical, 24)
         }
-        .scrollContentBackground(.hidden)
-        .background(theme.pageBackground)
         .foregroundStyle(theme.pageColor.textPrimary)
         .tint(theme.pageAccent)
-        .navigationTitle("班表和提醒设置")
-        .onAppear { loadProfile(); applyWeek() }
-        .onChange(of: model.savedShifts) { _, _ in applyWeek() }
+        .background { MoonJournalBackground() }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("返回") { dismiss() } } }
+        .onAppear {
+            shiftKind = model.shift(on: selectedDate) ?? .early
+            loadProfile(); applyProfiles()
+        }
+        .onChange(of: model.savedShifts) { _, _ in applyProfiles() }
+        .onChange(of: start) { _, _ in saved = false }
+        .onChange(of: hours) { _, _ in saved = false }
+    }
+    private func timelineRow(_ time: Date, text: String, icon: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 16) {
+            Image(systemName: icon).font(.system(size: 12)).foregroundStyle(theme.pageAccent).frame(width: 12)
+            Text(time.formatted(date: .omitted, time: .shortened)).monospacedDigit()
+            Text(text)
+            if !Calendar.current.isDate(time, inSameDayAs: selectedDate) {
+                Text("次日").font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
+            }
+        }.font(theme.font.quote)
     }
     private func loadProfile() {
-        let profile = profile(for: shiftKind)
-        guard profile.0 >= 0 else { return }
-        start = Calendar.current.date(bySettingHour: profile.0 / 60, minute: profile.0 % 60, second: 0, of: .now)!
-        hours = Double(profile.1) / 60
+        saved = false
+        let p = profile(for: shiftKind)
+        guard p.0 >= 0, p.1 > 0 else { return }
+        start = Calendar.current.date(bySettingHour: p.0 / 60, minute: p.0 % 60, second: 0, of: .now)!
+        hours = Double(p.1) / 60
     }
     private func saveProfile() {
         let c = Calendar.current.dateComponents([.hour, .minute], from: start)
@@ -103,17 +148,113 @@ struct HomeReminderSettingsView: View {
         case .other: return (otherStart, otherMinutes)
         }
     }
-    private func applyWeek() {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
+    private func applyProfiles() {
+        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.dateFormat = "yyyy-MM-dd"
         let dates = Set(model.thisWeek.map(\.date) + model.savedShifts.keys.compactMap { formatter.date(from: $0) } + reminders.endTimes.keys.compactMap { formatter.date(from: $0) })
         for date in dates {
             guard let kind = model.shift(on: date) else { reminders.clearEndTime(on: date); continue }
             let p = profile(for: kind)
-            guard p.0 >= 0, p.1 > 0,
-                  let start = Calendar.current.date(bySettingHour: p.0 / 60, minute: p.0 % 60, second: 0, of: date) else { continue }
+            guard p.0 >= 0, p.1 > 0, let start = Calendar.current.date(bySettingHour: p.0 / 60, minute: p.0 % 60, second: 0, of: date) else { continue }
             reminders.setEndTime(start.addingTimeInterval(Double(p.1) * 60), on: date, override: false)
         }
+    }
+}
+
+struct ReminderJournalView: View {
+    @EnvironmentObject private var theme: Theme
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var reminders = HomeReminderCoordinator.shared
+    @State private var showingHome = false
+    @State private var promise = ""
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                HStack {
+                    Text("到家了，再慢慢来。")
+                        .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
+                    Spacer()
+                    Button { showingHome = true } label: { Image(systemName: "gearshape") }
+                        .accessibilityLabel("家的位置和提醒设置").accessibilityIdentifier("reminder-home-settings")
+                }
+                Text("今晚的惦记").font(theme.font.pageTitle)
+                Text(reminders.status).font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
+                journalHeading("下班后一小时", symbol: "moon")
+                Text("D3 · 跟晚饭一起")
+                if let end = reminders.endTime(on: .now) {
+                    Text(end.addingTimeInterval(3600).formatted(date: .abbreviated, time: .shortened))
+                        .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
+                } else {
+                    Text("先在班次小记里填下班时间。")
+                        .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
+                }
+                completion("d3", title: "D3")
+                journalHeading("饭后", symbol: "moon")
+                HStack {
+                    Text("鲁拉西酮")
+                    Spacer()
+                    Button("我吃过晚饭了") { reminders.dinnerFinished() }
+                        .buttonStyle(.borderless)
+                        .accessibilityIdentifier("reminder-dinner-finished")
+                }
+                completion("dinner", title: "饭后这一拨")
+                journalHeading("睡前 · 21:30", symbol: "moon")
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("碳酸锂 · 晚上那片")
+                    Text("劳拉西泮 · 一片半")
+                    Text("佐匹克隆 · 一片")
+                }
+                completion("bedtime", title: "睡前这一拨")
+                Text("到家、没在开车时才提醒。位置或活动状态不明时先暂缓；后台检查可能延后。")
+                    .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
+                journalHeading("答应你的事", symbol: "circle")
+                ForEach(reminders.promises) { item in
+                    Button { reminders.togglePromise(item.id) } label: {
+                        Label(item.text, systemImage: item.done ? "checkmark.circle" : "circle")
+                    }
+                }
+                HStack {
+                    TextField("添一句答应的事", text: $promise)
+                    Button("记下") { reminders.addPromise(promise); promise = "" }
+                        .disabled(promise.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .padding(.horizontal, 28).padding(.vertical, 24)
+        }
+        .font(theme.font.body).foregroundStyle(theme.pageColor.textPrimary).tint(theme.pageAccent)
+        .background { MoonJournalBackground() }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("返回") { dismiss() } } }
+        .sheet(isPresented: $showingHome) {
+            NavigationStack {
+                Form {
+                    Section("家的位置") {
+                        Text(reminders.homeLabel)
+                        Button("把当前位置设为家") { reminders.setHomeHere() }
+                        Toggle("自动到家检测和提醒", isOn: $reminders.enabled)
+                        Text(reminders.status)
+                    }
+                    Section {
+                        Text("只在家中设置当前位置。需要通知、始终定位与运动权限。系统后台检查可能延后；状态不确定时不会催。")
+                    }
+                }
+                .scrollContentBackground(.hidden).background(theme.pageBackground).tint(theme.pageAccent)
+                .navigationTitle("家的位置")
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { showingHome = false } } }
+            }
+        }
+    }
+    private func journalHeading(_ text: String, symbol: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol).foregroundStyle(theme.pageAccent)
+            Text(text).font(theme.font.sectionTitle)
+            Rectangle().fill(theme.pageColor.separator).frame(height: 0.7)
+        }.padding(.top, 10)
+    }
+    private func completion(_ kind: String, title: String) -> some View {
+        Button { reminders.markCompleted(kind) } label: {
+            Label(reminders.isCompleted(kind) ? "今天记好了" : "确认\(title)已完成",
+                  systemImage: reminders.isCompleted(kind) ? "checkmark.circle" : "circle")
+                .font(theme.font.caption)
+        }.disabled(reminders.isCompleted(kind))
     }
 }

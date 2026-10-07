@@ -131,3 +131,21 @@ struct FloatingGlassSurface: View {
         }
     }
 }
+
+/// Reuses the existing moon renderer without changing its lighting or materials.
+struct MoonJournalBackground: View {
+    @EnvironmentObject private var theme: Theme
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            theme.pageBackground.ignoresSafeArea()
+            if theme.skin == .day {
+                MoonSceneView(yaw: 0.2, pitch: 0.05)
+                    .frame(width: 250, height: 250)
+                    .offset(x: 95, y: -50)
+                    .opacity(0.14)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }.clipped()
+    }
+}

@@ -147,10 +147,9 @@ final class HomeReminderCoordinator: NSObject, ObservableObject, CLLocationManag
             let prefix = "us.shift-profile." + kind
             let start = defaults.integer(forKey: prefix + ".start")
             let minutes = defaults.integer(forKey: prefix + ".minutes")
-            guard start >= 0, start < 1440, minutes > 0, minutes <= 1440,
-                  let date = formatter.date(from: key),
-                  let beginning = Calendar.current.date(bySettingHour: start / 60, minute: start % 60, second: 0, of: date) else { continue }
-            endTimes[key] = beginning.addingTimeInterval(Double(minutes) * 60)
+            guard let date = formatter.date(from: key),
+                  let end = ShiftTiming.end(on: date, startMinutes: start, durationMinutes: minutes) else { continue }
+            endTimes[key] = end
         }
         defaults.set(try? JSONEncoder().encode(endTimes), forKey: "us.shift-end-times")
         defaults.set(Array(overrides), forKey: "us.shift-end-overrides")
@@ -178,8 +177,9 @@ final class HomeReminderCoordinator: NSObject, ObservableObject, CLLocationManag
     private func evaluate() {
         guard enabled, let home, let location, abs(location.timestamp.timeIntervalSinceNow) < 60 else { status = "等待新的到家位置，提醒暂缓"; return }
         guard location.distance(from: CLLocation(latitude: home.latitude, longitude: home.longitude)) + location.horizontalAccuracy <= radius else { status = "还没到家，提醒暂缓"; return }
-        guard let motionAt = safeMotionAt, abs(motionAt.timeIntervalSinceNow) < 120,
-              location.speed >= 0, location.speed < 2 else { status = "驾驶或活动状态不确定，提醒暂缓"; return }
+        guard HomeReminderGate.canDeliver(isHome: true, locationAt: location.timestamp,
+                                          motionAt: safeMotionAt, speed: location.speed, now: .now)
+        else { status = "驾驶或活动状态不确定，提醒暂缓"; return }
         status = "已到家，未检测到驾驶"
         let now = Date()
         if endTimes.values.contains(where: { end in
@@ -202,8 +202,8 @@ final class HomeReminderCoordinator: NSObject, ObservableObject, CLLocationManag
             guard enabled, let home, let location,
                   abs(location.timestamp.timeIntervalSinceNow) < 60,
                   location.distance(from: CLLocation(latitude: home.latitude, longitude: home.longitude)) + location.horizontalAccuracy <= radius,
-                  let safeMotionAt, abs(safeMotionAt.timeIntervalSinceNow) < 120,
-                  location.speed >= 0, location.speed < 2 else { return }
+                  HomeReminderGate.canDeliver(isHome: true, locationAt: location.timestamp,
+                                              motionAt: safeMotionAt, speed: location.speed, now: .now) else { return }
             do {
                 try await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "ke.home." + key, content: content, trigger: nil))
                 delivered.insert(key); defaults.set(Array(delivered), forKey: "us.medicine-delivered")
