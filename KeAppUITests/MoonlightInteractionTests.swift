@@ -34,6 +34,7 @@ final class MoonlightInteractionTests: XCTestCase {
         XCTAssertFalse(app.buttons["play-hut"].exists)
         capture("04-play")
         TarotInteractionChecks.verify(in: testCase, app: app)
+        DuelInteractionChecks.verify(in: testCase, app: app)
         app.buttons["tab-drawer"].tap()
         XCTAssertTrue(app.buttons["diary-open-close"].waitForExistence(timeout: 8))
         capture("05-diary-cover")

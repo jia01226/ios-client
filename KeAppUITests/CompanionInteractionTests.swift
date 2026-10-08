@@ -197,16 +197,14 @@ final class CompanionInteractionTests: XCTestCase {
         app.terminate()
     }
 
-    func testDuelEntryOpensPrivateGameRoom() {
+    func testDuelEntryHandlesMissingGameRoom() {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-app.skin", "day"]
         app.launch()
         XCTAssertTrue(app.buttons["玩"].waitForExistence(timeout: 5))
         app.buttons["玩"].tap()
         XCTAssertTrue(app.buttons["play-duel"].waitForExistence(timeout: 5))
-        app.buttons["play-duel"].tap()
-        XCTAssertTrue(app.staticTexts["你和柯的牌桌已经摆好。"].waitForExistence(timeout: 5))
-        capture("duel-entry")
+        DuelInteractionChecks.verify(in: self, app: app)
     }
 
     func testFortuneRunsAndHandsToKe() {

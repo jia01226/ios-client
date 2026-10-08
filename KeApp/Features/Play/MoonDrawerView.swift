@@ -45,16 +45,16 @@ struct MoonDrawerView: View {
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("drawer-private-locked")
                     .accessibilityLabel("柯的私藏，下层始终锁着")
-                if isOpen {
-                    scrolls.padding(.top, 16).transition(.opacity)
-                } else {
-                    Text("第一层记事，第二层收信。")
-                        .font(Moonlight.serif(13)).foregroundStyle(theme.pageColor.textSecondary)
-                        .padding(.top, 38).padding(.bottom, 36)
-                }
+                Text("第一层记事，第二层收信。")
+                    .font(Moonlight.serif(13)).foregroundStyle(theme.pageColor.textSecondary)
+                    .padding(.top, 38).padding(.bottom, 36)
             }.frame(maxWidth: .infinity).padding(.bottom, 28)
         }
-        .accessibilityHidden(notesFocused).allowsHitTesting(!notesFocused)
+        .accessibilityHidden(notesFocused || isOpen).allowsHitTesting(!notesFocused && !isOpen)
+            if isOpen {
+                letterFocus
+                    .transition(reduceMotion ? .opacity : .scale(scale: 0.80, anchor: .top).combined(with: .opacity))
+            }
             if notesFocused {
                 StickyDrawerFocus(store: notes, night: night) { settleNotes(0) }
                     .transition(reduceMotion ? .opacity : .scale(scale: 0.80, anchor: .top).combined(with: .opacity))
@@ -89,6 +89,40 @@ struct MoonDrawerView: View {
         _ = await (drawer, stickyNotes)
     }
 
+    private var letterFocus: some View {
+        ScrollView {
+            VStack(spacing: 18) {
+                HStack {
+                    Text("letters").font(Moonlight.script(34)).foregroundStyle(theme.pageAccent)
+                    Spacer()
+                    Button { settle(0) } label: {
+                        Image(systemName: "arrow.down.right.and.arrow.up.left")
+                            .font(.system(size: 17, weight: .ultraLight)).frame(width: 44, height: 44)
+                    }.accessibilityLabel("收好卷轴抽屉").accessibilityIdentifier("drawer-pull")
+                        .accessibilityValue("已拉开")
+                }
+                GeometryReader { g in
+                    ZStack(alignment: .topLeading) {
+                        Image("KeepsakeNotesInterior").resizable().scaledToFit()
+                            .colorMultiply(KeepsakeTheme.artworkTint(night: night))
+                            .accessibilityHidden(true).allowsHitTesting(false)
+                        ScrollView {
+                            scrolls.padding(.vertical, 12)
+                        }.scrollIndicators(.hidden)
+                            .frame(width: g.size.width * 0.76, height: g.size.height * 0.70)
+                            .position(x: g.size.width * 0.5, y: g.size.height * 0.46)
+                            .accessibilityIdentifier("drawer-letter-interior")
+                    }
+                }.aspectRatio(1, contentMode: .fit)
+                Text("点开一卷，读柯交给你的话。")
+                    .font(Moonlight.serif(13)).foregroundStyle(theme.pageColor.textSecondary)
+            }.padding(.horizontal, 24).padding(.top, 18).padding(.bottom, 28)
+                .frame(maxWidth: 520).frame(maxWidth: .infinity)
+        }.background(theme.pageBackground).scrollIndicators(.hidden)
+            .accessibilityElement(children: .contain).accessibilityIdentifier("drawer-letter-focus")
+            .refreshable { await load() }
+    }
+
     private var scrolls: some View {
         VStack(spacing: 26) {
             if loading { ProgressView("正在看看柯留下了什么").font(Moonlight.serif(13)) }
@@ -99,18 +133,18 @@ struct MoonDrawerView: View {
             }
             if loaded && contents.isEmpty {
                 Text("柯还没有把卷纸放在这一层。")
-                    .font(Moonlight.serif(14)).foregroundStyle(theme.pageColor.textSecondary)
+                    .font(Moonlight.serif(14)).foregroundStyle(KeepsakeTheme.paperMutedInk)
                     .accessibilityIdentifier("drawer-empty")
             }
             ForEach(contents.letters) { letter in
                 Button { reading = letter } label: {
                     VStack(spacing: 9) {
                         KeepsakeScrollArtwork(sealed: false, night: night)
-                            .frame(width: 248, height: 78).accessibilityHidden(true)
+                            .frame(maxWidth: 210).frame(height: 64).accessibilityHidden(true)
                         Text(letter.title.isEmpty ? "留给你的一封信" : letter.title)
                             .font(Moonlight.serif(17)).multilineTextAlignment(.center)
                         Text(DrawerDate.label(letter.createdAt)).font(Moonlight.serif(11))
-                            .foregroundStyle(theme.pageColor.textSecondary)
+                            .foregroundStyle(KeepsakeTheme.paperMutedInk)
                     }.frame(maxWidth: .infinity).contentShape(Rectangle())
                 }
                 .accessibilityIdentifier("drawer-letter-\(letter.id)")
@@ -120,18 +154,18 @@ struct MoonDrawerView: View {
             ForEach(contents.teasers) { teaser in
                 VStack(spacing: 9) {
                     KeepsakeScrollArtwork(sealed: true, night: night)
-                        .frame(width: 248, height: 88).accessibilityHidden(true)
+                        .frame(maxWidth: 210).frame(height: 70).accessibilityHidden(true)
                     Text("还封着").font(Moonlight.serif(16))
                     if !teaser.text.isEmpty {
                         Text(teaser.text).font(Moonlight.serif(13))
-                            .foregroundStyle(theme.pageColor.textSecondary).multilineTextAlignment(.center)
+                            .foregroundStyle(KeepsakeTheme.paperMutedInk).multilineTextAlignment(.center)
                     }
                 }.frame(maxWidth: .infinity)
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("drawer-teaser-\(teaser.id)")
                     .accessibilityHint("蜡封还在，柯还没有公开这卷的全文")
             }
-        }.padding(.horizontal, 28)
+        }.padding(.horizontal, 10).foregroundStyle(KeepsakeTheme.paperInk)
     }
 
     private func settle(_ target: CGFloat) {

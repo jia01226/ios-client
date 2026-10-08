@@ -32,7 +32,12 @@ enum KeepsakeInteractionChecks {
         XCTAssertTrue(app.buttons["drawer-letter-501"].waitForExistence(timeout: 8))
         capture("02-open")
         let teaser = app.descendants(matching: .any).matching(identifier: "drawer-teaser-503").firstMatch
-        scrollTo(teaser)
+        let letterInterior = app.scrollViews["drawer-letter-interior"]
+        for _ in 0..<3 {
+            if teaser.isHittable { break }
+            letterInterior.swipeUp()
+        }
+        XCTAssertTrue(teaser.isHittable)
         capture("03-scroll-list")
         teaser.tap()
         XCTAssertFalse(app.buttons["drawer-reader-close"].exists)
@@ -44,7 +49,7 @@ enum KeepsakeInteractionChecks {
 
         let letter = app.buttons["drawer-letter-501"]
         // Released letter is directly above the teaser, so a small downward scroll brings it back.
-        if !letter.isHittable { app.swipeDown() }
+        if !letter.isHittable { letterInterior.swipeDown() }
         XCTAssertTrue(letter.isHittable)
         letter.tap()
         let body = app.staticTexts["drawer-reader-content"]

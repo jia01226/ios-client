@@ -1,5 +1,15 @@
 # 抽屉内部与月光牌背素材
 
+## 抽屉内部视角修订：完全拉开后的正俯视
+
+用户要求第一、二层打开后从正上方看完整内部，便利贴错落搭放。运行时仍是原生可点击纸条／卷轴，背景不含假内容。
+
+新的 `KeepsakeNotesInterior.imageset/artwork.png` 替换首次带正面挡板的近景素材；来源 `exec-703f92c3-7663-4fd4-a0ba-0518b8a5de40.png`，原始透明通道保留。下面“首次近景”的提示是历史出处，当前使用本节素材。
+
+```text
+Use case: precise-object-edit. Edit reference open drawer asset to a STRICT TRUE 90-DEGREE OVERHEAD ORTHOGRAPHIC TOP VIEW, looking directly straight DOWN into the fully pulled-out drawer. This is the user's demanded game zoom-inside view, not a front product photograph. Preserve the exact warm dusty rose moire silk lining, pink lacquer, narrow mother-of-pearl rim and champagne hairline trim. The open drawer is nearly square, symmetrical, with gently softened slightly curved outline. Large completely empty inner floor covers about x=10%-90%, y=10%-90%; inner walls visible only as narrow rim and a subtle shallow inner shadow. CRITICAL: NO VISIBLE VERTICAL FRONT FACADE, NO tall back wall, NO perspective trapezoid, NO side view, NO front-elevated camera. From straight overhead the five-pearl handle can be glimpsed as a TINY narrow row projecting just outside the bottom rim only, not a big front panel. A drawer fully removed from cabinet and inspected from directly above. It fills 90% of canvas with truly transparent alpha outside its silhouette, no backdrop, no outside glow. NO NOTES, no scrolls, no props, no text. Fine premium realistic texture but restrained contrast. This empty game sprite will have interactive papers composited over its flat floor in native UI. Square high resolution composition.
+```
+
 ## AppIcon · 已选择 01
 
 用户选择六版对比中的 01「月牙托着山茶」，另行生成单幅正式图标。原始文件 `exec-42e9c5bb-1f94-429e-9362-11f805cec3b6.png` 为 1254×1254、不透明；系统 sips 仅按 AppIcon 打包规格缩至 1024×1024，不裁切、不改色，无预制圆角。

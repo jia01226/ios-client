@@ -99,24 +99,30 @@ struct MoonStickyNotesView: View {
                         Text("还没有纸条，点右上角写一张。")
                             .font(Moonlight.serif(14)).foregroundStyle(KeepsakeTheme.paperInk)
                             .frame(width: g.size.width * 0.70, height: g.size.height * 0.38)
-                            .position(x: g.size.width * 0.5, y: g.size.height * 0.42)
+                            .position(x: g.size.width * 0.5, y: g.size.height * 0.48)
                             .accessibilityIdentifier("drawer-notes-empty")
                     } else {
                         TabView(selection: $trayPage) {
                             ForEach(0..<trayPageCount, id: \.self) { page in
-                                HStack(spacing: 10) {
-                                    ForEach(Array(store.all.dropFirst(page * 2).prefix(2))) { note in
+                                let pair = Array(store.all.dropFirst(page * 2).prefix(2))
+                                ZStack(alignment: .topLeading) {
+                                    ForEach(Array(pair.enumerated()), id: \.element.id) { index, note in
                                         noteCard(note)
+                                            .frame(width: g.size.width * 0.43, height: g.size.height * 0.42)
+                                            .rotationEffect(.degrees(index == 0 ? -7 : 6))
+                                            .shadow(color: KeepsakeTheme.shadow.opacity(0.14), radius: 3, y: 3)
+                                            .position(x: g.size.width * (pair.count == 1 ? 0.42 : (index == 0 ? 0.28 : 0.58)),
+                                                      y: g.size.height * (pair.count == 1 ? 0.39 : (index == 0 ? 0.24 : 0.51)))
+                                            .zIndex(Double(index))
                                     }
-                                    if store.all.count - page * 2 == 1 { Spacer(minLength: g.size.width * 0.34) }
-                                }.padding(5).tag(page)
+                                }.frame(width: g.size.width * 0.84, height: g.size.height * 0.78).tag(page)
                             }
                         }.tabViewStyle(.page(indexDisplayMode: .never))
-                            .frame(width: g.size.width * 0.80, height: g.size.height * 0.43)
-                            .position(x: g.size.width * 0.5, y: g.size.height * 0.43)
+                            .frame(width: g.size.width * 0.84, height: g.size.height * 0.78)
+                            .position(x: g.size.width * 0.5, y: g.size.height * 0.49)
                     }
                 }
-            }.aspectRatio(1248.0 / 1258.0, contentMode: .fit)
+            }.aspectRatio(1, contentMode: .fit)
                 .accessibilityElement(children: .contain).accessibilityIdentifier("drawer-notes-interior")
             if trayPageCount > 1 {
                 HStack(spacing: 24) {
