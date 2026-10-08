@@ -25,9 +25,9 @@ enum KeepsakeInteractionChecks {
         XCTAssertTrue(app.descendants(matching: .any)["drawer-private-locked"].exists)
         capture("01-closed")
         // Exercise the actual illustration drag, not only the fallback button.
-        let art = app.descendants(matching: .any).matching(identifier: "drawer-artwork").firstMatch
-        art.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.47))
-            .press(forDuration: 0.15, thenDragTo: art.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.92)))
+        let handle = app.descendants(matching: .any).matching(identifier: "drawer-letter-handle").firstMatch
+        handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.15, thenDragTo: handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 2.0)))
         waitValue(app.buttons["drawer-pull"], "已拉开")
         XCTAssertTrue(app.buttons["drawer-letter-501"].waitForExistence(timeout: 8))
         capture("02-open")
@@ -62,6 +62,28 @@ enum KeepsakeInteractionChecks {
         waitValue(pull, "已合上")
         XCTAssertFalse(app.buttons["drawer-letter-501"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["drawer-private-locked"].exists)
+
+        let notesPull = app.buttons["drawer-notes-pull"]
+        notesPull.tap()
+        waitValue(notesPull, "已拉开")
+        waitValue(pull, "已合上")
+        capture("05-notes-drawer")
+        let addNote = app.buttons["notes-add"]
+        scrollTo(addNote)
+        XCTAssertTrue(app.buttons["note-fixture-ke"].exists)
+        capture("06-notes-papers")
+        if skin == "day" {
+            addNote.tap()
+            let editor = app.textViews["note-editor"]
+            XCTAssertTrue(editor.waitForExistence(timeout: 6))
+            editor.tap()
+            editor.typeText("珍珠抽屉的同一张便利贴")
+            app.buttons["note-save"].tap()
+            XCTAssertTrue(addNote.waitForExistence(timeout: 6))
+            app.buttons["tab-us"].tap()
+            XCTAssertTrue(app.staticTexts["珍珠抽屉的同一张便利贴"].waitForExistence(timeout: 8))
+            capture("07-shared-note-in-us")
+        }
     }
 
     static func verifyNight(in testCase: XCTestCase) {

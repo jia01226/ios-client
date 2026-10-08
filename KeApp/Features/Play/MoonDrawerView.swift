@@ -6,60 +6,82 @@ struct MoonDrawerView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     let line: ChatLine
+    @StateObject private var notes: StickyNotesStore
     @State private var contents = DrawerKeepsakes()
     @State private var loaded = false
     @State private var loading = false
     @State private var error: String?
     @State private var openness: CGFloat = 0
+    @State private var notesOpenness: CGFloat = 0
     @State private var reading: DrawerLetter?
     private var night: Bool { theme.skin == .night }
     private var isOpen: Bool { openness > 0.5 }
+    private var notesOpen: Bool { notesOpenness > 0.5 }
+
+    init(line: ChatLine) {
+        self.line = line
+        _notes = StateObject(wrappedValue: StickyNotesStore(api: APIClient(baseURL: line.apiBaseURL), scope: line.rawValue))
+    }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
-                VStack(spacing: 3) {
-                    Text("月光宝盒").font(Moonlight.serif(24))
-                    Text("keepsakes").font(Moonlight.script(31)).foregroundStyle(theme.pageAccent)
-                }.padding(.top, 14)
-                KeepsakeCabinetArtwork(openness: $openness, visibleCount: contents.visibleCount,
-                                       night: night, settle: settle)
+                Text("keepsakes").font(Moonlight.script(36))
+                    .foregroundStyle(theme.pageAccent).padding(.top, 18)
+                KeepsakeCabinetArtwork(openness: $openness, notesOpenness: $notesOpenness,
+                                       visibleCount: contents.visibleCount, notesCount: notes.all.count,
+                                       night: night, settle: settle, settleNotes: settleNotes)
                     .frame(maxWidth: 370).padding(.horizontal, 14)
-                Button { settle(isOpen ? 0 : 1) } label: {
-                    HStack(spacing: 12) {
-                        Text(isOpen ? "轻轻推回去" : "拉开上面这一层").font(Moonlight.serif(16))
-                        Image(systemName: isOpen ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 11, weight: .ultraLight))
-                    }.frame(minHeight: 44)
+                HStack(spacing: 36) {
+                    drawerControl("卷轴", open: isOpen, id: "drawer-pull") { settle(isOpen ? 0 : 1) }
+                    drawerControl("便利贴", open: notesOpen, id: "drawer-notes-pull") { settleNotes(notesOpen ? 0 : 1) }
                 }
-                .accessibilityIdentifier("drawer-pull")
-                .accessibilityValue(isOpen ? "已拉开" : "已合上")
-                .accessibilityHint("也可以拖动上层抽屉的珍珠丝带拉手")
                 HStack(spacing: 7) {
                     Image(systemName: "lock").font(.system(size: 11, weight: .light))
-                    Text("下面这一层，是柯的私藏。").font(Moonlight.serif(12))
+                    Text("最下面这一层，是柯的私藏。").font(Moonlight.serif(12))
                 }.foregroundStyle(theme.pageColor.textSecondary)
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("drawer-private-locked")
                     .accessibilityLabel("柯的私藏，下层始终锁着")
                 if isOpen {
                     scrolls.padding(.top, 16).transition(.opacity)
+                } else if notesOpen {
+                    MoonStickyNotesView(store: notes).padding(.horizontal, 24)
+                        .padding(.top, 20).transition(.opacity)
                 } else {
-                    Text("轻轻拉开，看看他留给你的话。")
+                    Text("上层收信，中层记事。")
                         .font(Moonlight.serif(13)).foregroundStyle(theme.pageColor.textSecondary)
                         .padding(.top, 38).padding(.bottom, 36)
                 }
             }.frame(maxWidth: .infinity).padding(.bottom, 28)
         }
         .buttonStyle(.plain).tint(theme.pageAccent).scrollIndicators(.hidden)
-        .task { await load() }.refreshable { await load() }
+        .task { await reload() }.refreshable { await reload() }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await load() } }
+            if phase == .active { Task { await reload() } }
         }
         .sheet(item: $reading) { letter in
             KeepsakeParchmentReader(letter: letter, night: night) { reading = nil }
                 .environmentObject(theme).presentationDetents([.large])
         }
+    }
+
+    private func drawerControl(_ title: String, open: Bool, id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Text(title).font(Moonlight.serif(16))
+                Image(systemName: open ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 11, weight: .ultraLight))
+            }.frame(minWidth: 88, minHeight: 44)
+        }
+        .accessibilityIdentifier(id).accessibilityValue(open ? "已拉开" : "已合上")
+        .accessibilityHint("也可以拖动这一层的珍珠拉手")
+    }
+
+    private func reload() async {
+        async let drawer: Void = load()
+        async let stickyNotes: Void = notes.load()
+        _ = await (drawer, stickyNotes)
     }
 
     private var scrolls: some View {
@@ -110,6 +132,13 @@ struct MoonDrawerView: View {
     private func settle(_ target: CGFloat) {
         withAnimation(reduceMotion ? nil : .spring(response: 0.52, dampingFraction: 0.9)) {
             openness = target
+            if target > 0.5 { notesOpenness = 0 }
+        }
+    }
+    private func settleNotes(_ target: CGFloat) {
+        withAnimation(reduceMotion ? nil : .spring(response: 0.52, dampingFraction: 0.9)) {
+            notesOpenness = target
+            if target > 0.5 { openness = 0 }
         }
     }
     @MainActor private func load() async {
@@ -145,85 +174,123 @@ private struct KeepsakeCutout: View {
 }
 
 private struct KeepsakeCabinetArtwork: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var openness: CGFloat
+    @Binding var notesOpenness: CGFloat
     let visibleCount: Int
+    let notesCount: Int
     let night: Bool
     let settle: (CGFloat) -> Void
-    @State private var dragStart: CGFloat?
+    let settleNotes: (CGFloat) -> Void
+
     var body: some View {
         GeometryReader { g in
             let width = g.size.width
             ZStack(alignment: .topLeading) {
                 Image("KeepsakeCabinet").renderingMode(.original).resizable()
-                    .frame(width: width, height: width)
-                movingTray(width: width)
-                    .mask(DrawerAperture())
-                // The illustration itself has no private-content hit target.
-                Rectangle().fill(.clear)
-                    .frame(width: width * 0.78, height: width * 0.24)
-                    .contentShape(Rectangle())
-                    .position(x: width * 0.5, y: width * (0.46 + 0.085 * openness))
-                    .highPriorityGesture(DragGesture(minimumDistance: 6)
-                        .onChanged { value in
-                            if dragStart == nil { dragStart = openness }
-                            let next = DrawerTravel.progress(start: dragStart ?? openness,
-                                                             translation: value.translation.height,
-                                                             distance: width * 0.28)
-                            // Reduce Motion keeps explicit open/closed states without a moving scene.
-                            if !reduceMotion { openness = next }
-                        }
-                        .onEnded { value in
-                            settle(DrawerTravel.target(start: dragStart ?? openness,
-                                                       predictedTranslation: value.predictedEndTranslation.height,
-                                                       distance: width * 0.28))
-                            dragStart = nil
-                        })
-                    .onTapGesture { settle(openness > 0.5 ? 0 : 1) }
+                    .frame(width: width, height: width * 1276 / 1233)
+                tray(width: width, notes: true)
+                    .mask(DrawerAperture(top: 0.484, control: 0.550))
+                tray(width: width, notes: false)
+                    .mask(DrawerAperture(top: 0.275, control: 0.340))
+                DrawerHandle(openness: $notesOpenness, width: width, title: "便利贴",
+                             id: "drawer-notes-handle", settle: settleNotes)
+                    .frame(width: width * 0.78, height: width * 0.15)
+                    .position(x: width * 0.5, y: width * (0.61 + 0.073 * notesOpenness))
+                DrawerHandle(openness: $openness, width: width, title: "卷轴",
+                             id: "drawer-letter-handle", settle: settle)
+                    .frame(width: width * 0.78, height: width * 0.15)
+                    .position(x: width * 0.5, y: width * (0.394 + 0.073 * openness))
             }
             .colorMultiply(KeepsakeTheme.artworkTint(night: night))
-            .offset(y: -width * 0.12)
+            .offset(y: -width * 0.035)
             .frame(width: width, height: g.size.height, alignment: .top)
         }
-        .aspectRatio(1 / 0.74, contentMode: .fit)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("月光宝盒，上层可拉开，下层为柯的私藏")
-        .accessibilityValue(openness > 0.5 ? "上层已拉开" : "上层已合上")
+        .aspectRatio(1 / 0.94, contentMode: .fit)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("drawer-artwork")
-        .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment: settle(1)
-            case .decrement: settle(0)
-            @unknown default: break
-            }
-        }
     }
 
-    private func movingTray(width: CGFloat) -> some View {
-        ZStack(alignment: .topLeading) {
+    private func tray(width: CGFloat, notes: Bool) -> some View {
+        let progress = notes ? notesOpenness : openness
+        return ZStack(alignment: .topLeading) {
             Image("KeepsakeUpperDrawer").renderingMode(.original).resizable()
-            ForEach(0..<min(3, visibleCount), id: \.self) { index in
-                KeepsakeCutout(name: "KeepsakeScroll",
-                               crop: CGRect(x: 0.016, y: 0.37, width: 0.968, height: 0.37))
-                    .frame(width: width * 0.24, height: width * 0.06)
-                    .rotationEffect(.degrees(84))
-                    .scaleEffect(x: 1, y: 0.53)
-                    .position(x: width * (0.25 + CGFloat(index) * 0.17), y: width * 0.185)
+            if notes {
+                ForEach(0..<min(2, notesCount), id: \.self) { index in
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(index == 0 ? Moonlight.rosePaper : Moonlight.lavenderPaper)
+                        .frame(width: width * 0.34, height: width * 0.12)
+                        .rotationEffect(.degrees(index == 0 ? -4 : 5))
+                        .scaleEffect(x: 1, y: 0.30)
+                        .position(x: width * (0.35 + CGFloat(index) * 0.15),
+                                  y: width * (0.19 + CGFloat(index) * 0.022))
+                }
+            } else {
+                ForEach(0..<min(3, visibleCount), id: \.self) { index in
+                    KeepsakeCutout(name: "KeepsakeScroll",
+                                   crop: CGRect(x: 0.016, y: 0.37, width: 0.968, height: 0.37))
+                        .frame(width: width * 0.54, height: width * 0.13)
+                        .scaleEffect(x: 1, y: 0.28)
+                        .position(x: width * 0.42, y: width * (0.187 + CGFloat(index) * 0.028))
+                }
             }
         }
-        .frame(width: width * 0.84, height: width * 0.54)
-        .offset(x: width * 0.08, y: width * (0.145 + 0.085 * openness))
-        .frame(width: width, height: width, alignment: .topLeading)
+        .frame(width: width * 0.84, height: width * 0.56)
+        .offset(x: width * 0.08, y: width * ((notes ? 0.262 : 0.045) + 0.073 * progress))
+        .frame(width: width, height: width * 1276 / 1233, alignment: .topLeading)
+        .accessibilityHidden(true).allowsHitTesting(false)
     }
 }
 
-/// The fixed curved cornice occludes the rear of the translated tray while it slides in.
+private struct DrawerHandle: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Binding var openness: CGFloat
+    let width: CGFloat
+    let title: String
+    let id: String
+    let settle: (CGFloat) -> Void
+    @State private var dragStart: CGFloat?
+
+    var body: some View {
+        Rectangle().fill(.clear).contentShape(Rectangle())
+            .highPriorityGesture(DragGesture(minimumDistance: 6)
+                .onChanged { value in
+                    if dragStart == nil { dragStart = openness }
+                    if !reduceMotion {
+                        openness = DrawerTravel.progress(start: dragStart ?? openness,
+                                                         translation: value.translation.height,
+                                                         distance: width * 0.28)
+                    }
+                }
+                .onEnded { value in
+                    settle(DrawerTravel.target(start: dragStart ?? openness,
+                                               predictedTranslation: value.predictedEndTranslation.height,
+                                               distance: width * 0.28))
+                    dragStart = nil
+                })
+            .onTapGesture { settle(openness > 0.5 ? 0 : 1) }
+            .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier(id).accessibilityLabel(title + "抽屉的珍珠拉手")
+            .accessibilityValue(openness > 0.5 ? "已拉开" : "已合上")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: settle(1)
+                case .decrement: settle(0)
+                @unknown default: break
+                }
+            }
+    }
+}
+
+/// Each fixed curved rim hides the part of its tray still inside the cabinet.
 private struct DrawerAperture: Shape {
+    let top: CGFloat
+    let control: CGFloat
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        path.move(to: CGPoint(x: 0, y: rect.width * 0.357))
-        path.addQuadCurve(to: CGPoint(x: rect.width, y: rect.width * 0.357),
-                          control: CGPoint(x: rect.midX, y: rect.width * 0.445))
+        path.move(to: CGPoint(x: 0, y: rect.width * top))
+        path.addQuadCurve(to: CGPoint(x: rect.width, y: rect.width * top),
+                          control: CGPoint(x: rect.midX, y: rect.width * control))
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
         path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
         path.closeSubpath()
