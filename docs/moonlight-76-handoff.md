@@ -32,6 +32,28 @@
 
 本任务只推代码、GitHub Actions 验证/打包。没有 SSH，没有服务器编辑/重启，没有修改安装页。IPA 交给 Claude 核对后上架；佳佳继续网页安装。
 
-## 核验状态
+## 核验状态（交付前必读）
 
-待 CI 完成后补充“亲眼验过 / 没验过”和精确构建链接。
+最新功能提交：`78101ef98830eeadc443c4399cd4f907621bee2a`。源代码已推送；最终版本还没有完成模拟器复验，不能直接上架旧 76 包。
+
+### 亲眼验过
+
+- 首轮 CI 在 `75809ee` 成功编译，77 个单元测试通过。实际打开并检查了 CI 导出的聊天、我们、月历、玩、日记封面截图。它们位于任务工作区 `verification/build76-first/`，使用预览数据、iPhone 18 Pro 模拟器，**不是佳佳的 iPhone 14 Pro Max，也不是最新提交的截图**。
+- 首轮 UI 测试在点日记日期时失败：父视图 accessibilityIdentifier 覆盖了子按钮。已删除该父标识，并修正日记日期时区、页头插画尺寸、首屏排版、英文及月光日期条；这些修正尚未复跑 UI。
+- 最新变更通过本机 Swift 语法解析和 `git diff --check`。浅色聊天和其他页面引用同一组 Morandi 色值；聊天气泡布局、Thinking 字体保留。
+- 75 版的单聊天窗口基线、现有排班和经期接口没有被替换；没有改服务器、重启服务或上传安装页。
+
+### 没验过／仍需完成
+
+- `78101ef` 的 iOS 完整编译、最终全部 UI 测试、翻书和抽屉拉动的运行效果，以及 iPhone 14 Pro Max 真机效果。最新模拟器工作在任何步骤开始前被 GitHub Actions 账单/消费限额拦截，**不是新的 exit 65 编译错误**。
+- 上层抽屉的实际信件同步与已释放/私人内容边界，需要对真实服务器只读核对；客户端和测试夹具已有过滤，不能据此宣称线上已验。
+- 便利贴服务端接入、柯能读写便利贴、旧日记分页完整性，按上文由 Claude 补齐后再验；客户端离线保存不能替代双向联通。
+- 六组整体 tab 图片为设计预览，不是模拟器截图，也不表示做了六套可安装皮肤。
+
+### 构建链接及接手步骤
+
+1. [首轮模拟器验证：77 个单元测试通过，日记日期 UI 失败](https://github.com/jia01226/ios-client/actions/runs/37703753730)。对应 `75809ee`。
+2. [Build iOS：旧 76 包已打出](https://github.com/jia01226/ios-client/actions/runs/37704878611)。对应 `9c0311a`，缺少 `78101ef` 的最后修正，**不要上架、不要让佳佳安装这个旧包**。
+3. [最新模拟器验证：因账户账单/额度被阻止启动](https://github.com/jia01226/ios-client/actions/runs/37705509911)。GitHub 原因：recent account payments have failed or your spending limit needs to be increased。没有自行修改账单或消费额度，也没有继续重复提交付费任务。
+4. Claude 接手前先读 goodlove 最新《工单-给codex.md》，确认安装页最新版本、基线和是否有其他并行改动；恢复 Actions 可用后，从本分支最新 HEAD 运行模拟器检查及 `Build iOS`，**重新核对未被占用的 Build 号（至少 76，不能盲用 76）**。
+5. 现有工作流使用机器上可用的第一部 iPhone。仓库附 `docs/iphone14-simulator-workflow.patch` 供有 workflow 权限的接手方核对适配；本任务的 token 不能修改工作流，补丁没有应用。用 iPhone 14 Pro Max 完成最终截图和交互核验后，Claude 再决定上架；佳佳仍走网页安装。
