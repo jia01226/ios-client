@@ -26,12 +26,14 @@ Use case: product-mockup. Production UI object cutout, genuine transparent alpha
 
 ## KeepsakeWax
 
+最终蜡封选择 A：粉色蜡封、香槟金月牙、粉色丝带（2026-10-08 用户确认）。在原始粉色插画上仅改月牙；未采用全金版本。盒身的珠光白／白金边另有试稿，尚未替换已确认的粉色生产素材。
+
 文件：`KeApp/Assets.xcassets/KeepsakeWax.imageset/artwork.png`
 
 提示词：
 
 ```text
-Use case: product-mockup. Production UI cutout asset, genuine transparentalpha,square1024x1024. One realistic small round rose-pink handpoured wax seal, subtly irregular edge, embossed tiny crescent moon impression. Two short dusty-pink silk ribbon tails below it. Waxcolor mutedberryrose, silky highlights, authentic finelysculpted texture. Centerobjectfillsabout70percentcanvas. No paper,no lettering,no gold,no harshdarkshadow,no background. A beautiful restrained French keepsake seal for a vellum scroll. Full seal and ribbons entirelyinsideframe withalphamargins. This separate seal will overlay a rolled parchment to indicate its contents are not yet released.
+Use case: precise-object-edit. Edit this exact wax seal cutout. Keep the wax disk and both silk ribbon tails original dusty PINK with all their exact shape, texture, color and proportions preserved. Change ONLY THE RAISED CRESCENT MOON at center to an extremely fine low-saturation CHAMPAGNE GOLD metallic wax/gilded inlay, delicate soft warm gold, not yellow, no excessive sparkle. The irregular rim stays pink, the center background stays pink; only the moon is gold. Preserve lighting and original geometry exactly. True transparent alpha background around complete object; no text, no labels, no scene. One isolated production-quality seal, uncropped, same composition.
 ```
 
 ## KeepsakePaper
