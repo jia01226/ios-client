@@ -43,7 +43,8 @@ enum MoonlightPreviewData {
         }
         // 一次很久以前来、一直没记走的：月历只该染一周。
         if path.hasSuffix("/api/periods"), request.httpMethod != "POST" {
-            return (200, json([["id": 1, "start_date": PeriodStore.dayKey(HomeReminderCoordinator.dayKey(.now), plus: -25) ?? "2026-09-13",
+            return (200, json([["id": 1, "start_date": { let f = DateFormatter(); f.timeZone = TimeZone(identifier: "Asia/Shanghai"); f.dateFormat = "yyyy-MM-dd"
+                                  return f.string(from: Date().addingTimeInterval(-25 * 86400)) }(),
                                 "end_date": NSNull(), "note": "崽崽自己报的"]]))
         }
         if path.hasSuffix("/api/drawer") {

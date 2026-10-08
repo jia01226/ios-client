@@ -48,7 +48,7 @@ final class PeriodStore: ObservableObject {
               let stale = Self.dayKey(latest.start_date, plus: 14), today <= stale else { return nil }
         return latest
     }
-    static func dayKey(_ key: String, plus days: Int) -> String? {
+    nonisolated static func dayKey(_ key: String, plus days: Int) -> String? {
         let f = DateFormatter(); f.calendar = Calendar(identifier: .gregorian); f.locale = Locale(identifier: "en_US_POSIX")
         f.timeZone = TimeZone(identifier: "Asia/Shanghai"); f.dateFormat = "yyyy-MM-dd"
         guard let d = f.date(from: key), let e = f.calendar.date(byAdding: .day, value: days, to: d) else { return nil }
