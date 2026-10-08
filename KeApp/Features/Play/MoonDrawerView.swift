@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Illustrated fixed cabinet + independently moving upper tray. The lower drawer never moves.
+/// Fixed cabinet with separate notes/letters trays; the private bottom drawer never moves.
 struct MoonDrawerView: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

@@ -48,7 +48,7 @@ final class MoonlightInteractionTests: XCTestCase {
         testCase.expectation(for: changed, evaluatedWith: app.staticTexts["diary-page-date"])
         testCase.waitForExpectations(timeout: 5)
         capture("06-diary-turned")
-        app.buttons["diary-date-picker"].tap()
+        app.buttons["diary-fullscreen-date-picker"].tap()
         XCTAssertTrue(app.buttons["diary-date-done"].waitForExistence(timeout: 5))
         capture("07-diary-date-picker")
         app.buttons["diary-date-done"].tap()

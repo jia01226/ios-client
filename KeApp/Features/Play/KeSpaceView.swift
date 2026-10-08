@@ -60,6 +60,7 @@ private struct MoonDiaryView: View {
                 }.padding(.bottom, 18).frame(minHeight: geometry.size.height, alignment: .center)
             }.scrollIndicators(.hidden)
         }
+        .accessibilityHidden(open)
         .task { await store.load(); if !selectedOnce { selected = store.pages.last?.date ?? selected; selectedOnce = true } }
         .onChange(of: selected) { _, _ in selectedOnce = true }
         .sheet(isPresented: $datePicker) {
@@ -109,7 +110,7 @@ private struct DiaryFullScreenBook: View {
                         Text(KeDiaryPage.dateLabel(date)).font(Moonlight.serif(14))
                         Image(systemName: "chevron.down").font(.system(size: 10, weight: .ultraLight))
                     }.frame(minHeight: 44)
-                }.accessibilityLabel("选日期").accessibilityIdentifier("diary-date-picker")
+                }.accessibilityLabel("选日期").accessibilityIdentifier("diary-fullscreen-date-picker")
                 Spacer()
                 Button("合上", action: foldClosed).font(Moonlight.serif(15)).frame(minWidth: 44, minHeight: 44)
                     .disabled(closing).accessibilityIdentifier("diary-fullscreen-close")
