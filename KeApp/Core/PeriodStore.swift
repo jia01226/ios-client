@@ -34,13 +34,35 @@ final class PeriodStore: ObservableObject {
     }
     var today: String { HomeReminderCoordinator.dayKey(.now) }
     var latest: RemotePeriod? { records.sorted { ($0.start_date, $0.id) > ($1.start_date, $1.id) }.first }
-    var canStart: Bool { loaded && !saving && !loading && !records.contains { $0.start_date == today } && defaults.string(forKey: startedKey) != today }
-    var canEnd: Bool { loaded && !saving && !loading && latest.map { $0.start_date <= today && $0.end_date == nil && pendingEnds[$0.id] == nil } == true }
+    /// 2026-10-08：没写结束日的那次，最多按 7 天算（9 月 13 号那次一直没点「走了」，
+    /// 月历就从 9 月 13 号一路染到今天）。超过 14 天还没结束的，当作忘了记，不再挡「来了」。
+    static let assumedDays = 7
+    func shownEnd(of record: RemotePeriod) -> String {
+        if let end = pendingEnds[record.id] ?? record.end_date { return end }
+        let cap = Self.dayKey(record.start_date, plus: Self.assumedDays - 1) ?? today
+        return min(cap, today)
+    }
+    /// 还在进行中的那次（14 天以内、没写结束日）。
+    var ongoing: RemotePeriod? {
+        guard let latest, latest.end_date == nil, pendingEnds[latest.id] == nil, latest.start_date <= today,
+              let stale = Self.dayKey(latest.start_date, plus: 14), today <= stale else { return nil }
+        return latest
+    }
+    static func dayKey(_ key: String, plus days: Int) -> String? {
+        let f = DateFormatter(); f.calendar = Calendar(identifier: .gregorian); f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "Asia/Shanghai"); f.dateFormat = "yyyy-MM-dd"
+        guard let d = f.date(from: key), let e = f.calendar.date(byAdding: .day, value: days, to: d) else { return nil }
+        return f.string(from: e)
+    }
+    // 上一次还没走，就不能再点「来了」（以前会另开一条，她误点一下就多出一次经期）。
+    var canStart: Bool { loaded && !saving && !loading && ongoing == nil && !records.contains { $0.start_date == today } && defaults.string(forKey: startedKey) != today }
+    var canEnd: Bool { loaded && !saving && !loading && ongoing != nil }
     var summary: String {
         guard loaded else { return error == nil ? "正在看经期记录…" : "经期记录暂未加载" }
         guard let latest else { return "来的那天，记一下就好。" }
         if let end = pendingEnds[latest.id] { return "\(end) 走了 · 已记本机，待同步给柯" }
         if let end = latest.end_date { return "上次 \(latest.start_date) — \(end)" }
+        if ongoing == nil { return "上次 \(latest.start_date) 来的，没记哪天走" }
         return "\(latest.start_date) 来了"
     }
     func load(allowDuringSave: Bool = false) async {
@@ -69,8 +91,8 @@ final class PeriodStore: ObservableObject {
         } catch { status = "还没记上，请再试一次。" }
     }
     func finish() async {
-        guard canEnd, let latest else { return }
-        pendingEnds[latest.id] = today; persistEnds(); revision += 1
+        guard canEnd, let current = ongoing else { return }
+        pendingEnds[current.id] = today; persistEnds(); revision += 1
         await syncEnds()
     }
     func syncEnds() async {

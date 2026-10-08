@@ -43,6 +43,16 @@ private struct MoonDiaryView: View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(spacing: 16) {
+                    // 2026-10-08 她：「日记能不能打开就放大」。翻开以后日期栏收起来，这一页铺满整屏，
+                    // 顶上留一小行日期和「选日期」。
+                    if open {
+                        HStack {
+                            Text(KeDiaryPage.dateLabel(selected)).font(Moonlight.serif(15)).foregroundStyle(theme.pageAccent)
+                            Spacer()
+                            Button("选日期") { datePicker = true }.font(Moonlight.serif(13)).frame(minHeight: 44)
+                                .foregroundStyle(theme.pageAccent).accessibilityIdentifier("diary-date-picker")
+                        }.padding(.horizontal, 22).padding(.top, 4).transition(.opacity)
+                    }
                     HStack(alignment: .center, spacing: 8) {
                         ZStack {
                             DiaryCurlReader(date: $selected, pages: store.pages, theme: theme, reduceMotion: reduceMotion, historyIsComplete: store.historyIsComplete)
@@ -51,10 +61,13 @@ private struct MoonDiaryView: View {
                             cover
                                 .rotation3DEffect(.degrees(open && !reduceMotion ? -105 : 0), axis: (x: 0, y: 1, z: 0), anchor: .leading, perspective: 0.4)
                                 .opacity(open ? 0 : 1).allowsHitTesting(!open).accessibilityHidden(open)
-                        }.frame(maxWidth: .infinity).frame(height: min(460, max(355, geometry.size.height - 132)))
-                        MoonlightDateRail(date: $selected, showPicker: $datePicker)
-                            .frame(width: 83)
-                    }.padding(.horizontal, 17).padding(.top, 10)
+                        }.frame(maxWidth: .infinity)
+                            .frame(height: open ? max(420, geometry.size.height - 150) : min(460, max(355, geometry.size.height - 132)))
+                        if !open {
+                            MoonlightDateRail(date: $selected, showPicker: $datePicker)
+                                .frame(width: 83).transition(.move(edge: .trailing).combined(with: .opacity))
+                        }
+                    }.padding(.horizontal, open ? 8 : 17).padding(.top, open ? 0 : 10)
                     Button {
                         withAnimation(reduceMotion ? .linear(duration: 0.1) : .easeInOut(duration: 0.7)) { open.toggle() }
                     } label: {

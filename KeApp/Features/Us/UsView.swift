@@ -253,7 +253,7 @@ struct UsView: View {
     }
     private func isPeriod(_ date: Date) -> Bool {
         let key = HomeReminderCoordinator.dayKey(date)
-        return periods.records.contains { $0.start_date <= key && key <= (periods.pendingEnds[$0.id] ?? $0.end_date ?? periods.today) }
+        return periods.records.contains { $0.start_date <= key && key <= periods.shownEnd(of: $0) }
     }
     private func isAnniversary(_ date: Date) -> Bool {
         vm.anniversaries.contains {
@@ -1055,7 +1055,7 @@ final class UsViewModel: ObservableObject {
             Anniversary(id: "confession", title: "表白的日子", date: fixedDay(2026, 8, 9), isYearly: false),
             Anniversary(id: "together", title: "在一起的日子", date: fixedDay(2026, 6, 25), isYearly: false),
             Anniversary(id: "mine", title: "佳佳的生日", date: fixedDay(2001, 2, 26)),
-            Anniversary(id: "ke", title: "柯的生日", date: fixedDay(2000, 10, 26)),
+            Anniversary(id: "ke", title: "柯的生日", date: fixedDay(1992, 10, 26)),
         ]
 
         if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("-ui-test") || $0.hasPrefix("-preview-us") }) {
@@ -1097,8 +1097,10 @@ final class UsViewModel: ObservableObject {
         do {
             let rows = try await api.fetchAnniversaries()
             let resolved = Self.anniversaries(from: rows)
+            // 服务器缺哪一个，就留着本机那一个，不让某一格突然空掉。
             if !resolved.isEmpty {
-                anniversaries = resolved
+                let fetched = Dictionary(uniqueKeysWithValues: resolved.map { ($0.id, $0) })
+                anniversaries = anniversaries.map { fetched[$0.id] ?? $0 }
             }
         } catch {
             failures.append("纪念日")
@@ -1107,16 +1109,18 @@ final class UsViewModel: ObservableObject {
     }
 
     static func anniversaries(from rows: [RemoteAnniversary]) -> [Anniversary] {
-        let preferredOrder = ["表白的日子", "在一起的日子", "佳佳的生日", "柯的生日"]
-        let byName = Dictionary(uniqueKeysWithValues: rows.map { ($0.name, $0) })
-        return preferredOrder.compactMap { name in
-            guard let row = byName[name], let date = CompanionDate.parse(row.date) else { return nil }
-            return Anniversary(
-                id: String(row.id),
-                title: row.name,
-                date: date,
-                isYearly: name.contains("生日")
-            )
+        // 2026-10-08：以前用服务器的数字当 id，页面上选中的是 "together" 这类固定名字，
+        // 一加载完就对不上号——先显示、再消失（她说「纪念日时好时坏看不见」）。按名字认回固定 id。
+        let slots: [(id: String, matches: (String) -> Bool)] = [
+            ("confession", { $0.contains("表白") }),
+            ("together", { $0.contains("在一起") }),
+            ("mine", { $0.contains("佳佳") && $0.contains("生日") }),
+            ("ke", { $0.contains("柯") && $0.contains("生日") }),
+        ]
+        return slots.compactMap { slot in
+            guard let row = rows.first(where: { slot.matches($0.name) }),
+                  let date = CompanionDate.parse(row.date) else { return nil }
+            return Anniversary(id: slot.id, title: row.name, date: date, isYearly: row.name.contains("生日"))
         }
     }
 

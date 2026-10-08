@@ -68,6 +68,36 @@ final class JournalServiceTests: XCTestCase {
         XCTAssertTrue(restored.canStart)
     }
 
+    func testOpenPeriodBlocksSecondStartAndForgottenOneIsCappedToAWeek() async throws {
+        let suite = "PeriodTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let api = PeriodFake()
+        let store = PeriodStore(api: api, defaults: defaults)
+        // 三天前来的、还没走：不能再点「来了」，可以点「走了」。
+        let recent = try XCTUnwrap(PeriodStore.dayKey(store.today, plus: -3))
+        api.rows = [RemotePeriod(id: 1, start_date: recent, end_date: nil, note: nil)]
+        await store.load()
+        XCTAssertFalse(store.canStart)
+        XCTAssertTrue(store.canEnd)
+        XCTAssertEqual(store.shownEnd(of: api.rows[0]), store.today)
+        // 二十五天前来的、一直没记走：当作忘了记，月历只染 7 天，「来了」放开。
+        let stale = try XCTUnwrap(PeriodStore.dayKey(store.today, plus: -25))
+        api.rows = [RemotePeriod(id: 2, start_date: stale, end_date: nil, note: nil)]
+        await store.load()
+        XCTAssertTrue(store.canStart)
+        XCTAssertFalse(store.canEnd)
+        XCTAssertEqual(store.shownEnd(of: api.rows[0]), PeriodStore.dayKey(stale, plus: 6))
+    }
+
+    func testAnniversariesKeepStableIDsWhenServerArrives() throws {
+        let json = #"[{"date":"1992-10-26","days":12401,"emoji":"🦂","id":2,"name":"柯的生日"},{"date":"2001-02-26","days":9356,"emoji":"🐟","id":1,"name":"佳佳的生日"},{"date":"2026-06-25","days":106,"emoji":"💛","id":3,"name":"在一起的日子"},{"date":"2026-08-09","days":61,"emoji":"💌","id":4,"name":"表白的日子"}]"#
+        let rows = try JSONDecoder().decode([RemoteAnniversary].self, from: Data(json.utf8))
+        let resolved = UsViewModel.anniversaries(from: rows)
+        XCTAssertEqual(resolved.map(\.id), ["confession", "together", "mine", "ke"])
+        XCTAssertEqual(resolved.first { $0.id == "ke" }?.title, "柯的生日")
+    }
+
     func testFailedPeriodStartIsNotMarkedAsSynced() async {
         let suite = "PeriodTests." + UUID().uuidString
         let defaults = UserDefaults(suiteName: suite)!

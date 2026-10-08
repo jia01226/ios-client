@@ -32,9 +32,24 @@ enum MoonlightPreviewData {
             let offset = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "offset" }?.value ?? "0"
             return (200, json(offset == "0" ? rows : []))
         }
+        // 和线上服务器一样的格式：数字 id、按名字认（10-08 纪念日「先出现再消失」就是这里对不上号）。
+        if path.hasSuffix("/api/anniversaries") {
+            return (200, json([
+                ["date": "1992-10-26", "days": 12401, "emoji": "🦂", "id": 2, "name": "柯的生日"],
+                ["date": "2001-02-26", "days": 9356, "emoji": "🐟", "id": 1, "name": "佳佳的生日"],
+                ["date": "2026-06-25", "days": 106, "emoji": "💛", "id": 3, "name": "在一起的日子"],
+                ["date": "2026-08-09", "days": 61, "emoji": "💌", "id": 4, "name": "表白的日子"]
+            ]))
+        }
+        // 一次很久以前来、一直没记走的：月历只该染一周。
+        if path.hasSuffix("/api/periods"), request.httpMethod != "POST" {
+            return (200, json([["id": 1, "start_date": PeriodStore.dayKey(HomeReminderCoordinator.dayKey(.now), plus: -25) ?? "2026-09-13",
+                                "end_date": NSNull(), "note": "崽崽自己报的"]]))
+        }
         if path.hasSuffix("/api/drawer") {
             return (200, json(["sealed": true, "outside": [
                 ["id": 501, "title": "给你的一封信", "teaser": "", "content": "慢慢来，我会陪着你。", "visibility": "released", "created_at": "2026-10-07"],
+                ["id": 503, "title": "还没写完的一页", "teaser": "等你哪天问起，再拆开。", "content": "", "visibility": "teaser", "created_at": "2026-10-06"],
                 ["id": 502, "title": "不应显示的私密标题", "teaser": "不应显示的私密提示", "content": "PRIVATE_PAYLOAD_MUST_NOT_RENDER", "visibility": "private", "created_at": "2026-10-07"]
             ]]))
         }
