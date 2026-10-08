@@ -25,13 +25,15 @@
 
 请 Claude 核对当前轻装柯运行进程是否真的使用上述提示与动作处理，数据库是否和 `/ke-test1/api/drawer` 一致；精简开窗须知指向 KONGKONG_DIR 下的文件，本次未读取运行环境，不能确认实际内容。验收应覆盖柯发起保存、返回真实 ID、公开后 GET 返回同条正文、App 刷新出现并可读；口头说“放好了”不算成功。若线上缺连接或有不同协议，由 Claude 修复并安排部署，GPT 未改任何服务器文件或重启服务。
 
-## 双弈「下一局」仍需服务器接手
+## 双弈「下一局」：客户端失败处理已补，真实登录后棋盘待核对
 
-2026-10-08 只读 GET `https://jiagude.love/duel/` 实际返回 nginx 404 / text/html；App 原来直接把这个硬编码地址载入 WKWebView，未检测 HTTP 失败。此前 UI 测试将整个 WebView 替换为“牌桌已经摆好”的占位文本，不能证明棋盘能打开。
+2026-10-08 无登录 Cookie 的只读 GET `https://jiagude.love/duel/` 返回 nginx 404 / text/html。进一步只读查看 ke-backup 的 `routes/duel.py` 与 `house_key.py`，确认这个地址经 Nginx auth_request 检查 `ke_home`，无钥匙也会隐藏成失败响应。因此 **公开 GET 404 不能证明游戏未部署或地址已失效**，此前推断已纠正。
 
-本次已移除成功占位，改为真实 WKWebView 的导航响应／网络失败／进程终止处理：显示“棋盘暂时没接上”、可重试及关闭返回。隔离 UI 测试通过 WKURLSchemeHandler 返回 404，验证真实加载失败分支，不发送对局或聊天。
+App 仍使用仓库规定的 `/duel/`，只将这个 URL 范围内已有 Cookie 复制到 WKWebView，完成后才载入；没有跨路径扩大 Cookie、伪造钥匙或尝试解除服务端保护。此前 UI 测试用“牌桌已经摆好”的占位文字跳过 WebView，不能证明棋盘可用；本次移除，增加真实 WKWebView 导航响应、网络失败、进程终止处理及重试／关闭。
 
-**这不等于下棋已修好**：目前没有从 ios-client、goodlove 的相关代码或仓库元数据找到新的有效棋盘地址。请 Claude 恢复旧地址对应的路由／页面，或提供已验证的新地址，再核对实际落子、和柯的联动、重开一局。GPT 没有改服务器，也没有用离线电脑对手冒充柯。
+隔离 UI 测试通过 WKURLSchemeHandler 发出 cannotConnectToHost，让真实 WKNavigationDelegate 处理失败并验证重试和返回；不是线上对局验收。自定义 scheme 的 HTTPURLResponse 在 WebKit 中丢失 HTTP 状态，首轮 404 模拟方式无效，已改用真实导航错误。生产 HTTPS 的非 2xx 状态仍由导航响应处理。
+
+**下棋尚未验收通过**。请 Claude 先在已登录的 iPhone 查看 `/duel/` 是否带有有效 `ke_home`，再分别核对家门鉴权、Nginx 转发、棋盘服务和当前柯会话绑定，避免只凭公开 404 重启服务。若网页能开，再核对实际落子、柯响应与重开一局。GPT 没有读取设备 Cookie 值、没有修改服务器或重启，也没有用离线电脑对手冒充柯。
 
 ## 验收记录
 

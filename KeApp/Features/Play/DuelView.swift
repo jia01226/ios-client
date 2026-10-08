@@ -103,12 +103,9 @@ private struct DuelWebView: UIViewRepresentable {
 /// Exercise the real WKWebView failure path; never substitute a fake successful chess screen.
 private final class DuelUnavailableFixture: NSObject, WKURLSchemeHandler {
     func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
-        guard let url = urlSchemeTask.request.url,
-              let response = HTTPURLResponse(url: url, statusCode: 404, httpVersion: nil,
-                                             headerFields: ["Content-Type": "text/html"]) else { return }
-        urlSchemeTask.didReceive(response)
-        urlSchemeTask.didReceive(Data("<html><body>404 Not Found — isolated UI fixture</body></html>".utf8))
-        urlSchemeTask.didFinish()
+        // WebKit strips HTTP status from custom-scheme responses. Use a genuine
+        // navigation error here; HTTP status handling is exercised by real HTTPS.
+        urlSchemeTask.didFailWithError(URLError(.cannotConnectToHost))
     }
     func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {}
 }
