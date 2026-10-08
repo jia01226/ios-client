@@ -26,6 +26,30 @@ struct PeriodQuickActions: View {
     }
 }
 
+/// Compact month-header controls retain direct start/end recording and the history sheet.
+struct PeriodCalendarControls: View {
+    @EnvironmentObject private var theme: Theme
+    @ObservedObject var store: PeriodStore
+    @State private var history = false
+    var body: some View {
+        HStack(spacing: 2) {
+            Button { history = true } label: {
+                Image(systemName: "drop").font(.system(size: 12, weight: .ultraLight)).frame(width: 44, height: 44)
+            }.accessibilityLabel("经期记录").accessibilityValue(store.summary).accessibilityIdentifier("period-history")
+            Button { Task { await store.start() } } label: { actionLabel("来了", available: store.canStart) }
+                .disabled(!store.canStart).accessibilityIdentifier("period-start")
+            Button { Task { await store.finish() } } label: { actionLabel("走了", available: store.canEnd) }
+                .disabled(!store.canEnd).accessibilityIdentifier("period-end")
+        }.buttonStyle(.plain).foregroundStyle(theme.pageAccent)
+            .sheet(isPresented: $history) { PeriodHistoryView(store: store) }
+    }
+    private func actionLabel(_ title: String, available: Bool) -> some View {
+        Text(title).font(Moonlight.serif(12)).frame(width: 42, height: 25)
+            .overlay(Capsule().stroke(theme.pageAccent.opacity(available ? 0.6 : 0.25), lineWidth: 0.6))
+            .opacity(available ? 1 : 0.45).frame(width: 44, height: 44).contentShape(Rectangle())
+    }
+}
+
 private struct PeriodHistoryView: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.dismiss) private var dismiss

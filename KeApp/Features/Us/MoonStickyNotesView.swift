@@ -14,15 +14,16 @@ struct MoonStickyNotesView: View {
     }
 
     var body: some View {
-        VStack(alignment: .trailing, spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Spacer()
-                Button("便利贴") { allOpen = true }.font(Moonlight.serif(13))
+                if theme.skin != .day { Spacer() }
+                Button("便利贴") { allOpen = true }.font(Moonlight.serif(theme.skin == .day ? 17 : 13))
                     .accessibilityIdentifier("notes-all")
                 Button { selected = nil; text = ""; editor = true } label: {
                     Image(systemName: "plus").font(.system(size: 17, weight: .ultraLight))
                         .frame(width: 34, height: 34).background(theme.pageAccent.opacity(0.6), in: Circle())
                 }.frame(minWidth: 44, minHeight: 44).accessibilityLabel("写便利贴").accessibilityIdentifier("notes-add")
+                if theme.skin == .day { Spacer() }
             }
             if store.all.isEmpty {
                 Button { selected = nil; text = ""; editor = true } label: {

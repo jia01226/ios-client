@@ -46,3 +46,27 @@ Use case: compositing. Create a production iOS UI illustration asset isolated on
 
 月牙下垂落一束柔和月光，日期沿光排列；不再使用普通白色纸书签。保留 Allura 的细长英文 a day with you，月份和年份可以打开日历。参考生成图为 exec-71a344c3-1a12-42a5-9020-6553bf81cfcb.png；实际画面以模拟器截图为准。
 
+## 最终选定的我们页装饰
+
+内置 image_gen，根据最后确认的第六版设计生成透明素材；已检查透明通道。代码绘制文字和交互，素材仅作装饰。
+
+### UsQuietMoon
+
+保存：`KeApp/Assets.xcassets/UsQuietMoon.imageset/artwork.png`
+
+完整提示词：
+
+```text
+Use case: background-extraction / product UI artwork asset. Reference is an approved mobile page. Create ONLY the warm pearly, softly luminous CRESCENT MOON seen in its upper-right, as an isolated reusable UI illustration on a genuinely transparent alpha background. No screenshot, no UI, no text, no numerals, no stars, NO flower. Complete crescent fully inside1024x1024square with breathingroom, floating centered, tipped similarly to reference. Very faint warm ivory-blush, delicate subtle surface like thin porcelain lit from behind, absolutely no harsh lunar craters, no dark unlit disk, no outlined geometric icon. Crescent edge subtly glows but most light soft and quiet, glow must fade to transparent alpha. It will be cropped at top-right of a #FAF3F4 UI. Generate transparent cutout only; do not bake pink opaque square/checkerboard.
+```
+
+### UsCamelliaSprig
+
+保存：`KeApp/Assets.xcassets/UsCamelliaSprig.imageset/artwork.png`
+
+完整提示词：
+
+```text
+Use case: background-extraction / UI artwork asset. Reference is approved mobile page. Create ONLY the tiny graceful pale pink CAMELLIA BUD ON A STEM with 2gray-sage delicateleaves from its lower-left, fullyisolatedon genuinelytransparentalpha. No screenshot,noUI,noletters,notext,nootherflowers. A slender diagonal stem rising from bottomleft to a partiallyclosed smallpearlescent blushcamellia atuppercenter, same quiet restrained shapeasreference, subtle cream moonlight alongoneedge. Flower pale smallbud, not hugeopenrose/bloom. Include one extremely faint halfmoonhalo behindbud like reference, its light smoothly fades totransparent, no opaque disk.1024square with entireplantuncroppedand roomat edges. Nearlytransparent warm airy rendering suitable for160pointdecoration; noframe,no glitter,noextra petals,nofabric. Background completelytransparent notpink/checkerboard.
+```
+

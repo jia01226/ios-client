@@ -5,6 +5,7 @@ import SwiftUI
 struct UsView: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let line: ChatLine
     @StateObject private var vm: UsViewModel
     @StateObject private var periods: PeriodStore
@@ -28,21 +29,24 @@ struct UsView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    MoonlightHeader(title: "我们", subtitle: "和你一起，把每一天都变成喜欢的日子。", artwork: "UsMoonBloom")
-                        .padding(.top, theme.skin == .day ? 20 : 0)
-                    anniversary.padding(.top, theme.skin == .day ? 40 : 14)
-                    HStack(spacing: 0) {
-                        ForEach(Array(anniversaryIDs.enumerated()), id: \.element) { index, id in
-                            Button { anniversaryID = id } label: {
-                                VStack(spacing: 7) {
-                                    Text(anniversaryTitles[index]).font(Moonlight.serif(14))
-                                    Circle().fill(anniversaryID == id ? theme.pageAccent : theme.pageAccent.opacity(0)).frame(width: 4, height: 4)
-                                }.foregroundStyle(anniversaryID == id ? theme.pageAccent : theme.pageColor.textSecondary)
-                                    .frame(maxWidth: .infinity, minHeight: 44)
-                            }.accessibilityIdentifier("anniversary-" + id)
-                        }
-                    }.padding(.top, theme.skin == .day ? 32 : 16)
-                    MoonStickyNotesView(store: notes).padding(.top, theme.skin == .day ? 48 : 8)
+                    if theme.skin == .day {
+                        dayOpening
+                    } else {
+                        MoonlightHeader(title: "我们", subtitle: "和你一起，把每一天都变成喜欢的日子。", artwork: "UsMoonBloom")
+                        anniversary.padding(.top, 14)
+                        HStack(spacing: 0) {
+                            ForEach(Array(anniversaryIDs.enumerated()), id: \.element) { index, id in
+                                Button { anniversaryID = id } label: {
+                                    VStack(spacing: 7) {
+                                        Text(anniversaryTitles[index]).font(Moonlight.serif(14))
+                                        Circle().fill(anniversaryID == id ? theme.pageAccent : theme.pageAccent.opacity(0)).frame(width: 4, height: 4)
+                                    }.foregroundStyle(anniversaryID == id ? theme.pageAccent : theme.pageColor.textSecondary)
+                                        .frame(maxWidth: .infinity, minHeight: 44)
+                                }.accessibilityIdentifier("anniversary-" + id)
+                            }
+                        }.padding(.top, 16)
+                    }
+                    MoonStickyNotesView(store: notes).padding(.top, theme.skin == .day ? 92 : 8)
                     // The weekly schedule follows below the fold; don't compress the anniversary to fit it.
                     weekly.padding(.top, theme.skin == .day ? 60 : 26)
                     Button {
@@ -54,7 +58,7 @@ struct UsView: View {
                         }.frame(maxWidth: .infinity, minHeight: 64)
                     }.padding(.vertical, theme.skin == .day ? 24 : 10).accessibilityIdentifier("us-show-month")
                     VStack(spacing: 20) {
-                        PeriodQuickActions(store: periods)
+                        if theme.skin != .day { PeriodQuickActions(store: periods) }
                         calendar
                     }.id("month-calendar").padding(.top, 12)
                     if let status = vm.shiftSyncStatus {
@@ -87,6 +91,62 @@ struct UsView: View {
         async let b: Void = periods.load()
         async let c: Void = notes.load()
         _ = await (a, b, c)
+    }
+    private var dayOpening: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("我们").font(Moonlight.serif(24))
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 24)
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 28) { dayAnniversaryChoices; dayAnniversaryNumber }
+                } else {
+                    HStack(alignment: .center, spacing: 12) {
+                        dayAnniversaryChoices.frame(width: 116, alignment: .leading)
+                        dayAnniversaryNumber.frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+                }
+            }.padding(.top, 140)
+        }
+        .background(alignment: .topTrailing) {
+            Image("UsQuietMoon").resizable().scaledToFit().frame(width: 196, height: 196)
+                .opacity(0.62).offset(x: 78, y: -32).allowsHitTesting(false).accessibilityHidden(true)
+        }
+        .overlay(alignment: .bottomLeading) {
+            Image("UsCamelliaSprig").resizable().scaledToFit().frame(width: 158, height: 158)
+                .opacity(0.7).offset(x: -64, y: 120).allowsHitTesting(false).accessibilityHidden(true)
+        }
+    }
+    private var dayAnniversaryChoices: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(anniversaryIDs.enumerated()), id: \.element) { index, id in
+                Button { anniversaryID = id } label: {
+                    HStack(spacing: 13) {
+                        Circle().fill(theme.pageAccent.opacity(anniversaryID == id ? 1 : 0)).frame(width: 5, height: 5)
+                        Text(anniversaryTitles[index]).font(Moonlight.serif(16))
+                    }.foregroundStyle(anniversaryID == id ? theme.pageAccent : theme.pageColor.textPrimary)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
+                }.accessibilityIdentifier("anniversary-" + id)
+                    .accessibilityAddTraits(anniversaryID == id ? .isSelected : [])
+            }
+        }
+    }
+    @ViewBuilder private var dayAnniversaryNumber: some View {
+        if let event = vm.anniversaries.first(where: { $0.id == anniversaryID }) {
+            let display = vm.display(for: event)
+            VStack(alignment: .trailing, spacing: 14) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(display.number).font(Moonlight.numeral(92)).lineLimit(1).minimumScaleFactor(0.55)
+                    Text(display.unit).font(Moonlight.serif(20)).fixedSize()
+                }.frame(height: 128, alignment: .bottomTrailing)
+                Text(display.dateLabel).font(Moonlight.serif(13)).tracking(0.6)
+                    .lineLimit(1).minimumScaleFactor(0.75)
+            }.accessibilityElement(children: .combine)
+                .accessibilityLabel("\(display.title)，\(display.number)\(display.unit)，\(display.dateLabel)")
+                .accessibilityIdentifier("us-anniversary-pager")
+        } else {
+            Button("记下这一天") { editAnniversaries = true }
+                .font(Moonlight.serif(17)).foregroundStyle(theme.pageAccent).frame(minHeight: 44)
+        }
     }
     @ViewBuilder private var anniversary: some View {
         if let selected {
@@ -142,12 +202,23 @@ struct UsView: View {
     }
     private var calendar: some View {
         VStack(spacing: 16) {
-            HStack {
-                Button { month = vm.month(byAdding: -1, to: month) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }.accessibilityLabel("上个月")
-                Spacer()
-                Text(vm.monthTitle(for: month)).font(Moonlight.serif(21))
-                Spacer()
-                Button { month = vm.month(byAdding: 1, to: month) } label: { Image(systemName: "chevron.right").frame(width: 44, height: 44) }.accessibilityLabel("下个月")
+            if theme.skin == .day {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) {
+                        monthNavigation.frame(minWidth: 210)
+                        PeriodCalendarControls(store: periods).fixedSize()
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        monthNavigation
+                        PeriodCalendarControls(store: periods)
+                    }
+                }
+            } else {
+                monthNavigation
+            }
+            if theme.skin == .day {
+                if let error = periods.error { Button(error) { Task { await periods.load() } }.font(Moonlight.serif(12)) }
+                if let status = periods.status { Text(status).font(Moonlight.serif(12)).foregroundStyle(theme.pageColor.textSecondary) }
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 10) {
                 ForEach(["一", "二", "三", "四", "五", "六", "日"], id: \.self) { Text($0).font(Moonlight.serif(12)).foregroundStyle(theme.pageColor.textSecondary) }
@@ -168,6 +239,16 @@ struct UsView: View {
                 }
             }.accessibilityIdentifier("us-month-grid")
             if !vm.isCurrentMonth(month) { Button("回到本月") { month = vm.startOfMonth(for: .now) }.font(Moonlight.serif(12)) }
+        }
+    }
+    private var monthNavigation: some View {
+        HStack {
+            Button { month = vm.month(byAdding: -1, to: month) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }.accessibilityLabel("上个月")
+            Spacer()
+            Text(vm.monthTitle(for: month)).font(Moonlight.serif(theme.skin == .day ? 16 : 21))
+                .lineLimit(1).minimumScaleFactor(0.8)
+            Spacer()
+            Button { month = vm.month(byAdding: 1, to: month) } label: { Image(systemName: "chevron.right").frame(width: 44, height: 44) }.accessibilityLabel("下个月")
         }
     }
     private func isPeriod(_ date: Date) -> Bool {
