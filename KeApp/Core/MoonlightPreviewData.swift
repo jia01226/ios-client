@@ -50,7 +50,7 @@ enum MoonlightPreviewData {
         if path.hasSuffix("/api/drawer") {
             return (200, json(["sealed": true, "outside": [
                 ["id": 501, "title": "给你的一封信", "teaser": "", "content": "慢慢来，我会陪着你。", "visibility": "released", "created_at": "2026-10-07"],
-                ["id": 503, "title": "还没写完的一页", "teaser": "等你哪天问起，再拆开。", "content": "", "visibility": "teaser", "created_at": "2026-10-06"],
+                ["id": 503, "title": "TEASER_TITLE_MUST_NOT_RENDER", "teaser": "等你哪天问起，再拆开。", "content": "TEASER_CONTENT_MUST_NOT_RENDER", "visibility": "teaser", "created_at": "2026-10-06"],
                 ["id": 502, "title": "不应显示的私密标题", "teaser": "不应显示的私密提示", "content": "PRIVATE_PAYLOAD_MUST_NOT_RENDER", "visibility": "private", "created_at": "2026-10-07"]
             ]]))
         }

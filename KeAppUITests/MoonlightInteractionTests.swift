@@ -11,6 +11,8 @@ final class MoonlightInteractionTests: XCTestCase {
         app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-ui-test-moonlight", "-app.skin", "day"]
         app.launch()
         XCTAssertTrue(app.buttons["tab-ke"].waitForExistence(timeout: 12))
+        XCTAssertFalse(app.descendants(matching: .any)["chat-line-switcher-test1"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["chat-line-switcher-light"].exists)
         capture("01-chat")
         app.buttons["tab-us"].tap()
         XCTAssertTrue(app.buttons["notes-add"].waitForExistence(timeout: 8))
@@ -50,15 +52,8 @@ final class MoonlightInteractionTests: XCTestCase {
         capture("07-diary-date-picker")
         app.buttons["diary-date-done"].tap()
         app.buttons["ke-drawer-tab"].tap()
-        XCTAssertTrue(app.buttons["drawer-pull"].waitForExistence(timeout: 8))
-        capture("08-drawer-closed")
-        app.buttons["drawer-pull"].tap()
-        XCTAssertTrue(app.buttons["drawer-letter-501"].waitForExistence(timeout: 8))
-        XCTAssertFalse(app.staticTexts["PRIVATE_PAYLOAD_MUST_NOT_RENDER"].exists)
-        XCTAssertFalse(app.staticTexts["不应显示的私密标题"].exists)
-        capture("09-drawer-open")
-        app.buttons["drawer-letter-501"].tap()
-        XCTAssertTrue(app.staticTexts["慢慢来，我会陪着你。"].waitForExistence(timeout: 5))
-        capture("10-drawer-letter")
+        KeepsakeInteractionChecks.verify(in: testCase, app: app, skin: "day")
+        app.terminate()
+        KeepsakeInteractionChecks.verifyNight(in: testCase)
     }
 }
