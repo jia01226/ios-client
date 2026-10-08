@@ -166,7 +166,7 @@ struct MoonStickyNotesView: View {
                 .background(paper(selected?.author ?? .user), in: NotePaperShape())
                 .overlay(alignment: .bottomTrailing) { FoldCorner().fill(theme.pageAccent.opacity(0.23)).frame(width: 16, height: 16) }
                 .shadow(color: KeepsakeTheme.shadow.opacity(0.12), radius: 18, y: 8)
-                .accessibilityIdentifier("drawer-note-lifted")
+                .accessibilityElement(children: .contain).accessibilityIdentifier("drawer-note-lifted")
         }.padding(.horizontal, 26).padding(.top, 12).padding(.bottom, 35)
             .background(theme.pageBackground.ignoresSafeArea()).buttonStyle(.plain)
     }
