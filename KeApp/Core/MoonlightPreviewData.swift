@@ -14,7 +14,7 @@ enum MoonlightPreviewData {
         let path = request.url?.path ?? ""
         func json(_ value: Any) -> String { String(data: (try? JSONSerialization.data(withJSONObject: value)) ?? Data(), encoding: .utf8) ?? "{}" }
         if path.hasSuffix("/api/sticky-notes"), request.httpMethod == "POST" {
-            let body = request.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any] ?? [:]
+            let body = requestBody(request).flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any] ?? [:]
             let row: [String: Any] = ["id": body["id"] ?? "", "author": "user", "content": body["content"] ?? "", "created_at": "2026-10-07T12:00:00Z"]
             savedNotes.removeAll { $0["id"] as? String == row["id"] as? String }; savedNotes.append(row)
             return (200, json(row))
@@ -50,11 +50,24 @@ enum MoonlightPreviewData {
         if path.hasSuffix("/api/drawer") {
             return (200, json(["sealed": true, "outside": [
                 ["id": 501, "title": "给你的一封信", "teaser": "", "content": "慢慢来，我会陪着你。", "visibility": "released", "created_at": "2026-10-07"],
-                ["id": 503, "title": "还没写完的一页", "teaser": "等你哪天问起，再拆开。", "content": "", "visibility": "teaser", "created_at": "2026-10-06"],
+                ["id": 503, "title": "TEASER_TITLE_MUST_NOT_RENDER", "teaser": "等你哪天问起，再拆开。", "content": "TEASER_CONTENT_MUST_NOT_RENDER", "visibility": "teaser", "created_at": "2026-10-06"],
                 ["id": 502, "title": "不应显示的私密标题", "teaser": "不应显示的私密提示", "content": "PRIVATE_PAYLOAD_MUST_NOT_RENDER", "visibility": "private", "created_at": "2026-10-07"]
             ]]))
         }
         return nil
     }
+    private static func requestBody(_ request: URLRequest) -> Data? {
+        if let data = request.httpBody { return data }
+        guard let stream = request.httpBodyStream else { return nil }
+        stream.open(); defer { stream.close() }
+        var data = Data(); var bytes = [UInt8](repeating: 0, count: 1024)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&bytes, maxLength: bytes.count)
+            if count <= 0 { break }
+            data.append(bytes, count: count)
+        }
+        return data
+    }
+
 }
 #endif

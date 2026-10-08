@@ -1,0 +1,267 @@
+{
+  "run": "https://github.com/jia01226/ios-client/actions/runs/37859119077",
+  "sourceCommit": "af3a07d760921298eea93c840b37338641511433",
+  "note": "Raw xcresult attachments; no visual edits. Isolated fixtures, not live user content. iPhone 18 Pro / iOS 27; not iPhone 14 Pro Max.",
+  "screenshots": [
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "6163B514-433B-4910-BB0D-E7179C19E893.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "keepsake-night-06-note-lifted_0_8E679113-A18F-4760-BC95-39D0A3251433.png",
+      "timestamp": 1791502346.205,
+      "file": "keepsake-night-06-note-lifted.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "5886D129-8CE9-48AE-8E6E-ADCCD9C18653.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "keepsake-night-05-notes-drawer_0_17113751-FCDF-488D-B4E8-AF2D3BF973FC.png",
+      "timestamp": 1791502343.431,
+      "file": "keepsake-night-05-notes-drawer.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "996B9DC3-F1C6-4F06-A1A4-A17961F29E71.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "keepsake-night-04-letter-unrolled_0_6C73CC86-7B3A-47BD-B4DF-139CC3BEAB7B.png",
+      "timestamp": 1791502337.184,
+      "file": "keepsake-night-04-letter-unrolled.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "D3F62D07-EECD-4A4A-BF9A-873787B52FF7.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "keepsake-night-03-scroll-list_0_BD05F77F-A05F-4716-BAEA-CED2F28E5EA0.png",
+      "timestamp": 1791502333.837,
+      "file": "keepsake-night-03-scroll-list.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "6D222FA3-72EE-4631-8794-38F59FCBDFF7.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "keepsake-night-02-open_0_0B2432B1-B703-4B9E-9140-F84C520B4F72.png",
+      "timestamp": 1791502332.977,
+      "file": "keepsake-night-02-open.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "9D76B6A7-57AB-4C23-851C-12731B20F0A1.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "keepsake-night-01-closed_0_C5049B33-C304-4542-8E9F-34AD60FA896A.png",
+      "timestamp": 1791502326.454,
+      "file": "keepsake-night-01-closed.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "20CE85F7-C145-45DC-B35C-97A49F6D8C00.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "keepsake-day-07-shared-note-in-us_0_903C0906-CD4F-410F-913F-969794BE7243.png",
+      "timestamp": 1791502313.519,
+      "file": "keepsake-day-07-shared-note-in-us.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "DBA32AB2-7B5A-41EF-A00F-B2756DC17134.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "keepsake-day-06b-note-saved-in-drawer_0_EDC25FD6-7F24-4949-92D1-80B5B2358859.png",
+      "timestamp": 1791502311.487,
+      "file": "keepsake-day-06b-note-saved-in-drawer.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "0960B226-9A40-4017-91DD-622023A19F01.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "keepsake-day-06-note-lifted_0_51259423-21AC-4CE2-AFDB-7EBCC71F62E7.png",
+      "timestamp": 1791502297.753,
+      "file": "keepsake-day-06-note-lifted.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "DC195999-B312-4E00-8B16-35FD2B7DD301.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "keepsake-day-05-notes-drawer_0_F69BE1AE-1C68-475C-8315-CD01005DCFD6.png",
+      "timestamp": 1791502294.66,
+      "file": "keepsake-day-05-notes-drawer.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "A6C8E174-7D1A-47A7-B296-55DDA863DAE8.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "keepsake-day-04-letter-unrolled_0_C733DBEF-8984-414F-90DD-76A5BF251F73.png",
+      "timestamp": 1791502288.125,
+      "file": "keepsake-day-04-letter-unrolled.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "77643C45-35DE-44EB-9BD3-F863E920DF40.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "keepsake-day-03-scroll-list_0_44263CF9-D674-4F07-BA63-5354C5F92740.png",
+      "timestamp": 1791502284.866,
+      "file": "keepsake-day-03-scroll-list.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "059359CE-831C-4167-A19B-82F51D012D5A.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "keepsake-day-02-open_0_E9C0F5C9-B359-4F18-A967-890816BA8443.png",
+      "timestamp": 1791502284.135,
+      "file": "keepsake-day-02-open.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "96F7ED65-575E-4429-B736-D7C8C0285104.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "keepsake-day-01-closed_0_E8C13452-E02A-43FE-9061-ECBA67AE2FA2.png",
+      "timestamp": 1791502279.46,
+      "file": "keepsake-day-01-closed.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "8555C96F-59CD-4222-AF7B-82F83574F42E.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "07-diary-date-picker_0_084206F9-7C1A-445B-9117-6658D79939FE.png",
+      "timestamp": 1791502274.804,
+      "file": "07-diary-date-picker.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "9714412D-31ED-467C-89F3-BBEB2E1F6A65.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "06-diary-turned_0_D0DFCA64-BF47-4364-BA02-55306D3E5CEE.png",
+      "timestamp": 1791502272.198,
+      "file": "06-diary-turned.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "04CD3D88-C69C-4B26-927C-37F558509A45.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "05-diary-cover_0_5447DE0F-A379-47AD-AFEC-C97DEC5515A6.png",
+      "timestamp": 1791502266.915,
+      "file": "05-diary-cover.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "E9F16377-4043-4008-9B8E-3720D026A458.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "duel-network-failure-retry-and-close_0_D7761877-C3C5-4716-936B-0E66A2E53292.png",
+      "timestamp": 1791502261.195,
+      "file": "duel-network-failure-retry-and-close.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "F3ABD567-8ACC-4866-BD4D-5D796D657643.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "tarot-04-zoom-detail_0_0520A3D7-0040-4004-AF22-C45BDD87D078.png",
+      "timestamp": 1791502245.849,
+      "file": "tarot-04-zoom-detail.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "F3D3BE13-FE66-4BB4-8870-C34DB84D8344.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "tarot-03-fullscreen-reversed_0_713CB9F1-C49F-4F87-A562-F88B00A578BC.png",
+      "timestamp": 1791502241.88,
+      "file": "tarot-03-fullscreen-reversed.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "27DBF257-D14A-4A9B-8D10-1229D31D24C6.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "tarot-02-drawn-cards_0_ACA21FB7-873D-4632-B6B7-E48CFCDC0EAB.png",
+      "timestamp": 1791502238.463,
+      "file": "tarot-02-drawn-cards.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "A852D826-5636-4970-8B9E-5D90438338B6.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "tarot-01-moonlight-deck_0_B711093C-FEC5-4FCA-B224-91F8DEA93E45.png",
+      "timestamp": 1791502234.479,
+      "file": "tarot-01-moonlight-deck.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "7967385A-EFE7-4D80-8BE8-F247B972E81F.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "04-play_0_F4A47D7E-F9D3-4CB9-B942-4FD93A54FA44.png",
+      "timestamp": 1791502232.191,
+      "file": "04-play.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "46CC7D92-1DC1-445D-A299-6D22A9275CDD.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "03-month-calendar_0_2E77C792-9C3A-44D7-A213-041B13C034C8.png",
+      "timestamp": 1791502230.048,
+      "file": "03-month-calendar.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "10FA8639-BDE8-41C1-A5E8-3ABFD47BEA77.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "02-us_0_ACBE6B6D-15DB-4B63-8410-2F65156FEED1.png",
+      "timestamp": 1791502224.847,
+      "file": "02-us.png"
+    },
+    {
+      "configurationName": "Default",
+      "deviceId": "F916B711-E93C-4CDE-913E-1795E72EAC82",
+      "deviceName": "iPhone 18 Pro",
+      "exportedFileName": "DE3E601D-2A41-45B2-B5D5-5B926BF5FDE8.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "01-chat_0_96C01905-6C55-4FA4-B839-F67CB02868EF.png",
+      "timestamp": 1791502218.951,
+      "file": "01-chat.png"
+    }
+  ]
+}

@@ -1,400 +1,487 @@
 import SwiftUI
 
-/// 柯的抽屉：粉色的「月光宝盒」，里面放的是一卷卷欧式卷纸（佳佳 2026-10-08：
-/// 「抽屉很奇怪 长得白的 要做成卷纸 欧洲那种 粉色抽屉 月光宝盒」）。
-/// 之前的 SceneKit 漆柜在她手机上发白，这里全用 SwiftUI 平面手绘，颜色自己说了算。
+/// Fixed cabinet with separate notes/letters trays; the private bottom drawer never moves.
 struct MoonDrawerView: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     let line: ChatLine
-    @State private var drawer: RemoteDrawer?
-    @State private var error: String?
+    @StateObject private var notes: StickyNotesStore
+    @State private var contents = DrawerKeepsakes()
+    @State private var loaded = false
     @State private var loading = false
+    @State private var error: String?
     @State private var openness: CGFloat = 0
-    @State private var dragStart: CGFloat?
-    @State private var reading: RemoteDrawer.Item?
-    private var released: [RemoteDrawer.Item] { drawer?.outside.filter { $0.visibility == "released" } ?? [] }
-    private var previews: [RemoteDrawer.Item] { drawer?.outside.filter { $0.visibility == "teaser" } ?? [] }
+    @State private var notesOpenness: CGFloat = 0
+    @State private var notesFocused = false
+    @State private var reading: DrawerLetter?
     private var night: Bool { theme.skin == .night }
+    private var isOpen: Bool { openness > 0.5 }
+    private var notesOpen: Bool { notesOpenness > 0.5 }
+
+    init(line: ChatLine) {
+        self.line = line
+        _notes = StateObject(wrappedValue: StickyNotesStore(api: APIClient(baseURL: line.apiBaseURL), scope: line.rawValue))
+    }
+
+    var body: some View {
+        ZStack {
+        ScrollView {
+            VStack(spacing: 14) {
+                Text("keepsakes").font(Moonlight.script(36))
+                    .foregroundStyle(theme.pageAccent).padding(.top, 18)
+                KeepsakeCabinetArtwork(openness: $openness, notesOpenness: $notesOpenness,
+                                       visibleCount: contents.visibleCount, notesCount: notes.all.count,
+                                       night: night, settle: settle, settleNotes: settleNotes)
+                    .frame(maxWidth: 370).padding(.horizontal, 14)
+                HStack(spacing: 36) {
+                    drawerControl("便利贴", open: notesOpen, id: "drawer-notes-pull") { settleNotes(notesOpen ? 0 : 1) }
+                    drawerControl("卷轴", open: isOpen, id: "drawer-pull") { settle(isOpen ? 0 : 1) }
+                }
+                HStack(spacing: 7) {
+                    Image(systemName: "lock").font(.system(size: 11, weight: .light))
+                    Text("最下面这一层，是柯的私藏。").font(Moonlight.serif(12))
+                }.foregroundStyle(theme.pageColor.textSecondary)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("drawer-private-locked")
+                    .accessibilityLabel("柯的私藏，下层始终锁着")
+                Text("第一层记事，第二层收信。")
+                    .font(Moonlight.serif(13)).foregroundStyle(theme.pageColor.textSecondary)
+                    .padding(.top, 38).padding(.bottom, 36)
+            }.frame(maxWidth: .infinity).padding(.bottom, 28)
+        }
+        .accessibilityHidden(notesFocused || isOpen).allowsHitTesting(!notesFocused && !isOpen)
+            if isOpen {
+                letterFocus
+                    .transition(reduceMotion ? .opacity : .scale(scale: 0.80, anchor: .top).combined(with: .opacity))
+            }
+            if notesFocused {
+                StickyDrawerFocus(store: notes, night: night) { settleNotes(0) }
+                    .transition(reduceMotion ? .opacity : .scale(scale: 0.80, anchor: .top).combined(with: .opacity))
+            }
+        }
+        .buttonStyle(.plain).tint(theme.pageAccent).scrollIndicators(.hidden)
+        .task { await reload() }.refreshable { await reload() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await reload() } }
+        }
+        .sheet(item: $reading) { letter in
+            KeepsakeParchmentReader(letter: letter, night: night) { reading = nil }
+                .environmentObject(theme).presentationDetents([.large])
+        }
+    }
+
+    private func drawerControl(_ title: String, open: Bool, id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Text(title).font(Moonlight.serif(16))
+                Image(systemName: open ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 11, weight: .ultraLight))
+            }.frame(minWidth: 88, minHeight: 44)
+        }
+        .accessibilityIdentifier(id).accessibilityValue(open ? "已拉开" : "已合上")
+        .accessibilityHint("也可以拖动这一层的珍珠拉手")
+    }
+
+    private func reload() async {
+        async let drawer: Void = load()
+        async let stickyNotes: Void = notes.load()
+        _ = await (drawer, stickyNotes)
+    }
+
+    private var letterFocus: some View {
+        ScrollView {
+            VStack(spacing: 18) {
+                HStack {
+                    Text("letters").font(Moonlight.script(34)).foregroundStyle(theme.pageAccent)
+                    Spacer()
+                    Button { settle(0) } label: {
+                        Image(systemName: "arrow.down.right.and.arrow.up.left")
+                            .font(.system(size: 17, weight: .ultraLight)).frame(width: 44, height: 44)
+                    }.accessibilityLabel("收好卷轴抽屉").accessibilityIdentifier("drawer-pull")
+                        .accessibilityValue("已拉开")
+                }
+                GeometryReader { g in
+                    ZStack(alignment: .topLeading) {
+                        Image("KeepsakeNotesInterior").resizable().scaledToFit()
+                            .colorMultiply(KeepsakeTheme.artworkTint(night: night))
+                            .accessibilityHidden(true).allowsHitTesting(false)
+                        ScrollView {
+                            scrolls.padding(.vertical, 12)
+                        }.scrollIndicators(.hidden)
+                            .frame(width: g.size.width * 0.76, height: g.size.height * 0.70)
+                            .position(x: g.size.width * 0.5, y: g.size.height * 0.46)
+                            .accessibilityIdentifier("drawer-letter-interior")
+                    }
+                }.aspectRatio(1, contentMode: .fit)
+                Text("点开一卷，读柯交给你的话。")
+                    .font(Moonlight.serif(13)).foregroundStyle(theme.pageColor.textSecondary)
+            }.padding(.horizontal, 24).padding(.top, 18).padding(.bottom, 28)
+                .frame(maxWidth: 520).frame(maxWidth: .infinity)
+        }.background(theme.pageBackground).scrollIndicators(.hidden)
+            .accessibilityElement(children: .contain).accessibilityIdentifier("drawer-letter-focus")
+            .refreshable { await load() }
+    }
+
+    private var scrolls: some View {
+        VStack(spacing: 26) {
+            if loading { ProgressView("正在看看柯留下了什么").font(Moonlight.serif(13)) }
+            if let error {
+                Button(error) { Task { await load() } }
+                    .font(Moonlight.serif(13)).frame(minHeight: 44)
+                    .accessibilityIdentifier("drawer-retry")
+            }
+            if loaded && contents.isEmpty {
+                Text("柯还没有把卷纸放在这一层。")
+                    .font(Moonlight.serif(14)).foregroundStyle(KeepsakeTheme.paperMutedInk)
+                    .accessibilityIdentifier("drawer-empty")
+            }
+            ForEach(contents.letters) { letter in
+                Button { reading = letter } label: {
+                    VStack(spacing: 9) {
+                        KeepsakeScrollArtwork(sealed: false, night: night)
+                            .frame(maxWidth: 210).frame(height: 64).accessibilityHidden(true)
+                        Text(letter.title.isEmpty ? "留给你的一封信" : letter.title)
+                            .font(Moonlight.serif(17)).multilineTextAlignment(.center)
+                        Text(DrawerDate.label(letter.createdAt)).font(Moonlight.serif(11))
+                            .foregroundStyle(KeepsakeTheme.paperMutedInk)
+                    }.frame(maxWidth: .infinity).contentShape(Rectangle())
+                }
+                .accessibilityIdentifier("drawer-letter-\(letter.id)")
+                .accessibilityLabel("\(letter.title.isEmpty ? "留给你的一封信" : letter.title)，\(DrawerDate.label(letter.createdAt))")
+                .accessibilityHint("展开这卷纸")
+            }
+            ForEach(contents.teasers) { teaser in
+                VStack(spacing: 9) {
+                    KeepsakeScrollArtwork(sealed: true, night: night)
+                        .frame(maxWidth: 210).frame(height: 70).accessibilityHidden(true)
+                    Text("还封着").font(Moonlight.serif(16))
+                    if !teaser.text.isEmpty {
+                        Text(teaser.text).font(Moonlight.serif(13))
+                            .foregroundStyle(KeepsakeTheme.paperMutedInk).multilineTextAlignment(.center)
+                    }
+                }.frame(maxWidth: .infinity)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("drawer-teaser-\(teaser.id)")
+                    .accessibilityHint("蜡封还在，柯还没有公开这卷的全文")
+            }
+        }.padding(.horizontal, 10).foregroundStyle(KeepsakeTheme.paperInk)
+    }
+
+    private func settle(_ target: CGFloat) {
+        withAnimation(reduceMotion ? nil : .spring(response: 0.52, dampingFraction: 0.9)) {
+            openness = target
+            if target > 0.5 { notesOpenness = 0 }
+        }
+    }
+    private func settleNotes(_ target: CGFloat) {
+        withAnimation(reduceMotion ? nil : .spring(response: 0.52, dampingFraction: 0.9)) {
+            notesOpenness = target
+            if target > 0.5 { openness = 0 }
+            notesFocused = target > 0.5
+        }
+    }
+    @MainActor private func load() async {
+        guard !loading else { return }
+        loading = true; error = nil
+        defer { loading = false }
+        do {
+            let remote = try await APIClient(baseURL: line.apiBaseURL).fetchDrawer()
+            try Task.checkCancellation()
+            let visible = DrawerKeepsakes(remote)
+            contents = visible; loaded = true
+            if let id = reading?.id { reading = visible.letters.first { $0.id == id } }
+        } catch is CancellationError {
+        } catch let failure as URLError where failure.code == .cancelled {
+        } catch {
+            self.error = "抽屉暂时没接上，点这里重试。"
+        }
+    }
+}
+
+/// Cropping transparent sprite margins happens during layout; original source pixels stay intact.
+private struct KeepsakeCutout: View {
+    let name: String
+    let crop: CGRect
+    var body: some View {
+        GeometryReader { g in
+            Image(name).renderingMode(.original).resizable()
+                .frame(width: g.size.width / crop.width, height: g.size.height / crop.height)
+                .offset(x: -g.size.width * crop.minX / crop.width,
+                        y: -g.size.height * crop.minY / crop.height)
+        }.clipped().accessibilityHidden(true).allowsHitTesting(false)
+    }
+}
+
+private struct KeepsakeCabinetArtwork: View {
+    @Binding var openness: CGFloat
+    @Binding var notesOpenness: CGFloat
+    let visibleCount: Int
+    let notesCount: Int
+    let night: Bool
+    let settle: (CGFloat) -> Void
+    let settleNotes: (CGFloat) -> Void
+
+    var body: some View {
+        GeometryReader { g in
+            let width = g.size.width
+            ZStack(alignment: .topLeading) {
+                Image("KeepsakeCabinet").renderingMode(.original).resizable()
+                    .frame(width: width, height: width * 1276 / 1233)
+                tray(width: width, notes: false)
+                    .mask(DrawerAperture(top: 0.484, control: 0.550))
+                tray(width: width, notes: true)
+                    .mask(DrawerAperture(top: 0.275, control: 0.340))
+                DrawerHandle(openness: $notesOpenness, width: width, title: "便利贴",
+                             id: "drawer-notes-handle", settle: settleNotes)
+                    .frame(width: width * 0.78, height: width * 0.15)
+                    .position(x: width * 0.5, y: width * (0.394 + 0.073 * notesOpenness))
+                DrawerHandle(openness: $openness, width: width, title: "卷轴",
+                             id: "drawer-letter-handle", settle: settle)
+                    .frame(width: width * 0.78, height: width * 0.15)
+                    .position(x: width * 0.5, y: width * (0.61 + 0.073 * openness))
+            }
+            .colorMultiply(KeepsakeTheme.artworkTint(night: night))
+            .offset(y: -width * 0.035)
+            .frame(width: width, height: g.size.height, alignment: .top)
+        }
+        .aspectRatio(1 / 0.94, contentMode: .fit)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("drawer-artwork")
+    }
+
+    private func tray(width: CGFloat, notes: Bool) -> some View {
+        let progress = notes ? notesOpenness : openness
+        return ZStack(alignment: .topLeading) {
+            Image("KeepsakeUpperDrawer").renderingMode(.original).resizable()
+            if notes {
+                ForEach(0..<min(2, notesCount), id: \.self) { index in
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(index == 0 ? Moonlight.rosePaper : Moonlight.lavenderPaper)
+                        .frame(width: width * 0.34, height: width * 0.12)
+                        .rotationEffect(.degrees(index == 0 ? -4 : 5))
+                        .scaleEffect(x: 1, y: 0.30)
+                        .position(x: width * (0.35 + CGFloat(index) * 0.15),
+                                  y: width * (0.19 + CGFloat(index) * 0.022))
+                }
+            } else {
+                ForEach(0..<min(3, visibleCount), id: \.self) { index in
+                    KeepsakeCutout(name: "KeepsakeScroll",
+                                   crop: CGRect(x: 0.016, y: 0.37, width: 0.968, height: 0.37))
+                        .frame(width: width * 0.54, height: width * 0.13)
+                        .scaleEffect(x: 1, y: 0.28)
+                        .position(x: width * 0.42, y: width * (0.187 + CGFloat(index) * 0.028))
+                }
+            }
+        }
+        .frame(width: width * 0.84, height: width * 0.56)
+        .offset(x: width * 0.08, y: width * ((notes ? 0.045 : 0.262) + 0.073 * progress))
+        .frame(width: width, height: width * 1276 / 1233, alignment: .topLeading)
+        .accessibilityHidden(true).allowsHitTesting(false)
+    }
+}
+
+private struct DrawerHandle: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Binding var openness: CGFloat
+    let width: CGFloat
+    let title: String
+    let id: String
+    let settle: (CGFloat) -> Void
+    @State private var dragStart: CGFloat?
+
+    var body: some View {
+        Rectangle().fill(.clear).contentShape(Rectangle())
+            .highPriorityGesture(DragGesture(minimumDistance: 6)
+                .onChanged { value in
+                    if dragStart == nil { dragStart = openness }
+                    if !reduceMotion {
+                        openness = DrawerTravel.progress(start: dragStart ?? openness,
+                                                         translation: value.translation.height,
+                                                         distance: width * 0.28)
+                    }
+                }
+                .onEnded { value in
+                    settle(DrawerTravel.target(start: dragStart ?? openness,
+                                               predictedTranslation: value.predictedEndTranslation.height,
+                                               distance: width * 0.28))
+                    dragStart = nil
+                })
+            .onTapGesture { settle(openness > 0.5 ? 0 : 1) }
+            .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier(id).accessibilityLabel(title + "抽屉的珍珠拉手")
+            .accessibilityValue(openness > 0.5 ? "已拉开" : "已合上")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: settle(1)
+                case .decrement: settle(0)
+                @unknown default: break
+                }
+            }
+    }
+}
+
+/// Each fixed curved rim hides the part of its tray still inside the cabinet.
+private struct DrawerAperture: Shape {
+    let top: CGFloat
+    let control: CGFloat
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: 0, y: rect.width * top))
+        path.addQuadCurve(to: CGPoint(x: rect.width, y: rect.width * top),
+                          control: CGPoint(x: rect.midX, y: rect.width * control))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// Opening the first drawer brings its tray and the real notes forward into a focused scene.
+private struct StickyDrawerFocus: View {
+    @EnvironmentObject private var theme: Theme
+    @ObservedObject var store: StickyNotesStore
+    let night: Bool
+    let close: () -> Void
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 16) {
-                VStack(spacing: 2) {
-                    Text("月光宝盒").font(Moonlight.serif(24))
-                    Text("keepsakes").font(Moonlight.script(26)).foregroundStyle(theme.pageAccent)
-                }.padding(.top, 10)
-                MoonTreasureBox(openness: openness, night: night, hasScrolls: !released.isEmpty || !previews.isEmpty)
-                    .frame(width: 300, height: 300)
-                    .accessibilityHidden(true)
-                    .contentShape(Rectangle())
-                    .gesture(DragGesture(minimumDistance: 8)
-                        .onChanged { value in
-                            if dragStart == nil { dragStart = openness }
-                            openness = min(1, max(0, (dragStart ?? 0) + value.translation.height / 110))
-                        }
-                        .onEnded { value in
-                            let target: CGFloat = openness + value.predictedEndTranslation.height / 500 > 0.5 ? 1 : 0
-                            settle(target); dragStart = nil
-                        })
-                Button { settle(openness > 0.5 ? 0 : 1) } label: {
-                    HStack(spacing: 10) {
-                        MoonCrescent().fill(theme.pageAccent).frame(width: 13, height: 13)
-                        Text(openness > 0.5 ? "轻轻推回去" : "拉开上面这一层").font(Moonlight.serif(17))
-                        Image(systemName: openness > 0.5 ? "chevron.up" : "chevron.down").font(.system(size: 11, weight: .ultraLight))
-                    }.frame(minHeight: 44)
-                }.accessibilityIdentifier("drawer-pull").accessibilityValue(openness > 0.5 ? "已拉开" : "已合上")
-                if openness > 0.5 {
-                    VStack(spacing: 14) {
-                        if loading { ProgressView("正在看看柯留下了什么") }
-                        if let error { Button(error) { Task { await load() } }.font(Moonlight.serif(13)) }
-                        if let drawer, drawer.outside.allSatisfy({ $0.visibility != "released" && $0.visibility != "teaser" }) {
-                            Text("柯还没有把卷纸放在这一层。").font(Moonlight.serif(14))
-                                .foregroundStyle(theme.pageColor.textSecondary)
-                        }
-                        ForEach(released) { item in
-                            Button { reading = item } label: {
-                                ScrollRoll(title: item.title, subtitle: Self.shortDate(item.created_at), sealed: false, night: night)
-                            }.accessibilityIdentifier("drawer-letter-\(item.id)")
-                                .accessibilityLabel("卷纸：\(item.title)")
-                        }
-                        ForEach(previews) { item in
-                            VStack(spacing: 6) {
-                                ScrollRoll(title: item.title, subtitle: "还封着", sealed: true, night: night)
-                                if !item.teaser.isEmpty {
-                                    Text(item.teaser).font(Moonlight.serif(13))
-                                        .foregroundStyle(theme.pageColor.textSecondary)
-                                        .multilineTextAlignment(.center).padding(.horizontal, 24)
-                                }
-                            }
-                        }
-                    }.padding(.horizontal, 22).transition(.opacity.combined(with: .move(edge: .top)))
+            VStack(spacing: 22) {
+                HStack {
+                    Text("便利贴").font(Moonlight.serif(20)).foregroundStyle(theme.pageColor.textPrimary)
+                    Spacer()
+                    Button(action: close) {
+                        Image(systemName: "arrow.down.right.and.arrow.up.left")
+                            .font(.system(size: 17, weight: .ultraLight)).frame(width: 44, height: 44)
+                    }.accessibilityLabel("收好便利贴抽屉").accessibilityIdentifier("drawer-notes-close")
                 }
-                HStack(spacing: 8) {
-                    Image(systemName: "lock").font(.system(size: 12, weight: .ultraLight))
-                    Text("下面这一层，先留给柯。").font(Moonlight.serif(13))
-                }.foregroundStyle(theme.pageColor.textSecondary).padding(.top, 10)
-                    .accessibilityIdentifier("drawer-private-locked")
-                Text("等他愿意，会亲手拿给你。").font(Moonlight.serif(12)).foregroundStyle(theme.pageColor.textSecondary)
-            }.frame(maxWidth: .infinity).padding(.bottom, 28)
-        }.buttonStyle(.plain).tint(theme.pageAccent).scrollIndicators(.hidden)
-            .task { await load() }.refreshable { await load() }
-            .sheet(item: $reading) { item in
-                ParchmentReader(item: item, night: night) { reading = nil }
-                    .environmentObject(theme)
-            }
-    }
-
-    static func shortDate(_ raw: String) -> String {
-        let day = String(raw.prefix(10))
-        let parts = day.split(separator: "-")
-        guard parts.count == 3, let m = Int(parts[1]), let d = Int(parts[2]) else { return day }
-        return "\(m)月\(d)日"
-    }
-    private func settle(_ target: CGFloat) {
-        withAnimation(reduceMotion ? .linear(duration: 0.1) : .spring(response: 0.6, dampingFraction: 0.85)) { openness = target }
-    }
-    private func load() async {
-        guard !loading else { return }; loading = true; error = nil
-        defer { loading = false }
-        do { drawer = try await APIClient(baseURL: line.apiBaseURL).fetchDrawer() }
-        catch { self.error = "抽屉暂时没接上，点这里重试。" }
-    }
-}
-
-// MARK: - 颜色（宝盒和卷纸自己的，不跟页面主题走，免得又发白）
-
-private enum BoxInk {
-    static func body(_ night: Bool) -> [Color] {
-        night ? [Color(hex: 0x8A5E6B), Color(hex: 0x5E3C48)] : [Color(hex: 0xF4C9D2), Color(hex: 0xE3A3B1)]
-    }
-    static func lid(_ night: Bool) -> [Color] {
-        night ? [Color(hex: 0x9C6B79), Color(hex: 0x6F4855)] : [Color(hex: 0xF8D7DE), Color(hex: 0xEBB3C0)]
-    }
-    static func inside(_ night: Bool) -> Color { night ? Color(hex: 0x3E2730) : Color(hex: 0xB9707F) }
-    static func trim(_ night: Bool) -> Color { night ? Color(hex: 0xC9A27A) : Color(hex: 0xD8AE7E) }
-    static func trimLight(_ night: Bool) -> Color { night ? Color(hex: 0xE6CBA4) : Color(hex: 0xF3DDB8) }
-    static let parchment = [Color(hex: 0xFBF1DE), Color(hex: 0xF1DFC0)]
-    static let parchmentEdge = Color(hex: 0xC9A97E)
-    static let rod = [Color(hex: 0xE9C99A), Color(hex: 0xB98A55)]
-    static let ink = Color(hex: 0x5B4636)
-    static let ribbon = Color(hex: 0xD98C9D)
-    static let wax = Color(hex: 0xB5566C)
-}
-
-// MARK: - 月光宝盒
-
-private struct MoonTreasureBox: View, Animatable {
-    var openness: CGFloat
-    let night: Bool
-    let hasScrolls: Bool
-    var animatableData: CGFloat { get { openness } set { openness = newValue } }
-
-    var body: some View {
-        let w: CGFloat = 260
-        ZStack(alignment: .top) {
-            // 盖子：拱顶 + 月牙
-            LidShape()
-                .fill(LinearGradient(colors: BoxInk.lid(night), startPoint: .top, endPoint: .bottom))
-                .overlay(LidShape().stroke(BoxInk.trim(night), lineWidth: 1.6))
-                .frame(width: w + 16, height: 62)
-                .overlay(alignment: .center) {
-                    HStack(spacing: 10) {
-                        Sparkle().fill(BoxInk.trimLight(night)).frame(width: 7, height: 7)
-                        MoonCrescent().fill(BoxInk.trimLight(night)).frame(width: 22, height: 22)
-                        Sparkle().fill(BoxInk.trimLight(night)).frame(width: 7, height: 7)
-                    }.offset(y: 6)
+                MoonStickyNotesView(store: store, showsEmptyPaper: false, drawerMode: true)
+                if let status = store.status {
+                    Text(status).font(Moonlight.serif(12)).foregroundStyle(theme.pageColor.textSecondary)
                 }
-            // 盒身
-            RoundedRectangle(cornerRadius: 10)
-                .fill(LinearGradient(colors: BoxInk.body(night), startPoint: .top, endPoint: .bottom))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(BoxInk.trim(night), lineWidth: 1.6))
-                .frame(width: w, height: 196)
-                .offset(y: 58)
-            // 上层抽屉拉开后露出来的里面，和探出头的卷纸
-            DrawerCavity(night: night, hasScrolls: hasScrolls, openness: openness)
-                .frame(width: w - 28, height: 78)
-                .offset(y: 70)
-                .opacity(Double(min(1, openness * 1.6)))
-            // 上层抽屉面：往外（往下）拉
-            DrawerFront(night: night, locked: false)
-                .frame(width: w - 24, height: 80)
-                .scaleEffect(1 + 0.07 * openness)
-                .offset(y: 70 + 58 * openness)
-                .shadow(color: .black.opacity(0.18 * Double(openness)), radius: 10 * openness, y: 6 * openness)
-                .zIndex(2)
-            // 下层抽屉：一直锁着
-            DrawerFront(night: night, locked: true)
-                .frame(width: w - 24, height: 80)
-                .offset(y: 162)
-                .zIndex(openness > 0.05 ? 0 : 1)
-            // 小脚
-            HStack {
-                BoxFoot(color: BoxInk.trim(night))
-                Spacer()
-                BoxFoot(color: BoxInk.trim(night))
-            }.frame(width: w - 30).offset(y: 252)
+                if store.loading { ProgressView().tint(theme.pageAccent) }
+            }.padding(.horizontal, 24).padding(.top, 16).padding(.bottom, 32)
+                .frame(maxWidth: 520).frame(maxWidth: .infinity)
         }
-        .frame(width: 300, height: 300, alignment: .top)
+        .scrollIndicators(.hidden).background(theme.pageBackground)
+        .buttonStyle(.plain).foregroundStyle(theme.pageColor.textPrimary)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("drawer-notes-focus")
+        .refreshable { await store.load() }
     }
 }
 
-private struct DrawerFront: View {
-    let night: Bool
-    let locked: Bool
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(LinearGradient(colors: BoxInk.lid(night), startPoint: .top, endPoint: .bottom))
-            RoundedRectangle(cornerRadius: 8).stroke(BoxInk.trim(night), lineWidth: 1.2)
-            RoundedRectangle(cornerRadius: 5).stroke(BoxInk.trimLight(night).opacity(0.8), lineWidth: 0.7)
-                .padding(7)
-            if locked {
-                VStack(spacing: 3) {
-                    Circle().stroke(BoxInk.trim(night), lineWidth: 1.4).frame(width: 13, height: 13)
-                    Capsule().fill(BoxInk.trim(night)).frame(width: 3, height: 9)
-                }
-            } else {
-                MoonCrescent().fill(BoxInk.trimLight(night))
-                    .overlay(MoonCrescent().stroke(BoxInk.trim(night), lineWidth: 0.8))
-                    .frame(width: 26, height: 26)
-            }
-        }
-    }
-}
-
-private struct DrawerCavity: View {
-    let night: Bool
-    let hasScrolls: Bool
-    let openness: CGFloat
-    var body: some View {
-        ZStack(alignment: .bottom) {
-            RoundedRectangle(cornerRadius: 6).fill(BoxInk.inside(night))
-            RoundedRectangle(cornerRadius: 6)
-                .fill(LinearGradient(colors: [.black.opacity(0.28), .clear], startPoint: .top, endPoint: .center))
-            if hasScrolls {
-                HStack(alignment: .bottom, spacing: 14) {
-                    MiniScroll().frame(width: 30, height: 52).rotationEffect(.degrees(-8))
-                    MiniScroll().frame(width: 30, height: 62)
-                    MiniScroll().frame(width: 30, height: 48).rotationEffect(.degrees(7))
-                }
-                .offset(y: 26 - 34 * openness)
-            }
-        }.clipShape(RoundedRectangle(cornerRadius: 6))
-    }
-}
-
-/// 竖着放在宝盒里的小卷纸：中间一卷纸，上下两头木轴，腰上一根粉丝带。
-private struct MiniScroll: View {
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 4)
-                .fill(LinearGradient(colors: BoxInk.parchment, startPoint: .leading, endPoint: .trailing))
-                .padding(.vertical, 5)
-            VStack {
-                Capsule().fill(LinearGradient(colors: BoxInk.rod, startPoint: .top, endPoint: .bottom)).frame(height: 7)
-                Spacer()
-                Capsule().fill(LinearGradient(colors: BoxInk.rod, startPoint: .top, endPoint: .bottom)).frame(height: 7)
-            }
-            Rectangle().fill(BoxInk.ribbon).frame(height: 4)
-        }
-    }
-}
-
-private struct LidShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        let base = rect.maxY
-        p.move(to: CGPoint(x: rect.minX + 6, y: base))
-        p.addLine(to: CGPoint(x: rect.minX + 6, y: rect.minY + rect.height * 0.55))
-        p.addQuadCurve(to: CGPoint(x: rect.maxX - 6, y: rect.minY + rect.height * 0.55),
-                       control: CGPoint(x: rect.midX, y: rect.minY - rect.height * 0.35))
-        p.addLine(to: CGPoint(x: rect.maxX - 6, y: base))
-        p.addQuadCurve(to: CGPoint(x: rect.minX + 6, y: base), control: CGPoint(x: rect.midX, y: base + 4))
-        p.closeSubpath()
-        return p
-    }
-}
-
-private struct BoxFoot: View {
-    let color: Color
-    var body: some View {
-        UnevenRoundedRectangle(topLeadingRadius: 2, bottomLeadingRadius: 9, bottomTrailingRadius: 9, topTrailingRadius: 2)
-            .fill(color).frame(width: 22, height: 14)
-    }
-}
-
-private struct Sparkle: Shape {
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        let c = CGPoint(x: rect.midX, y: rect.midY)
-        p.move(to: CGPoint(x: c.x, y: rect.minY))
-        p.addQuadCurve(to: CGPoint(x: rect.maxX, y: c.y), control: c)
-        p.addQuadCurve(to: CGPoint(x: c.x, y: rect.maxY), control: c)
-        p.addQuadCurve(to: CGPoint(x: rect.minX, y: c.y), control: c)
-        p.addQuadCurve(to: CGPoint(x: c.x, y: rect.minY), control: c)
-        return p
-    }
-}
-
-// MARK: - 卷纸（列表里横着放的一卷）
-
-private struct ScrollRoll: View {
-    let title: String
-    let subtitle: String
+private struct KeepsakeScrollArtwork: View {
     let sealed: Bool
     let night: Bool
     var body: some View {
-        HStack(spacing: 0) {
-            RollEnd()
-            ZStack {
-                Rectangle()
-                    .fill(LinearGradient(colors: BoxInk.parchment, startPoint: .top, endPoint: .bottom))
-                    .overlay(LinearGradient(colors: [BoxInk.parchmentEdge.opacity(0.35), .clear, .clear, BoxInk.parchmentEdge.opacity(0.35)],
-                                            startPoint: .top, endPoint: .bottom))
-                VStack(spacing: 3) {
-                    Text(title).font(Moonlight.serif(16)).foregroundStyle(BoxInk.ink).lineLimit(1)
-                    Text(subtitle).font(Moonlight.serif(11)).foregroundStyle(BoxInk.ink.opacity(0.65))
-                }.padding(.horizontal, 30)
-                HStack {
-                    Spacer()
-                    if sealed {
-                        ZStack {
-                            Circle().fill(BoxInk.wax).frame(width: 26, height: 26)
-                            MoonCrescent().fill(Color(hex: 0xF6D9DF)).frame(width: 12, height: 12)
-                        }.padding(.trailing, 10)
-                    } else {
-                        Rectangle().fill(BoxInk.ribbon.opacity(0.9)).frame(width: 5).padding(.trailing, 22)
-                    }
-                }
-            }.frame(height: 58)
-            RollEnd()
-        }
-        .frame(maxWidth: 320)
-        .shadow(color: .black.opacity(night ? 0.35 : 0.12), radius: 6, y: 3)
-        .contentShape(Rectangle())
-    }
-}
-
-/// 卷起来的那一头：一卷纸筒，外面露出木轴两端的小圆头。
-private struct RollEnd: View {
-    var body: some View {
         ZStack {
-            Capsule().fill(LinearGradient(colors: [Color(hex: 0xEAD3AE), Color(hex: 0xFBF1DE), Color(hex: 0xDCC09A)],
-                                          startPoint: .leading, endPoint: .trailing))
-                .frame(width: 16, height: 66)
-            VStack {
-                Circle().fill(LinearGradient(colors: BoxInk.rod, startPoint: .top, endPoint: .bottom)).frame(width: 12, height: 12)
-                Spacer()
-                Circle().fill(LinearGradient(colors: BoxInk.rod, startPoint: .top, endPoint: .bottom)).frame(width: 12, height: 12)
-            }.frame(height: 78)
-        }.frame(width: 16, height: 78)
+            KeepsakeCutout(name: "KeepsakeScroll",
+                           crop: CGRect(x: 0.016, y: 0.37, width: 0.968, height: 0.37))
+                .frame(height: 64)
+            if sealed {
+                KeepsakeCutout(name: "KeepsakeWax",
+                               crop: CGRect(x: 0.21, y: 0.12, width: 0.62, height: 0.80))
+                    .frame(width: 48, height: 62).offset(y: 9)
+            }
+        }.colorMultiply(KeepsakeTheme.artworkTint(night: night))
     }
 }
 
-// MARK: - 展开读：上下两根木轴，中间羊皮纸一点点放下来
-
-private struct ParchmentReader: View {
+private struct KeepsakeParchmentReader: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let item: RemoteDrawer.Item
+    let letter: DrawerLetter
     let night: Bool
     let close: () -> Void
-    @State private var unrolled = false
+    @State private var progress: CGFloat = 0
+    @State private var measuredHeight: CGFloat = 0
+    @State private var beganOpening = false
+    @State private var closing = false
+    @State private var closeTask: Task<Void, Never>?
+
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 0) {
-                    ReaderRod()
-                    VStack(alignment: .leading, spacing: 22) {
-                        Text(item.title).font(Moonlight.serif(26)).foregroundStyle(BoxInk.ink)
-                        // 只有 released 才有正文；私藏的不可能走到这里。
-                        if item.visibility == "released" {
-                            Text(item.content).font(Moonlight.serif(18)).lineSpacing(10)
-                                .foregroundStyle(BoxInk.ink).textSelection(.enabled)
-                        }
-                        HStack {
-                            Spacer()
-                            VStack(alignment: .trailing, spacing: 4) {
-                                Text("— 柯").font(Moonlight.script(26)).foregroundStyle(BoxInk.wax)
-                                Text(MoonDrawerView.shortDate(item.created_at)).font(Moonlight.serif(12))
-                                    .foregroundStyle(BoxInk.ink.opacity(0.6))
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 30).padding(.vertical, 34)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        LinearGradient(colors: BoxInk.parchment, startPoint: .top, endPoint: .bottom)
-                            .overlay(LinearGradient(colors: [BoxInk.parchmentEdge.opacity(0.28), .clear, .clear, BoxInk.parchmentEdge.opacity(0.28)],
-                                                    startPoint: .leading, endPoint: .trailing))
-                    )
-                    .padding(.horizontal, 14)
-                    .scaleEffect(x: 1, y: unrolled ? 1 : 0.04, anchor: .top)
-                    .opacity(unrolled ? 1 : 0.4)
-                    ReaderRod()
-                }
-                .padding(.horizontal, 18).padding(.vertical, 24)
+                VStack(spacing: -3) {
+                    rod
+                    letterPaper
+                        .fixedSize(horizontal: false, vertical: true)
+                        .background(GeometryReader { g in
+                            Color.clear.preference(key: LetterHeight.self, value: g.size.height)
+                        })
+                        .frame(height: max(3, measuredHeight * progress), alignment: .top)
+                        .clipped()
+                        .accessibilityHidden(progress < 0.98)
+                    rod
+                }.padding(.horizontal, 16).padding(.top, 24).padding(.bottom, 44)
+                    .frame(maxWidth: 540)
+                    .frame(maxWidth: .infinity)
             }
             .background(theme.pageBackground.ignoresSafeArea())
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("卷起来放回去") { close() } } }
+            .navigationTitle("柯留下的话").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("卷起来放回去", action: rollUp)
+                        .font(Moonlight.serif(14)).disabled(closing)
+                        .accessibilityIdentifier("drawer-reader-close")
+                }
+            }
         }
-        .tint(theme.pageAccent)
-        .onAppear {
-            withAnimation(reduceMotion ? .linear(duration: 0.1) : .easeOut(duration: 0.9)) { unrolled = true }
+        .tint(theme.pageAccent).interactiveDismissDisabled()
+        .onPreferenceChange(LetterHeight.self) { height in
+            guard height > 0 else { return }
+            measuredHeight = height
+            if !beganOpening {
+                beganOpening = true
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.75)) { progress = 1 }
+            }
+        }
+        .onDisappear { closeTask?.cancel() }
+    }
+
+    private var letterPaper: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            Text(letter.title.isEmpty ? "留给你的一封信" : letter.title)
+                .font(Moonlight.serif(25))
+            Text(letter.content).font(Moonlight.serif(18)).lineSpacing(11)
+                .textSelection(.enabled).accessibilityIdentifier("drawer-reader-content")
+            VStack(alignment: .trailing, spacing: 7) {
+                Text("柯").font(Moonlight.serif(23)).foregroundStyle(KeepsakeTheme.signature)
+                Text(DrawerDate.label(letter.createdAt)).font(Moonlight.serif(12))
+                    .foregroundStyle(KeepsakeTheme.paperMutedInk)
+            }.frame(maxWidth: .infinity, alignment: .trailing).padding(.top, 18)
+        }
+        .foregroundStyle(KeepsakeTheme.paperInk)
+        .padding(.horizontal, 34).padding(.vertical, 42)
+        .frame(maxWidth: .infinity, minHeight: 420, alignment: .topLeading)
+        .background {
+            KeepsakeCutout(name: "KeepsakePaper",
+                           crop: CGRect(x: 0.035, y: 0.027, width: 0.935, height: 0.947))
+                .colorMultiply(KeepsakeTheme.paperTint(night: night))
+        }
+        .padding(.horizontal, 17)
+    }
+    private var rod: some View {
+        KeepsakeCutout(name: "KeepsakeRod",
+                       crop: CGRect(x: 0.025, y: 0.41, width: 0.95, height: 0.18))
+            .frame(height: 34).colorMultiply(KeepsakeTheme.paperTint(night: night))
+    }
+    private func rollUp() {
+        guard !closing else { return }
+        closing = true
+        if reduceMotion { close(); return }
+        withAnimation(.easeInOut(duration: 0.5)) { progress = 0 }
+        closeTask = Task { @MainActor in
+            do { try await Task.sleep(for: .milliseconds(520)) } catch { return }
+            guard !Task.isCancelled else { return }
+            close()
         }
     }
 }
 
-private struct ReaderRod: View {
-    var body: some View {
-        HStack(spacing: 0) {
-            Circle().fill(LinearGradient(colors: BoxInk.rod, startPoint: .top, endPoint: .bottom)).frame(width: 18, height: 18)
-            Capsule().fill(LinearGradient(colors: [Color(hex: 0xEAD3AE), Color(hex: 0xFBF1DE), Color(hex: 0xD9BC94)],
-                                          startPoint: .top, endPoint: .bottom))
-                .frame(height: 20)
-            Circle().fill(LinearGradient(colors: BoxInk.rod, startPoint: .top, endPoint: .bottom)).frame(width: 18, height: 18)
-        }
-        .shadow(color: .black.opacity(0.15), radius: 3, y: 2)
-    }
+private struct LetterHeight: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }

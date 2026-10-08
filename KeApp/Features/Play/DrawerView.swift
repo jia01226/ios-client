@@ -26,8 +26,8 @@ struct DrawerView: View {
             List {
                 if let error { Text(error); Button("重试") { Task { await load() } } }
                 if let drawer {
-                    ForEach(drawer.outside) { item in
-                        Section(item.title) {
+                    ForEach(drawer.outside.filter { $0.visibility == "released" || $0.visibility == "teaser" }) { item in
+                        Section(item.visibility == "released" ? item.title : "还封着") {
                             Text(item.visibility == "released" ? item.content : item.teaser)
                             Text(item.created_at).font(theme.font.caption)
                         }

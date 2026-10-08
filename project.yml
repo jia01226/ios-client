@@ -67,6 +67,9 @@ targets:
       - package: ChatLayout
     scheme:
       gatherCoverageData: false
+      testPlans:
+        - path: KeApp.xctestplan
+          defaultPlan: true
       testTargets:
         - KeAppTests
         - KeAppUITests
