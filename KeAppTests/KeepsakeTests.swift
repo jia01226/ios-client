@@ -49,7 +49,7 @@ final class KeepsakeTests: XCTestCase {
         XCTAssertEqual(ChatLine.allCases[0].cacheFileName, "messages-test1.json")
     }
     func testEveryProductionCutoutIsBundledWithAlpha() throws {
-        for name in ["KeepsakeCabinet", "KeepsakeUpperDrawer", "KeepsakeScroll", "KeepsakeWax", "KeepsakePaper", "KeepsakeRod"] {
+        for name in ["KeepsakeCabinet", "KeepsakeUpperDrawer", "KeepsakeScroll", "KeepsakeWax", "KeepsakePaper", "KeepsakeRod", "KeepsakeNotesInterior", "MoonTarotBack"] {
             let image = try XCTUnwrap(UIImage(named: name), name)
             let cg = try XCTUnwrap(image.cgImage, name)
             XCTAssertGreaterThan(cg.width, 200, name)

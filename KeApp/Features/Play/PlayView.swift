@@ -94,16 +94,18 @@ struct TarotView: View {
     @State private var phase: DrawPhase = .idle
     @State private var shuffleTick = false
     @State private var showThemePicker = false
+    @State private var inspectedCard: TarotCard?
     @State private var drawing = false
     @State private var error: String?
     @FocusState private var questionFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage("tarot.backTheme") private var backThemeID = "waite"
+    @AppStorage("tarot.backTheme") private var backThemeID = "moonlight"
+    @AppStorage("tarot.moonlightBack.v1") private var migratedMoonlightBack = false
 
     private enum DrawPhase { case idle, shuffling, dealing }
 
     private var ink: Color { theme.skin == .night ? theme.pageColor.textPrimary : PageColors.ink2 }
-    private var gold: Color { theme.skin == .night ? theme.pageColor.accentSoft : PageColors.tea5 }
+    private var gold: Color { theme.skin == .night ? theme.pageColor.accentSoft : theme.pageAccent }
     private func serif(_ size: CGFloat) -> Font { .custom("NotoSerifSC-Regular", size: size, relativeTo: .body).weight(.light) }
     private var api: APIClient { APIClient(baseURL: line.apiBaseURL) }
     private var back: TarotBack { TarotBack.find(backThemeID) }
@@ -117,12 +119,12 @@ struct TarotView: View {
                 HStack {
                     Button { dismiss() } label: {
                         Image(systemName: "chevron.left").font(.system(size: 17, weight: .light)).padding(8)
-                    }.buttonStyle(.plain).accessibilityLabel("返回")
+                    }.buttonStyle(.plain).accessibilityLabel("返回").accessibilityIdentifier("tarot-close")
                     Spacer()
                     Button { showThemePicker = true } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "paintbrush.pointed").font(.system(size: 13, weight: .light))
-                            Text("牌面").font(serif(14))
+                            Text("牌背").font(serif(14))
                         }
                         .padding(.horizontal, 12).padding(.vertical, 7)
                         .background(gold.opacity(0.08)).clipShape(Capsule())
@@ -150,7 +152,15 @@ struct TarotView: View {
                             .background(gold.opacity(0.22)).clipShape(Capsule())
                     }.buttonStyle(.plain).disabled(drawing).accessibilityIdentifier("tarot-draw")
                 }
-                if let error { Text(error).font(serif(14)).foregroundStyle(.red.opacity(0.8)) }
+                if cast == nil && !drawing {
+                    HStack {
+                        Spacer()
+                        TarotBackArtwork(back: back, tint: backTint).frame(width: 116, height: 200)
+                            .accessibilityIdentifier("tarot-deck-preview").accessibilityLabel(back.name)
+                        Spacer()
+                    }.padding(.vertical, 10)
+                }
+                if let error { Text(error).font(serif(14)).foregroundStyle(theme.pageAccent) }
                 if let cast {
                     let columns = cast.cards.count <= 3
                         ? Array(repeating: GridItem(.flexible(), spacing: 12), count: cast.cards.count)
@@ -158,15 +168,20 @@ struct TarotView: View {
                     ZStack(alignment: .top) {
                         LazyVGrid(columns: columns, spacing: 18) {
                             ForEach(Array(cast.cards.enumerated()), id: \.offset) { index, card in
-                                TarotCardView(card: card, api: api,
-                                              dealt: index < dealtCount, faceUp: index < revealed,
-                                              back: back, tilt: Double((index % 3) - 1) * 6,
-                                              ink: ink, gold: gold)
+                                Button { inspectedCard = card } label: {
+                                    TarotCardView(card: card, api: api,
+                                                  dealt: index < dealtCount, faceUp: index < revealed,
+                                                  back: back, tilt: Double((index % 3) - 1) * 6,
+                                                  ink: ink, gold: gold)
+                                }.buttonStyle(.plain).disabled(index >= revealed)
+                                    .accessibilityIdentifier("tarot-card-\(index)")
+                                    .accessibilityLabel("\(card.cn)，\(card.reversed ? "逆位" : "正位")，点开大图")
                             }
                         }
                         if phase == .shuffling { shuffleStack.padding(.top, 24) }
                     }
                     if revealed >= cast.cards.count {
+                        Text("点牌面放大 · 双指查看细节").font(serif(13)).foregroundStyle(ink.opacity(0.6))
                         if let objective = cast.objective,
                            !objective.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
@@ -199,15 +214,20 @@ struct TarotView: View {
         .foregroundStyle(ink).background(theme.pageBackground.ignoresSafeArea())
         .scrollDismissesKeyboard(.interactively)
         .sheet(isPresented: $showThemePicker) { themePicker }
+        .fullScreenCover(item: $inspectedCard) { card in
+            TarotCardInspector(cards: cast?.cards ?? [card], initialCard: card, api: api)
+                .environmentObject(theme)
+        }
+        .onAppear {
+            if !migratedMoonlightBack { backThemeID = "moonlight"; migratedMoonlightBack = true }
+        }
     }
 
     /// 洗牌时中间那叠牌背，轻微抖动交叠。
     private var shuffleStack: some View {
         ZStack {
             ForEach(0..<5, id: \.self) { i in
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(backTint.opacity(0.14))
-                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(backTint.opacity(0.35), lineWidth: 1))
+                TarotBackArtwork(back: back, tint: backTint)
                     .frame(width: 72, height: 122)
                     .rotationEffect(.degrees(Double(i - 2) * (shuffleTick ? 7 : 3)))
                     .offset(x: CGFloat(i - 2) * (shuffleTick ? 5 : 2), y: shuffleTick ? -3 : 3)
@@ -222,19 +242,16 @@ struct TarotView: View {
 
     private var themePicker: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("牌面").font(serif(28))
-            Text("换一副牌背。以后能加更多。").font(serif(14)).foregroundStyle(ink.opacity(0.6))
+            Text("牌背").font(serif(28))
+            Text("月光山茶，陪你抽一张。").font(serif(14)).foregroundStyle(ink.opacity(0.6))
             ForEach(TarotBack.all) { option in
                 Button {
                     backThemeID = option.id
                     showThemePicker = false
                 } label: {
                     HStack(spacing: 14) {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill((option.id == "waite" ? gold : option.tint).opacity(0.14))
-                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke((option.id == "waite" ? gold : option.tint).opacity(0.4), lineWidth: 1))
-                            .overlay(Image(systemName: option.icon).font(.system(size: 16, weight: .ultraLight)).foregroundStyle((option.id == "waite" ? gold : option.tint).opacity(0.7)))
-                            .frame(width: 40, height: 60)
+                        TarotBackArtwork(back: option, tint: option.id == "waite" ? gold : option.tint)
+                            .frame(width: 40, height: 68)
                         Text(option.name).font(serif(18))
                         Spacer()
                         if option.id == backThemeID {
@@ -303,9 +320,10 @@ struct TarotBack: Identifiable, Equatable {
     let icon: String
 
     static let all: [TarotBack] = [
-        TarotBack(id: "waite", name: "默认（韦特）", tint: .clear, icon: "sparkles"),
-        TarotBack(id: "night", name: "靛夜", tint: .indigo, icon: "moon.stars"),
-        TarotBack(id: "rose", name: "玫瑰", tint: .pink, icon: "seal")
+        TarotBack(id: "moonlight", name: "月光山茶", tint: Moonlight.deepRose, icon: "moon"),
+        TarotBack(id: "waite", name: "经典", tint: TarotTheme.classic, icon: "sparkles"),
+        TarotBack(id: "night", name: "靛夜", tint: TarotTheme.indigo, icon: "moon.stars"),
+        TarotBack(id: "rose", name: "玫瑰", tint: TarotTheme.rose, icon: "seal")
     ]
     static func find(_ id: String) -> TarotBack { all.first { $0.id == id } ?? all[0] }
 }
@@ -326,10 +344,7 @@ private struct TarotCardView: View {
         VStack(spacing: 8) {
             ZStack {
                 // 牌背
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(backTint.opacity(0.14))
-                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(backTint.opacity(0.35), lineWidth: 1))
-                    .overlay(Image(systemName: back.icon).font(.system(size: 22, weight: .ultraLight)).foregroundStyle(backTint.opacity(0.6)))
+                TarotBackArtwork(back: back, tint: backTint)
                     .opacity(faceUp ? 0 : 1)
                 // 牌面（预翻 180° 抵消容器旋转，翻正后不镜像）
                 Group {

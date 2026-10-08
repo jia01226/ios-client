@@ -14,7 +14,7 @@ enum MoonlightPreviewData {
         let path = request.url?.path ?? ""
         func json(_ value: Any) -> String { String(data: (try? JSONSerialization.data(withJSONObject: value)) ?? Data(), encoding: .utf8) ?? "{}" }
         if path.hasSuffix("/api/sticky-notes"), request.httpMethod == "POST" {
-            let body = request.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any] ?? [:]
+            let body = requestBody(request).flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any] ?? [:]
             let row: [String: Any] = ["id": body["id"] ?? "", "author": "user", "content": body["content"] ?? "", "created_at": "2026-10-07T12:00:00Z"]
             savedNotes.removeAll { $0["id"] as? String == row["id"] as? String }; savedNotes.append(row)
             return (200, json(row))
@@ -56,5 +56,18 @@ enum MoonlightPreviewData {
         }
         return nil
     }
+    private static func requestBody(_ request: URLRequest) -> Data? {
+        if let data = request.httpBody { return data }
+        guard let stream = request.httpBodyStream else { return nil }
+        stream.open(); defer { stream.close() }
+        var data = Data(); var bytes = [UInt8](repeating: 0, count: 1024)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&bytes, maxLength: bytes.count)
+            if count <= 0 { break }
+            data.append(bytes, count: count)
+        }
+        return data
+    }
+
 }
 #endif

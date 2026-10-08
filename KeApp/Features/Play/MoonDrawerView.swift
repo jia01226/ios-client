@@ -315,28 +315,14 @@ private struct StickyDrawerFocus: View {
         ScrollView {
             VStack(spacing: 22) {
                 HStack {
-                    Text("little notes").font(Moonlight.script(34)).foregroundStyle(theme.pageAccent)
+                    Text("便利贴").font(Moonlight.serif(20)).foregroundStyle(theme.pageColor.textPrimary)
                     Spacer()
                     Button(action: close) {
                         Image(systemName: "arrow.down.right.and.arrow.up.left")
                             .font(.system(size: 17, weight: .ultraLight)).frame(width: 44, height: 44)
                     }.accessibilityLabel("收好便利贴抽屉").accessibilityIdentifier("drawer-notes-close")
                 }
-                KeepsakeCutout(name: "KeepsakeUpperDrawer",
-                               crop: CGRect(x: 0.047, y: 0.20, width: 0.906, height: 0.62))
-                    .frame(height: 155)
-                    .colorMultiply(KeepsakeTheme.artworkTint(night: night))
-                    .overlay(alignment: .top) {
-                        HStack(spacing: -12) {
-                            ForEach(Array(store.all.prefix(2).enumerated()), id: \.element.id) { index, note in
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(note.author == .user ? Moonlight.rosePaper : Moonlight.lavenderPaper)
-                                    .frame(width: 88, height: 32)
-                                    .rotationEffect(.degrees(index == 0 ? -5 : 4))
-                            }
-                        }.padding(.top, 33).accessibilityHidden(true).allowsHitTesting(false)
-                    }
-                MoonStickyNotesView(store: store, showsEmptyPaper: false)
+                MoonStickyNotesView(store: store, showsEmptyPaper: false, drawerMode: true)
                 if let status = store.status {
                     Text(status).font(Moonlight.serif(12)).foregroundStyle(theme.pageColor.textSecondary)
                 }

@@ -70,7 +70,17 @@ enum KeepsakeInteractionChecks {
         let addNote = app.buttons["notes-add"]
         scrollTo(addNote)
         XCTAssertTrue(app.buttons["note-fixture-ke"].exists)
-        capture("06-notes-papers")
+        let interior = app.descendants(matching: .any).matching(identifier: "drawer-notes-interior").firstMatch
+        let keNote = app.buttons["note-fixture-ke"]
+        XCTAssertTrue(interior.frame.contains(keNote.frame), "Paper must be inside the actual drawer, not in a list below it")
+        keNote.tap()
+        XCTAssertTrue(app.buttons["drawer-note-put-back"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["drawer-note-content"].label, "慢慢来，我陪着你。")
+        XCTAssertFalse(app.textViews["note-editor"].exists, "Ke's note is read-only")
+        XCTAssertFalse(app.buttons["note-save"].exists)
+        capture("06-note-lifted")
+        app.buttons["drawer-note-put-back"].tap()
+        XCTAssertTrue(addNote.waitForExistence(timeout: 5))
         if skin == "day" {
             addNote.tap()
             let editor = app.textViews["note-editor"]
@@ -79,6 +89,8 @@ enum KeepsakeInteractionChecks {
             editor.typeText("珍珠抽屉的同一张便利贴")
             app.buttons["note-save"].tap()
             XCTAssertTrue(addNote.waitForExistence(timeout: 6))
+            XCTAssertFalse(app.staticTexts["本机 · 待同步"].exists)
+            capture("06b-note-saved-in-drawer")
             app.buttons["tab-us"].tap()
             XCTAssertTrue(app.staticTexts["珍珠抽屉的同一张便利贴"].waitForExistence(timeout: 8))
             capture("07-shared-note-in-us")
