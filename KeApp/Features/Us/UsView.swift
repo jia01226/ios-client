@@ -1118,8 +1118,12 @@ final class UsViewModel: ObservableObject {
             ("ke", { $0.contains("柯") && $0.contains("生日") }),
         ]
         return slots.compactMap { slot in
-            guard let row = rows.first(where: { slot.matches($0.name) }),
-                  let date = CompanionDate.parse(row.date) else { return nil }
+            // 「2026-06-25」按年月日数字拼成本地那一天，不经过时区换算（换算会差出前一天）。
+            guard let row = rows.first(where: { slot.matches($0.name) }) else { return nil }
+            let ymd = row.date.prefix(10).split(separator: "-").compactMap { Int($0) }
+            guard let date = ymd.count == 3
+                ? Calendar.current.date(from: DateComponents(year: ymd[0], month: ymd[1], day: ymd[2]))
+                : CompanionDate.parse(row.date) else { return nil }
             return Anniversary(id: slot.id, title: row.name, date: date, isYearly: row.name.contains("生日"))
         }
     }
