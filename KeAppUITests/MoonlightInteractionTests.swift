@@ -31,8 +31,9 @@ final class MoonlightInteractionTests: XCTestCase {
         app.buttons["diary-open-close"].tap()
         XCTAssertTrue(app.staticTexts["diary-page-content"].waitForExistence(timeout: 6))
         let before = app.staticTexts["diary-page-date"].label
-        let page = app.otherElements["diary-paper-page"]
-        if page.exists { page.swipeLeft() } else { app.swipeLeft() }
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.57))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.12, dy: 0.57))
+        start.press(forDuration: 0.1, thenDragTo: end)
         let changed = NSPredicate(format: "label != %@", before)
         testCase.expectation(for: changed, evaluatedWith: app.staticTexts["diary-page-date"])
         testCase.waitForExpectations(timeout: 5)

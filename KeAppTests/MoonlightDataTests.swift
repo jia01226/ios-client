@@ -3,6 +3,10 @@ import XCTest
 
 @MainActor
 final class MoonlightDataTests: XCTestCase {
+    func testDiaryDateLabelUsesSameDayAsRailAcrossTimeZones() throws {
+        let date = try XCTUnwrap(CompanionDate.parse("2026-10-08 00:00:00"))
+        XCTAssertEqual(KeDiaryPage.dateLabel(date, format: "M月d日"), "10月8日")
+    }
     func testDiaryGroupsKePagesByDayAndNeverIncludesLockedOrUserContent() {
         func row(_ id: Int, _ author: String, _ content: String, _ locked: Bool = false) -> RemoteDiary {
             RemoteDiary(id: id, title: "一页", content: content, author: author, mood: nil, created_at: "2026-10-07 23:59:00", locked_hidden: locked, comments: 0)

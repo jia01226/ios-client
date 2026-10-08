@@ -160,7 +160,7 @@ private struct LacquerDrawerScene: UIViewRepresentable, Animatable {
             box(0.92, 0.03, 0.65, SCNVector3(0.25, -0.265, 0.2), paper, parent: top, radius: 0.01)
         }
         let camera = SCNNode(); camera.camera = SCNCamera(); camera.camera?.usesOrthographicProjection = true
-        camera.camera?.orthographicScale = 2.25; camera.position = SCNVector3(3.6, 3.15, 7.0)
+        camera.camera?.orthographicScale = 1.85; camera.position = SCNVector3(3.6, 3.15, 7.0)
         camera.look(at: SCNVector3(0, 1.0, 0.25)); scene.rootNode.addChildNode(camera)
         let ambient = SCNNode(); ambient.light = SCNLight(); ambient.light?.type = .ambient
         ambient.light?.color = Moonlight.light; ambient.light?.intensity = night ? 220 : 470; scene.rootNode.addChildNode(ambient)

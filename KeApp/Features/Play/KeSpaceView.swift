@@ -58,7 +58,7 @@ private struct MoonDiaryView: View {
                     Button {
                         withAnimation(reduceMotion ? .linear(duration: 0.1) : .easeInOut(duration: 0.7)) { open.toggle() }
                     } label: {
-                        Text(open ? "轻轻合上  ←" : "翻开 \(selected.formatted(.dateTime.month(.defaultDigits).day()).replacingOccurrences(of: "/", with: "·")) 这一页  →")
+                        Text(open ? "轻轻合上  ←" : "翻开 \(KeDiaryPage.dateLabel(selected, format: "M月d日")) 这一页  →")
                             .font(Moonlight.serif(17)).underline(color: theme.pageAccent.opacity(0.5))
                             .padding(.vertical, 12)
                     }.buttonStyle(.plain).foregroundStyle(theme.pageAccent).accessibilityIdentifier("diary-open-close")
@@ -82,11 +82,11 @@ private struct MoonDiaryView: View {
                 .frame(width: g.size.width, height: g.size.height)
                 .overlay {
                     VStack(spacing: 9) {
-                        Text("dear diary").font(Moonlight.script(min(32, g.size.width * 0.12))).tracking(1)
+                        Text("dear diary").font(Moonlight.script(min(25, g.size.width * 0.09))).tracking(1)
                         Text("柯的日记").font(Moonlight.serif(12)).tracking(3)
                         Text(String(CompanionDate.calendar.component(.year, from: selected))).font(Moonlight.serif(9)).tracking(2)
                     }.foregroundStyle(theme.skin == .day ? Moonlight.deepRose : theme.pageColor.textPrimary)
-                        .position(x: g.size.width * 0.52, y: g.size.height * 0.72)
+                        .position(x: g.size.width * 0.52, y: g.size.height * 0.69)
                 }
                 .contentShape(Rectangle())
                 .onTapGesture { withAnimation(reduceMotion ? .linear(duration: 0.1) : .easeInOut(duration: 0.7)) { open = true } }
@@ -108,7 +108,7 @@ private struct MoonlightDateRail: View {
             MoonCrescent().fill(LinearGradient(colors: [Moonlight.pearl, theme.pageAccent.opacity(0.45)], startPoint: .topLeading, endPoint: .bottomTrailing))
                 .frame(width: 43, height: 43).shadow(color: theme.pageAccent.opacity(glowing ? 0.32 : 0.12), radius: glowing ? 15 : 8)
                 .padding(.bottom, 5).accessibilityHidden(true)
-            Text("a day\nwith you").font(Moonlight.script(20)).multilineTextAlignment(.center).foregroundStyle(theme.pageAccent)
+            Text("a day\nwith you").font(Moonlight.script(19)).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true).foregroundStyle(theme.pageAccent)
             Button { showPicker = true } label: {
                 VStack(spacing: 12) {
                     Text(String(calendar.component(.year, from: date)) + "⌄")
@@ -123,7 +123,7 @@ private struct MoonlightDateRail: View {
                             .foregroundStyle(offset == 0 ? theme.pageAccent : theme.pageColor.textPrimary)
                             .background(theme.pageAccent.opacity(offset == 0 ? 0.05 : 0), in: Circle())
                             .overlay(Circle().stroke(theme.pageAccent.opacity(offset == 0 ? 0.8 : 0), lineWidth: 0.6))
-                    }.accessibilityLabel(day.formatted(date: .long, time: .omitted))
+                    }.accessibilityLabel(KeDiaryPage.dateLabel(day))
                         .accessibilityIdentifier("diary-rail-\(offset)")
                 }
             }
@@ -134,7 +134,7 @@ private struct MoonlightDateRail: View {
             ZStack {
                 MoonlightBeam().fill(LinearGradient(colors: [Moonlight.pearl.opacity(0.85), theme.pageAccent.opacity(0.06), Moonlight.pearl.opacity(0.02)], startPoint: .top, endPoint: .bottom))
                     .blur(radius: 6)
-                MoonlightBeam().stroke(Moonlight.pearl.opacity(glowing ? 0.85 : 0.45), lineWidth: 1).blur(radius: 0.4)
+                MoonlightFilaments().stroke(LinearGradient(colors: [Moonlight.pearl.opacity(glowing ? 0.95 : 0.55), Moonlight.pearl.opacity(0.55), Moonlight.pearl.opacity(0)], startPoint: .top, endPoint: .bottom), lineWidth: 0.8).blur(radius: 0.3)
             }.padding(.top, 42).opacity(theme.skin == .day ? 1 : 0.1).allowsHitTesting(false)
         }
         .onAppear { if !reduceMotion && !ProcessInfo.processInfo.arguments.contains("-ui-test-moonlight") { withAnimation(.easeInOut(duration: 3.8).repeatForever(autoreverses: true)) { glowing = true } } }
@@ -142,7 +142,18 @@ private struct MoonlightDateRail: View {
             guard abs(value.translation.height) > abs(value.translation.width), let day = calendar.date(byAdding: .day, value: value.translation.height < 0 ? 1 : -1, to: date), day <= .now else { return }
             date = day
         })
-        .accessibilityIdentifier("diary-moonlight-dates")
+
+    }
+}
+
+private struct MoonlightFilaments: Shape {
+    func path(in r: CGRect) -> Path {
+        Path { p in
+            p.move(to: CGPoint(x: r.midX - 3, y: 0))
+            p.addCurve(to: CGPoint(x: r.width * 0.17, y: r.maxY), control1: CGPoint(x: r.midX - 2, y: r.height * 0.3), control2: CGPoint(x: -12, y: r.height * 0.55))
+            p.move(to: CGPoint(x: r.midX + 3, y: 0))
+            p.addCurve(to: CGPoint(x: r.width * 0.8, y: r.maxY), control1: CGPoint(x: r.midX + 2, y: r.height * 0.3), control2: CGPoint(x: r.maxX + 12, y: r.height * 0.6))
+        }
     }
 }
 
@@ -174,7 +185,7 @@ private struct MoonDiaryDatePicker: View {
                 if !markedDates.isEmpty {
                     Menu("翻到有日记的日子") {
                         ForEach(markedDates.reversed(), id: \.self) { day in
-                            Button(day.formatted(date: .long, time: .omitted)) { date = day; dismiss() }
+                            Button(KeDiaryPage.dateLabel(day)) { date = day; dismiss() }
                         }
                     }.font(Moonlight.serif(15)).accessibilityIdentifier("diary-written-days")
                 }

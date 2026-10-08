@@ -102,6 +102,6 @@ struct DiaryPaperPage: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }.background(theme.skin == .day ? Moonlight.pearl : theme.pageColor.card)
             .foregroundStyle(theme.pageColor.textPrimary)
-            .accessibilityIdentifier("diary-paper-page")
+
     }
 }

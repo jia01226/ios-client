@@ -40,7 +40,7 @@ struct UsView: View {
                                     .frame(maxWidth: .infinity, minHeight: 44)
                             }.accessibilityIdentifier("anniversary-" + id)
                         }
-                    }.padding(.top, 24)
+                    }.padding(.top, 16)
                     MoonStickyNotesView(store: notes).padding(.top, 8)
                     weekly.padding(.top, 26)
                     Button {
@@ -92,10 +92,10 @@ struct UsView: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Text(selected.id == "together" ? "在一起" : display.title).font(Moonlight.serif(22))
-                    Text("with you").font(Moonlight.script(26)).foregroundStyle(theme.pageAccent)
+                    Text("with you").font(Moonlight.script(23)).foregroundStyle(theme.pageAccent)
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(display.number).font(Moonlight.numeral(98)).minimumScaleFactor(0.6).lineLimit(1)
+                    Text(display.number).font(Moonlight.numeral(88)).minimumScaleFactor(0.6).lineLimit(1).frame(height: 110)
                     Text(display.unit).font(Moonlight.serif(27))
                 }.padding(.top, 3)
                 HStack(spacing: 12) {

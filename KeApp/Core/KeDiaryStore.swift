@@ -6,6 +6,11 @@ struct KeDiaryPage: Identifiable, Equatable {
     let title: String
     let content: String
     var id: Date { date }
+    static func dateLabel(_ date: Date, format: String = "yyyy年M月d日") -> String {
+        let f = DateFormatter(); f.calendar = CompanionDate.calendar; f.timeZone = CompanionDate.calendar.timeZone
+        f.locale = Locale(identifier: "zh_CN"); f.dateFormat = format
+        return f.string(from: date)
+    }
     static func collect(_ entries: [RemoteDiary]) -> [KeDiaryPage] {
         let visible = entries.filter {
             !$0.locked_hidden && ["柯", "ai", "assistant", "ke"].contains($0.author ?? "柯")

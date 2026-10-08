@@ -10,7 +10,7 @@ enum Moonlight {
         .custom("Allura-Regular", size: size, relativeTo: .body)
     }
     static func numeral(_ size: CGFloat) -> Font {
-        .custom("BodoniSvtyTwoITCTT-Book", size: size, relativeTo: .title)
+        .custom("NotoSerifSC-ExtraLight", size: size, relativeTo: .title)
     }
     static let pearl = Color(hex: 0xFCF7F3)
     static let rosePaper = Color(hex: 0xF1E1E4)
@@ -37,10 +37,10 @@ struct MoonlightHeader: View {
         }
         .foregroundStyle(theme.pageColor.textPrimary)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 28)
+        .padding(.top, 20)
         .padding(.bottom, 24)
         .background(alignment: .topTrailing) {
-            Image(artwork).resizable().scaledToFit().frame(width: 242)
+            Image(artwork).resizable().scaledToFit().frame(width: 242, height: 242)
                 .opacity(theme.skin == .day ? 0.74 : 0.14)
                 .offset(x: 88, y: -76).allowsHitTesting(false).accessibilityHidden(true)
         }

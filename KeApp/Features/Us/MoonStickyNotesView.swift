@@ -81,10 +81,10 @@ struct MoonStickyNotesView: View {
             VStack(alignment: .leading, spacing: 11) {
                 Text(note.author == .user ? "佳佳" : "柯").font(Moonlight.serif(14)).foregroundStyle(note.author == .user ? theme.pageAccent : theme.pageColor.textSecondary)
                 Rectangle().fill(theme.pageAccent.opacity(0.55)).frame(width: 16, height: 0.5)
-                Text(note.content).font(Moonlight.serif(19)).lineSpacing(5).lineLimit(3)
+                Text(note.content).font(Moonlight.serif(17)).lineSpacing(4).lineLimit(2)
                 if store.isLocal(note) { Text("本机 · 待同步").font(Moonlight.serif(10)).foregroundStyle(theme.pageColor.textSecondary) }
                 Spacer(minLength: 0)
-            }.frame(maxWidth: .infinity, minHeight: 126, alignment: .topLeading).padding(18)
+            }.frame(maxWidth: .infinity, minHeight: 95, alignment: .topLeading).padding(16)
                 .background(paper(note.author).opacity(0.76), in: NotePaperShape())
                 .overlay(alignment: .bottomTrailing) {
                     FoldCorner().fill(theme.pageAccent.opacity(0.23)).frame(width: 16, height: 16)
