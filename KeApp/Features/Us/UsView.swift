@@ -1,6 +1,6 @@
 import SwiftUI
 
-// 【我们】—— 两个人的日期、提醒与排班。
+// 【我们】—— 两个人的日子、便利贴与排班，顺着页面慢慢展开。
 
 struct UsView: View {
     @EnvironmentObject private var theme: Theme
@@ -29,7 +29,8 @@ struct UsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     MoonlightHeader(title: "我们", subtitle: "和你一起，把每一天都变成喜欢的日子。", artwork: "UsMoonBloom")
-                    anniversary.padding(.top, 14)
+                        .padding(.top, theme.skin == .day ? 20 : 0)
+                    anniversary.padding(.top, theme.skin == .day ? 40 : 14)
                     HStack(spacing: 0) {
                         ForEach(Array(anniversaryIDs.enumerated()), id: \.element) { index, id in
                             Button { anniversaryID = id } label: {
@@ -40,9 +41,10 @@ struct UsView: View {
                                     .frame(maxWidth: .infinity, minHeight: 44)
                             }.accessibilityIdentifier("anniversary-" + id)
                         }
-                    }.padding(.top, 16)
-                    MoonStickyNotesView(store: notes).padding(.top, 8)
-                    weekly.padding(.top, 26)
+                    }.padding(.top, theme.skin == .day ? 32 : 16)
+                    MoonStickyNotesView(store: notes).padding(.top, theme.skin == .day ? 48 : 8)
+                    // The weekly schedule follows below the fold; don't compress the anniversary to fit it.
+                    weekly.padding(.top, theme.skin == .day ? 60 : 26)
                     Button {
                         withAnimation(.easeInOut(duration: 0.35)) { proxy.scrollTo("month-calendar", anchor: .top) }
                     } label: {
@@ -50,7 +52,7 @@ struct UsView: View {
                             Text("\(Calendar.current.component(.month, from: month))月").font(Moonlight.serif(16))
                             Image(systemName: "chevron.down").font(.system(size: 12, weight: .ultraLight))
                         }.frame(maxWidth: .infinity, minHeight: 64)
-                    }.padding(.vertical, 10).accessibilityIdentifier("us-show-month")
+                    }.padding(.vertical, theme.skin == .day ? 24 : 10).accessibilityIdentifier("us-show-month")
                     VStack(spacing: 20) {
                         PeriodQuickActions(store: periods)
                         calendar
@@ -95,18 +97,19 @@ struct UsView: View {
                     Text("with you").font(Moonlight.script(23)).foregroundStyle(theme.pageAccent)
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(display.number).font(Moonlight.numeral(88)).minimumScaleFactor(0.6).lineLimit(1).frame(height: 110)
+                    Text(display.number).font(Moonlight.numeral(theme.skin == .day ? 92 : 88)).minimumScaleFactor(0.6).lineLimit(1)
+                        .frame(height: theme.skin == .day ? 126 : 110)
                     Text(display.unit).font(Moonlight.serif(27))
-                }.padding(.top, 3)
+                }.padding(.top, theme.skin == .day ? 10 : 3)
                 HStack(spacing: 12) {
                     Rectangle().fill(theme.pageAccent).frame(width: 24, height: 0.7)
                     Text(display.dateLabel).font(Moonlight.serif(14)).tracking(1)
-                }
+                }.padding(.top, theme.skin == .day ? 8 : 0)
             }.accessibilityElement(children: .combine).accessibilityIdentifier("us-anniversary-pager")
         }
     }
     private var weekly: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: theme.skin == .day ? 22 : 14) {
             HStack {
                 Text("这一周").font(Moonlight.serif(23))
                 Spacer()

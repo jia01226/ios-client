@@ -16,7 +16,14 @@ final class MoonlightInteractionTests: XCTestCase {
         XCTAssertTrue(app.buttons["notes-add"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.buttons["anniversary-together"].exists)
         capture("02-us")
-        app.swipeUp()
+        // The airy anniversary/notes composition intentionally puts scheduling below the fold.
+        let showMonth = app.buttons["us-show-month"]
+        for _ in 0..<4 {
+            if showMonth.isHittable { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(showMonth.isHittable)
+        showMonth.tap()
         XCTAssertTrue(app.buttons["period-start"].waitForExistence(timeout: 5))
         capture("03-month-calendar")
         app.buttons["tab-play"].tap()

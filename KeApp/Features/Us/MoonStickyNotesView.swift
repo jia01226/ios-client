@@ -33,7 +33,7 @@ struct MoonStickyNotesView: View {
                         .background(paper(.user).opacity(0.55), in: NotePaperShape())
                 }.accessibilityIdentifier("notes-empty")
             } else {
-                HStack(alignment: .top, spacing: 14) {
+                HStack(alignment: .top, spacing: theme.skin == .day ? 20 : 14) {
                     ForEach(Array(featured.enumerated()), id: \.element.id) { index, note in
                         noteCard(note).padding(.top, index == 1 ? 8 : 0)
                     }
@@ -84,7 +84,7 @@ struct MoonStickyNotesView: View {
                 Text(note.content).font(Moonlight.serif(17)).lineSpacing(4).lineLimit(2)
                 if store.isLocal(note) { Text("本机 · 待同步").font(Moonlight.serif(10)).foregroundStyle(theme.pageColor.textSecondary) }
                 Spacer(minLength: 0)
-            }.frame(maxWidth: .infinity, minHeight: 95, alignment: .topLeading).padding(16)
+            }.frame(maxWidth: .infinity, minHeight: theme.skin == .day ? 128 : 95, alignment: .topLeading).padding(16)
                 .background(paper(note.author).opacity(0.76), in: NotePaperShape())
                 .overlay(alignment: .bottomTrailing) {
                     FoldCorner().fill(theme.pageAccent.opacity(0.23)).frame(width: 16, height: 16)
