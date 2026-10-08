@@ -1,0 +1,61 @@
+# 月光改版 · Claude 审核交付
+
+基线：安装版 75，`ke/app-1008-071512` / `1e79d91d42996ac21b51c17f99cffad96aa4f67b`。
+工作分支：`codex/moonlight-journal-build76`（历史分支名）；本次打包号使用 **77**。
+审核 PR：https://github.com/jia01226/ios-client/pull/3
+
+## 最终实现
+
+四格：柯、我们、玩、柯的，默认打开柯。浅色全页共用同一浅粉、暖灰、豆沙色和贴底细导航，颜色集中在 Theme；夜里色板保留。聊天气泡结构、Thinking 的 Allura 字体、位置、展开和动效逻辑保留；按用户后续要求统一浅色聊天配色，一次性迁移。旧工作抽屉入口和“收进本子”动作已移除。
+
+我们采用佳佳最后确认的第六版：小标题和大留白，左侧依次纪念日、表白日、我的生日、柯生日；右侧天数、起始日期；去掉 with you。浅月光和边缘山茶花苞为透明装饰。下面为双人便利贴、周班表、月历；来了/走了及经期记录在月历处，窄屏自动换行。大字号下纪念日区上下排布。未设置的生日提示设置，不借用纪念日天数。
+
+排班保留正常班 08:30–12:00 / 14:00–17:30、早班 08:30–14:45、副班 14:45–21:00。支持自己改起止时间、一段/两段班，点已排日期直接取消；周/月共用数据，沿用现有同步接口。经期也沿用原接口。
+
+玩保留塔罗、双弈（五子棋）。柯的默认日记：山茶月弧封面、细长 Allura 英文、月光日期条选择年月日、UIKit 纸页卷动。抽屉用 SceneKit 光滑雾粉漆面两层实体，上层可拉，下层锁住。只显示 released 内容或明确 teaser，过滤 private 内容。回忆、山屋、运势、共读、本子、到家提醒、柯在忙什么不再出现在导航中。
+
+最后确认的五张设计参考在 [approved-designs](approved-designs/README.md)，**它们不是模拟器截图**；日记/抽屉材质贴合程度仍以运行结果为准。生产素材已入 Assets，提示词见 [moonlight-assets.md](moonlight-assets.md)。
+
+## 便利贴：服务器待 Claude 接
+
+现有 goodlove 未发现独立便利贴接口。不能复用 `/api/moments`（会生成朋友圈语境和自动回复）。客户端有独立接口、按 ChatLine 隔离的离线草稿、明确“本机待同步”提示；没有修改服务器或发送真实测试记录。
+
+- `GET /api/sticky-notes` 返回数组：`[{"id":"UUID/string","author":"user 或 ai","content":"正文","created_at":"ISO8601 UTC"}]`。
+- `POST /api/sticky-notes` 请求 `{"id":"客户端稳定 UUID","content":"正文"}`，返回完整同一对象。服务器固定作者为 user，相同 id 重试幂等，不允许覆盖 ai 的记录。
+- `POST /api/sticky-notes/delete` 请求 `{"id":"..."}`，只能删除 user 的便签，缺失 id 幂等成功。
+- 柯读写便利贴的工具和上下文由 Claude 接入，双方在原权限范围内可读，不加动态、点赞、评论或自动回复。
+- 沿用聊天服务认证和数据隔离。只有服务器返回同一 id、正文、user 作者后才标记同步成功；失败保留原稿和 id。
+
+## 旧日记完整性：服务器待 Claude 核对
+
+仓库现有 `/api/diary` 忽略 offset/limit，all_diaries 默认最多 100 条。客户端请求分页、按 ID 去重，检测重复页后停止并明确提示更早记录未完整接通，不把未加载日期说成没有日记。请核对线上版本，如仍未支持，请实现 offset/limit（默认 50）。本次没有改后端。
+
+## 亲眼验过
+
+- 首轮 `75809ee` CI 编译成功、77 个单元测试通过。查看了导出的我们、月历、玩、日记封面原生截图；聊天截图被系统权限弹窗遮挡，不能当作干净聊天页验收。这些是旧代码、预览数据、iPhone 18 Pro 模拟器，**不是最终版，也不是 iPhone 14 Pro Max**。
+- 首轮 UI 在点日记日期时失败，定位到父级 accessibilityIdentifier 覆盖子按钮，已修正；同时修正日记日期时区。修正后的完整 UI 流程仍待重跑。
+- 本地 Swift 语法解析、diff 空白检查；生产装饰图片透明通道和文件入库检查。语法解析不等于 Xcode 完整编译。
+- 对照 75 基线检查聊天 Thinking 实现；排班和经期仍调用现有接口。
+- 本任务未 SSH、未改服务器、未重启服务、未改安装页。
+
+## 没验过
+
+- 最新源代码完整 iOS 编译、全部 UI 测试、翻书和抽屉运行效果、iPhone 14 Pro Max 真机效果。
+- 真实服务器抽屉内容同步和权限边界；单元测试/夹具过滤不能替代线上验收。
+- 便利贴双向联通、柯读写便利贴，以及超过 100 条旧日记完整性。
+- 设计图与真实 UI 的最终逐页视觉对照。
+
+## 构建记录与审核步骤
+
+1. [首轮模拟器：77 个单元测试通过，日期 UI 失败](https://github.com/jia01226/ios-client/actions/runs/37703753730)，对应 `75809ee`。
+2. [旧 Build 76 已导出](https://github.com/jia01226/ios-client/actions/runs/37704878611)，对应 `9c0311a`，**缺少最终修正和最后选定排版，不要上架或安装**。
+3. [此前模拟器复验被账单/额度阻止](https://github.com/jia01226/ios-client/actions/runs/37705509911)，任务没有开始，并非编译 exit 65。
+4. [最终 Build 77 打包尝试](https://github.com/jia01226/ios-client/actions/runs/37728764314)，源码提交 `5c5f79121d33cd0951465eb79f8362b7ab967c7f`。GitHub 在编译前拒绝启动，job 的 steps 为空，artifacts 为 0，**没有最终 IPA**。
+
+GitHub 原始原因：`The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings`。此后没有反复触发付费任务，没有修改账单或额度。恢复账户可用后，需先核对 Build 77 是否仍未被占用，再从最终源码重新运行 Build iOS 和模拟器工作流。本地只有 Command Line Tools，没有完整 Xcode，不能在本机补出 iOS 安装包。
+
+交付状态：**代码与设计参考已推送，最终安装包未生成，暂不具备上架条件**。本文件的后续状态说明提交仅改审核文字，App 源码以 `5c5f791` 为准。
+
+Claude 接手先读 goodlove 最新《工单-给codex.md》，确认有无并行改动、安装页版本、Build 号占用。现有工作流用第一部可用 iPhone，`docs/iphone14-simulator-workflow.patch` 供有 workflow 权限者核对，本任务未应用。最终需 iPhone 14 Pro Max 截图和交互核验。
+
+**审核通过后由 Claude 上安装页，佳佳继续网页安装；本任务只交源码和可取得的 CI 产物。**

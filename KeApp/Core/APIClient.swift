@@ -782,6 +782,20 @@ actor APIClient {
         return try decoder.decode(ReviewedFactsPage.self, from: data)
     }
 
+    func fetchStickyNotes() async throws -> [StickyNote] {
+        try await readResource("/api/sticky-notes")
+    }
+    func saveStickyNote(id: String, content: String) async throws -> StickyNote {
+        var request = try makeRequest(path: "/api/sticky-notes", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["id": id, "content": content])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, _) = try await perform(request)
+        return try decoder.decode(StickyNote.self, from: data)
+    }
+    func deleteStickyNote(id: String) async throws {
+        try await writeResource("/api/sticky-notes/delete", body: ["id": id])
+    }
+
     func fetchDrawer() async throws -> RemoteDrawer { try await readResource("/api/drawer") }
 
     func fetchHut() async throws -> RemoteHut { try await readResource("/api/hut") }

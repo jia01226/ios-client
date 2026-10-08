@@ -31,7 +31,8 @@ final class HomeReminderCoordinator: NSObject, ObservableObject, CLLocationManag
     private let radius: CLLocationDistance = 150
 
     override private init() {
-        enabled = UserDefaults.standard.bool(forKey: "us.home-reminders.enabled")
+        enabled = false
+        UserDefaults.standard.set(false, forKey: "us.home-reminders.enabled")
         let data = UserDefaults.standard.data(forKey: "us.shift-end-times")
         endTimes = data.flatMap { try? JSONDecoder().decode([String: Date].self, from: $0) } ?? [:]
         promises = UserDefaults.standard.data(forKey: "us.promises").flatMap { try? JSONDecoder().decode([Promise].self, from: $0) } ?? []
@@ -100,7 +101,7 @@ final class HomeReminderCoordinator: NSObject, ObservableObject, CLLocationManag
         timer?.invalidate(); timer = nil
         guard enabled else {
             manager.stopMonitoringSignificantLocationChanges()
-            manager.monitoredRegions.forEach { manager.stopMonitoring(for: $0) }
+            manager.monitoredRegions.filter { $0.identifier == "ke.home-reminders" }.forEach { manager.stopMonitoring(for: $0) }
             motion.stopActivityUpdates()
             status = "自动提醒已关闭"; return
         }

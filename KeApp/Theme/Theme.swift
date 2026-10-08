@@ -64,19 +64,21 @@ struct Palette {
 }
 
 enum Morandi {
-    static let background: UInt32 = 0xF5EEEE
-    static let surface: UInt32 = 0xEDE2E1
-    static let ink: UInt32 = 0x4F4447
-    static let muted: UInt32 = 0x8E8083
-    static let separator: UInt32 = 0xE2D3D3
-    static let rose: UInt32 = 0xC9A0A3
+    static let background: UInt32 = 0xFAF3F4
+    static let surface: UInt32 = 0xF3E9EC
+    static let ink: UInt32 = 0x594B50
+    static let muted: UInt32 = 0x97898E
+    static let separator: UInt32 = 0xE7D8DD
+    static let rose: UInt32 = 0xBD949E
     static let deepRose: UInt32 = 0xA97F84
-    static let paleRose: UInt32 = 0xEBD3D3
+    static let paleRose: UInt32 = 0xEEDDE1
     static let mauve: UInt32 = 0xB8A3B0
     static let tea: UInt32 = 0xCDB9AE
     static let sage: UInt32 = 0xA9B5A6
-    static let reply: UInt32 = 0xEFE4E3
-    static let own: UInt32 = 0xE3C6C8
+    static let reply: UInt32 = 0xF3E9EC
+    static let own: UInt32 = 0xEEDDE1
+    static let send: UInt32 = 0xDEC0C7
+    static let glass: UInt32 = 0xFCF5F6
 }
 
 // MARK: - 两套皮的实际取值
@@ -301,11 +303,11 @@ final class Theme: ObservableObject {
         set { storedSkin = newValue.rawValue; objectWillChange.send() }
     }
 
-    @AppStorage("app.chatPalette") private var storedPalette = "rose"
+    @AppStorage("app.chatPalette") private var storedPalette = "moonlight-pink"
     @AppStorage("app.chatTypeface") private var storedTypeface = "regular"
 
     var chatPalette: ChatPalette {
-        get { ChatPalette.all.first { $0.id == storedPalette } ?? ChatPalette.all[1] }
+        get { ChatPalette.all.first { $0.id == storedPalette } ?? ChatPalette.all[0] }
         set { objectWillChange.send(); storedPalette = newValue.id }
     }
     var chatTypeface: ChatTypography {
@@ -350,6 +352,10 @@ final class Theme: ObservableObject {
 
     private init() {
         let defaults = UserDefaults.standard
+        if !defaults.bool(forKey: "app.moonlight-pink.migrated.v76") {
+            defaults.set("moonlight-pink", forKey: "app.chatPalette")
+            defaults.set(true, forKey: "app.moonlight-pink.migrated.v76")
+        }
         let savedFont = defaults.object(forKey: "app.chatFontSize") as? Double
         let savedOpacity = defaults.object(forKey: "app.bubbleOpacity") as? Double
         let savedBlur = defaults.object(forKey: "app.glassBlur") as? Double

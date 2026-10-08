@@ -78,14 +78,11 @@ struct HomeReminderSettingsView: View {
                             timelineRow(period.start, text: index == 0 ? "上班" : "继续上班", icon: index == 0 ? "circle.fill" : "circle")
                             timelineRow(period.end, text: index == resolved.periods.count - 1 ? "下班" : "休息", icon: "circle")
                         }
-                        timelineRow(resolved.end.addingTimeInterval(3600), text: "惦记维生素 D3", icon: "moon")
                     }
                     .padding(.vertical, 8)
                     .background(alignment: .leading) {
                         MoonOrbitGuide().stroke(theme.pageColor.separator, lineWidth: 0.7).frame(width: 12).allowsHitTesting(false)
                     }
-                    Text("最后一段下班后一个小时，跟晚饭一起。")
-                        .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
                 } else {
                     Text("请检查起止时间：每段结束不能与开始相同，两段需按顺序填写，整班不超过一天。")
                         .font(theme.font.journalCaption).foregroundStyle(theme.pageAccent)

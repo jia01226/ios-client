@@ -1,436 +1,267 @@
 import SwiftUI
 
-// 【我们】—— 两个人的日期、提醒与排班。
+// 【我们】—— 两个人的日子、便利贴与排班，顺着页面慢慢展开。
 
 struct UsView: View {
     @EnvironmentObject private var theme: Theme
-    @ObservedObject private var notebook = QuoteNotebook.shared
-    @ObservedObject private var homeReminders = HomeReminderCoordinator.shared
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let line: ChatLine
     @StateObject private var vm: UsViewModel
-    @StateObject private var periodStore: PeriodStore
-    @State private var calendarSection = CalendarSection.days
-    @State private var editingAnniversaries = false
-    private enum CalendarSection: String, CaseIterable { case days = "日子", week = "周班表", month = "月历" }
-    @SceneStorage("us.selected-anniversary-index") private var selectedAnniversaryIndex = 0
-    @SceneStorage("us.journal-anniversary-index.v2") private var journalAnniversaryIndex = 0
-    @State private var selectedWeekIndex = min(6, max(0, (Calendar.current.component(.weekday, from: .now) + 5) % 7))
-    @State private var showingCompanionHub = false
-    @State private var showingNotebook = false
-    @State private var showingReminderSettings = false
-    @State private var showingReminderJournal = false
-    @State private var shiftEditDate = Date()
-    @State private var weeklyScheduleDate: CalendarEditSelection?
-
+    @StateObject private var periods: PeriodStore
+    @StateObject private var notes: StickyNotesStore
+    @State private var anniversaryID = "together"
+    @State private var editAnniversaries = false
+    @State private var editTemplates = false
+    @State private var editDay: CalendarEditSelection?
+    @State private var month = Calendar.current.dateInterval(of: .month, for: .now)?.start ?? .now
+    private let anniversaryIDs = ["together", "confession", "mine", "ke"]
+    private let anniversaryTitles = ["纪念日", "表白日", "我的生日", "柯生日"]
     init(line: ChatLine = .test1) {
         self.line = line
-        _vm = StateObject(wrappedValue: UsViewModel(api: APIClient(baseURL: line.apiBaseURL)))
-        _periodStore = StateObject(wrappedValue: PeriodStore(api: APIClient(baseURL: line.apiBaseURL), scope: line.rawValue))
+        let api = APIClient(baseURL: line.apiBaseURL)
+        _vm = StateObject(wrappedValue: UsViewModel(api: api))
+        _periods = StateObject(wrappedValue: PeriodStore(api: api, scope: line.rawValue))
+        _notes = StateObject(wrappedValue: StickyNotesStore(api: api, scope: line.rawValue))
     }
-
+    private var selected: Anniversary? { vm.anniversaries.first { $0.id == anniversaryID } ?? vm.anniversaries.first }
     var body: some View {
-        Group {
-            if theme.skin == .day { dayHome } else { legacyHome }
-        }
-        .task(id: line) { await periodStore.load() }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await vm.loadReminders(); await periodStore.load() } }
-        }
-        .sheet(isPresented: $editingAnniversaries, onDismiss: { Task { await vm.loadReminders() } }) {
-            CompanionPages(page: .anniversaries, line: line).environmentObject(theme)
-        }
-    }
-
-    private var legacyHome: some View {
-        ScrollViewReader { scrollProxy in
-            ScrollView {
-                VStack(spacing: 0) {
-                PeriodQuickActions(store: periodStore).padding(JournalLayout.gutter)
-                Button("日历里的纪念日") { editingAnniversaries = true }.font(theme.font.journalCaption)
-                AnniversaryPager(
-                    events: vm.anniversaries,
-                    selectedIndex: $selectedAnniversaryIndex,
-                    displayFor: vm.display
-                )
-                .frame(height: dynamicTypeSize.isAccessibilitySize ? 390 : 360)
-
-                reminder
-                    .padding(.horizontal, 30)
-                Button { showingReminderSettings = true } label: {
-                    Label("班表和提醒设置", systemImage: "clock")
-                        .foregroundStyle(UsPalette.ink)
-                        .padding(.vertical, 12)
-                }
-                .accessibilityIdentifier("us-reminder-settings")
-
-                companionEntry
-                    .padding(.horizontal, 30)
-                    .padding(.top, 34)
-
-                if dynamicTypeSize.isAccessibilitySize {
-                    AccessibleWeekSchedule(days: vm.thisWeek, vm: vm)
-                        .padding(.horizontal, 30)
-                        .padding(.top, 44)
-                        .accessibilityIdentifier("curved-week-schedule")
-                } else {
-                    CurvedWeekSchedule(days: vm.thisWeek, selectedIndex: $selectedWeekIndex, vm: vm)
-                        .padding(.top, 64)
-                        .accessibilityIdentifier("curved-week-schedule")
-                }
-
-                Image(systemName: "chevron.compact.down")
-                    .font(.system(size: 22, weight: .light))
-                    .foregroundStyle(UsPalette.gold.opacity(0.68))
-                    .padding(.top, 18)
-                    .padding(.bottom, 88)
-                    .accessibilityHidden(true)
-
-                    Button { showingNotebook = true } label: {
-                        Label("小本子 · 收下说过的话", systemImage: "book.closed")
-                            .font(.body)
-                            .foregroundStyle(UsPalette.ink)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 18)
-                    }
-                    .accessibilityIdentifier("us-quote-notebook")
-
-                    MonthCalendar(vm: vm)
-                        .padding(.horizontal, 24)
-                        .padding(.bottom, 34)
-                        .id("moon-calendar")
-                }
-            }
-            .scrollIndicators(.hidden)
-            .refreshable { await vm.loadReminders() }
-            .scrollContentBackground(.hidden)
-            .background(UsPalette.paper.ignoresSafeArea())
-            .task {
-                if ProcessInfo.processInfo.arguments.contains("-preview-us-calendar") {
-                    try? await Task.sleep(for: .milliseconds(280))
-                    scrollProxy.scrollTo("moon-calendar", anchor: .top)
-                }
-            }
-            .onChange(of: vm.anniversaries.map(\.id)) { _, ids in
-                selectedAnniversaryIndex = min(selectedAnniversaryIndex, max(0, ids.count - 1))
-            }
-            .task(id: line) { await vm.loadReminders() }
-            .sheet(isPresented: $showingReminderSettings) {
-                NavigationStack { HomeReminderSettingsView(model: vm) }
-            }
-            .sheet(isPresented: $showingNotebook) {
-                NavigationStack { QuoteNotebookView() }
-            }
-            .sheet(isPresented: $showingCompanionHub) {
-                CompanionHubView(line: line, model: vm)
-            }
-        }
-    }
-
-    private var journalEvents: [Anniversary] {
-        vm.anniversaries.sorted { journalRank($0) < journalRank($1) }
-    }
-    private func journalRank(_ event: Anniversary) -> Int {
-        if event.title.contains("在一起") || event.title.contains("纪念") { return 0 }
-        if event.title.contains("表白") { return 1 }
-        return event.title.contains("柯") ? 3 : 2
-    }
-    private func journalLabel(_ event: Anniversary) -> String {
-        ["纪念日", "表白日", "我的生日", "柯的生日"][journalRank(event)]
-    }
-    private var dayHome: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("我们").font(theme.font.journalTitle)
-                        Text("和你一起，把每一天都变成喜欢的日子。")
-                            .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
-                    }.padding(.top, 20).padding(.bottom, 28)
-                    calendarBlock
-                    Button { showingReminderJournal = true } label: {
-                        HStack(spacing: 14) {
-                            Image(systemName: "moon.fill").font(.system(size: 23, weight: .ultraLight)).foregroundStyle(theme.pageAccent)
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text("今天的惦记").font(theme.font.journalBody)
-                                Text(todayReminderLabel).font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
+                    if theme.skin == .day {
+                        dayOpening
+                    } else {
+                        MoonlightHeader(title: "我们", subtitle: "和你一起，把每一天都变成喜欢的日子。", artwork: "UsMoonBloom")
+                        anniversary.padding(.top, 14)
+                        HStack(spacing: 0) {
+                            ForEach(Array(anniversaryIDs.enumerated()), id: \.element) { index, id in
+                                Button { anniversaryID = id } label: {
+                                    VStack(spacing: 7) {
+                                        Text(anniversaryTitles[index]).font(Moonlight.serif(14))
+                                        Circle().fill(anniversaryID == id ? theme.pageAccent : theme.pageAccent.opacity(0)).frame(width: 4, height: 4)
+                                    }.foregroundStyle(anniversaryID == id ? theme.pageAccent : theme.pageColor.textSecondary)
+                                        .frame(maxWidth: .infinity, minHeight: 44)
+                                }.accessibilityIdentifier("anniversary-" + id)
                             }
-                            Spacer(minLength: 0)
-                            Image(systemName: "chevron.right").font(.system(size: 11, weight: .light))
-                        }.padding(14).background(theme.pageColor.cardElevated.opacity(0.50), in: RoundedRectangle(cornerRadius: 14))
-                    }.accessibilityIdentifier("us-reminder-journal").padding(.vertical, 18)
-                    journalDivider
-                    HStack {
-                        Label("小本子", systemImage: "book.closed").font(theme.font.journalHeading)
-                        Spacer()
-                        Text("一句话，留住此刻的温柔。").font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
-                    }.padding(.bottom, 20)
-                    Button { showingNotebook = true } label: {
-                        HStack(spacing: 20) {
-                            JournalBookCover()
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text(notebook.pages.first.map { "“\($0.text)”" } ?? "等一句想收藏的话。")
-                                    .font(theme.font.journalBody).lineLimit(2)
-                                if let page = notebook.pages.first {
-                                    Text("\(page.speaker) · \(page.spokenAt.formatted(.dateTime.month().day()))")
-                                        .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
-                                }
-                                Text("一页一句，留一行心情。").font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
-                            }
-                            Spacer(minLength: 0)
-                            Image(systemName: "chevron.right").font(.system(size: 11, weight: .light))
-                        }
-                    }.accessibilityIdentifier("us-quote-notebook")
-                    Text("长按聊天里的话，收进本子。")
-                        .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary).padding(.top, 14)
-                    Button { showingCompanionHub = true } label: {
-                        Label("柯在忙什么", systemImage: "ellipsis").font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
-                    }.accessibilityIdentifier("us-companion-hub").padding(.top, 28)
-                }
-                .padding(.horizontal, 24).padding(.bottom, 26)
-                .background(alignment: .topTrailing) {
-                    JournalMoonArtwork().frame(width: 180, height: 180).offset(x: 55, y: -70)
-                }
-            }
-            .font(theme.font.journalBody).foregroundStyle(theme.pageColor.textPrimary).tint(theme.pageAccent)
-            .buttonStyle(.plain).scrollIndicators(.hidden).background { MoonJournalBackground() }
-            .refreshable { await vm.loadReminders(); await periodStore.load() }.task(id: line) { await vm.loadReminders() }
-            .task {
-                if ProcessInfo.processInfo.arguments.contains("-preview-us-calendar") {
-                    calendarSection = .month
-                    try? await Task.sleep(for: .milliseconds(280)); proxy.scrollTo("moon-calendar", anchor: .top)
-                }
-            }
-            .onChange(of: journalEvents.map(\.id)) { _, ids in
-                journalAnniversaryIndex = min(journalAnniversaryIndex, max(0, ids.count - 1))
-            }
-            .fullScreenCover(isPresented: $showingReminderSettings) { NavigationStack { HomeReminderSettingsView(model: vm, date: shiftEditDate) }.presentationBackground(theme.pageBackground) }
-            .sheet(item: $weeklyScheduleDate) { selection in
-                ScheduleEditorSheet(model: vm, date: selection.date, currentShift: nil, currentNote: nil) { shift, note in
-                    vm.setShift(shift, note: note, on: selection.date)
-                    weeklyScheduleDate = nil
-                }.presentationDetents([.large]).presentationBackground(theme.pageBackground)
-            }
-            .fullScreenCover(isPresented: $showingReminderJournal) { NavigationStack { ReminderJournalView() }.presentationBackground(theme.pageBackground) }
-            .sheet(isPresented: $showingNotebook) { NavigationStack { QuoteNotebookView() } }
-            .sheet(isPresented: $showingCompanionHub) { CompanionHubView(line: line, model: vm) }
-        }
-    }
-    private var calendarBlock: some View {
-        VStack(alignment: .leading, spacing: JournalLayout.gap) {
-            HStack {
-                Text("日历").font(theme.font.journalHeading)
-                Spacer()
-                Button("改纪念日") { editingAnniversaries = true }
-                    .font(theme.font.journalCaption).accessibilityIdentifier("calendar-edit-anniversaries")
-            }
-            PeriodQuickActions(store: periodStore)
-            HStack(spacing: JournalLayout.smallGap) {
-                ForEach(CalendarSection.allCases, id: \.self) { section in
-                    Button { calendarSection = section } label: {
-                        Text(section.rawValue).font(theme.font.journalBody)
-                            .frame(maxWidth: .infinity).padding(.vertical, JournalLayout.smallGap)
-                            .background(theme.pageAccent.opacity(calendarSection == section ? 0.14 : 0), in: Capsule())
-                    }.accessibilityIdentifier("calendar-section-" + section.rawValue)
-                        .accessibilityAddTraits(calendarSection == section ? .isSelected : [])
-                }
-            }
-            switch calendarSection {
-            case .days: journalDays
-            case .week: journalWeek
-            case .month: MonthCalendar(vm: vm, journal: true).id("moon-calendar")
-            }
-        }
-    }
-    private var journalDays: some View {
-        VStack(spacing: 0) {
-                    HStack(spacing: 5) {
-                        ForEach(Array(journalEvents.enumerated()), id: \.element.id) { index, event in
-                            Button { journalAnniversaryIndex = index } label: {
-                                Text(journalLabel(event)).font(theme.font.journalCaption)
-                                    .foregroundStyle(index == journalAnniversaryIndex ? theme.pageColor.textOnAccent : theme.pageColor.textSecondary)
-                                    .frame(maxWidth: .infinity).padding(.vertical, 9)
-                                    .background(index == journalAnniversaryIndex ? theme.pageAccent : .clear, in: Capsule())
-                            }
-                        }
-                    }.padding(.bottom, 16)
-                    TabView(selection: $journalAnniversaryIndex) {
-                        ForEach(Array(journalEvents.enumerated()), id: \.element.id) { index, event in
-                            let display = vm.display(for: event)
-                            VStack(spacing: 7) {
-                                Text(journalRank(event) == 0 ? "在一起已经" : (journalRank(event) == 1 ? "表白已经" : journalLabel(event)))
-                                    .font(theme.font.journalBody)
-                                HStack(alignment: .firstTextBaseline, spacing: 9) {
-                                    Text(display.number).font(.custom("Didot", size: 58, relativeTo: .largeTitle))
-                                    Text(display.unit).font(theme.font.journalHeading)
-                                }
-                                Text(display.dateLabel).font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
-                            }.frame(maxWidth: .infinity).tag(index)
-                        }
-                    }.tabViewStyle(.page(indexDisplayMode: .never))
-                    .frame(height: dynamicTypeSize.isAccessibilitySize ? 245 : 155)
-                    .accessibilityIdentifier("us-anniversary-pager")
-                    HStack(spacing: 7) {
-                        ForEach(journalEvents.indices, id: \.self) { index in
-                            Circle().fill(theme.pageAccent.opacity(index == journalAnniversaryIndex ? 1 : 0.25)).frame(width: 5, height: 5)
-                        }
-                    }.frame(maxWidth: .infinity).padding(.bottom, 20)
-        }
-    }
-    private var journalWeek: some View {
-        VStack(alignment: .leading, spacing: 0) {
-                    HStack {
-                        Text("本周班表").font(theme.font.journalHeading)
-                        Spacer()
-                        Button("班次设置") { shiftEditDate = .now; showingReminderSettings = true }
-                            .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
-                            .accessibilityIdentifier("us-shift-edit")
-                    }.padding(.top, 20).padding(.bottom, 18)
-                    dayWeek
-                    Text("空白日排班 · 再点已排日期可取消")
-                        .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary).padding(.top, 10)
+                        }.padding(.top, 16)
+                    }
+                    MoonStickyNotesView(store: notes).padding(.top, theme.skin == .day ? 92 : 8)
+                    // The weekly schedule follows below the fold; don't compress the anniversary to fit it.
+                    weekly.padding(.top, theme.skin == .day ? 60 : 26)
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.35)) { proxy.scrollTo("month-calendar", anchor: .top) }
+                    } label: {
+                        VStack(spacing: 7) {
+                            Text("\(Calendar.current.component(.month, from: month))月").font(Moonlight.serif(16))
+                            Image(systemName: "chevron.down").font(.system(size: 12, weight: .ultraLight))
+                        }.frame(maxWidth: .infinity, minHeight: 64)
+                    }.padding(.vertical, theme.skin == .day ? 24 : 10).accessibilityIdentifier("us-show-month")
+                    VStack(spacing: 20) {
+                        if theme.skin != .day { PeriodQuickActions(store: periods) }
+                        calendar
+                    }.id("month-calendar").padding(.top, 12)
                     if let status = vm.shiftSyncStatus {
-                        Button(status) { Task { await vm.syncShifts(); await vm.refreshShifts() } }
-                            .font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
-                            .disabled(vm.syncingShifts).accessibilityIdentifier("shift-sync-status").padding(.top, 6)
+                        Button(status) { Task { await vm.syncShifts() } }.font(Moonlight.serif(12)).padding(.top, 16)
                     }
+                    if let error = vm.reminderLoadError {
+                        Button(error) { Task { await vm.loadReminders() } }.font(Moonlight.serif(12)).padding(.top, 12)
+                    }
+                    Button("编辑纪念日") { editAnniversaries = true }
+                        .font(Moonlight.serif(12)).foregroundStyle(theme.pageColor.textSecondary).padding(.top, 28)
+                }.padding(.horizontal, 26).padding(.bottom, 32)
+            }.scrollIndicators(.hidden).refreshable { await load() }
+        }
+        .buttonStyle(.plain).foregroundStyle(theme.pageColor.textPrimary)
+        .background(theme.pageBackground.ignoresSafeArea()).tint(theme.pageAccent)
+        .task { await load() }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await load() } } }
+        .sheet(isPresented: $editTemplates) { HomeReminderSettingsView(model: vm).environmentObject(theme) }
+        .sheet(isPresented: $editAnniversaries, onDismiss: { Task { await vm.loadReminders() } }) {
+            CompanionPages(page: .anniversaries, line: line).environmentObject(theme)
+        }
+        .sheet(item: $editDay) { selection in
+            ScheduleEditorSheet(model: vm, date: selection.date, currentShift: vm.shift(on: selection.date), currentNote: vm.shiftNote(on: selection.date)) { shift, note in
+                vm.setShift(shift, note: note, on: selection.date); editDay = nil
+            }.presentationDetents([.large]).presentationBackground(theme.pageBackground)
         }
     }
-
-    private var journalDivider: some View {
-        Rectangle().fill(theme.pageColor.separator).frame(height: 0.5)
+    private func load() async {
+        async let a: Void = vm.loadReminders()
+        async let b: Void = periods.load()
+        async let c: Void = notes.load()
+        _ = await (a, b, c)
     }
-    private var dayWeek: some View {
-        HStack(alignment: .top, spacing: 5) {
-            ForEach(vm.thisWeek) { day in
-                Button {
-                    if vm.shift(on: day.date) != nil { vm.setShift(nil, on: day.date) }
-                    else { weeklyScheduleDate = CalendarEditSelection(date: day.date) }
-                } label: {
-                    VStack(spacing: 5) {
-                        Text("周" + vm.weekdayLabel(day.date)).font(theme.font.journalCaption)
-                        Text(day.date.formatted(.dateTime.month(.defaultDigits).day())).font(.custom("NotoSerifSC-ExtraLight", size: 10))
-                        Text(vm.shift(on: day.date).map { vm.shiftDisplay($0, on: day.date) } ?? "未排")
-                            .font(theme.font.journalCaption).lineLimit(1).minimumScaleFactor(0.7)
-                            .frame(maxWidth: .infinity).padding(.vertical, 7)
-                            .background(theme.pageAccent.opacity(0.10), in: Capsule()).padding(.top, 5)
-                    }.frame(maxWidth: .infinity).contentShape(Rectangle())
-                }.accessibilityIdentifier("week-day-" + HomeReminderCoordinator.dayKey(day.date))
-                    .accessibilityLabel(vm.calendarDayAccessibilityLabel(day.date))
-            }
-        }.accessibilityElement(children: .contain).accessibilityIdentifier("curved-week-schedule")
-    }
-
-    private var todayReminderLabel: String {
-        if let end = homeReminders.endTime(on: .now) {
-            return "\(end.addingTimeInterval(3600).formatted(date: .omitted, time: .shortened)) · 惦记维生素 D3；睡前 21:30"
-        }
-        return "下班后 1 小时，记得维生素 D3"
-    }
-
-    private var reminder: some View {
-        HStack(alignment: .center, spacing: 14) {
-            BotanicalSprig()
-                .frame(width: 40, height: 52)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text("柯替你记得")
-                    .font(.custom("STSongti-SC-Regular", size: 18, relativeTo: .headline))
-                    .tracking(1.5)
-                    .foregroundStyle(UsPalette.ink)
-
-                if let item = vm.activeReminders.first {
-                    Text(vm.reminderHeadline(item))
-                        .font(.custom("STSongti-SC-Light", size: 16, relativeTo: .body))
-                        .tracking(0.7)
-                        .foregroundStyle(UsPalette.ink)
-                    Text(vm.reminderDetail(item))
-                        .font(.custom("STSongti-SC-Light", size: 12, relativeTo: .caption))
-                        .tracking(0.8)
-                        .foregroundStyle(UsPalette.mutedInk)
-                } else if vm.loadingReminders {
-                    Text("正在看看记下了什么")
-                        .font(.custom("STSongti-SC-Light", size: 14, relativeTo: .body))
-                        .foregroundStyle(UsPalette.mutedInk)
-                } else if vm.reminderLoadError != nil {
-                    Button("提醒暂时没接上 · 点这里重试") {
-                        Task { await vm.loadReminders() }
-                    }
-                    .font(.custom("STSongti-SC-Light", size: 14, relativeTo: .body))
-                    .foregroundStyle(UsPalette.coral)
+    private var dayOpening: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("我们").font(Moonlight.serif(24))
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 24)
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 28) { dayAnniversaryChoices; dayAnniversaryNumber }
                 } else {
-                    Text("现在没有待着的提醒")
-                        .font(.custom("STSongti-SC-Light", size: 14, relativeTo: .body))
-                        .foregroundStyle(UsPalette.mutedInk)
+                    HStack(alignment: .center, spacing: 12) {
+                        dayAnniversaryChoices.frame(width: 116, alignment: .leading)
+                        dayAnniversaryNumber.frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+                }
+            }.padding(.top, 140)
+        }
+        .background(alignment: .topTrailing) {
+            Image("UsQuietMoon").resizable().scaledToFit().frame(width: 196, height: 196)
+                .opacity(0.62).offset(x: 78, y: -32).allowsHitTesting(false).accessibilityHidden(true)
+        }
+        .overlay(alignment: .bottomLeading) {
+            Image("UsCamelliaSprig").resizable().scaledToFit().frame(width: 158, height: 158)
+                .opacity(0.7).offset(x: -64, y: 120).allowsHitTesting(false).accessibilityHidden(true)
+        }
+    }
+    private var dayAnniversaryChoices: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(anniversaryIDs.enumerated()), id: \.element) { index, id in
+                Button { anniversaryID = id } label: {
+                    HStack(spacing: 13) {
+                        Circle().fill(theme.pageAccent.opacity(anniversaryID == id ? 1 : 0)).frame(width: 5, height: 5)
+                        Text(anniversaryTitles[index]).font(Moonlight.serif(16))
+                    }.foregroundStyle(anniversaryID == id ? theme.pageAccent : theme.pageColor.textPrimary)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
+                }.accessibilityIdentifier("anniversary-" + id)
+                    .accessibilityAddTraits(anniversaryID == id ? .isSelected : [])
+            }
+        }
+    }
+    @ViewBuilder private var dayAnniversaryNumber: some View {
+        if let event = vm.anniversaries.first(where: { $0.id == anniversaryID }) {
+            let display = vm.display(for: event)
+            VStack(alignment: .trailing, spacing: 14) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(display.number).font(Moonlight.numeral(92)).lineLimit(1).minimumScaleFactor(0.55)
+                    Text(display.unit).font(Moonlight.serif(20)).fixedSize()
+                }.frame(height: 128, alignment: .bottomTrailing)
+                Text(display.dateLabel).font(Moonlight.serif(13)).tracking(0.6)
+                    .lineLimit(1).minimumScaleFactor(0.75)
+            }.accessibilityElement(children: .combine)
+                .accessibilityLabel("\(display.title)，\(display.number)\(display.unit)，\(display.dateLabel)")
+                .accessibilityIdentifier("us-anniversary-pager")
+        } else {
+            Button("记下这一天") { editAnniversaries = true }
+                .font(Moonlight.serif(17)).foregroundStyle(theme.pageAccent).frame(minHeight: 44)
+        }
+    }
+    @ViewBuilder private var anniversary: some View {
+        if let selected {
+            let display = vm.display(for: selected)
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(selected.id == "together" ? "在一起" : display.title).font(Moonlight.serif(22))
+                    Text("with you").font(Moonlight.script(23)).foregroundStyle(theme.pageAccent)
+                }
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(display.number).font(Moonlight.numeral(theme.skin == .day ? 92 : 88)).minimumScaleFactor(0.6).lineLimit(1)
+                        .frame(height: theme.skin == .day ? 126 : 110)
+                    Text(display.unit).font(Moonlight.serif(27))
+                }.padding(.top, theme.skin == .day ? 10 : 3)
+                HStack(spacing: 12) {
+                    Rectangle().fill(theme.pageAccent).frame(width: 24, height: 0.7)
+                    Text(display.dateLabel).font(Moonlight.serif(14)).tracking(1)
+                }.padding(.top, theme.skin == .day ? 8 : 0)
+            }.accessibilityElement(children: .combine).accessibilityIdentifier("us-anniversary-pager")
+        }
+    }
+    private var weekly: some View {
+        VStack(alignment: .leading, spacing: theme.skin == .day ? 22 : 14) {
+            HStack {
+                Text("这一周").font(Moonlight.serif(23))
+                Spacer()
+                Button { editTemplates = true } label: {
+                    Image(systemName: "pencil.line").font(.system(size: 19, weight: .ultraLight)).frame(width: 44, height: 44)
+                }.accessibilityLabel("设置班次时间").accessibilityIdentifier("us-shift-settings")
+            }
+            HStack(spacing: 0) {
+                ForEach(Array(vm.thisWeek.enumerated()), id: \.element.id) { index, day in
+                    Button { tapDay(day.date) } label: {
+                        VStack(spacing: 10) {
+                            Text(["一", "二", "三", "四", "五", "六", "日"][index]).font(Moonlight.serif(13))
+                            Text("\(Calendar.current.component(.day, from: day.date))")
+                                .font(Moonlight.numeral(25)).frame(width: 34, height: 34)
+                                .overlay(Circle().stroke(Calendar.current.isDateInToday(day.date) ? theme.pageAccent : theme.pageAccent.opacity(0), lineWidth: 0.7))
+                            Text(vm.shift(on: day.date).map { vm.shiftDisplay($0, on: day.date) } ?? "—")
+                                .font(Moonlight.serif(12)).lineLimit(1).minimumScaleFactor(0.7)
+                        }.foregroundStyle(Calendar.current.isDateInToday(day.date) ? theme.pageAccent : theme.pageColor.textSecondary)
+                            .frame(maxWidth: .infinity).contentShape(Rectangle())
+                    }.accessibilityIdentifier("week-day-\(index)")
+                        .accessibilityLabel(vm.calendarDayAccessibilityLabel(day.date))
+                        .accessibilityHint(vm.shift(on: day.date) == nil ? "轻点写班表" : "轻点直接取消当天排班")
                 }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
-
-    private var companionEntry: some View {
-        Button { showingCompanionHub = true } label: {
-            VStack(alignment: .leading, spacing: 13) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("柯在忙什么")
-                        .font(.custom("STSongti-SC-Regular", size: 20, relativeTo: .headline))
-                        .tracking(1.8)
-                    Spacer()
-                    Text("打开")
-                        .font(.custom("STSongti-SC-Light", size: 13, relativeTo: .caption))
-                        .tracking(1)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .medium))
+    private func tapDay(_ date: Date) {
+        if vm.shift(on: date) != nil { vm.setShift(nil, on: date) }
+        else { editDay = CalendarEditSelection(date: date) }
+    }
+    private var calendar: some View {
+        VStack(spacing: 16) {
+            if theme.skin == .day {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) {
+                        monthNavigation.frame(minWidth: 210)
+                        PeriodCalendarControls(store: periods).fixedSize()
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        monthNavigation
+                        PeriodCalendarControls(store: periods)
+                    }
                 }
-
-                Text("他手边正在跑的活 · 柯的抽屉")
-                    .font(.custom("STSongti-SC-Light", size: 14, relativeTo: .body))
-                    .tracking(0.7)
-                    .foregroundStyle(UsPalette.mutedInk)
-
-                HStack(spacing: 17) {
-                    hubStatus("提醒", value: reminderStatus)
-                    hubStatus("能力", value: "逐步接通")
-                    hubStatus("抽屉", value: "去看看")
+            } else {
+                monthNavigation
+            }
+            if theme.skin == .day {
+                if let error = periods.error { Button(error) { Task { await periods.load() } }.font(Moonlight.serif(12)) }
+                if let status = periods.status { Text(status).font(Moonlight.serif(12)).foregroundStyle(theme.pageColor.textSecondary) }
+            }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 10) {
+                ForEach(["一", "二", "三", "四", "五", "六", "日"], id: \.self) { Text($0).font(Moonlight.serif(12)).foregroundStyle(theme.pageColor.textSecondary) }
+                ForEach(Array(vm.monthCells(for: month).enumerated()), id: \.offset) { _, date in
+                    if let date {
+                        Button { tapDay(date) } label: {
+                            VStack(spacing: 4) {
+                                Text("\(Calendar.current.component(.day, from: date))").font(Moonlight.numeral(20))
+                                Text(vm.shift(on: date).map { vm.shiftDisplay($0, on: date) } ?? " ")
+                                    .font(Moonlight.serif(10)).lineLimit(1).minimumScaleFactor(0.7)
+                                Circle().fill(isAnniversary(date) ? theme.pageAccent : theme.pageAccent.opacity(0)).frame(width: 3, height: 3)
+                            }.frame(maxWidth: .infinity, minHeight: 52)
+                                .background(theme.pageAccent.opacity(isPeriod(date) ? 0.16 : 0), in: RoundedRectangle(cornerRadius: 12))
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(theme.pageAccent.opacity(Calendar.current.isDateInToday(date) ? 0.7 : 0), lineWidth: 0.6))
+                        }.accessibilityIdentifier(vm.calendarDayIdentifier(date))
+                            .accessibilityLabel(vm.calendarDayAccessibilityLabel(date) + (isPeriod(date) ? "，经期" : "") + (isAnniversary(date) ? "，纪念日" : ""))
+                    } else { Color.clear.frame(height: 52) }
                 }
-            }
-            .foregroundStyle(UsPalette.ink)
-            .padding(.vertical, 17)
-            .overlay(alignment: .top) {
-                Rectangle().fill(UsPalette.hairline.opacity(0.52)).frame(height: 0.5)
-            }
-            .overlay(alignment: .bottom) {
-                Rectangle().fill(UsPalette.hairline.opacity(0.28)).frame(height: 0.5)
-            }
-            .contentShape(Rectangle())
+            }.accessibilityIdentifier("us-month-grid")
+            if !vm.isCurrentMonth(month) { Button("回到本月") { month = vm.startOfMonth(for: .now) }.font(Moonlight.serif(12)) }
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("us-companion-hub")
-        .accessibilityHint("查看提醒、抽屉和柯能做的事情")
     }
-
-    private var reminderStatus: String {
-        if vm.loadingReminders { return "连接中" }
-        if vm.reminderLoadError != nil { return "未接上" }
-        return vm.activeReminders.isEmpty ? "暂无" : "\(vm.activeReminders.count) 件"
-    }
-
-    private func hubStatus(_ title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.custom("STSongti-SC-Light", size: 12, relativeTo: .caption))
-                .foregroundStyle(UsPalette.mutedInk)
-            Text(value)
-                .font(.custom("STSongti-SC-Regular", size: 14, relativeTo: .subheadline))
+    private var monthNavigation: some View {
+        HStack {
+            Button { month = vm.month(byAdding: -1, to: month) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }.accessibilityLabel("上个月")
+            Spacer()
+            Text(vm.monthTitle(for: month)).font(Moonlight.serif(theme.skin == .day ? 16 : 21))
+                .lineLimit(1).minimumScaleFactor(0.8)
+            Spacer()
+            Button { month = vm.month(byAdding: 1, to: month) } label: { Image(systemName: "chevron.right").frame(width: 44, height: 44) }.accessibilityLabel("下个月")
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    private func isPeriod(_ date: Date) -> Bool {
+        let key = HomeReminderCoordinator.dayKey(date)
+        return periods.records.contains { $0.start_date <= key && key <= (periods.pendingEnds[$0.id] ?? $0.end_date ?? periods.today) }
+    }
+    private func isAnniversary(_ date: Date) -> Bool {
+        vm.anniversaries.contains {
+            Calendar.current.component(.month, from: $0.date) == Calendar.current.component(.month, from: date) &&
+            Calendar.current.component(.day, from: $0.date) == Calendar.current.component(.day, from: date)
+        }
     }
 }
-
-
 
 private struct AnniversaryPager: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

@@ -10,151 +10,47 @@ import SafariServices
 struct PlayView: View {
     @EnvironmentObject private var theme: Theme
     let line: ChatLine
-    @State private var destination: CompanionPage?
-    @State private var notebookOpen = false
-    @State private var fortuneOpen = false
-    @State private var gardenOpen = false
-    @State private var readingOpen = false
+    @State private var tarotOpen = false
     @State private var duelOpen = false
-    @State private var hutOpen = false
-
     init(line: ChatLine = .main) { self.line = line }
-
-    private var ink: Color { theme.skin == .night ? theme.pageColor.textPrimary : PageColors.ink2 }
-    private var gold: Color { theme.skin == .night ? theme.pageColor.accentSoft : PageColors.tea5 }
-    private func serif(_ size: CGFloat) -> Font { .custom("NotoSerifSC-Regular", size: size, relativeTo: .body).weight(.light) }
-
     var body: some View {
-        ZStack(alignment: .top) {
-            theme.pageBackground.ignoresSafeArea()
-
-            // 她画的水彩纸：纸纹、花瓣、金点都在这张图里。
-            Image("PlayPaper")
-                .resizable()
-                .scaledToFill()
-                .ignoresSafeArea()
-
-            // 图上的花瓣是印死的，再叠几片会飘的，跟风铃一个风。
-            DriftingPetals(petal: theme.pageColor.playPetal)
-                .ignoresSafeArea()
-
-            // 右串单独放在花枝【下面】：它挂的那段枝整个被花和叶盖住了。
-            // 金环整个藏进叶子后面，只留一根线垂下来 —— 她要的就是看不见钩子。
-            HStack(alignment: .top, spacing: 0) {
-                Color.clear.frame(maxWidth: .infinity)
-                Color.clear.frame(maxWidth: .infinity)
-                ChimeStrand(
-                    headAsset: "ChimeRightHead", bodyAsset: "ChimeRightBody",
-                    sourceWidth: 220, displayWidth: 78,
-                    headSourceHeight: 78, bodySourceHeight: 899,
-                    ringCenterInHead: 26, cordOffsetX: -1.8, cordExtra: 113,
-                    topBeadY: 0.194, bottomBeadY: 0.621, beadW: 0.82, beadH: 0.233,
-                    topGlyph: nil,
-                    top: ChimeBeadSpec(title: "日记", identifier: "play-diary") { destination = .diary },
-                    // 2026-10-07 朋友圈不要了（她和柯一起定的），这颗换成本子。
-                    bottom: ChimeBeadSpec(title: "本子", identifier: "play-notebook") { notebookOpen = true },
-                    label: "日记 · 本子", period: 3.7, phase: 3.4
-                )
-                .padding(.top, 134)
-                .offset(x: 14)
-                .frame(maxWidth: .infinity)
-            }
-            .padding(.horizontal, 56)
-
-            // 她画的水彩茶花。风铃画在它上面，金环压着枝，看着才是挂在上头。
-            Image("PlayBranch")
-                .resizable()
-                .scaledToFit()
-                .frame(width: UIScreen.main.bounds.width * 0.98)
-                .padding(.top, -18)
-                .allowsHitTesting(false)
-
-
-            // ⚠️ 层序：花枝先画，风铃后画压在枝上 —— 金环要看得见，才像挂上去的；
-            //    埋到枝后面就只剩半个钩子。别把这两层调过来。
-            //    三串各挂各的 —— 枝是斜的，左边那根挂得最低。
-            //    padding 是环落在枝上的高度，cordExtra 是线放多长（决定玉坠落到哪儿）。
-            HStack(alignment: .top, spacing: 0) {
-                ChimeStrand(
-                    headAsset: "ChimeLeftHead", bodyAsset: "ChimeLeftBody",
-                    sourceWidth: 220, displayWidth: 78,
-                    headSourceHeight: 78, bodySourceHeight: 907,
-                    ringCenterInHead: 26, cordOffsetX: 1.8, cordExtra: 106,
-                    topBeadY: 0.195, bottomBeadY: 0.626, beadW: 0.82, beadH: 0.235,
-                    topGlyph: .openBook,
-                    top: ChimeBeadSpec(title: "共读", identifier: "play-reading") { readingOpen = true },
-                    bottom: ChimeBeadSpec(title: "运势", identifier: "play-fortune") { fortuneOpen = true },
-                    label: "共读 · 运势", period: 3.4, phase: 0
-                )
-                .padding(.top, 133)
-                .frame(maxWidth: .infinity)
-
-                VStack {
-                    Rectangle().fill(theme.pageColor.separator).frame(width: JournalLayout.line, height: JournalLayout.hutCord)
-                    Button { hutOpen = true } label: {
-                        VStack(spacing: JournalLayout.smallGap) {
-                            Image(systemName: "house").font(theme.font.journalTitle)
-                            Text("山屋").font(theme.font.journalHeading)
-                        }.padding(JournalLayout.inset)
-                            .background(theme.pageBackground.opacity(0.8), in: RoundedRectangle(cornerRadius: JournalLayout.radius))
-                            .overlay(RoundedRectangle(cornerRadius: JournalLayout.radius).stroke(theme.pageAccent, lineWidth: JournalLayout.line))
-                            .contentShape(Rectangle())
-                    }.buttonStyle(.plain).accessibilityIdentifier("play-hut")
-                }.padding(.top, JournalLayout.hutTop).frame(maxWidth: .infinity)
-
-                Color.clear.frame(maxWidth: .infinity)
-            }
-            .padding(.horizontal, 56)
-
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
-                footer
-                    .padding(.bottom, 18)
-            }
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("玩").font(Moonlight.serif(44)).padding(.top, 28)
+                    Text("陪你玩一会儿。").font(Moonlight.serif(15))
+                        .foregroundStyle(theme.pageColor.textSecondary).padding(.top, 8)
+                    Spacer(minLength: 38)
+                    Button { tarotOpen = true } label: {
+                        HStack(spacing: 0) {
+                            VStack(alignment: .leading, spacing: 16) {
+                                Text("塔罗").font(Moonlight.serif(37))
+                                Text("抽一张  →").font(Moonlight.serif(17)).foregroundStyle(theme.pageAccent)
+                            }.frame(maxWidth: .infinity, alignment: .leading)
+                            Image("MoonTarotPair").resizable().scaledToFit().frame(width: geometry.size.width * 0.47)
+                                .opacity(theme.skin == .day ? 0.94 : 0.5).accessibilityHidden(true)
+                        }.contentShape(Rectangle())
+                    }.accessibilityIdentifier("play-tarot")
+                    Spacer(minLength: 46)
+                    Button { duelOpen = true } label: {
+                        HStack(spacing: 18) {
+                            Image("MoonGomokuBoard").resizable().scaledToFit().frame(width: geometry.size.width * 0.46)
+                                .opacity(theme.skin == .day ? 0.94 : 0.5).accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 14) {
+                                Text("双弈").font(Moonlight.serif(37))
+                                Text("五子棋").font(Moonlight.serif(17)).foregroundStyle(theme.pageColor.textSecondary)
+                                Text("下一局  →").font(Moonlight.serif(17)).foregroundStyle(theme.pageAccent)
+                            }.frame(maxWidth: .infinity, alignment: .leading)
+                        }.contentShape(Rectangle())
+                    }.accessibilityIdentifier("play-duel")
+                    Spacer(minLength: 52)
+                }.padding(.horizontal, 28).frame(minHeight: geometry.size.height)
+            }.scrollIndicators(.hidden)
         }
-        .foregroundStyle(ink)
-        .sheet(isPresented: $notebookOpen) {
-            NavigationStack { QuoteNotebookView() }.environmentObject(theme)
-        }
-        .fullScreenCover(item: $destination) { page in
-            CompanionPages(page: page, line: line).environmentObject(theme)
-        }
-        .fullScreenCover(isPresented: $fortuneOpen) {
-            FortuneView(line: line).environmentObject(theme)
-        }
-        .fullScreenCover(isPresented: $gardenOpen) {
-            GardenView().environmentObject(theme)
-        }
-        .fullScreenCover(isPresented: $readingOpen) {
-            CoReadingView(line: line).environmentObject(theme)
-        }
-        .fullScreenCover(isPresented: $hutOpen) { HutView().environmentObject(theme) }
-        .fullScreenCover(isPresented: $duelOpen) {
-            DuelView().environmentObject(theme)
-        }
-    }
-
-    private var footer: some View {
-        Button { duelOpen = true } label: {
-            HStack(spacing: 12) {
-                Rectangle().fill(gold.opacity(0.28)).frame(width: 34, height: 0.8)
-                VStack(spacing: 2) {
-                    Text("双弈")
-                        .font(serif(17))
-                    Text("和柯开一局")
-                        .font(serif(12))
-                        .foregroundStyle(ink.opacity(0.52))
-                }
-                    .font(serif(15)).foregroundStyle(ink.opacity(0.62))
-                Rectangle().fill(gold.opacity(0.28)).frame(width: 34, height: 0.8)
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 10)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("play-duel")
-        .accessibilityLabel("双弈，和柯开一局")
+        .foregroundStyle(theme.pageColor.textPrimary).buttonStyle(.plain)
+        .background(theme.pageBackground.ignoresSafeArea())
+        .fullScreenCover(isPresented: $tarotOpen) { TarotView(line: line).environmentObject(theme) }
+        .fullScreenCover(isPresented: $duelOpen) { DuelView().environmentObject(theme) }
     }
 }
 

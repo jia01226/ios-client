@@ -7,14 +7,14 @@ final class RootTabBarTests: XCTestCase {
 
     func testCustomNavigationHasNoSystemTabBarAcrossTabs() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-ui-test-scroll-control", "-ui-test-memory-review", "-app.skin", "day"]
+        app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-ui-test-moonlight", "-app.skin", "day"]
         app.launch()
 
         let customBar = app.descendants(matching: .any)
             .matching(identifier: "root-tab-bar").firstMatch
         XCTAssertTrue(customBar.waitForExistence(timeout: 5))
 
-        for destination in ["柯", "我们", "玩", "回忆", "柯"] {
+        for destination in ["柯", "我们", "玩", "柯的", "柯"] {
             customBar.buttons[destination].tap()
             XCTAssertTrue(customBar.isHittable)
             XCTAssertTrue(
