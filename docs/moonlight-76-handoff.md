@@ -50,7 +50,11 @@
 1. [首轮模拟器：77 个单元测试通过，日期 UI 失败](https://github.com/jia01226/ios-client/actions/runs/37703753730)，对应 `75809ee`。
 2. [旧 Build 76 已导出](https://github.com/jia01226/ios-client/actions/runs/37704878611)，对应 `9c0311a`，**缺少最终修正和最后选定排版，不要上架或安装**。
 3. [此前模拟器复验被账单/额度阻止](https://github.com/jia01226/ios-client/actions/runs/37705509911)，任务没有开始，并非编译 exit 65。
-4. 本次最终 Build 77 将从本分支收尾提交触发，结果在下方追加；不能把旧 76 包当作最终包。
+4. [最终 Build 77 打包尝试](https://github.com/jia01226/ios-client/actions/runs/37728764314)，源码提交 `5c5f79121d33cd0951465eb79f8362b7ab967c7f`。GitHub 在编译前拒绝启动，job 的 steps 为空，artifacts 为 0，**没有最终 IPA**。
+
+GitHub 原始原因：`The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings`。此后没有反复触发付费任务，没有修改账单或额度。恢复账户可用后，需先核对 Build 77 是否仍未被占用，再从最终源码重新运行 Build iOS 和模拟器工作流。本地只有 Command Line Tools，没有完整 Xcode，不能在本机补出 iOS 安装包。
+
+交付状态：**代码与设计参考已推送，最终安装包未生成，暂不具备上架条件**。本文件的后续状态说明提交仅改审核文字，App 源码以 `5c5f791` 为准。
 
 Claude 接手先读 goodlove 最新《工单-给codex.md》，确认有无并行改动、安装页版本、Build 号占用。现有工作流用第一部可用 iPhone，`docs/iphone14-simulator-workflow.patch` 供有 workflow 权限者核对，本任务未应用。最终需 iPhone 14 Pro Max 截图和交互核验。
 
