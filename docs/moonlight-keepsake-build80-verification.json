@@ -1,0 +1,27 @@
+{
+  "source_sha": "4e1eedfa1d6a1a0910ad002c8334b2e1556ce502",
+  "run": "https://github.com/jia01226/ios-client/actions/runs/37769557837",
+  "bundle_id": "love.jiagude.ke",
+  "version": "0.1.0",
+  "build": "80",
+  "minimum_os": "17.0",
+  "bytes": 63944140,
+  "sha256": "ad884d4aa16254b5b6a77eaa9184bd4504a66fbb04046b76b79d880f447aa0e5",
+  "signature_verification": "codesign --verify --deep --strict: passed",
+  "application_identifier": "527CR3MRV2.love.jiagude.ke",
+  "aps_environment": "production",
+  "team_identifier": "527CR3MRV2",
+  "get_task_allow": false,
+  "simulator_verification": {
+    "run": "https://github.com/jia01226/ios-client/actions/runs/37770163489",
+    "source_sha": "89e8822328ad72e6b9caee448b64e24fe8e80434",
+    "conclusion": "success",
+    "unit_tests": 87,
+    "ui_flows": 1,
+    "device": "iPhone 18 Pro",
+    "os": "iOS 27",
+    "screenshots": "docs/screenshots/keepsake-build80",
+    "real_device_verified": false,
+    "production_writes_verified": false
+  }
+}

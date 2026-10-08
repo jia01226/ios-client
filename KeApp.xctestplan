@@ -1,0 +1,31 @@
+{
+  "configurations": [
+    {
+      "id": "CDBB4E01-24F3-441C-9D42-26BA60E855D7",
+      "name": "Default",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "diagnosticCollectionPolicy": "Never"
+  },
+  "testTargets": [
+    {
+      "parallelizable": false,
+      "target": {
+        "containerPath": "container:KeApp.xcodeproj",
+        "identifier": "42C6CAC5987C06BF775B9300",
+        "name": "KeAppTests"
+      }
+    },
+    {
+      "parallelizable": false,
+      "target": {
+        "containerPath": "container:KeApp.xcodeproj",
+        "identifier": "BA583D6FC2660E56DED7C9D2",
+        "name": "KeAppUITests"
+      }
+    }
+  ],
+  "version": 1
+}
