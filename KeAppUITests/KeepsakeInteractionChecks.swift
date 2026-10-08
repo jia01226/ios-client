@@ -65,8 +65,7 @@ enum KeepsakeInteractionChecks {
 
         let notesPull = app.buttons["drawer-notes-pull"]
         notesPull.tap()
-        waitValue(notesPull, "已拉开")
-        waitValue(pull, "已合上")
+        XCTAssertTrue(app.buttons["drawer-notes-close"].waitForExistence(timeout: 6))
         capture("05-notes-drawer")
         let addNote = app.buttons["notes-add"]
         scrollTo(addNote)
@@ -83,6 +82,16 @@ enum KeepsakeInteractionChecks {
             app.buttons["tab-us"].tap()
             XCTAssertTrue(app.staticTexts["珍珠抽屉的同一张便利贴"].waitForExistence(timeout: 8))
             capture("07-shared-note-in-us")
+        } else {
+            let close = app.buttons["drawer-notes-close"]
+            for _ in 0..<4 {
+                if close.isHittable { break }
+                app.swipeDown()
+            }
+            close.tap()
+            XCTAssertTrue(notesPull.waitForExistence(timeout: 6))
+            waitValue(notesPull, "已合上")
+            XCTAssertTrue(app.descendants(matching: .any)["drawer-private-locked"].exists)
         }
     }
 

@@ -39,6 +39,7 @@ final class MoonlightInteractionTests: XCTestCase {
         app.buttons["diary-rail--1"].tap()
         app.buttons["diary-open-close"].tap()
         XCTAssertTrue(app.staticTexts["diary-page-content"].waitForExistence(timeout: 6))
+        XCTAssertFalse(app.buttons["tab-drawer"].isHittable)
         let before = app.staticTexts["diary-page-date"].label
         let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.57))
         let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.12, dy: 0.57))
@@ -51,6 +52,8 @@ final class MoonlightInteractionTests: XCTestCase {
         XCTAssertTrue(app.buttons["diary-date-done"].waitForExistence(timeout: 5))
         capture("07-diary-date-picker")
         app.buttons["diary-date-done"].tap()
+        app.buttons["diary-fullscreen-close"].tap()
+        XCTAssertTrue(app.buttons["ke-drawer-tab"].waitForExistence(timeout: 6))
         app.buttons["ke-drawer-tab"].tap()
         KeepsakeInteractionChecks.verify(in: testCase, app: app, skin: "day")
         app.terminate()

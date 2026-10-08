@@ -43,35 +43,13 @@ private struct MoonDiaryView: View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(spacing: 16) {
-                    // 2026-10-08 她：「日记能不能打开就放大」。翻开以后日期栏收起来，这一页铺满整屏，
-                    // 顶上留一小行日期和「选日期」。
-                    if open {
-                        HStack {
-                            Text(KeDiaryPage.dateLabel(selected)).font(Moonlight.serif(15)).foregroundStyle(theme.pageAccent)
-                            Spacer()
-                            Button("选日期") { datePicker = true }.font(Moonlight.serif(13)).frame(minHeight: 44)
-                                .foregroundStyle(theme.pageAccent).accessibilityIdentifier("diary-date-picker")
-                        }.padding(.horizontal, 22).padding(.top, 4).transition(.opacity)
-                    }
                     HStack(alignment: .center, spacing: 8) {
-                        ZStack {
-                            DiaryCurlReader(date: $selected, pages: store.pages, theme: theme, reduceMotion: reduceMotion, historyIsComplete: store.historyIsComplete)
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                .opacity(open ? 1 : 0).allowsHitTesting(open).accessibilityHidden(!open)
-                            cover
-                                .rotation3DEffect(.degrees(open && !reduceMotion ? -105 : 0), axis: (x: 0, y: 1, z: 0), anchor: .leading, perspective: 0.4)
-                                .opacity(open ? 0 : 1).allowsHitTesting(!open).accessibilityHidden(open)
-                        }.frame(maxWidth: .infinity)
-                            .frame(height: open ? max(420, geometry.size.height - 150) : min(460, max(355, geometry.size.height - 132)))
-                        if !open {
-                            MoonlightDateRail(date: $selected, showPicker: $datePicker)
-                                .frame(width: 83).transition(.move(edge: .trailing).combined(with: .opacity))
-                        }
-                    }.padding(.horizontal, open ? 8 : 17).padding(.top, open ? 0 : 10)
-                    Button {
-                        withAnimation(reduceMotion ? .linear(duration: 0.1) : .easeInOut(duration: 0.7)) { open.toggle() }
-                    } label: {
-                        Text(open ? "轻轻合上  ←" : "翻开 \(KeDiaryPage.dateLabel(selected, format: "M月d日")) 这一页  →")
+                        cover.frame(maxWidth: .infinity)
+                            .frame(height: min(460, max(355, geometry.size.height - 132)))
+                        MoonlightDateRail(date: $selected, showPicker: $datePicker).frame(width: 83)
+                    }.padding(.horizontal, 17).padding(.top, 10)
+                    Button { open = true } label: {
+                        Text("翻开 \(KeDiaryPage.dateLabel(selected, format: "M月d日")) 这一页  →")
                             .font(Moonlight.serif(17)).underline(color: theme.pageAccent.opacity(0.5))
                             .padding(.vertical, 12)
                     }.buttonStyle(.plain).foregroundStyle(theme.pageAccent).accessibilityIdentifier("diary-open-close")
@@ -86,6 +64,10 @@ private struct MoonDiaryView: View {
         .onChange(of: selected) { _, _ in selectedOnce = true }
         .sheet(isPresented: $datePicker) {
             MoonDiaryDatePicker(date: $selected, markedDates: store.pages.map(\.date))
+        }
+        .fullScreenCover(isPresented: $open) {
+            DiaryFullScreenBook(date: $selected, store: store) { open = false }
+                .environmentObject(theme)
         }
     }
     private var cover: some View {
@@ -108,6 +90,78 @@ private struct MoonDiaryView: View {
         }
     }
 }
+
+private struct DiaryFullScreenBook: View {
+    @EnvironmentObject private var theme: Theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Binding var date: Date
+    @ObservedObject var store: KeDiaryStore
+    let close: () -> Void
+    @State private var unfolded = false
+    @State private var datePicker = false
+    @State private var closing = false
+
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack {
+                Button { datePicker = true } label: {
+                    HStack(spacing: 7) {
+                        Text(KeDiaryPage.dateLabel(date)).font(Moonlight.serif(14))
+                        Image(systemName: "chevron.down").font(.system(size: 10, weight: .ultraLight))
+                    }.frame(minHeight: 44)
+                }.accessibilityLabel("选日期").accessibilityIdentifier("diary-date-picker")
+                Spacer()
+                Button("合上", action: foldClosed).font(Moonlight.serif(15)).frame(minWidth: 44, minHeight: 44)
+                    .disabled(closing).accessibilityIdentifier("diary-fullscreen-close")
+            }.padding(.horizontal, 22).foregroundStyle(theme.pageAccent)
+            ZStack(alignment: .leading) {
+                DiaryCurlReader(date: $date, pages: store.pages, theme: theme,
+                                reduceMotion: reduceMotion, historyIsComplete: store.historyIsComplete)
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                    .overlay(alignment: .leading) {
+                        LinearGradient(colors: [theme.pageColor.separator.opacity(0.45), theme.pageColor.separator.opacity(0)],
+                                       startPoint: .leading, endPoint: .trailing)
+                            .frame(width: 14).allowsHitTesting(false)
+                    }
+                    .opacity(unfolded ? 1 : 0).allowsHitTesting(unfolded).accessibilityHidden(!unfolded)
+                if !reduceMotion {
+                    Image("MoonDiaryCover").resizable().scaledToFit()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .rotation3DEffect(.degrees(unfolded ? -105 : 0), axis: (x: 0, y: 1, z: 0),
+                                          anchor: .leading, perspective: 0.35)
+                        .opacity(unfolded ? 0 : 1).accessibilityHidden(true).allowsHitTesting(false)
+                }
+            }.padding(.horizontal, 9).frame(maxWidth: .infinity, maxHeight: .infinity)
+                .scaleEffect(unfolded || reduceMotion ? 1 : 0.92)
+            Text("轻轻翻过这一页").font(Moonlight.serif(11)).foregroundStyle(theme.pageColor.textSecondary)
+                .padding(.bottom, 5).accessibilityHidden(true)
+        }
+        .background(theme.pageBackground.ignoresSafeArea()).buttonStyle(.plain).tint(theme.pageAccent)
+        .interactiveDismissDisabled()
+        .task {
+            if !reduceMotion { try? await Task.sleep(for: .milliseconds(120)) }
+            guard !Task.isCancelled else { return }
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.65)) { unfolded = true }
+        }
+        .sheet(isPresented: $datePicker) {
+            MoonDiaryDatePicker(date: $date, markedDates: store.pages.map(\.date))
+        }
+        .task(id: closing) {
+            guard closing else { return }
+            if !reduceMotion { try? await Task.sleep(for: .milliseconds(480)) }
+            guard !Task.isCancelled else { return }
+            close()
+        }
+    }
+
+    private func foldClosed() {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.45)) {
+            unfolded = false
+            closing = true
+        }
+    }
+}
+
 
 private struct MoonlightDateRail: View {
     @EnvironmentObject private var theme: Theme

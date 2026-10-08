@@ -13,6 +13,7 @@ struct MoonDrawerView: View {
     @State private var error: String?
     @State private var openness: CGFloat = 0
     @State private var notesOpenness: CGFloat = 0
+    @State private var notesFocused = false
     @State private var reading: DrawerLetter?
     private var night: Bool { theme.skin == .night }
     private var isOpen: Bool { openness > 0.5 }
@@ -24,6 +25,7 @@ struct MoonDrawerView: View {
     }
 
     var body: some View {
+        ZStack {
         ScrollView {
             VStack(spacing: 14) {
                 Text("keepsakes").font(Moonlight.script(36))
@@ -33,8 +35,8 @@ struct MoonDrawerView: View {
                                        night: night, settle: settle, settleNotes: settleNotes)
                     .frame(maxWidth: 370).padding(.horizontal, 14)
                 HStack(spacing: 36) {
-                    drawerControl("卷轴", open: isOpen, id: "drawer-pull") { settle(isOpen ? 0 : 1) }
                     drawerControl("便利贴", open: notesOpen, id: "drawer-notes-pull") { settleNotes(notesOpen ? 0 : 1) }
+                    drawerControl("卷轴", open: isOpen, id: "drawer-pull") { settle(isOpen ? 0 : 1) }
                 }
                 HStack(spacing: 7) {
                     Image(systemName: "lock").font(.system(size: 11, weight: .light))
@@ -45,15 +47,18 @@ struct MoonDrawerView: View {
                     .accessibilityLabel("柯的私藏，下层始终锁着")
                 if isOpen {
                     scrolls.padding(.top, 16).transition(.opacity)
-                } else if notesOpen {
-                    MoonStickyNotesView(store: notes).padding(.horizontal, 24)
-                        .padding(.top, 20).transition(.opacity)
                 } else {
-                    Text("上层收信，中层记事。")
+                    Text("第一层记事，第二层收信。")
                         .font(Moonlight.serif(13)).foregroundStyle(theme.pageColor.textSecondary)
                         .padding(.top, 38).padding(.bottom, 36)
                 }
             }.frame(maxWidth: .infinity).padding(.bottom, 28)
+        }
+        .accessibilityHidden(notesFocused).allowsHitTesting(!notesFocused)
+            if notesFocused {
+                StickyDrawerFocus(store: notes, night: night) { settleNotes(0) }
+                    .transition(reduceMotion ? .opacity : .scale(scale: 0.80, anchor: .top).combined(with: .opacity))
+            }
         }
         .buttonStyle(.plain).tint(theme.pageAccent).scrollIndicators(.hidden)
         .task { await reload() }.refreshable { await reload() }
@@ -139,6 +144,7 @@ struct MoonDrawerView: View {
         withAnimation(reduceMotion ? nil : .spring(response: 0.52, dampingFraction: 0.9)) {
             notesOpenness = target
             if target > 0.5 { openness = 0 }
+            notesFocused = target > 0.5
         }
     }
     @MainActor private func load() async {
@@ -188,18 +194,18 @@ private struct KeepsakeCabinetArtwork: View {
             ZStack(alignment: .topLeading) {
                 Image("KeepsakeCabinet").renderingMode(.original).resizable()
                     .frame(width: width, height: width * 1276 / 1233)
-                tray(width: width, notes: true)
-                    .mask(DrawerAperture(top: 0.484, control: 0.550))
                 tray(width: width, notes: false)
+                    .mask(DrawerAperture(top: 0.484, control: 0.550))
+                tray(width: width, notes: true)
                     .mask(DrawerAperture(top: 0.275, control: 0.340))
                 DrawerHandle(openness: $notesOpenness, width: width, title: "便利贴",
                              id: "drawer-notes-handle", settle: settleNotes)
                     .frame(width: width * 0.78, height: width * 0.15)
-                    .position(x: width * 0.5, y: width * (0.61 + 0.073 * notesOpenness))
+                    .position(x: width * 0.5, y: width * (0.394 + 0.073 * notesOpenness))
                 DrawerHandle(openness: $openness, width: width, title: "卷轴",
                              id: "drawer-letter-handle", settle: settle)
                     .frame(width: width * 0.78, height: width * 0.15)
-                    .position(x: width * 0.5, y: width * (0.394 + 0.073 * openness))
+                    .position(x: width * 0.5, y: width * (0.61 + 0.073 * openness))
             }
             .colorMultiply(KeepsakeTheme.artworkTint(night: night))
             .offset(y: -width * 0.035)
@@ -235,7 +241,7 @@ private struct KeepsakeCabinetArtwork: View {
             }
         }
         .frame(width: width * 0.84, height: width * 0.56)
-        .offset(x: width * 0.08, y: width * ((notes ? 0.262 : 0.045) + 0.073 * progress))
+        .offset(x: width * 0.08, y: width * ((notes ? 0.045 : 0.262) + 0.073 * progress))
         .frame(width: width, height: width * 1276 / 1233, alignment: .topLeading)
         .accessibilityHidden(true).allowsHitTesting(false)
     }
@@ -295,6 +301,54 @@ private struct DrawerAperture: Shape {
         path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
         path.closeSubpath()
         return path
+    }
+}
+
+/// Opening the first drawer brings its tray and the real notes forward into a focused scene.
+private struct StickyDrawerFocus: View {
+    @EnvironmentObject private var theme: Theme
+    @ObservedObject var store: StickyNotesStore
+    let night: Bool
+    let close: () -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 22) {
+                HStack {
+                    Text("little notes").font(Moonlight.script(34)).foregroundStyle(theme.pageAccent)
+                    Spacer()
+                    Button(action: close) {
+                        Image(systemName: "arrow.down.right.and.arrow.up.left")
+                            .font(.system(size: 17, weight: .ultraLight)).frame(width: 44, height: 44)
+                    }.accessibilityLabel("收好便利贴抽屉").accessibilityIdentifier("drawer-notes-close")
+                }
+                KeepsakeCutout(name: "KeepsakeUpperDrawer",
+                               crop: CGRect(x: 0.047, y: 0.20, width: 0.906, height: 0.62))
+                    .frame(height: 155)
+                    .colorMultiply(KeepsakeTheme.artworkTint(night: night))
+                    .overlay(alignment: .top) {
+                        HStack(spacing: -12) {
+                            ForEach(Array(store.all.prefix(2).enumerated()), id: \.element.id) { index, note in
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(note.author == .user ? Moonlight.rosePaper : Moonlight.lavenderPaper)
+                                    .frame(width: 88, height: 32)
+                                    .rotationEffect(.degrees(index == 0 ? -5 : 4))
+                            }
+                        }.padding(.top, 33).accessibilityHidden(true).allowsHitTesting(false)
+                    }
+                MoonStickyNotesView(store: store, showsEmptyPaper: false)
+                if let status = store.status {
+                    Text(status).font(Moonlight.serif(12)).foregroundStyle(theme.pageColor.textSecondary)
+                }
+                if store.loading { ProgressView().tint(theme.pageAccent) }
+            }.padding(.horizontal, 24).padding(.top, 16).padding(.bottom, 32)
+                .frame(maxWidth: 520).frame(maxWidth: .infinity)
+        }
+        .scrollIndicators(.hidden).background(theme.pageBackground)
+        .buttonStyle(.plain).foregroundStyle(theme.pageColor.textPrimary)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("drawer-notes-focus")
+        .refreshable { await store.load() }
     }
 }
 

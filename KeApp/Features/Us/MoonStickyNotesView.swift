@@ -3,6 +3,7 @@ import SwiftUI
 struct MoonStickyNotesView: View {
     @EnvironmentObject private var theme: Theme
     @ObservedObject var store: StickyNotesStore
+    var showsEmptyPaper = true
     @State private var editor = false
     @State private var selected: StickyNote?
     @State private var text = ""
@@ -25,7 +26,7 @@ struct MoonStickyNotesView: View {
                 }.frame(minWidth: 44, minHeight: 44).accessibilityLabel("写便利贴").accessibilityIdentifier("notes-add")
                 if theme.skin == .day { Spacer() }
             }
-            if store.all.isEmpty {
+            if store.all.isEmpty && showsEmptyPaper {
                 Button { selected = nil; text = ""; editor = true } label: {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("a little note").font(Moonlight.script(25)).foregroundStyle(theme.pageAccent)
