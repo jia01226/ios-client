@@ -225,6 +225,20 @@ final class ChatForegroundRecoveryTests: XCTestCase {
         XCTAssertTrue(server.streams.isEmpty)
     }
 
+    func testExplicitRefreshAlsoReplacesAnAlreadyStalledPoll() async {
+        let server = ReplyServer(); let vm = await model(server)
+        server.holdNextJob = true
+        let sending = await start(vm, server)
+        server.streams[0].finish(throwing: URLError(.timedOut))
+        await wait { server.heldJob != nil }
+        server.completeOnServer()
+        await vm.retryHistory()
+        assertComplete(vm)
+        server.heldJob?.resume(throwing: URLError(.timedOut)); server.heldJob = nil
+        await sending.value
+        assertComplete(vm)
+    }
+
     func testNotificationIntentPersistsAndCanRepeat() {
         let coordinator = ChatNotificationCoordinator()
         XCTAssertNil(coordinator.openRequest)

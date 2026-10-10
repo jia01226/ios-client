@@ -576,7 +576,7 @@ final class ChatViewModel: ObservableObject {
         enteredBackground = false
         inactiveSince = nil
         guard phase == .ready else { return }
-        if wasSuspended || (forceReconnect && activeStreamClientID != nil) {
+        if wasSuspended || forceReconnect {
             // Invalidate ownership BEFORE cancellation can deliver an error or run a defer.
             abandonReplyConnection()
         }
