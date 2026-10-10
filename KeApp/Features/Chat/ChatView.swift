@@ -17,6 +17,7 @@ struct ChatView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let line: ChatLine
     @Binding var selectedLine: ChatLine
+    @ObservedObject private var chatNotifications = ChatNotificationCoordinator.shared
     @StateObject private var vm: ChatViewModel
     @StateObject private var recentPhotos = RecentPhotosStore()
     @State private var draft = ""
@@ -82,10 +83,22 @@ struct ChatView: View {
             AppQuoteSaveView(line: line, message: message)
                 .environmentObject(theme)
         }
-        .task { await vm.bootstrap() }
+        .task {
+            await vm.bootstrap()
+            if chatNotifications.openRequest != nil {
+                await vm.resumeFromForeground(forceReconnect: true)
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
-            Task { await vm.resumeFromForeground() }
+            switch phase {
+            case .inactive: vm.becameInactive()
+            case .background: vm.enteredBackgroundScene()
+            case .active: Task { await vm.resumeFromForeground() }
+            @unknown default: break
+            }
+        }
+        .onChange(of: chatNotifications.openRequest) { _, _ in
+            Task { await vm.resumeFromForeground(forceReconnect: true) }
         }
     }
 
