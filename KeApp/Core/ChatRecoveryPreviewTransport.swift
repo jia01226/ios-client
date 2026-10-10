@@ -1,5 +1,6 @@
 #if DEBUG
 import Foundation
+import SwiftUI
 
 /// Simulates a server that finishes while the UI process is suspended. The stream
 /// deliberately never delivers completion; only the real recovery path can reveal it.
@@ -31,5 +32,34 @@ actor ChatRecoveryPreviewTransport: ChatReplyTransport {
         return values
     }
     func markSeen(sessionID: Int, throughID: Int?) async throws {}
+}
+/// Measures foreground entry → appearance of the completed reply inside the app,
+/// avoiding XCTest's cross-process accessibility lookup/idle wait overhead.
+@MainActor
+final class ChatRecoveryUITestTiming: ObservableObject {
+    static let shared = ChatRecoveryUITestTiming()
+    private var began: TimeInterval?
+    @Published private(set) var elapsed: TimeInterval?
+    func begin() {
+        guard ProcessInfo.processInfo.arguments.contains("-ui-test-foreground-recovery") else { return }
+        began = ProcessInfo.processInfo.systemUptime
+        elapsed = nil
+    }
+    func appeared(_ message: Message) {
+        guard message.serverID == 98202, let began, elapsed == nil else { return }
+        elapsed = ProcessInfo.processInfo.systemUptime - began
+    }
+}
+
+struct ChatRecoveryUITestTimingProbe: View {
+    @ObservedObject private var timing = ChatRecoveryUITestTiming.shared
+    var body: some View {
+        if let elapsed = timing.elapsed {
+            Text(String(format: "%.4f", elapsed))
+                .font(.system(size: 1))
+                .accessibilityIdentifier("foreground-recovery-seconds")
+                .allowsHitTesting(false)
+        }
+    }
 }
 #endif

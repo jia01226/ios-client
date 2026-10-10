@@ -25,9 +25,13 @@ enum ForegroundRecoveryInteractionChecks {
         XCUIDevice.shared.press(.home)
         Thread.sleep(forTimeInterval: 3) // server fixture is done after 2s, SSE remains frozen
         app.activate()
-        let began = Date()
         XCTAssertTrue(app.staticTexts["我已经回好了，你回来就能看见。"].waitForExistence(timeout: 2))
-        XCTAssertLessThan(Date().timeIntervalSince(began), 2)
+        let timing = app.staticTexts["foreground-recovery-seconds"]
+        XCTAssertTrue(timing.waitForExistence(timeout: 2))
+        let seconds = Double(timing.label) ?? .infinity
+        XCTAssertLessThan(seconds, 2, "Measured inside App from active entry to completed reply appearance")
+        let metric = XCTAttachment(string: "Foreground entry to completed reply appearance: \(seconds) seconds. Local server fixture; real APNs/network not measured.")
+        metric.name = "foreground-recovery-timing"; metric.lifetime = .keepAlways; testCase.add(metric)
         XCTAssertFalse(app.staticTexts["正在写这一句…"].exists)
         XCTAssertFalse(app.staticTexts["回复中断"].exists)
         XCTAssertFalse(app.staticTexts["这句没有发稳。内容留在这里，网络恢复后可以再发。"].exists)

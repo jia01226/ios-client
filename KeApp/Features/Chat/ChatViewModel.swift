@@ -577,6 +577,9 @@ final class ChatViewModel: ObservableObject {
         inactiveSince = nil
         guard phase == .ready else { return }
         if wasSuspended || forceReconnect {
+#if DEBUG
+            ChatRecoveryUITestTiming.shared.begin()
+#endif
             // Invalidate ownership BEFORE cancellation can deliver an error or run a defer.
             abandonReplyConnection()
         }

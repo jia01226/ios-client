@@ -68,6 +68,9 @@ struct ChatView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.clear)
+#if DEBUG
+        .overlay(alignment: .topTrailing) { ChatRecoveryUITestTimingProbe() }
+#endif
         .animation(.easeInOut(duration: 0.6), value: theme.isBedroom)
         .onReceive(NotificationCenter.default.publisher(for: .chatSendRequest)) { notification in
             guard let text = notification.object as? String, !text.isEmpty else { return }

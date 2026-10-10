@@ -779,6 +779,9 @@ final class ChatCollectionTimelineController: UIViewController,
                     onSaveQuote: { [weak self] message in self?.onSaveQuote(message) }
                 )
                 .environmentObject(Theme.shared)
+#if DEBUG
+                .onAppear { ChatRecoveryUITestTiming.shared.appeared(item.message) }
+#endif
             }
         }
         .margins(.all, 0)
