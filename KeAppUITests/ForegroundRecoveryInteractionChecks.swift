@@ -32,6 +32,8 @@ enum ForegroundRecoveryInteractionChecks {
         XCTAssertLessThan(seconds, 2, "Measured inside App from active entry to completed reply appearance")
         let metric = XCTAttachment(string: "Foreground entry to completed reply appearance: \(seconds) seconds. Local server fixture; real APNs/network not measured.")
         metric.name = "foreground-recovery-timing"; metric.lifetime = .keepAlways; testCase.add(metric)
+        let header = app.descendants(matching: .any)["chat-header-test1"]
+        XCTAssertTrue(header.label.contains("在线"), "Completed recovery must leave the sending state")
         XCTAssertFalse(app.staticTexts["正在写这一句…"].exists)
         XCTAssertFalse(app.staticTexts["回复中断"].exists)
         XCTAssertFalse(app.staticTexts["这句没有发稳。内容留在这里，网络恢复后可以再发。"].exists)

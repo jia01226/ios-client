@@ -1248,7 +1248,8 @@ final class ChatViewModel: ObservableObject {
             guard isCurrent() else { return false }
             let throughID = merged.last(where: { $0.sender == .ke })?.serverID
             Task { try? await replyAPI.markSeen(sessionID: sessionID, throughID: throughID) }
-            await ChatNotificationCoordinator.shared.clearBadgeIfActive()
+            // Notification-service completion must never hold the reply in a sending state.
+            Task { await ChatNotificationCoordinator.shared.clearBadgeIfActive() }
             return isCurrent()
         } catch APIError.unauthorized {
             guard isCurrent() else { return false }
