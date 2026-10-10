@@ -55,6 +55,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         print("[push] 注册失败：\(error)")
     }
 
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
+        await MainActor.run { ChatNotificationCoordinator.shared.openChat() }
+    }
+
     /// App 在前台时也要显示推送 —— 不然她开着 App 就收不到柯的提醒。
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,

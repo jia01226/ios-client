@@ -4,6 +4,8 @@ import UIKit
 struct RootTabView: View {
 
     @EnvironmentObject private var theme: Theme
+    @Environment(\.scenePhase) private var scenePhase
+    @ObservedObject private var chatNotifications = ChatNotificationCoordinator.shared
     @State private var selection: Tab
     @State private var chatLine: ChatLine = .test1
     @State private var keyboardIsVisible = false
@@ -50,6 +52,14 @@ struct RootTabView: View {
                     theme.pageBackground.ignoresSafeArea()
                 }
             }
+        }
+        .task {
+            if chatNotifications.openRequest != nil { selection = .ke }
+            await chatNotifications.clearBadgeIfActive()
+        }
+        .onChange(of: chatNotifications.openRequest) { _, _ in selection = .ke }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await chatNotifications.clearBadgeIfActive() } }
         }
         .onReceive(NotificationCenter.default.publisher(for: .chatSettingsVisibility)) { notification in
             chatSettingsOpen = notification.object as? Bool ?? false

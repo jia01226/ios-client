@@ -63,6 +63,24 @@ final class ChatViewModel: ObservableObject {
     @Published private var visibleSegmentCounts: [String: Int] = [:]
 
     private let api: APIClient
+    private let replyAPI: any ChatReplyTransport
+    private let replyCompleted: @MainActor () -> Void
+    private var replyTask: Task<Void, Never>?
+    private var replyOwner: UUID?
+    private var historyRequestID: UUID?
+    private var enteredBackground = false
+    private var inactiveSince: Date?
+    private struct PendingReply {
+        let clientID: String
+        let userLocalID: String
+        let assistantLocalID: String
+        let text: String
+        let attachments: [ChatAttachment]
+        let reduceMotion: Bool
+    }
+    private var pendingReply: PendingReply?
+    private var pendingReceipts: [String: PendingReply] = [:]
+    private var receiptTasks: [String: (owner: UUID, task: Task<Void, Never>)] = [:]
     private let cache: ChatCache
     private var sessionID: Int?
     private var didBootstrap = false
@@ -104,9 +122,21 @@ final class ChatViewModel: ObservableObject {
     private var uiTestFixture: UITestFixture?
 #endif
 
-    init(line: ChatLine = .main, monitorConnectivity: Bool = true) {
-        api = APIClient(baseURL: line.apiBaseURL)
-        cache = ChatCache(fileName: line.cacheFileName)
+    init(line: ChatLine = .main, monitorConnectivity: Bool = true,
+         replyTransport: (any ChatReplyTransport)? = nil, cacheFileName: String? = nil,
+         replyCompleted: @escaping @MainActor () -> Void = { CompanionPermissionCoordinator.shared.conversationDidComplete() }) {
+        let client = APIClient(baseURL: line.apiBaseURL)
+        api = client
+#if DEBUG
+        let recoveryPreview = ProcessInfo.processInfo.arguments.contains("-ui-test-foreground-recovery")
+        replyAPI = replyTransport ?? (recoveryPreview ? ChatRecoveryPreviewTransport() as any ChatReplyTransport : client)
+        self.replyCompleted = recoveryPreview ? {} : replyCompleted
+        cache = ChatCache(fileName: cacheFileName ?? (recoveryPreview ? "recovery-preview-\(UUID()).json" : line.cacheFileName))
+#else
+        replyAPI = replyTransport ?? client
+        self.replyCompleted = replyCompleted
+        cache = ChatCache(fileName: cacheFileName ?? line.cacheFileName)
+#endif
 #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains("-ui-test-tarot-cards") {
@@ -387,7 +417,10 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    deinit { networkMonitor.cancel() }
+    deinit {
+        networkMonitor.cancel(); replyTask?.cancel()
+        for entry in receiptTasks.values { entry.task.cancel() }
+    }
 
     func setNetworkPathAvailable(_ available: Bool) {
         hasNetworkPath = available
@@ -517,7 +550,7 @@ final class ChatViewModel: ObservableObject {
 
         do {
             try await api.login(passcode: passcode)
-            let active = try await api.activeSession()
+            let active = try await replyAPI.activeSession()
             prepareForSession(active.id)
             selectedModel = active.model
             phase = .ready
@@ -532,22 +565,57 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    func resumeFromForeground() async {
+    func becameInactive(at date: Date = .now) { inactiveSince = inactiveSince ?? date }
+    func enteredBackgroundScene() { enteredBackground = true }
+
+    func resumeFromForeground(forceReconnect: Bool = false, at date: Date = .now) async {
 #if DEBUG
         if uiTestFixture != nil { return }
 #endif
+        let wasSuspended = enteredBackground || inactiveSince.map { date.timeIntervalSince($0) >= 2 } == true
+        enteredBackground = false
+        inactiveSince = nil
         guard phase == .ready else { return }
-        // 原 SSE 仍是这条回复的唯一所有者时，不并行启动 job polling。
-        guard activeStreamClientID == nil else { return }
-        await recoverActiveJobsIfNeeded()
-        guard activeStreamClientID == nil else { return }
-        if recoveringJobID == nil {
-            await refreshHistory(showFailure: false)
+        if wasSuspended || forceReconnect {
+#if DEBUG
+            ChatRecoveryUITestTiming.shared.begin()
+#endif
+            // Invalidate ownership BEFORE cancellation can deliver an error or run a defer.
+            abandonReplyConnection()
         }
+        guard replyTask == nil, activeStreamClientID == nil else { return }
+        await recoverActiveJobsIfNeeded()
     }
 
     func retryHistory() async {
-        await refreshHistory(showFailure: true)
+        await resumeFromForeground(forceReconnect: true)
+    }
+
+    private func ownsReply(_ owner: UUID) -> Bool {
+        replyOwner == owner && !Task.isCancelled
+    }
+
+    private func abandonReplyConnection() {
+        replyOwner = nil
+        let previous = replyTask
+        replyTask = nil
+        activeStreamClientID = nil
+        recoveringJobID = nil
+        recoveryProbeID = nil
+        historyRequestID = nil
+        previous?.cancel()
+        let receipts = receiptTasks.values.map(\.task)
+        receiptTasks.removeAll()
+        for task in receipts { task.cancel() }
+        // Keep the known job/client ID and local draft until authoritative history arrives.
+    }
+
+    private func finishReplyTask(_ owner: UUID) {
+        guard replyOwner == owner else { return }
+        replyTask = nil
+        activeStreamClientID = nil
+        // Keep owner identity so a history response begun by this owner can still be checked.
+        if !isSending && activeJobID == nil { pendingReply = nil }
     }
 
     func send(_ text: String, reduceMotion: Bool = false) async {
@@ -559,6 +627,7 @@ final class ChatViewModel: ObservableObject {
         let attachments = pendingAttachments
         guard !text.isEmpty || !attachments.isEmpty else { return }
 
+        abandonReplyConnection()
         isSending = true
         statusText = nil
         replyFailure = nil
@@ -572,11 +641,11 @@ final class ChatViewModel: ObservableObject {
         let userLocalID = "user-\(clientID)"
         let assistantLocalID = "assistant-\(clientID)"
         activeStreamClientID = clientID
-        defer {
-            if activeStreamClientID == clientID {
-                activeStreamClientID = nil
-            }
-        }
+        let owner = UUID()
+        replyOwner = owner
+        pendingReply = PendingReply(clientID: clientID, userLocalID: userLocalID,
+                                    assistantLocalID: assistantLocalID, text: text,
+                                    attachments: attachments, reduceMotion: reduceMotion)
 
         messages.append(
             Message(
@@ -604,21 +673,25 @@ final class ChatViewModel: ObservableObject {
 #if DEBUG
         if uiTestFixture == .sendStability {
             await runUITestSendStream(messageID: assistantLocalID)
+            finishReplyTask(owner)
             return
         }
 #endif
 
-        await performSend(
-            text: text,
-            sessionID: sessionID,
-            clientID: clientID,
-            userLocalID: userLocalID,
-            assistantLocalID: assistantLocalID,
-            attachments: attachments,
-            reduceMotion: reduceMotion,
-            retryCount: 0
-        )
-        await drainQueuedFollowUps()
+        let task = Task { [self] in
+            await performSend(text: text, sessionID: sessionID, clientID: clientID,
+                              userLocalID: userLocalID, assistantLocalID: assistantLocalID,
+                              attachments: attachments, reduceMotion: reduceMotion,
+                              retryCount: 0, owner: owner)
+            guard ownsReply(owner) else { return }
+            activeStreamClientID = nil
+            await recoverPendingReceipts(owner: owner)
+            guard ownsReply(owner) else { return }
+            await drainQueuedFollowUps(owner: owner)
+            finishReplyTask(owner)
+        }
+        replyTask = task
+        await task.value
     }
 
     /// 柯还在回上一句时她接着发的那几条：已经送到服务器排队，等这一句回完再接着回。
@@ -643,53 +716,86 @@ final class ChatViewModel: ObservableObject {
                 deliveryState: .sending
             )
         )
-        do {
-            let stream = try await api.streamMessage(
-                text: text,
-                sessionID: sessionID,
-                clientMessageID: clientID,
-                model: selectedModel,
-                attachments: attachments
-            )
-            // 只等服务器回执（消息已落库、任务已排上），然后放手；回复由后台线程照常生成。
-            for try await event in stream {
-                if case let .receipt(userMessageID, jobID, _) = event {
-                    updateMessage(id: userLocalID) {
-                        $0.serverID = userMessageID ?? $0.serverID
-                        $0.deliveryState = .sent
-                    }
-                    if let jobID {
-                        queuedFollowUps.append((clientID: clientID, jobID: jobID))
-                    }
-                    break
-                }
+        let pending = PendingReply(clientID: clientID, userLocalID: userLocalID,
+                                   assistantLocalID: "assistant-\(clientID)", text: text,
+                                   attachments: attachments, reduceMotion: false)
+        pendingReceipts[clientID] = pending
+        await obtainReceipt(pending, sessionID: sessionID)
+        if !isSending { await recoverActiveJobsIfNeeded() }
+    }
+
+    private func obtainReceipt(_ pending: PendingReply, sessionID: Int) async {
+        if let existing = receiptTasks[pending.clientID] { await existing.task.value; return }
+        let token = UUID()
+        let task = Task { [self] in
+            @MainActor func isCurrent() -> Bool {
+                receiptTasks[pending.clientID]?.owner == token && self.sessionID == sessionID && !Task.isCancelled
             }
-        } catch {
-            updateMessage(id: userLocalID) { $0.deliveryState = .failed }
+            defer { if receiptTasks[pending.clientID]?.owner == token { receiptTasks[pending.clientID] = nil } }
+            do {
+                let stream = try await replyAPI.streamMessage(text: pending.text, sessionID: sessionID,
+                    clientMessageID: pending.clientID, model: selectedModel, attachments: pending.attachments)
+                guard isCurrent() else { return }
+                for try await event in stream {
+                    guard isCurrent() else { return }
+                    if case let .receipt(userMessageID, jobID, _) = event {
+                        updateMessage(id: pending.userLocalID) {
+                            $0.serverID = userMessageID ?? $0.serverID; $0.deliveryState = .sent
+                        }
+                        if let jobID, !queuedFollowUps.contains(where: { $0.jobID == jobID }) {
+                            queuedFollowUps.append((pending.clientID, jobID))
+                        }
+                        pendingReceipts[pending.clientID] = nil
+                        return
+                    }
+                }
+                guard isCurrent() else { return }
+                throw APIError.streamClosed
+            } catch {
+                guard isCurrent() else { return }
+                updateMessage(id: pending.userLocalID) { $0.deliveryState = .failed }
+                // Keep the original key/payload so foreground recovery can retry safely.
+            }
         }
-        // 回执到的时候上一句恰好已经回完：没人会再来接，自己接上。
-        if !isSending {
-            await drainQueuedFollowUps()
+        receiptTasks[pending.clientID] = (token, task)
+        await task.value
+    }
+
+    private func recoverPendingReceipts(owner: UUID) async {
+        guard let sessionID else { return }
+        // Preserve send order when multiple receipts were suspended.
+        let pending = pendingReceipts.values.sorted { a, b in
+            (messages.firstIndex { $0.id == a.userLocalID } ?? 0)
+                < (messages.firstIndex { $0.id == b.userLocalID } ?? 0)
+        }
+        for request in pending {
+            guard ownsReply(owner) else { return }
+            await obtainReceipt(request, sessionID: sessionID)
         }
     }
 
     /// 上一句回完以后，跟着回她途中补发的那几条：只盯最后一条，前面的服务器已经并进来了。
-    private func drainQueuedFollowUps() async {
-        while let last = queuedFollowUps.last {
+    private func drainQueuedFollowUps(owner: UUID) async {
+        while ownsReply(owner), let last = queuedFollowUps.last {
             queuedFollowUps.removeAll()
             let assistantLocalID = "assistant-\(last.clientID)"
             isSending = true
-            messages.append(
-                Message(
-                    id: assistantLocalID,
-                    clientID: last.clientID,
-                    sender: .ke,
-                    text: "",
-                    time: .now,
-                    isStreaming: true,
-                    deliveryState: .sending
+            if !messages.contains(where: { $0.clientID == last.clientID && $0.sender == .ke }) {
+                messages.append(
+                    Message(
+                        id: assistantLocalID,
+                        clientID: last.clientID,
+                        sender: .ke,
+                        text: "",
+                        time: .now,
+                        isStreaming: true,
+                        deliveryState: .sending
+                    )
                 )
-            )
+            }
+            pendingReply = PendingReply(clientID: last.clientID,
+                                        userLocalID: "user-\(last.clientID)", assistantLocalID: assistantLocalID,
+                                        text: "", attachments: [], reduceMotion: false)
             activeJobID = last.jobID
             await pollForCompletion(
                 jobID: last.jobID,
@@ -697,7 +803,7 @@ final class ChatViewModel: ObservableObject {
                 fallbackUserMessageID: messages.first(where: {
                     $0.clientID == last.clientID && $0.sender == .me
                 })?.serverID,
-                assistantLocalID: assistantLocalID
+                assistantLocalID: assistantLocalID, owner: owner
             )
         }
     }
@@ -1082,7 +1188,7 @@ final class ChatViewModel: ObservableObject {
         }
 
         do {
-            let active = try await api.activeSession()
+            let active = try await replyAPI.activeSession()
             prepareForSession(active.id)
             selectedModel = active.model
             CompanionPermissionCoordinator.shared.sessionDidBecomeReady()
@@ -1115,14 +1221,23 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    private func refreshHistory(showFailure: Bool) async {
-        guard let sessionID else { return }
+    @discardableResult
+    private func refreshHistory(showFailure: Bool, owner: UUID? = nil) async -> Bool {
+        guard let sessionID else { return false }
+        if let owner, !ownsReply(owner) { return false }
+        let expectedOwner = replyOwner
+        let requestID = UUID()
+        historyRequestID = requestID
+        @MainActor func isCurrent() -> Bool {
+            self.sessionID == sessionID && replyOwner == expectedOwner
+                && historyRequestID == requestID && !Task.isCancelled
+        }
         isLoadingHistory = messages.isEmpty
         historyLoadFailed = false
-        defer { isLoadingHistory = false }
+        defer { if historyRequestID == requestID { isLoadingHistory = false } }
         do {
-            let remote = try await api.fetchMessages(sessionID: sessionID)
-            guard self.sessionID == sessionID else { return }
+            let remote = try await replyAPI.fetchMessages(sessionID: sessionID, limit: 100, beforeID: nil, aroundID: nil)
+            guard isCurrent() else { return false }
             let withThinking = preserveLocalThinking(in: remote)
             let merged = mergeRemoteHistory(withThinking)
             messages = merged
@@ -1130,13 +1245,17 @@ final class ChatViewModel: ObservableObject {
             isShowingCachedMessages = false
             statusText = nil
             await cache.save(merged, sessionID: sessionID)
-            try? await api.markSeen(
-                sessionID: sessionID,
-                throughID: merged.last(where: { $0.sender == .ke })?.serverID
-            )
+            guard isCurrent() else { return false }
+            let throughID = merged.last(where: { $0.sender == .ke })?.serverID
+            Task { try? await replyAPI.markSeen(sessionID: sessionID, throughID: throughID) }
+            // Notification-service completion must never hold the reply in a sending state.
+            Task { await ChatNotificationCoordinator.shared.clearBadgeIfActive() }
+            return isCurrent()
         } catch APIError.unauthorized {
+            guard isCurrent() else { return false }
             phase = .needsLogin
         } catch {
+            guard isCurrent() else { return false }
             isShowingCachedMessages = !messages.isEmpty
             historyLoadFailed = messages.isEmpty
             if showFailure || !messages.isEmpty {
@@ -1145,6 +1264,7 @@ final class ChatViewModel: ObservableObject {
                     : "现在显示本地记录，网络恢复后会自动更新。"
             }
         }
+        return false
     }
 
     private func performSend(
@@ -1155,8 +1275,10 @@ final class ChatViewModel: ObservableObject {
         assistantLocalID: String,
         attachments: [ChatAttachment],
         reduceMotion: Bool,
-        retryCount: Int
+        retryCount: Int,
+        owner: UUID
     ) async {
+        guard ownsReply(owner) else { return }
         var didComplete = false
         var completionStatus: String?
         var completionError: String?
@@ -1168,6 +1290,7 @@ final class ChatViewModel: ObservableObject {
         var lastPublish = Date.distantPast
 
         func flushBufferedEvents() {
+            guard ownsReply(owner) else { return }
             guard !pendingText.isEmpty || !pendingThinking.isEmpty else { return }
             let textDelta = pendingText
             let thinkingDelta = pendingThinking
@@ -1184,7 +1307,7 @@ final class ChatViewModel: ObservableObject {
         }
 
         do {
-            let stream = try await api.streamMessage(
+            let stream = try await replyAPI.streamMessage(
                 text: text,
                 sessionID: sessionID,
                 clientMessageID: clientID,
@@ -1192,7 +1315,9 @@ final class ChatViewModel: ObservableObject {
                 attachments: attachments
             )
 
+            guard ownsReply(owner) else { return }
             for try await event in stream {
+                guard ownsReply(owner) else { return }
                 switch event {
                 case let .receipt(userMessageID, jobID, bedroom):
                     if let jobID {
@@ -1276,6 +1401,7 @@ final class ChatViewModel: ObservableObject {
                 }
             }
 
+            guard ownsReply(owner) else { return }
             guard didComplete else { throw APIError.streamClosed }
             if completionStatus == "waiting_retry" || retryScheduled {
                 updateMessage(id: assistantLocalID) {
@@ -1288,7 +1414,7 @@ final class ChatViewModel: ObservableObject {
                         jobID: activeJobID,
                         fallbackClientID: clientID,
                         fallbackUserMessageID: messages.first(where: { $0.id == userLocalID })?.serverID,
-                        assistantLocalID: assistantLocalID
+                        assistantLocalID: assistantLocalID, owner: owner
                     )
                 } else {
                     isSending = false
@@ -1309,7 +1435,7 @@ final class ChatViewModel: ObservableObject {
                         jobID: activeJobID,
                         fallbackClientID: clientID,
                         fallbackUserMessageID: messages.first(where: { $0.id == userLocalID })?.serverID,
-                        assistantLocalID: assistantLocalID
+                        assistantLocalID: assistantLocalID, owner: owner
                     )
                 } else {
                     isSending = false
@@ -1328,17 +1454,20 @@ final class ChatViewModel: ObservableObject {
             activeJobID = nil
             statusText = nil
             replyFailure = nil
-            await refreshHistory(showFailure: false)
+            await refreshHistory(showFailure: false, owner: owner)
+            guard ownsReply(owner) else { return }
             isSending = false
-            CompanionPermissionCoordinator.shared.conversationDidComplete()
+            replyCompleted()
 
         } catch APIError.unauthorized {
+            guard ownsReply(owner) else { return }
             flushBufferedEvents()
             isSending = false
             markFailed(userLocalID: userLocalID, assistantLocalID: assistantLocalID)
             phase = .needsLogin
 
         } catch {
+            guard ownsReply(owner) else { return }
             flushBufferedEvents()
             if let activeJobID {
                 updateMessage(id: assistantLocalID) {
@@ -1350,11 +1479,12 @@ final class ChatViewModel: ObservableObject {
                     jobID: activeJobID,
                     fallbackClientID: clientID,
                     fallbackUserMessageID: messages.first(where: { $0.id == userLocalID })?.serverID,
-                    assistantLocalID: assistantLocalID
+                    assistantLocalID: assistantLocalID, owner: owner
                 )
             } else if retryCount == 0 {
                 statusText = "连接断了一下，正在用同一条消息接回…"
                 try? await Task.sleep(nanoseconds: 800_000_000)
+                guard ownsReply(owner) else { return }
                 await performSend(
                     text: text,
                     sessionID: sessionID,
@@ -1363,7 +1493,7 @@ final class ChatViewModel: ObservableObject {
                     assistantLocalID: assistantLocalID,
                     attachments: attachments,
                     reduceMotion: reduceMotion,
-                    retryCount: 1
+                    retryCount: 1, owner: owner
                 )
             } else {
                 isSending = false
@@ -1403,21 +1533,23 @@ final class ChatViewModel: ObservableObject {
         replyFailure = nil
         activeJobID = failure.jobID
         activeStreamClientID = failure.clientMessageID
-        defer {
-            if activeStreamClientID == failure.clientMessageID {
-                activeStreamClientID = nil
-            }
+        let owner = UUID()
+        replyOwner = owner
+        pendingReply = PendingReply(clientID: failure.clientMessageID, userLocalID: userLocalID,
+                                    assistantLocalID: assistantLocalID, text: "", attachments: [], reduceMotion: reduceMotion)
+        let task = Task { [self] in
+            await performSend(text: "", sessionID: sessionID, clientID: failure.clientMessageID,
+                              userLocalID: userLocalID, assistantLocalID: assistantLocalID,
+                              attachments: [], reduceMotion: reduceMotion, retryCount: 0, owner: owner)
+            guard ownsReply(owner) else { return }
+            activeStreamClientID = nil
+            await recoverPendingReceipts(owner: owner)
+            guard ownsReply(owner) else { return }
+            await drainQueuedFollowUps(owner: owner)
+            finishReplyTask(owner)
         }
-        await performSend(
-            text: "",
-            sessionID: sessionID,
-            clientID: failure.clientMessageID,
-            userLocalID: userLocalID,
-            assistantLocalID: assistantLocalID,
-            attachments: [],
-            reduceMotion: reduceMotion,
-            retryCount: 0
-        )
+        replyTask = task
+        await task.value
     }
 
     func dismissReplyFailure() {
@@ -1425,49 +1557,86 @@ final class ChatViewModel: ObservableObject {
     }
 
     private func recoverActiveJobsIfNeeded() async {
-        guard let sessionID,
-              recoveringJobID == nil,
-              activeStreamClientID == nil,
-              recoveryProbeID == nil else { return }
-        let probeID = UUID()
-        recoveryProbeID = probeID
-        defer {
-            if recoveryProbeID == probeID {
-                recoveryProbeID = nil
-            }
+        guard sessionID != nil, replyTask == nil, activeStreamClientID == nil else { return }
+        let owner = UUID()
+        replyOwner = owner
+        let task = Task { [self] in
+            await recoverReply(owner: owner)
+            guard ownsReply(owner) else { return }
+            activeStreamClientID = nil
+            await recoverPendingReceipts(owner: owner)
+            guard ownsReply(owner) else { return }
+            await drainQueuedFollowUps(owner: owner)
+            finishReplyTask(owner)
         }
-        do {
-            let jobs = try await api.activeJobs(
-                sessionID: sessionID,
-                includeRecentFailures: true
-            )
-            // send() may have started while activeJobs was in flight. A stale probe
-            // must never clear its state or start a second polling owner.
-            guard recoveryProbeID == probeID,
-                  activeStreamClientID == nil else { return }
-            guard let job = jobs.first else {
-                isSending = false
-                return
-            }
-            if job.status == "error" {
-                isSending = false
-                statusText = nil
-                presentReplyFailure(job)
-                return
-            }
+        replyTask = task
+        await task.value
+    }
+
+    private func recoverReply(owner: UUID) async {
+        guard let sessionID, ownsReply(owner) else { return }
+        // Completed jobs disappear from the active list. Ask for the known job directly.
+        if let jobID = activeJobID {
             isSending = true
-            statusText = job.status == "waiting_retry"
-                ? "线路忙，服务器会自动再接一次。退出 App 也没关系。"
-                : "柯还有一句话在写，写完会自动接回来。"
-            await pollForCompletion(
-                jobID: job.id,
-                fallbackClientID: job.clientMessageID ?? "",
-                fallbackUserMessageID: job.userMessageID
-            )
+            await pollForCompletion(jobID: jobID,
+                                    fallbackClientID: pendingReply?.clientID ?? "",
+                                    assistantLocalID: pendingReply?.assistantLocalID, owner: owner)
+            return
+        }
+        recoveryProbeID = owner
+        defer { if recoveryProbeID == owner { recoveryProbeID = nil } }
+        do {
+            let jobs = try await replyAPI.activeJobs(sessionID: sessionID, includeRecentFailures: true)
+            guard ownsReply(owner) else { return }
+            let job = pendingReply.map { pending in
+                jobs.first { $0.clientMessageID == pending.clientID }
+            } ?? jobs.first
+            if let job {
+                activeJobID = job.id
+                isSending = true
+                await pollForCompletion(jobID: job.id,
+                                        fallbackClientID: job.clientMessageID ?? "",
+                                        fallbackUserMessageID: job.userMessageID,
+                                        assistantLocalID: pendingReply?.assistantLocalID, owner: owner)
+            } else if let pending = pendingReply {
+                // No receipt before suspension: reuse the existing idempotency key and
+                // original payload, never invent a new message or guess by matching text.
+                activeStreamClientID = pending.clientID
+                await performSend(text: pending.text, sessionID: sessionID, clientID: pending.clientID,
+                                  userLocalID: pending.userLocalID, assistantLocalID: pending.assistantLocalID,
+                                  attachments: pending.attachments, reduceMotion: pending.reduceMotion,
+                                  retryCount: 0, owner: owner)
+            } else {
+                await refreshHistory(showFailure: false, owner: owner)
+                guard ownsReply(owner) else { return }
+                isSending = false
+            }
         } catch APIError.unauthorized {
+            guard ownsReply(owner) else { return }
             phase = .needsLogin
         } catch {
-            // 前台恢复失败不覆盖已经显示的聊天记录。
+            guard ownsReply(owner) else { return }
+            await refreshHistory(showFailure: false, owner: owner)
+            // Keep pending IDs/drafts so another foreground or explicit refresh can retry.
+        }
+    }
+
+    private func reconcile(_ job: ActiveChatJob, clientID: String, assistantLocalID: String?) {
+        for index in messages.indices where messages[index].clientID == clientID && !clientID.isEmpty {
+            if messages[index].sender == .me, let id = job.userMessageID {
+                messages[index].serverID = id
+                messages[index].deliveryState = .sent
+            }
+            if messages[index].sender == .ke, let id = job.assistantMessageID {
+                messages[index].serverID = id
+                messages[index].isStreaming = false
+                messages[index].deliveryState = .sent
+            }
+        }
+        if let assistantLocalID, let id = job.assistantMessageID {
+            updateMessage(id: assistantLocalID) {
+                $0.serverID = id; $0.isStreaming = false; $0.deliveryState = .sent
+            }
         }
     }
 
@@ -1475,55 +1644,64 @@ final class ChatViewModel: ObservableObject {
         jobID: String,
         fallbackClientID: String = "",
         fallbackUserMessageID: Int? = nil,
-        assistantLocalID: String? = nil
+        assistantLocalID: String? = nil,
+        owner: UUID
     ) async {
-        guard let sessionID, recoveringJobID == nil else { return }
+        guard let sessionID, ownsReply(owner), recoveringJobID == nil else { return }
         recoveringJobID = jobID
-        defer {
-            recoveringJobID = nil
-            activeJobID = nil
-        }
+        defer { if ownsReply(owner), recoveringJobID == jobID { recoveringJobID = nil } }
 
-        for _ in 0..<150 {
-            if Task.isCancelled { break }
+        for attempt in 0..<150 {
+            guard ownsReply(owner) else { return }
             do {
-                let job = try await api.chatJob(id: jobID, sessionID: sessionID)
+                let job = try await replyAPI.chatJob(id: jobID, sessionID: sessionID)
+                guard ownsReply(owner) else { return }
+                let clientID = job.clientMessageID ?? fallbackClientID
+                reconcile(job, clientID: clientID, assistantLocalID: assistantLocalID)
                 switch job.status {
-                case "done":
-                    await refreshHistory(showFailure: true)
-                    isSending = false
-                    statusText = nil
-                    replyFailure = nil
-                    CompanionPermissionCoordinator.shared.conversationDidComplete()
-                    return
+                case "done", "merged":
+                    if job.status == "merged" {
+                        messages.removeAll { $0.sender == .ke && $0.clientID == clientID && $0.serverID == nil }
+                    }
+                    let fetched = await refreshHistory(showFailure: true, owner: owner)
+                    guard ownsReply(owner) else { return }
+                    if fetched {
+                        isSending = false
+                        activeJobID = nil
+                        statusText = nil
+                        replyFailure = nil
+                        queuedFollowUps.removeAll { $0.jobID == jobID }
+                        replyCompleted()
+                        return
+                    }
                 case "waiting_retry":
                     statusText = "线路忙，服务器会自动再接一次。退出 App 也没关系。"
                 case "error":
-                    await refreshHistory(showFailure: false)
+                    await refreshHistory(showFailure: false, owner: owner)
+                    guard ownsReply(owner) else { return }
                     isSending = false
+                    activeJobID = nil
                     statusText = nil
-                    if let assistantLocalID {
-                        removeEmptyAssistant(id: assistantLocalID)
-                    }
-                    presentReplyFailure(
-                        job,
-                        fallbackClientID: fallbackClientID,
-                        fallbackUserMessageID: fallbackUserMessageID
-                    )
+                    if let assistantLocalID { removeEmptyAssistant(id: assistantLocalID) }
+                    presentReplyFailure(job, fallbackClientID: fallbackClientID,
+                                        fallbackUserMessageID: fallbackUserMessageID)
                     return
                 default:
                     statusText = "柯还有一句话在写，写完会自动接回来。"
+                    if attempt == 0 { await refreshHistory(showFailure: false, owner: owner) }
                 }
             } catch APIError.unauthorized {
+                guard ownsReply(owner) else { return }
                 isSending = false
                 phase = .needsLogin
                 return
             } catch {
-                // 短暂断网时继续等；最终以 VPS 历史记录为准。
+                guard ownsReply(owner) else { return }
+                // Network failure leaves the current local reply and known job recoverable.
             }
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            do { try await Task.sleep(nanoseconds: 2_000_000_000) } catch { return }
         }
-
+        guard ownsReply(owner) else { return }
         isSending = false
         statusText = "回复仍留在服务器，下次回到 App 会继续接回。"
     }
@@ -1568,6 +1746,10 @@ final class ChatViewModel: ObservableObject {
 
     private func prepareForSession(_ newSessionID: Int) {
         guard sessionID != newSessionID else { return }
+        abandonReplyConnection()
+        pendingReply = nil
+        pendingReceipts.removeAll()
+        queuedFollowUps.removeAll()
         for task in segmentRevealTasks.values { task.cancel() }
         segmentRevealTasks.removeAll()
         visibleSegmentCounts.removeAll()
