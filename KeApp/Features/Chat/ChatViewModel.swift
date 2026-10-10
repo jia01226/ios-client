@@ -725,7 +725,7 @@ final class ChatViewModel: ObservableObject {
         if let existing = receiptTasks[pending.clientID] { await existing.task.value; return }
         let token = UUID()
         let task = Task { [self] in
-            func isCurrent() -> Bool {
+            @MainActor func isCurrent() -> Bool {
                 receiptTasks[pending.clientID]?.owner == token && self.sessionID == sessionID && !Task.isCancelled
             }
             defer { if receiptTasks[pending.clientID]?.owner == token { receiptTasks[pending.clientID] = nil } }
@@ -1225,7 +1225,7 @@ final class ChatViewModel: ObservableObject {
         let expectedOwner = replyOwner
         let requestID = UUID()
         historyRequestID = requestID
-        func isCurrent() -> Bool {
+        @MainActor func isCurrent() -> Bool {
             self.sessionID == sessionID && replyOwner == expectedOwner
                 && historyRequestID == requestID && !Task.isCancelled
         }
