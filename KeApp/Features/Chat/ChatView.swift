@@ -256,6 +256,10 @@ struct ChatView: View {
                     .transition(.opacity)
             }
         }
+        // 84：抬头「柯 / 在线」也浮在一枚玻璃胶囊上，和两边的按钮同一种玻璃。
+        .padding(.horizontal, 18)
+        .padding(.vertical, 6)
+        .background(FloatingGlassSurface(cornerRadius: 22))
     }
 
     private var header: some View {

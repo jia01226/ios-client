@@ -1,12 +1,34 @@
 import SwiftUI
 import UIKit
 
-/// 纯色背景随主题变化，卧室状态继续由服务端驱动。
+/// 底色随主题变化，卧室状态继续由服务端驱动。
+/// 84：纯色底上的 Liquid Glass 看不出透，她觉得「不够玻璃」。在底色上铺几团很淡的月光和粉色光晕，
+/// 玻璃才有东西可以透；卧室状态保持原来的纯色。
 struct AppAtmosphere: View {
     @EnvironmentObject private var theme: Theme
 
     var body: some View {
-        theme.effectiveBackground.ignoresSafeArea().accessibilityHidden(true)
+        ZStack {
+            theme.effectiveBackground
+            if !theme.isBedroom {
+                let night = theme.skin == .night
+                RadialGradient(
+                    colors: [Color.white.opacity(night ? 0.10 : 0.55), .clear],
+                    center: UnitPoint(x: 0.82, y: 0.10), startRadius: 0, endRadius: 260
+                )
+                RadialGradient(
+                    colors: [theme.color.accentSoft.opacity(night ? 0.30 : 0.50), .clear],
+                    center: UnitPoint(x: 0.12, y: 0.70), startRadius: 0, endRadius: 420
+                )
+                RadialGradient(
+                    colors: [theme.sendColor.opacity(night ? 0.18 : 0.24), .clear],
+                    center: UnitPoint(x: 0.92, y: 0.92), startRadius: 0, endRadius: 380
+                )
+            }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 /// 玻璃不是实体粉色卡片：系统材质负责折射，令牌只控制薄薄的染色与边缘反光。
