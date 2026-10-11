@@ -11,10 +11,13 @@ struct MomentsView: View {
     let line: ChatLine
     @State private var sheet: MomentSheet?
     @State private var deletion: MomentDeletion?
-    @State private var draft = ""
-    @State private var draftImage: Data?
-    @State private var uploadedDraftImage = ""
-    @State private var textDrafts: [String: String] = [:]
+    @StateObject private var drafts: MomentsDraftStore
+
+    init(store: MomentsStore, line: ChatLine) {
+        self.store = store
+        self.line = line
+        _drafts = StateObject(wrappedValue: MomentsDraftStore(scope: line.rawValue))
+    }
 
     var body: some View {
         NavigationStack {
@@ -82,8 +85,7 @@ struct MomentsView: View {
             .sheet(item: $sheet) { item in
                 switch item {
                 case .compose:
-                    MomentComposer(store: store, line: line, text: $draft,
-                                   imageData: $draftImage, uploadedImage: $uploadedDraftImage)
+                    MomentComposer(store: store, drafts: drafts, line: line)
                         .environmentObject(theme)
                 case .comment(let moment):
                     textEditor(for: item, title: "评论\(moment.author == "user" ? "佳佳" : "柯")的动态", action: "发送") {
@@ -163,11 +165,11 @@ struct MomentsView: View {
     }
 
     private func openTextSheet(_ item: MomentSheet) {
-        if textDrafts[item.id] == nil {
+        if drafts.textDrafts[item.id] == nil {
             switch item {
-            case .editMoment(let moment): textDrafts[item.id] = moment.content
-            case .editComment(let comment): textDrafts[item.id] = comment.content
-            default: textDrafts[item.id] = ""
+            case .editMoment(let moment): drafts.textDrafts[item.id] = moment.content
+            case .editComment(let comment): drafts.textDrafts[item.id] = comment.content
+            default: drafts.textDrafts[item.id] = ""
             }
         }
         sheet = item
@@ -175,10 +177,10 @@ struct MomentsView: View {
 
     private func textEditor(for item: MomentSheet, title: String, action: String,
                             submit: @escaping (String) async -> Bool) -> some View {
-        MomentTextEditor(store: store, title: title, action: action,
-                         text: Binding(get: { textDrafts[item.id] ?? "" }, set: { textDrafts[item.id] = $0 })) { value in
+        MomentTextEditor(store: store, drafts: drafts, title: title, action: action,
+                         text: Binding(get: { drafts.textDrafts[item.id] ?? "" }, set: { drafts.textDrafts[item.id] = $0 })) { value in
             if await submit(value) {
-                textDrafts[item.id] = nil
+                drafts.textDrafts[item.id] = nil
                 return true
             }
             return false
@@ -358,23 +360,21 @@ private struct MomentComposer: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var store: MomentsStore
+    @ObservedObject var drafts: MomentsDraftStore
     let line: ChatLine
-    @Binding var text: String
-    @Binding var imageData: Data?
-    @Binding var uploadedImage: String
     @State private var photo: PhotosPickerItem?
     @State private var photoLoading = false
     @State private var submitting = false
     @State private var imageError: String?
     private var busy: Bool { submitting || photoLoading || store.saving }
-    private var hasContent: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || imageData != nil }
+    private var hasContent: Bool { !drafts.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || drafts.imageData != nil }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: theme.metric.gapL) {
                     Text("今天有什么想告诉柯？").font(theme.font.journalHeading)
-                    TextEditor(text: $text)
+                    TextEditor(text: $drafts.text)
                         .font(theme.font.body)
                         .scrollContentBackground(.hidden)
                         .frame(minHeight: MomentsTheme.editorHeight)
@@ -383,7 +383,7 @@ private struct MomentComposer: View {
                         .accessibilityLabel("动态正文")
                         .accessibilityIdentifier("moment-draft-text")
                         .disabled(busy)
-                    if let imageData, let image = UIImage(data: imageData) {
+                    if let imageData = drafts.imageData, let image = UIImage(data: imageData) {
                         Image(uiImage: image).resizable().scaledToFit()
                             .frame(maxWidth: .infinity)
                             .frame(height: MomentsTheme.draftImageHeight)
@@ -391,21 +391,21 @@ private struct MomentComposer: View {
                             .accessibilityLabel("已选照片")
                             .accessibilityIdentifier("moment-draft-image")
                         Button("移除照片", role: .destructive) {
-                            self.imageData = nil; uploadedImage = ""; photo = nil; imageError = nil
+                            drafts.imageData = nil; photo = nil; imageError = nil
                         }
                         .frame(minHeight: theme.metric.touchTarget)
                         .disabled(busy)
                         .accessibilityIdentifier("moment-remove-image")
                     }
                     PhotosPicker(selection: $photo, matching: .images) {
-                        Label(imageData == nil ? "选一张照片" : "换一张照片", systemImage: "photo")
+                        Label(drafts.imageData == nil ? "选一张照片" : "换一张照片", systemImage: "photo")
                             .frame(minHeight: theme.metric.touchTarget)
                     }
                     .disabled(busy)
                     .accessibilityIdentifier("moment-add-image")
                     if photoLoading { ProgressView("正在准备照片") }
-                    if submitting { ProgressView(uploadedImage.isEmpty && imageData != nil ? "正在上传照片" : "正在发布") }
-                    if let message = imageError ?? store.error {
+                    if submitting { ProgressView(drafts.uploadedImage.isEmpty && drafts.imageData != nil ? "正在上传照片" : "正在发布") }
+                    if let message = imageError ?? drafts.persistenceError ?? store.error {
                         Text(message).font(theme.font.caption)
                             .foregroundStyle(theme.pageColor.textSecondary)
                             .accessibilityIdentifier("moment-editor-error")
@@ -447,7 +447,7 @@ private struct MomentComposer: View {
                 return
             }
             try Task.checkCancellation()
-            imageData = jpeg; uploadedImage = ""
+            drafts.imageData = jpeg
         } catch is CancellationError {
         } catch { imageError = "照片没有读取出来，请重新选择。" }
     }
@@ -456,18 +456,18 @@ private struct MomentComposer: View {
         guard !busy, hasContent else { return }
         submitting = true; imageError = nil
         defer { submitting = false }
-        if let imageData, uploadedImage.isEmpty {
+        if let imageData = drafts.imageData, drafts.uploadedImage.isEmpty {
             do {
                 let attachment = try await APIClient(baseURL: line.apiBaseURL).uploadAttachment(
                     data: imageData, fileName: "朋友圈-\(UUID().uuidString).jpg", mimeType: "image/jpeg")
-                uploadedImage = attachment.url
+                drafts.uploadedImage = attachment.url
             } catch {
                 imageError = "照片上传失败：\(error.localizedDescription) 草稿还在，点发布可以重试。"
                 return
             }
         }
-        if await store.publish(content: text, image: uploadedImage) {
-            text = ""; self.imageData = nil; uploadedImage = ""
+        if await store.publish(content: drafts.text, image: drafts.uploadedImage) {
+            drafts.clearPost()
             dismiss()
         }
     }
@@ -477,6 +477,7 @@ private struct MomentTextEditor: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var store: MomentsStore
+    @ObservedObject var drafts: MomentsDraftStore
     let title: String
     let action: String
     @Binding var text: String
@@ -498,7 +499,7 @@ private struct MomentTextEditor: View {
                         .accessibilityLabel(title)
                         .accessibilityIdentifier("moment-editor-text")
                     if busy { ProgressView("正在保存") }
-                    if let error = store.error {
+                    if let error = drafts.persistenceError ?? store.error {
                         Text(error).font(theme.font.caption)
                             .foregroundStyle(theme.pageColor.textSecondary)
                             .accessibilityIdentifier("moment-editor-error")
@@ -577,7 +578,7 @@ private struct MomentRemoteImage: View {
         .task(id: "\(url)-\(retry)") {
             image = nil; failed = false
             do {
-                let data = try await APIClient(baseURL: line.apiBaseURL).fetchAttachmentData(at: url)
+                let data = try await APIClient(baseURL: line.apiBaseURL).fetchMomentImageData(at: url)
                 try Task.checkCancellation()
                 guard let decoded = UIImage(data: data) else { failed = true; return }
                 image = decoded
