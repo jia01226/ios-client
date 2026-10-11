@@ -530,6 +530,15 @@ actor APIClient {
         }
     }
 
+    /// Moments stores the upload response verbatim; unlike chat, its list does not add the line prefix.
+    func fetchMomentImageData(at rawURL: String) async throws -> Data {
+        let path = rawURL.hasPrefix("/uploads/") ? String(rawURL.dropFirst()) : rawURL
+        if path.hasPrefix("uploads/") {
+            return try await fetchAttachmentData(at: baseURL.appendingPathComponent(path).absoluteString)
+        }
+        return try await fetchAttachmentData(at: rawURL)
+    }
+
     /// 图片地址受与聊天接口相同的登录保护，不能交给没有明确鉴权语义的图片视图直取。
     func fetchAttachmentData(at rawURL: String) async throws -> Data {
         guard let url = URL(string: rawURL, relativeTo: baseURL)?.absoluteURL,
@@ -844,6 +853,10 @@ actor APIClient {
         try await readResource("/api/moments")
     }
 
+    func fetchMomentsActivity() async throws -> MomentsActivity {
+        try await readResource("/api/moments/status")
+    }
+
     /// 塔罗：服务器抽牌落账，返回牌面；柯只断不抽。
     func drawTarot(question: String, spread: String) async throws -> TarotCast {
         var request = try makeRequest(path: "/api/tarot/draw", method: "POST")
@@ -947,6 +960,14 @@ actor APIClient {
 
     func deleteMoment(id: Int) async throws {
         try await writeResource("/api/moments/delete", body: ["id": id])
+    }
+
+    func editMomentComment(id: Int, content: String) async throws {
+        try await writeResource("/api/moments/comment/edit", body: ["id": id, "content": content])
+    }
+
+    func deleteMomentComment(id: Int) async throws {
+        try await writeResource("/api/moments/comment/delete", body: ["id": id])
     }
 
     func fetchPrivateRecords(date: String) async throws -> [RemotePrivateRecord] {

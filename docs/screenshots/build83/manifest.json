@@ -1,0 +1,62 @@
+{
+  "run": "https://github.com/jia01226/ios-client/actions/runs/38132782485",
+  "source_commit": "e972182",
+  "device": "iPhone 18 Pro",
+  "screenshots": [
+    {
+      "file": "keepsake-day-08-note-restored.png",
+      "source": "7AE2A1C7-D181-4680-AED1-32C2455C6DAA.png",
+      "name": "keepsake-day-08-note-restored"
+    },
+    {
+      "file": "keepsake-day-07-acknowledged-note-in-us.png",
+      "source": "6E2B0EF1-56B1-45E8-BF9C-096937AE37D6.png",
+      "name": "keepsake-day-07-acknowledged-note-in-us"
+    },
+    {
+      "file": "keepsake-day-06b-note-acknowledged.png",
+      "source": "DB6FDE4E-177C-4B47-8F99-26DC15F0F5AD.png",
+      "name": "keepsake-day-06b-note-acknowledged"
+    },
+    {
+      "file": "04-play.png",
+      "source": "B37815C1-D00F-436C-8FF1-C0C9D11D43A1.png",
+      "name": "04-play"
+    },
+    {
+      "file": "02-us.png",
+      "source": "8115E92F-034C-4E29-8D41-6A078B6EA98E.png",
+      "name": "02-us"
+    },
+    {
+      "file": "moments-night-retry-published-once.png",
+      "source": "2C5B03CA-592F-4654-ADF2-C396D5384DE3.png",
+      "name": "moments-night-retry-published-once"
+    },
+    {
+      "file": "moments-night-failure-keeps-draft.png",
+      "source": "65496D83-AAF5-4095-8A8A-95E86264C401.png",
+      "name": "moments-night-failure-keeps-draft"
+    },
+    {
+      "file": "moments-day-published.png",
+      "source": "09799B20-6D40-4991-ABF0-F7BF9548B15A.png",
+      "name": "moments-day-published"
+    },
+    {
+      "file": "moments-day-reactions-and-permissions.png",
+      "source": "3A597FDE-6139-48C7-BB74-181001221339.png",
+      "name": "moments-day-reactions-and-permissions"
+    },
+    {
+      "file": "moments-day-photo.png",
+      "source": "A08D0167-8030-4E90-B836-71E84858201D.png",
+      "name": "moments-day-photo"
+    },
+    {
+      "file": "moments-day-cover-and-feed.png",
+      "source": "B81D61C4-C9DF-4CBB-A427-0FB49389F39C.png",
+      "name": "moments-day-cover-and-feed"
+    }
+  ]
+}

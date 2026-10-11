@@ -72,11 +72,11 @@ enum KeepsakeInteractionChecks {
         notesPull.tap()
         XCTAssertTrue(app.buttons["drawer-notes-close"].waitForExistence(timeout: 6))
         capture("05-notes-drawer")
-        let addNote = app.buttons["notes-add"]
-        scrollTo(addNote)
-        XCTAssertTrue(app.buttons["note-fixture-ke"].exists)
+        let keNote = app.buttons["note-open-fixture-ke"]
+        scrollTo(keNote)
+        XCTAssertFalse(app.buttons["notes-add"].exists)
+        XCTAssertFalse(app.buttons["note-open-fixture-jia"].exists, "Old user notes must not appear among Ke's reminders")
         let interior = app.descendants(matching: .any).matching(identifier: "drawer-notes-interior").firstMatch
-        let keNote = app.buttons["note-fixture-ke"]
         XCTAssertTrue(interior.frame.contains(keNote.frame), "Paper must be inside the actual drawer, not in a list below it")
         keNote.tap()
         XCTAssertTrue(app.buttons["drawer-note-put-back"].waitForExistence(timeout: 5))
@@ -85,20 +85,28 @@ enum KeepsakeInteractionChecks {
         XCTAssertFalse(app.buttons["note-save"].exists)
         capture("06-note-lifted")
         app.buttons["drawer-note-put-back"].tap()
-        XCTAssertTrue(addNote.waitForExistence(timeout: 5))
+        XCTAssertTrue(keNote.waitForExistence(timeout: 5))
         if skin == "day" {
-            addNote.tap()
-            let editor = app.textViews["note-editor"]
-            XCTAssertTrue(editor.waitForExistence(timeout: 6))
-            editor.tap()
-            editor.typeText("珍珠抽屉的同一张便利贴")
-            app.buttons["note-save"].tap()
-            XCTAssertTrue(addNote.waitForExistence(timeout: 6))
-            XCTAssertFalse(app.staticTexts["本机 · 待同步"].exists)
-            capture("06b-note-saved-in-drawer")
+            app.buttons["note-ack-fixture-ke"].tap()
+            let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: keNote)
+            XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 6), .completed)
+            capture("06b-note-acknowledged")
             app.buttons["tab-us"].tap()
-            XCTAssertTrue(app.staticTexts["珍珠抽屉的同一张便利贴"].waitForExistence(timeout: 8))
-            capture("07-shared-note-in-us")
+            XCTAssertTrue(app.buttons["notes-all"].waitForExistence(timeout: 8))
+            XCTAssertFalse(app.buttons["note-open-fixture-ke"].exists, "Acknowledgement must update the other notes view")
+            let archive = app.buttons["notes-open-archive"]
+            scrollTo(archive)
+            archive.tap()
+            let restore = app.buttons["note-restore-fixture-ke"]
+            XCTAssertTrue(restore.waitForExistence(timeout: 5))
+            capture("07-acknowledged-note-in-us")
+            restore.tap()
+            let restored = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: restore)
+            XCTAssertEqual(XCTWaiter.wait(for: [restored], timeout: 6), .completed)
+            XCTAssertFalse(app.textViews["note-editor"].exists)
+            app.buttons["notes-list-close"].tap()
+            XCTAssertTrue(app.buttons["note-open-fixture-ke"].waitForExistence(timeout: 6))
+            capture("08-note-restored")
         } else {
             let close = app.buttons["drawer-notes-close"]
             for _ in 0..<4 {

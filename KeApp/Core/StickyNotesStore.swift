@@ -12,74 +12,78 @@ struct StickyNote: Codable, Identifiable, Equatable, Sendable {
 
 protocol StickyNotesAPI {
     func fetchStickyNotes() async throws -> [StickyNote]
-    func saveStickyNote(id: String, content: String) async throws -> StickyNote
-    func deleteStickyNote(id: String) async throws
 }
 extension APIClient: StickyNotesAPI {}
 
 @MainActor
 final class StickyNotesStore: ObservableObject {
     @Published private(set) var notes: [StickyNote] = []
+    /// Retained for migration only. Old user drafts are never uploaded or shown as Ke's reminders.
     @Published private(set) var drafts: [StickyNote] = []
+    @Published private(set) var archivedIDs: Set<String> = []
     @Published private(set) var loading = false
-    @Published private(set) var saving = false
     @Published private(set) var status: String?
     private let api: any StickyNotesAPI
     private let defaults: UserDefaults
     private let key: String
-    private var generation = 0
+    private var archiveObserver: AnyCancellable?
+    private static let archiveChanged = Notification.Name("moonlight.notes.localArchiveChanged")
+    static let archiveStatus = "收起状态暂存本机"
+
+    /// Only Ke can leave reminders. Historical user notes remain in storage for a later migration.
     var all: [StickyNote] {
-        let draftIDs = Set(drafts.map(\.id))
-        return (drafts + notes.filter { !draftIDs.contains($0.id) }).sorted { ($0.created_at, $0.id) > ($1.created_at, $1.id) }
+        reminders.filter { !archivedIDs.contains($0.id) }
+    }
+    var archived: [StickyNote] {
+        reminders.filter { archivedIDs.contains($0.id) }
+    }
+    private var reminders: [StickyNote] {
+        notes.filter { $0.author == .ai }.sorted { ($0.created_at, $0.id) > ($1.created_at, $1.id) }
     }
     init(api: any StickyNotesAPI, scope: String, defaults: UserDefaults = .standard) {
         self.api = api; self.defaults = defaults; key = "moonlight.notes.drafts." + scope
         notes = defaults.data(forKey: key + ".confirmed").flatMap { try? JSONDecoder().decode([StickyNote].self, from: $0) } ?? []
         drafts = defaults.data(forKey: key).flatMap { try? JSONDecoder().decode([StickyNote].self, from: $0) } ?? []
+        refreshArchive()
+        archiveObserver = NotificationCenter.default.publisher(for: Self.archiveChanged)
+            .sink { [weak self] notification in
+                guard let self, notification.object as? String == self.key else { return }
+                self.refreshArchive()
+            }
     }
-    func isLocal(_ note: StickyNote) -> Bool { drafts.contains { $0.id == note.id } }
     func load() async {
-        guard !loading, !saving else { return }
+        refreshArchive()
+        guard !loading else { return }
         loading = true
-        let revision = generation
         defer { loading = false }
         do {
             let fetched = try await api.fetchStickyNotes()
-            guard revision == generation else { return }
             notes = fetched; status = nil
-            // Only a matching ID AND content confirms a previously timed-out write.
-            drafts.removeAll { draft in fetched.contains { $0.id == draft.id && $0.content == draft.content && $0.author == .user } }
-            persist()
-        } catch { status = "同步暂未接通，新写的便利贴会先留在这台手机里。" }
+            defaults.set(try? JSONEncoder().encode(notes), forKey: key + ".confirmed")
+            // The server has no acknowledgement contract yet; fetching cannot clear local choices.
+            refreshArchive()
+        } catch { status = "暂时没有同步到新的提醒，已保存的便利贴仍留在这里。" }
     }
-    func save(_ content: String, editing: StickyNote? = nil) async {
-        guard !saving, editing == nil || editing?.author == .user else { return }
-        let text = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        generation += 1
-        let note = StickyNote(id: editing?.id ?? UUID().uuidString, author: .user, content: text,
-                              created_at: editing?.created_at ?? ISO8601DateFormatter().string(from: .now))
-        drafts.removeAll { $0.id == note.id }; drafts.append(note); persist()
-        saving = true; defer { saving = false }
-        do {
-            let saved = try await api.saveStickyNote(id: note.id, content: note.content)
-            guard saved.id == note.id, saved.content == note.content, saved.author == .user else { throw APIError.invalidResponse }
-            notes.removeAll { $0.id == saved.id }; notes.append(saved)
-            drafts.removeAll { $0.id == saved.id }; persist(); status = nil
-        } catch { status = "已保存在本机，尚未同步给柯。稍后可点这张便利贴重试。" }
+
+    func acknowledge(_ note: StickyNote) {
+        guard note.author == .ai, notes.contains(where: { $0.id == note.id && $0.author == .ai }) else { return }
+        refreshArchive()
+        archivedIDs.insert(note.id)
+        persistArchive()
     }
-    func delete(_ note: StickyNote) async {
-        guard note.author == .user, !saving else { return }
-        saving = true; generation += 1
-        defer { saving = false }
-        do {
-            // Even a draft may represent a timed-out server write: retain it until deletion is confirmed.
-            try await api.deleteStickyNote(id: note.id)
-            drafts.removeAll { $0.id == note.id }; notes.removeAll { $0.id == note.id }; persist(); status = nil
-        } catch { status = "删除尚未确认，便利贴先保留。" }
+
+    func restore(_ note: StickyNote) {
+        guard note.author == .ai else { return }
+        refreshArchive()
+        archivedIDs.remove(note.id)
+        persistArchive()
     }
-    private func persist() {
-        defaults.set(try? JSONEncoder().encode(drafts), forKey: key)
-        defaults.set(try? JSONEncoder().encode(notes), forKey: key + ".confirmed")
+
+    private func refreshArchive() {
+        archivedIDs = Set(defaults.stringArray(forKey: key + ".archived") ?? [])
+    }
+    private func persistArchive() {
+        defaults.set(archivedIDs.sorted(), forKey: key + ".archived")
+        NotificationCenter.default.post(name: Self.archiveChanged, object: key)
     }
 }

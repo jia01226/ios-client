@@ -29,7 +29,8 @@ final class CompanionPreviewTransport: URLProtocol {
         }
         let body: String
         let code: Int
-        if let fixture = MoonlightPreviewData.response(for: request) { code = fixture.0; body = fixture.1 }
+        if let fixture = MomentsPreviewData.response(for: request) { code = fixture.0; body = fixture.1 }
+        else if let fixture = MoonlightPreviewData.response(for: request) { code = fixture.0; body = fixture.1 }
         else if let fixture = JournalPreviewData.response(for: request) { code = fixture.0; body = fixture.1 }
         else if path.hasSuffix("/tarot/draw") {
             code = 200

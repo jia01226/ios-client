@@ -479,3 +479,52 @@ enum JournalLayout {
     static let hutTop: CGFloat = 130
     static let shiftChoicesHeight: CGFloat = 260
 }
+
+// 朋友圈与提醒的原生布局令牌。
+enum MomentsTheme {
+    static let unreadColor = Color(hex: 0xC75C70)
+    static let coverHeight: CGFloat = 220
+    static let coverCaptionOpacity: Double = 0.96
+    static let coverArtworkSize: CGFloat = 290
+    static let profileAvatarSize: CGFloat = 68
+    static let avatarSize: CGFloat = 44
+    static let maximumWidth: CGFloat = 680
+    static let imageHeight: CGFloat = 230
+    static let editorHeight: CGFloat = 180
+    static let draftImageHeight: CGFloat = 180
+    static let profileOverlap: CGFloat = -28
+    static let dotSize: CGFloat = 8
+}
+
+enum NotesTheme {
+    static let gap: CGFloat = 16
+    static let smallGap: CGFloat = 10
+    static let compactGap: CGFloat = 8
+    static let inset: CGFloat = 20
+    static let pageInset: CGFloat = 24
+    static let controlHeight: CGFloat = 44
+    static let cardMinHeight: CGFloat = 128
+    static let drawerCardMinHeight: CGFloat = 88
+    static let cardInset: CGFloat = 16
+    static let drawerCardInset: CGFloat = 12
+    static let foldSize: CGFloat = 16
+    static let titleSize: CGFloat = 17
+    static let captionSize: CGFloat = 13
+    static let authorSize: CGFloat = 14
+    static let bodySize: CGFloat = 17
+    static let readerSize: CGFloat = 22
+    static let scriptSize: CGFloat = 25
+    static let largeScriptSize: CGFloat = 32
+    static let lineSpacing: CGFloat = 4
+    static let ruleWidth: CGFloat = 16
+    static let ruleHeight: CGFloat = 0.5
+    static let cardOpacity: Double = 0.76
+    static let ruleOpacity: Double = 0.55
+    static let foldOpacity: Double = 0.23
+    static let shadowOpacity: Double = 0.14
+    static let shadowRadius: CGFloat = 3
+    static let shadowOffset: CGFloat = 3
+    static let readerShadowRadius: CGFloat = 18
+    static let readerShadowOffset: CGFloat = 8
+    static let archiveDuration: Double = 0.28
+}

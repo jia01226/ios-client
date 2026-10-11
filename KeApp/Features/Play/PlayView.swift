@@ -12,7 +12,13 @@ struct PlayView: View {
     let line: ChatLine
     @State private var tarotOpen = false
     @State private var duelOpen = false
-    init(line: ChatLine = .main) { self.line = line }
+    @State private var momentsOpen = false
+    @StateObject private var moments: MomentsStore
+    @Environment(\.scenePhase) private var scenePhase
+    init(line: ChatLine = .main) {
+        self.line = line
+        _moments = StateObject(wrappedValue: MomentsStore(api: APIClient(baseURL: line.apiBaseURL), scope: line.rawValue))
+    }
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
@@ -20,7 +26,30 @@ struct PlayView: View {
                     Text("玩").font(Moonlight.serif(44)).padding(.top, 28)
                     Text("陪你玩一会儿。").font(Moonlight.serif(15))
                         .foregroundStyle(theme.pageColor.textSecondary).padding(.top, 8)
-                    Spacer(minLength: 38)
+                    Button { momentsOpen = true } label: {
+                        HStack(spacing: theme.metric.gapM) {
+                            Image("CamelliaMoonlight").resizable().scaledToFit()
+                                .frame(width: MomentsTheme.profileAvatarSize, height: MomentsTheme.profileAvatarSize)
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: theme.metric.gapS) {
+                                HStack(spacing: theme.metric.gapS) {
+                                    Text("朋友圈").font(theme.font.journalHeading)
+                                    if moments.hasUnread {
+                                        Circle().fill(MomentsTheme.unreadColor)
+                                            .frame(width: MomentsTheme.dotSize, height: MomentsTheme.dotSize)
+                                            .accessibilityLabel("柯有新动态").accessibilityIdentifier("moments-unread")
+                                    }
+                                }
+                                Text("把想说的话，放在这里。").font(theme.font.journalCaption)
+                                    .foregroundStyle(theme.pageColor.textSecondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").font(theme.font.caption)
+                        }.padding(theme.metric.gapM)
+                            .background(theme.pageColor.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
+                            .contentShape(Rectangle())
+                    }.accessibilityIdentifier("play-moments").padding(.top, theme.metric.gapXL)
+                    Spacer(minLength: theme.metric.gapXL)
                     Button { tarotOpen = true } label: {
                         HStack(spacing: 0) {
                             VStack(alignment: .leading, spacing: 16) {
@@ -49,6 +78,14 @@ struct PlayView: View {
         }
         .foregroundStyle(theme.pageColor.textPrimary).buttonStyle(.plain)
         .background(theme.pageBackground.ignoresSafeArea())
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            while !Task.isCancelled {
+                if !momentsOpen { await moments.refreshActivity() }
+                do { try await Task.sleep(nanoseconds: moments.pollInterval) } catch { break }
+            }
+        }
+        .fullScreenCover(isPresented: $momentsOpen) { MomentsView(store: moments, line: line).environmentObject(theme) }
         .fullScreenCover(isPresented: $tarotOpen) { TarotView(line: line).environmentObject(theme) }
         .fullScreenCover(isPresented: $duelOpen) { DuelView().environmentObject(theme) }
     }

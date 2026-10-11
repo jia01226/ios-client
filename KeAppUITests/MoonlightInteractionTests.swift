@@ -15,7 +15,9 @@ final class MoonlightInteractionTests: XCTestCase {
         XCTAssertFalse(app.descendants(matching: .any)["chat-line-switcher-light"].exists)
         capture("01-chat")
         app.buttons["tab-us"].tap()
-        XCTAssertTrue(app.buttons["notes-add"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["notes-all"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.buttons["notes-add"].exists)
+        XCTAssertFalse(app.buttons["note-open-fixture-jia"].exists)
         XCTAssertTrue(app.buttons["anniversary-together"].exists)
         capture("02-us")
         // The airy anniversary/notes composition intentionally puts scheduling below the fold.
