@@ -34,6 +34,53 @@ private func requestBody(_ request: URLRequest) -> Data? {
 }
 
 final class CompanionAPITests: XCTestCase {
+    func testMomentsActivityAndCommentRoutesMatchBackendContract() async throws {
+        CompanionStub.handler = { request in
+            XCTAssertEqual(request.url?.path, "/ke-test2/api/moments/status")
+            XCTAssertEqual(request.httpMethod, "GET")
+            return (200, #"{"last_ke_activity_at":"2026-10-11 12:00:00","waiting":true}"#)
+        }
+        let activity = try await api().fetchMomentsActivity()
+        XCTAssertTrue(activity.waiting)
+        XCTAssertEqual(activity.last_ke_activity_at, "2026-10-11 12:00:00")
+        CompanionStub.handler = { request in
+            XCTAssertEqual(request.url?.path, "/ke-test2/api/moments/comment/edit")
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: requestBody(request)!) as? [String: Any])
+            XCTAssertEqual(body["id"] as? Int, 7)
+            XCTAssertEqual(body["content"] as? String, "new comment")
+            return (200, #"{"ok":true}"#)
+        }
+        try await api().editMomentComment(id: 7, content: "new comment")
+        CompanionStub.handler = { request in
+            XCTAssertEqual(request.url?.path, "/ke-test2/api/moments/comment/delete")
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: requestBody(request)!) as? [String: Int])
+            XCTAssertEqual(body, ["id": 7])
+            return (200, #"{"ok":true}"#)
+        }
+        try await api().deleteMomentComment(id: 7)
+    }
+
+    func testMomentImageOnlyPublicationUsesUploadURLAndPrivateVisibility() async throws {
+        CompanionStub.handler = { request in
+            XCTAssertEqual(request.url?.path, "/ke-test2/api/moments")
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: requestBody(request)!) as? [String: String])
+            XCTAssertEqual(body, ["content": "", "image": "/uploads/photo.jpg", "visibility": "private"])
+            return (200, #"{"id":7,"session_id":9,"reply_due_at":"2026-10-11 12:00:00"}"#)
+        }
+        try await api().addMoment(content: "", image: "/uploads/photo.jpg")
+    }
+
+    func testMomentUploadImageReadKeepsSelectedLinePrefix() async throws {
+        CompanionStub.handler = { request in
+            XCTAssertEqual(request.url?.path, "/ke-test2/uploads/photo.jpg")
+            XCTAssertEqual(request.httpMethod, "GET")
+            return (200, "image-bytes")
+        }
+        _ = try await api().fetchMomentImageData(at: "/uploads/photo.jpg")
+        _ = try await api().fetchMomentImageData(at: "uploads/photo.jpg")
+        _ = try await api().fetchMomentImageData(at: "https://example.invalid/ke-test2/uploads/photo.jpg")
+    }
+
     private func api() -> APIClient {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [CompanionStub.self]

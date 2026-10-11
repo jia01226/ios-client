@@ -182,6 +182,7 @@ final class CompanionInteractionTests: XCTestCase {
     func testGardenEntryHandsToKe() {
         ForegroundRecoveryInteractionChecks.verify(in: self)
         MoonlightInteractionTests.verify(in: self)
+        MomentsInteractionChecks.verify(in: self)
     }
 
     func testGardenAndXBeadsAreGone() {
