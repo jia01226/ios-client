@@ -8,8 +8,7 @@ struct MoonStickyNotesView: View {
     var drawerMode = false
     @State private var trayPage = 0
     @State private var selected: StickyNote?
-    @State private var allOpen = false
-    @State private var showsArchived = false
+    @State private var listRoute: StickyNotesListRoute?
     private var featured: [StickyNote] { Array(store.all.prefix(2)) }
 
     var body: some View {
@@ -44,7 +43,10 @@ struct MoonStickyNotesView: View {
             }.padding(NotesTheme.pageInset)
                 .background(theme.pageBackground.ignoresSafeArea()).buttonStyle(.plain)
         }
-        .sheet(isPresented: $allOpen) { notesList }
+        .sheet(item: $listRoute) { route in
+            StickyNotesListView(store: store, drawerMode: drawerMode, initiallyArchived: route == .archived)
+                .id(route.id)
+        }
     }
 
     private var remindersBody: some View {
@@ -73,11 +75,11 @@ struct MoonStickyNotesView: View {
 
     private var listHeader: some View {
         HStack(spacing: NotesTheme.compactGap) {
-            Button("便利贴") { showsArchived = false; allOpen = true }
+            Button("便利贴") { listRoute = .active }
                 .font(Moonlight.serif(NotesTheme.titleSize))
                 .frame(minHeight: NotesTheme.controlHeight).accessibilityIdentifier("notes-all")
             Spacer()
-            Button("已收起 · \(store.archived.count)") { showsArchived = true; allOpen = true }
+            Button("已收起 · \(store.archived.count)") { listRoute = .archived }
                 .font(Moonlight.serif(NotesTheme.captionSize))
                 .frame(minHeight: NotesTheme.controlHeight).accessibilityIdentifier("notes-open-archive")
         }
@@ -99,52 +101,6 @@ struct MoonStickyNotesView: View {
                     .disabled(store.loading).accessibilityIdentifier("notes-retry")
             }.font(Moonlight.serif(NotesTheme.captionSize))
         }
-    }
-
-    private var notesList: some View {
-        NavigationStack {
-            VStack(spacing: NotesTheme.gap) {
-                Picker("便利贴", selection: $showsArchived) {
-                    Text("贴着的").tag(false)
-                    Text("已收起").tag(true)
-                }.pickerStyle(.segmented).accessibilityIdentifier("notes-list-filter")
-                ScrollView {
-                    LazyVStack(spacing: NotesTheme.gap) {
-                        syncStatus
-                        ForEach(showsArchived ? store.archived : store.all) { note in
-                            VStack(alignment: .leading, spacing: NotesTheme.smallGap) {
-                                Text("柯").font(Moonlight.serif(NotesTheme.authorSize)).foregroundStyle(theme.pageAccent)
-                                Text(note.content).font(Moonlight.serif(NotesTheme.bodySize))
-                                    .lineSpacing(NotesTheme.lineSpacing).textSelection(.enabled)
-                                HStack {
-                                    Spacer()
-                                    if showsArchived {
-                                        Button("放回去") { changeArchive { store.restore(note) } }
-                                            .accessibilityIdentifier("note-restore-" + note.id)
-                                    } else { acknowledgeButton(note) }
-                                }.font(Moonlight.serif(NotesTheme.authorSize))
-                                    .frame(minHeight: NotesTheme.controlHeight)
-                            }.frame(maxWidth: .infinity, alignment: .leading).padding(NotesTheme.inset)
-                                .background(paper, in: NotePaperShape())
-                                .accessibilityElement(children: .contain).accessibilityIdentifier("note-" + note.id)
-                                .transition(archiveTransition)
-                        }
-                        if (showsArchived ? store.archived : store.all).isEmpty {
-                            Text(showsArchived ? "收起的提醒会留在这里，随时能放回去。" : "柯的小提醒会贴在这里。")
-                                .font(Moonlight.serif(NotesTheme.bodySize)).foregroundStyle(theme.pageColor.textSecondary)
-                        }
-                    }.frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityIdentifier(showsArchived ? "notes-archive-list" : "notes-active-list")
-                }.refreshable { await store.load() }
-                localArchiveStatus
-            }.padding(NotesTheme.pageInset).background(theme.pageBackground)
-                .navigationTitle("便利贴").navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("收好") { allOpen = false }.accessibilityIdentifier("notes-list-close")
-                    }
-                }
-        }.tint(theme.pageAccent)
     }
 
     private var trayPageCount: Int { max(1, (store.all.count + 1) / 2) }
@@ -257,6 +213,109 @@ struct MoonStickyNotesView: View {
             .accessibilityIdentifier("note-ack-" + note.id)
     }
 
+    private var archiveTransition: AnyTransition {
+        reduceMotion ? .identity : .asymmetric(insertion: .opacity, removal: .move(edge: .bottom).combined(with: .opacity))
+    }
+    private func changeArchive(_ change: () -> Void) {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: NotesTheme.archiveDuration), change)
+    }
+}
+
+private enum StickyNotesListRoute: String, Identifiable {
+    case active, archived
+    var id: String { rawValue }
+}
+
+/// The presentation carries the initial list choice as one value. Its own state keeps
+/// the first archived presentation independent of the presenting view's update timing.
+private struct StickyNotesListView: View {
+    @EnvironmentObject private var theme: Theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var store: StickyNotesStore
+    let drawerMode: Bool
+    @State private var showsArchived: Bool
+
+    init(store: StickyNotesStore, drawerMode: Bool, initiallyArchived: Bool) {
+        self.store = store
+        self.drawerMode = drawerMode
+        _showsArchived = State(initialValue: initiallyArchived)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: NotesTheme.gap) {
+                Picker("便利贴", selection: $showsArchived) {
+                    Text("贴着的").tag(false)
+                    Text("已收起").tag(true)
+                }.pickerStyle(.segmented).accessibilityIdentifier("notes-list-filter")
+                ScrollView {
+                    LazyVStack(spacing: NotesTheme.gap) {
+                        syncStatus
+                        ForEach(showsArchived ? store.archived : store.all) { note in
+                            VStack(alignment: .leading, spacing: NotesTheme.smallGap) {
+                                Text("柯").font(Moonlight.serif(NotesTheme.authorSize)).foregroundStyle(theme.pageAccent)
+                                Text(note.content).font(Moonlight.serif(NotesTheme.bodySize))
+                                    .lineSpacing(NotesTheme.lineSpacing).textSelection(.enabled)
+                                HStack {
+                                    Spacer()
+                                    if showsArchived {
+                                        Button("放回去") { changeArchive { store.restore(note) } }
+                                            .accessibilityIdentifier("note-restore-" + note.id)
+                                    } else { acknowledgeButton(note) }
+                                }.font(Moonlight.serif(NotesTheme.authorSize))
+                                    .frame(minHeight: NotesTheme.controlHeight)
+                            }.frame(maxWidth: .infinity, alignment: .leading).padding(NotesTheme.inset)
+                                .background(paper, in: NotePaperShape())
+                                .accessibilityElement(children: .contain).accessibilityIdentifier("note-" + note.id)
+                                .transition(archiveTransition)
+                        }
+                        if (showsArchived ? store.archived : store.all).isEmpty {
+                            Text(showsArchived ? "收起的提醒会留在这里，随时能放回去。" : "柯的小提醒会贴在这里。")
+                                .font(Moonlight.serif(NotesTheme.bodySize)).foregroundStyle(theme.pageColor.textSecondary)
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityIdentifier(showsArchived ? "notes-archive-list" : "notes-active-list")
+                }.refreshable { await store.load() }
+                localArchiveStatus
+            }.padding(NotesTheme.pageInset).background(theme.pageBackground)
+                .navigationTitle("便利贴").navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("收好") { dismiss() }.accessibilityIdentifier("notes-list-close")
+                    }
+                }
+        }.tint(theme.pageAccent)
+    }
+
+    private var localArchiveStatus: some View {
+        Text(StickyNotesStore.archiveStatus)
+            .font(Moonlight.serif(NotesTheme.captionSize)).foregroundStyle(theme.pageColor.textSecondary)
+            .accessibilityIdentifier("notes-local-archive-status")
+    }
+
+    @ViewBuilder
+    private var syncStatus: some View {
+        if let status = store.status {
+            VStack(alignment: .leading, spacing: NotesTheme.compactGap) {
+                Text(status).foregroundStyle(theme.pageColor.textSecondary)
+                Button("重新同步") { Task { await store.load() } }
+                    .foregroundStyle(theme.pageAccent).frame(minHeight: NotesTheme.controlHeight)
+                    .disabled(store.loading).accessibilityIdentifier("notes-retry")
+            }.font(Moonlight.serif(NotesTheme.captionSize))
+        }
+    }
+
+    private var paper: Color {
+        theme.skin == .night && !drawerMode ? theme.pageColor.card : Moonlight.lavenderPaper
+    }
+    private func acknowledgeButton(_ note: StickyNote) -> some View {
+        Button("知道啦") { changeArchive { store.acknowledge(note) } }
+            .font(Moonlight.serif(NotesTheme.authorSize)).foregroundStyle(theme.pageAccent)
+            .frame(minHeight: NotesTheme.controlHeight)
+            .accessibilityLabel("知道啦，收起这张便利贴")
+            .accessibilityIdentifier("note-ack-" + note.id)
+    }
     private var archiveTransition: AnyTransition {
         reduceMotion ? .identity : .asymmetric(insertion: .opacity, removal: .move(edge: .bottom).combined(with: .opacity))
     }
