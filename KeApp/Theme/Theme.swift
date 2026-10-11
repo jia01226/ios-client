@@ -484,6 +484,7 @@ enum JournalLayout {
 enum MomentsTheme {
     static let unreadColor = Color(hex: 0xC75C70)
     static let coverHeight: CGFloat = 220
+    static let coverCaptionOpacity: Double = 0.96
     static let coverArtworkSize: CGFloat = 290
     static let profileAvatarSize: CGFloat = 68
     static let avatarSize: CGFloat = 44

@@ -134,24 +134,29 @@ struct MomentsView: View {
 
     private var cover: some View {
         VStack(alignment: .trailing, spacing: theme.metric.gapS) {
-            ZStack(alignment: .bottomLeading) {
-                LinearGradient(colors: [theme.pageColor.accentSoft, theme.pageColor.cardElevated, theme.pageColor.bg],
-                               startPoint: .topLeading, endPoint: .bottomTrailing)
-                Image("KeMoonCamellia")
-                    .resizable().scaledToFit()
-                    .frame(width: MomentsTheme.coverArtworkSize, height: MomentsTheme.coverArtworkSize)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: theme.metric.gapS) {
-                    Text("我们的日常").font(theme.font.journalTitle)
-                    Text("有话想说，就留在这里。")
-                        .font(theme.font.journalCaption)
-                        .foregroundStyle(theme.pageColor.textSecondary)
+            LinearGradient(colors: [theme.pageColor.accentSoft, theme.pageColor.cardElevated, theme.pageColor.bg],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+                .frame(height: MomentsTheme.coverHeight)
+                .overlay(alignment: .topTrailing) {
+                    Image("KeMoonCamellia")
+                        .resizable().scaledToFit()
+                        .frame(width: MomentsTheme.coverArtworkSize, height: MomentsTheme.coverArtworkSize)
+                        .accessibilityHidden(true)
                 }
-                .padding(theme.metric.gapXL)
-            }
-            .frame(height: MomentsTheme.coverHeight)
-            .clipped()
+                .overlay(alignment: .bottomLeading) {
+                    VStack(alignment: .leading, spacing: theme.metric.gapS) {
+                        Text("我们的日常").font(theme.font.journalTitle)
+                        Text("有话想说，就留在这里。")
+                            .font(theme.font.journalCaption)
+                            .foregroundStyle(theme.pageColor.textSecondary)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, theme.metric.gapXL)
+                    .padding(.vertical, theme.metric.gapM)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(theme.pageBackground.opacity(MomentsTheme.coverCaptionOpacity))
+                }
+                .clipped()
             HStack(alignment: .bottom, spacing: theme.metric.gapM) {
                 Text("佳佳").font(theme.font.journalHeading)
                     .padding(.bottom, theme.metric.gapS)
@@ -274,7 +279,6 @@ private struct MomentRow: View {
                 if let image = moment.image, !image.isEmpty {
                     MomentRemoteImage(url: image, line: line, preview: { preview(image) })
                         .frame(height: MomentsTheme.imageHeight)
-                        .clipShape(RoundedRectangle(cornerRadius: theme.metric.radiusChip))
                         .accessibilityIdentifier("moment-image-\(moment.id)")
                 }
                 HStack(spacing: theme.metric.gapS) {
@@ -549,6 +553,7 @@ private struct MomentRemoteImage: View {
                 if let preview {
                     Button(action: preview) {
                         Image(uiImage: image).resizable().scaledToFit()
+                            .clipShape(RoundedRectangle(cornerRadius: theme.metric.radiusChip))
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                     }
                     .accessibilityLabel("查看动态照片")
