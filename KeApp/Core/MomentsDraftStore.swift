@@ -36,13 +36,14 @@ final class MomentsDraftStore: ObservableObject {
         let root = rootDirectory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("MomentsDrafts", isDirectory: true)
         let key = scope.utf8.map { String(format: "%02x", $0) }.joined()
-        directory = root.appendingPathComponent(key.isEmpty ? "default" : key, isDirectory: true)
-        let metadataURL = directory.appendingPathComponent("draft.json")
+        let draftDirectory = root.appendingPathComponent(key.isEmpty ? "default" : key, isDirectory: true)
+        directory = draftDirectory
+        let metadataURL = draftDirectory.appendingPathComponent("draft.json")
         let metadata = (try? Data(contentsOf: metadataURL))
             .flatMap { try? JSONDecoder().decode(Metadata.self, from: $0) } ?? Metadata()
         // Unreferenced images must never resurrect a cleared or already published draft.
         let name = metadata.photoFileName.flatMap { $0 == URL(fileURLWithPath: $0).lastPathComponent ? $0 : nil }
-        let photo = name.flatMap { try? Data(contentsOf: directory.appendingPathComponent($0)) }
+        let photo = name.flatMap { try? Data(contentsOf: draftDirectory.appendingPathComponent($0)) }
         text = metadata.text
         imageData = photo
         photoFileName = photo == nil ? nil : name
