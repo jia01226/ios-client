@@ -10,15 +10,16 @@ struct RootTabView: View {
     @State private var chatLine: ChatLine = .test1
     @State private var keyboardIsVisible = false
     @State private var chatSettingsOpen = false
+    @State private var quoteOpenRequest: QuoteOpenRequest?
 
     enum Tab: Hashable {
         // 佳佳 2026-10-06：原来「佳佳」那一格换成柯的抽屉——他自己的地方。
-        case ke, us, play, drawer
+        case ke, us, play, memory, drawer
     }
 
     init() {
         let previewUs = ProcessInfo.processInfo.arguments.contains("-preview-us")
-        _selection = State(initialValue: previewUs ? .us : .ke)
+        _selection = State(initialValue: ProcessInfo.processInfo.arguments.contains("-preview-memory") ? .memory : (previewUs ? .us : .ke))
     }
 
     var body: some View {
@@ -31,7 +32,7 @@ struct RootTabView: View {
                 // 风铃和月球动画不会在后台继续运行。
                 ZStack {
                     selectedNonChatPage
-                    ChatView(line: chatLine, selectedLine: $chatLine)
+                    ChatView(line: chatLine, selectedLine: $chatLine, quoteOpenRequest: $quoteOpenRequest)
                         .id(chatLine)
                         .opacity(selection == .ke ? 1 : 0)
                         .allowsHitTesting(selection == .ke)
@@ -100,6 +101,11 @@ struct RootTabView: View {
             PlayView(line: chatLine).id(chatLine)
         case .drawer:
             KeSpaceView(line: chatLine).id(chatLine)
+        case .memory:
+            MemoryTabView(line: chatLine) { quote in
+                selection = .ke
+                quoteOpenRequest = QuoteOpenRequest(messageID: quote.message_id)
+            }.id(chatLine)
         }
     }
 
@@ -108,6 +114,7 @@ struct RootTabView: View {
             journalTab(.ke, label: "柯", symbol: "bubble.left")
             journalTab(.us, label: "我们", symbol: "heart")
             journalTab(.play, label: "玩", symbol: "gamecontroller")
+            journalTab(.memory, label: "记忆", symbol: "camera.macro")
             journalTab(.drawer, label: "柯的", symbol: "archivebox")
         }
         .padding(.horizontal, 12).padding(.top, 9).padding(.bottom, 3)
@@ -117,9 +124,9 @@ struct RootTabView: View {
     private func journalTab(_ tab: Tab, label: String, symbol: String) -> some View {
         Button { withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) { selection = tab } } label: {
             VStack(spacing: 5) {
-                Image(systemName: tab == selection ? symbol + ".fill" : symbol)
+                Image(systemName: tab == selection && tab != .memory ? symbol + ".fill" : symbol)
                     .font(.system(size: 18, weight: .ultraLight)).frame(height: 22)
-                    .symbolEffect(.bounce, value: selection == tab)
+                    .symbolEffect(.bounce, value: tab != .memory && selection == tab)
                 Text(label).font(.custom("NotoSerifSC-ExtraLight", size: 11))
             }
             .foregroundStyle(tab == selection ? theme.pageAccent : theme.pageColor.textSecondary)
@@ -132,6 +139,7 @@ struct RootTabView: View {
             tabButton(.ke, label: "柯")
             tabButton(.us, label: "我们")
             tabButton(.play, label: "玩")
+            tabButton(.memory, label: "记忆")
             tabButton(.drawer, label: "柯的")
         }
         .padding(.horizontal, 8)
@@ -168,6 +176,7 @@ struct RootTabView: View {
         case .ke: return "bubble.left.and.bubble.right.fill"
         case .play: return selection == tab ? "gamecontroller.fill" : "gamecontroller"
         case .drawer: return selection == tab ? "archivebox.fill" : "archivebox"
+        case .memory: return "camera.macro"
         }
     }
 

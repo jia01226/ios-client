@@ -76,6 +76,7 @@ struct ChatTimelineItem: Identifiable, Equatable {
     let message: Message
     let isHighlighted: Bool
     let visibleSegmentCount: Int?
+    var isQuoted = false
 
     var id: String {
         switch kind {
@@ -100,6 +101,7 @@ struct ChatTimelineItem: Identifiable, Equatable {
     static func make(
         messages: [Message],
         highlightedMessageID: String?,
+        quotedIDs: Set<Int> = [],
         visibleSegmentCount: (Message) -> Int?
     ) -> [Self] {
         var result: [Self] = []
@@ -123,7 +125,11 @@ struct ChatTimelineItem: Identifiable, Equatable {
                 visibleSegmentCount: visibleSegmentCount(message)
             ))
         }
-        return result
+        return result.map { item in
+            var item = item
+            item.isQuoted = item.message.serverID.map(quotedIDs.contains) ?? false
+            return item
+        }
     }
 
     static func make(
@@ -776,7 +782,8 @@ final class ChatCollectionTimelineController: UIViewController,
                         self?.onAttachmentTap(attachment)
                     },
                     onRecall: { [weak self] message in self?.onRecall(message) },
-                    onSaveQuote: { [weak self] message in self?.onSaveQuote(message) }
+                    onSaveQuote: { [weak self] message in self?.onSaveQuote(message) },
+                    isQuoted: item.isQuoted
                 )
                 .environmentObject(Theme.shared)
 #if DEBUG

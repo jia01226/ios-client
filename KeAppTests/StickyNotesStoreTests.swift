@@ -1,127 +1,102 @@
 import XCTest
 @testable import KeApp
 
-@MainActor
-final class StickyNotesStoreTests: XCTestCase {
-    func testOnlyKeRemindersAreVisibleAndHistoricalDraftBytesStayUnchanged() async throws {
-        let (suite, defaults) = makeDefaults()
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let legacyDraft = note("draft", author: .user)
-        let legacyData = try JSONEncoder().encode([legacyDraft])
-        defaults.set(legacyData, forKey: "moonlight.notes.drafts.main")
-        let api = StickyNotesReadFake([note("user", author: .user), note("ke")])
-        let store = StickyNotesStore(api: api, scope: "main", defaults: defaults)
-
+@MainActor final class StickyNotesStoreTests: XCTestCase {
+    private func defaults() -> UserDefaults { UserDefaults(suiteName: "Sticky89." + UUID().uuidString)! }
+    private func note(_ id: String, author: StickyNote.Author = .ai, acked: Bool = false) -> StickyNote {
+        StickyNote(id: id, author: author, content: "匿名提醒", created_at: "2026-10-12", acked: acked)
+    }
+    func testLegacyDecodeDefaultsToUnacknowledged() throws {
+        let value = try JSONDecoder().decode(StickyNote.self, from: Data(#"{"id":"a","author":"ai","content":"test","created_at":"2026"}"#.utf8))
+        XCTAssertFalse(value.acked)
+        XCTAssertNil(value.acked_at)
+    }
+    func testOnlyAIRemindersAndDraftBytesUnchanged() async throws {
+        let d = defaults()
+        let draft = try JSONEncoder().encode([note("draft", author: .user)])
+        d.set(draft, forKey: "moonlight.notes.drafts.main")
+        let api = Sticky89Fake([note("user", author: .user), note("ke")])
+        let store = StickyNotesStore(api: api, scope: "main", defaults: d)
         await store.load()
+        let result = await store.acknowledge(note("user", author: .user))
+        XCTAssertFalse(result)
         XCTAssertEqual(store.all.map(\.id), ["ke"])
-        XCTAssertEqual(store.drafts, [legacyDraft])
-        store.acknowledge(note("user", author: .user))
-        XCTAssertTrue(store.archived.isEmpty)
-        store.acknowledge(note("ke"))
-        store.restore(note("ke"))
-        await store.load()
-
-        XCTAssertEqual(defaults.data(forKey: "moonlight.notes.drafts.main"), legacyData)
-        XCTAssertEqual(store.drafts, [legacyDraft])
-        XCTAssertEqual(api.fetchCalls, 2)
+        XCTAssertEqual(d.data(forKey: "moonlight.notes.drafts.main"), draft)
+        XCTAssertEqual(api.writes.count, 0)
     }
-
-    func testLocalAcknowledgementSurvivesReloadAndRestartAndCanBeRestored() async {
-        let (suite, defaults) = makeDefaults()
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let reminder = note("ke")
-        let api = StickyNotesReadFake([reminder])
-        let store = StickyNotesStore(api: api, scope: "main", defaults: defaults)
-        await store.load()
-        store.acknowledge(reminder)
-        XCTAssertTrue(store.all.isEmpty)
-        XCTAssertEqual(store.archived, [reminder])
-        await store.load()
-        XCTAssertEqual(store.archived, [reminder])
-
-        let restarted = StickyNotesStore(api: api, scope: "main", defaults: defaults)
-        XCTAssertTrue(restarted.all.isEmpty)
-        XCTAssertEqual(restarted.archived, [reminder])
-        restarted.restore(reminder)
-        XCTAssertEqual(restarted.all, [reminder])
-        XCTAssertTrue(restarted.archived.isEmpty)
-        XCTAssertEqual(store.all, [reminder], "The other view updates immediately within the same scope.")
-        XCTAssertEqual(StickyNotesStore(api: api, scope: "main", defaults: defaults).all, [reminder])
-    }
-
-    func testArchiveIsSharedWithinScopeAndIsolatedBetweenScopes() async {
-        let (suite, defaults) = makeDefaults()
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let reminder = note("shared-id")
-        let api = StickyNotesReadFake([reminder])
-        let us = StickyNotesStore(api: api, scope: "main", defaults: defaults)
-        let drawer = StickyNotesStore(api: api, scope: "main", defaults: defaults)
-        let otherLine = StickyNotesStore(api: api, scope: "compact", defaults: defaults)
+    func testAckRestoreSharedBetweenViewsAndServerAuthoritativeAfterReinstall() async {
+        let d = defaults()
+        let api = Sticky89Fake([note("ke")])
+        let us = StickyNotesStore(api: api, scope: "main", defaults: d)
+        let drawer = StickyNotesStore(api: api, scope: "main", defaults: d)
         await us.load()
-        await drawer.load()
-        await otherLine.load()
-
-        us.acknowledge(reminder)
-        XCTAssertEqual(drawer.archived, [reminder])
-        XCTAssertTrue(drawer.all.isEmpty)
-        XCTAssertEqual(otherLine.all, [reminder])
-        XCTAssertTrue(otherLine.archived.isEmpty)
-        drawer.restore(reminder)
-        XCTAssertEqual(us.all, [reminder])
+        await us.acknowledge(note("ke"))
+        XCTAssertTrue(us.all.isEmpty)
+        XCTAssertEqual(drawer.archived.map(\.id), ["ke"])
+        let reinstalled = StickyNotesStore(api: api, scope: "main", defaults: defaults())
+        await reinstalled.load()
+        XCTAssertEqual(reinstalled.archived.map(\.id), ["ke"])
+        await drawer.restore(note("ke"))
+        XCTAssertEqual(us.all.map(\.id), ["ke"])
+        XCTAssertEqual(api.writes.map(\.1), [true, false])
     }
-
-    func testFailedLoadPreservesCachedRemindersAndArchiveChoice() async {
-        let (suite, defaults) = makeDefaults()
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let first = note("first")
-        let second = note("second")
-        let api = StickyNotesReadFake([first, second])
-        let store = StickyNotesStore(api: api, scope: "main", defaults: defaults)
+    func testPartialMigrationClearsOnlySuccessfulIDsAndRetriesFailedOne() async {
+        let d = defaults()
+        let key = "moonlight.notes.drafts.main.archived"
+        d.set(["a", "b", "missing"], forKey: key)
+        let api = Sticky89Fake([note("a"), note("b")])
+        api.failingID = "b"
+        let store = StickyNotesStore(api: api, scope: "main", defaults: d)
         await store.load()
-        store.acknowledge(first)
-        api.failure = URLError(.notConnectedToInternet)
-        let restarted = StickyNotesStore(api: api, scope: "main", defaults: defaults)
+        XCTAssertEqual(Set(d.stringArray(forKey: key) ?? []), ["b", "missing"])
+        XCTAssertNotNil(store.status)
+        api.failingID = nil
+        await store.load()
+        XCTAssertEqual(d.stringArray(forKey: key), ["missing"])
+        XCTAssertEqual(api.writes.filter { $0.0 == "a" }.count, 1)
+        XCTAssertEqual(store.archived.count, 2)
+    }
+    func testFailedMutationDoesNotHideOrRestoreNote() async {
+        let api = Sticky89Fake([note("a"), note("b", acked: true)])
+        let store = StickyNotesStore(api: api, scope: "main", defaults: defaults())
+        await store.load()
+        api.failingID = "a"
+        let acked = await store.acknowledge(note("a"))
+        XCTAssertFalse(acked)
+        XCTAssertEqual(store.all.map(\.id), ["a"])
+        api.failingID = "b"
+        let restored = await store.restore(note("b"))
+        XCTAssertFalse(restored)
+        XCTAssertEqual(store.archived.map(\.id), ["b"])
+    }
+    func testOfflineLoadRetainsCacheAndOtherScopeIsIsolated() async {
+        let d = defaults()
+        let api = Sticky89Fake([note("a")])
+        let store = StickyNotesStore(api: api, scope: "main", defaults: d)
+        let other = StickyNotesStore(api: api, scope: "other", defaults: d)
+        await store.load(); await other.load()
+        await store.acknowledge(note("a"))
+        XCTAssertEqual(other.all.map(\.id), ["a"])
+        api.failFetch = true
+        let restarted = StickyNotesStore(api: api, scope: "main", defaults: d)
         await restarted.load()
-
-        XCTAssertEqual(restarted.all, [second])
-        XCTAssertEqual(restarted.archived, [first])
+        XCTAssertEqual(restarted.archived.map(\.id), ["a"])
         XCTAssertNotNil(restarted.status)
-        XCTAssertFalse(restarted.loading)
-    }
-
-    func testTemporaryMissingReminderDoesNotClearItsArchiveChoice() async {
-        let (suite, defaults) = makeDefaults()
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let reminder = note("ke")
-        let api = StickyNotesReadFake([reminder])
-        let store = StickyNotesStore(api: api, scope: "main", defaults: defaults)
-        await store.load()
-        store.acknowledge(reminder)
-        api.rows = []
-        await store.load()
-        api.rows = [reminder]
-        await store.load()
-        XCTAssertEqual(store.archived, [reminder])
-        XCTAssertTrue(store.all.isEmpty)
-    }
-
-    private func makeDefaults() -> (String, UserDefaults) {
-        let suite = "StickyNotesTests." + UUID().uuidString
-        return (suite, UserDefaults(suiteName: suite)!)
-    }
-    private func note(_ id: String, author: StickyNote.Author = .ai) -> StickyNote {
-        StickyNote(id: id, author: author, content: "记得带钥匙。", created_at: "2026-10-07T20:00:00Z")
     }
 }
-
-private final class StickyNotesReadFake: StickyNotesAPI {
+private final class Sticky89Fake: StickyNotesAPI {
     var rows: [StickyNote]
-    var failure: Error?
-    var fetchCalls = 0
+    var writes: [(String, Bool)] = []
+    var failingID: String?
+    var failFetch = false
     init(_ rows: [StickyNote]) { self.rows = rows }
     func fetchStickyNotes() async throws -> [StickyNote] {
-        fetchCalls += 1
-        if let failure { throw failure }
+        if failFetch { throw URLError(.notConnectedToInternet) }
         return rows
+    }
+    func setStickyNoteAcknowledged(id: String, acknowledged: Bool) async throws {
+        if failingID == id { throw URLError(.notConnectedToInternet) }
+        writes.append((id, acknowledged))
+        if let i = rows.firstIndex(where: { $0.id == id }) { rows[i].acked = acknowledged }
     }
 }

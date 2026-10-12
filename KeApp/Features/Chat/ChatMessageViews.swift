@@ -280,6 +280,7 @@ struct MessageRow: View {
     let onAttachmentTap: (ChatAttachment) -> Void
     var onRecall: (Message) -> Void = { _ in }
     var onSaveQuote: (Message) -> Void = { _ in }
+    var isQuoted = false
     @State private var copied = false
     @State private var actionsPresented = false
     @State private var recallAfterDismiss = false
@@ -300,6 +301,10 @@ struct MessageRow: View {
 
                 HStack(spacing: theme.metric.gapS) {
                     Text(message.time.formatted(date: .omitted, time: .shortened))
+                    if isQuoted {
+                        Image(systemName: "bookmark.fill").accessibilityLabel("已收进语录")
+                            .accessibilityIdentifier("message-bookmark-\(message.serverID ?? 0)")
+                    }
 
                     if let label = message.deliveryState.label {
                         Text(label)
@@ -374,6 +379,16 @@ struct MessageRow: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(14)
                     }
+                }
+                if message.canSaveQuote {
+                    Divider()
+                    Button {
+                        quoteAfterDismiss = true
+                        actionsPresented = false
+                    } label: {
+                        Label(isQuoted ? "从语录拿掉" : "收进语录", systemImage: isQuoted ? "bookmark.slash" : "bookmark")
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(14)
+                    }.accessibilityIdentifier("message-action-quote")
                 }
             }
             .font(theme.font.body)

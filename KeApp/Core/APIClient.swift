@@ -755,6 +755,25 @@ actor APIClient {
         return try decoder.decode(AppQuotePage.self, from: data)
     }
 
+    func memoryGarden() async throws -> MemoryGardenPage {
+        try await readResource("/api/memory/garden")
+    }
+
+    func changeMemoryFlower(id: String, action: String, note: String?, loved: Bool?) async throws {
+        guard ["wither", "revive", "love"].contains(action),
+              !id.isEmpty, !id.contains("/"), id != ".", id != ".." else {
+            throw APIError.invalidResponse
+        }
+        // makeRequest's URL path builder performs escaping once. Pre-escaping double-encodes IDs.
+        var request = try makeRequest(path: "/api/memory/garden/\(id)/\(action)", method: "POST")
+        var body: [String: Any] = [:]
+        if let note { body["note"] = note }
+        if let loved { body["loved"] = loved }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        _ = try await perform(request)
+    }
+
     func saveAppQuote(messageID: Int, note: String) async throws {
         var request = try makeRequest(path: "/api/memory/app-quotes", method: "POST")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["message_id": messageID, "note": note])
@@ -793,6 +812,9 @@ actor APIClient {
 
     func fetchStickyNotes() async throws -> [StickyNote] {
         try await readResource("/api/sticky-notes")
+    }
+    func setStickyNoteAcknowledged(id: String, acknowledged: Bool) async throws {
+        try await writeResource(acknowledged ? "/api/sticky-notes/ack" : "/api/sticky-notes/unack", body: ["id": id])
     }
     func saveStickyNote(id: String, content: String) async throws -> StickyNote {
         var request = try makeRequest(path: "/api/sticky-notes", method: "POST")

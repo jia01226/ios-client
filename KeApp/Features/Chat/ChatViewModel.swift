@@ -1155,6 +1155,19 @@ final class ChatViewModel: ObservableObject {
         messages = mergeMessages(messages, with: searchCorpus)
     }
 
+    /// Read-only navigation: never changes the active server session or creates a message.
+    func revealQuotedMessage(serverID: Int) async throws -> Message {
+        if let found = messages.first(where: { $0.serverID == serverID }) { return found }
+        guard let sessionID else { throw APIError.invalidResponse }
+        let originalSession = sessionID
+        let nearby = try await replyAPI.fetchMessages(sessionID: sessionID, limit: 60, beforeID: nil, aroundID: serverID)
+        try Task.checkCancellation()
+        guard self.sessionID == originalSession,
+              let target = nearby.first(where: { $0.serverID == serverID }) else { throw APIError.invalidResponse }
+        messages = mergeMessages(messages, with: nearby)
+        return target
+    }
+
     func deleteMessages(ids: Set<Int>) async -> Set<Int> {
         guard !ids.isEmpty, !isDeleting else { return [] }
         isDeleting = true

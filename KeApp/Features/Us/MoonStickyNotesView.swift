@@ -155,6 +155,7 @@ struct MoonStickyNotesView: View {
                 }
             }
             localArchiveStatus
+            syncStatus
         }.onChange(of: store.all.count) { _, _ in trayPage = min(trayPage, trayPageCount - 1) }
     }
 
@@ -168,6 +169,7 @@ struct MoonStickyNotesView: View {
                     .accessibilityIdentifier(drawerMode ? "drawer-note-content" : "note-reader-content")
             }
             acknowledgeButton(note)
+            syncStatus
             localArchiveStatus
         }.foregroundStyle(drawerMode ? KeepsakeTheme.paperInk : theme.pageColor.textPrimary)
             .padding(NotesTheme.pageInset)
@@ -205,12 +207,12 @@ struct MoonStickyNotesView: View {
 
     private func acknowledgeButton(_ note: StickyNote) -> some View {
         Button("知道啦") {
-            selected = nil
-            changeArchive { store.acknowledge(note) }
+            Task { if await store.acknowledge(note) { selected = nil } }
         }.font(Moonlight.serif(NotesTheme.authorSize)).foregroundStyle(theme.pageAccent)
             .frame(minHeight: NotesTheme.controlHeight)
             .accessibilityLabel("知道啦，收起这张便利贴")
             .accessibilityIdentifier("note-ack-" + note.id)
+            .disabled(store.saving || store.loading)
     }
 
     private var archiveTransition: AnyTransition {
@@ -260,7 +262,8 @@ private struct StickyNotesListView: View {
                                 HStack {
                                     Spacer()
                                     if showsArchived {
-                                        Button("放回去") { changeArchive { store.restore(note) } }
+                                        Button("放回去") { Task { await store.restore(note) } }
+                                            .disabled(store.saving || store.loading)
                                             .accessibilityIdentifier("note-restore-" + note.id)
                                     } else { acknowledgeButton(note) }
                                 }.font(Moonlight.serif(NotesTheme.authorSize))
@@ -310,7 +313,8 @@ private struct StickyNotesListView: View {
         theme.skin == .night && !drawerMode ? theme.pageColor.card : Moonlight.lavenderPaper
     }
     private func acknowledgeButton(_ note: StickyNote) -> some View {
-        Button("知道啦") { changeArchive { store.acknowledge(note) } }
+        Button("知道啦") { Task { await store.acknowledge(note) } }
+            .disabled(store.saving || store.loading)
             .font(Moonlight.serif(NotesTheme.authorSize)).foregroundStyle(theme.pageAccent)
             .frame(minHeight: NotesTheme.controlHeight)
             .accessibilityLabel("知道啦，收起这张便利贴")

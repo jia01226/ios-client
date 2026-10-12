@@ -34,6 +34,39 @@ private func requestBody(_ request: URLRequest) -> Data? {
 }
 
 final class CompanionAPITests: XCTestCase {
+    func testGardenAndStickyMutationContractsKeepCookieAndLinePrefix() async throws {
+        CompanionStub.handler = { request in
+            XCTAssertEqual(request.url?.path, "/ke-test2/api/memory/garden")
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertTrue(request.httpShouldHandleCookies)
+            return (200, #"{"categories":[],"flowers":[]}"#)
+        }
+        _ = try await api().memoryGarden()
+        for action in ["wither", "revive", "love"] {
+            CompanionStub.handler = { request in
+                XCTAssertEqual(request.url?.path, "/ke-test2/api/memory/garden/flower-7/\(action)")
+                XCTAssertEqual(request.httpMethod, "POST")
+                let fields = try XCTUnwrap(JSONSerialization.jsonObject(with: requestBody(request)!) as? [String: Any])
+                if action == "love" { XCTAssertEqual(fields["loved"] as? Bool, true) }
+                if action == "wither" { XCTAssertEqual(fields["note"] as? String, "匿名更正") }
+                return (200, #"{"ok":true}"#)
+            }
+            try await api().changeMemoryFlower(id: "flower-7", action: action,
+                                             note: action == "wither" ? "匿名更正" : nil,
+                                             loved: action == "love" ? true : nil)
+        }
+        for acknowledged in [true, false] {
+            CompanionStub.handler = { request in
+                XCTAssertEqual(request.url?.path, "/ke-test2/api/sticky-notes/" + (acknowledged ? "ack" : "unack"))
+                XCTAssertEqual(request.httpMethod, "POST")
+                let fields = try XCTUnwrap(JSONSerialization.jsonObject(with: requestBody(request)!) as? [String: String])
+                XCTAssertEqual(fields, ["id": "note-7"])
+                return (200, #"{"ok":true}"#)
+            }
+            try await api().setStickyNoteAcknowledged(id: "note-7", acknowledged: acknowledged)
+        }
+    }
+
     func testMomentsActivityAndCommentRoutesMatchBackendContract() async throws {
         CompanionStub.handler = { request in
             XCTAssertEqual(request.url?.path, "/ke-test2/api/moments/status")

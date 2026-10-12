@@ -27,6 +27,10 @@ struct ChatView: View {
     @State private var showingMemoryUsage = false
     @State private var showingUsageDashboard = false
     @State private var quoteToSave: Message?
+    @ObservedObject private var quotesStore: AppQuotesStore
+    @Binding var quoteOpenRequest: QuoteOpenRequest?
+    @State private var quoteToRemove: AppQuote?
+    @State private var quoteNavigationError: String?
     @State private var messageToRecall: Message?
     @State private var recallConfirmation = false
     @State private var recallError: String?
@@ -48,10 +52,12 @@ struct ChatView: View {
     @State private var showsScrollToLatest = false
     @State private var scrollToLatestRequest = 0
 
-    init(line: ChatLine, selectedLine: Binding<ChatLine>) {
+    init(line: ChatLine, selectedLine: Binding<ChatLine>, quoteOpenRequest: Binding<QuoteOpenRequest?> = .constant(nil)) {
         self.line = line
         _selectedLine = selectedLine
         _vm = StateObject(wrappedValue: ChatViewModel(line: line))
+        quotesStore = .shared(line: line)
+        _quoteOpenRequest = quoteOpenRequest
     }
 
     var body: some View {
@@ -89,6 +95,27 @@ struct ChatView: View {
             AppQuoteSaveView(line: line, message: message)
                 .environmentObject(theme)
         }
+        .alert("从语录拿掉？", isPresented: Binding(get: { quoteToRemove != nil }, set: { if !$0 { quoteToRemove = nil } })) {
+            Button("取消", role: .cancel) { quoteToRemove = nil }
+            Button("拿掉", role: .destructive) {
+                if let quote = quoteToRemove { Task { await quotesStore.remove(quote) } }
+                quoteToRemove = nil
+            }
+        } message: { Text("不会删除聊天中的原话。") }
+        .alert("还没找到原话", isPresented: Binding(get: { quoteNavigationError != nil }, set: { if !$0 { quoteNavigationError = nil } })) {
+            Button("好") { quoteNavigationError = nil }
+        } message: { Text(quoteNavigationError ?? "") }
+        .task(id: quoteOpenRequest?.id) {
+            guard let request = quoteOpenRequest else { return }
+            do {
+                let message = try await vm.revealQuotedMessage(serverID: request.messageID)
+                highlightedMessageID = nil
+                await Task.yield()
+                highlightedMessageID = message.id
+            } catch is CancellationError { return }
+            catch { quoteNavigationError = "这条原话可能已删除，或不在当前聊天窗口。语录中的收藏仍然保留。" }
+            if quoteOpenRequest?.id == request.id { quoteOpenRequest = nil }
+        }
         .task {
 #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("-ui-test-wallpaper"), wallpaperStore.image == nil {
@@ -105,6 +132,7 @@ struct ChatView: View {
             }
 #endif
             await vm.bootstrap()
+            await quotesStore.load()
             if chatNotifications.openRequest != nil {
                 await vm.resumeFromForeground(forceReconnect: true)
             }
@@ -127,6 +155,12 @@ struct ChatView: View {
             ZStack(alignment: .trailing) {
                 VStack(spacing: 0) {
                     header
+                    if let error = quotesStore.error {
+                        HStack {
+                            Text(error).font(.caption)
+                            Button("重试") { Task { await quotesStore.load() } }
+                        }.padding(.horizontal, theme.metric.pagePadding)
+                    }
                     if let status = vm.statusText {
                         StatusBanner(text: status)
                             .padding(.horizontal, theme.metric.pagePadding)
@@ -358,6 +392,7 @@ struct ChatView: View {
                     items: ChatTimelineItem.make(
                         messages: vm.messages,
                         highlightedMessageID: highlightedMessageID,
+                        quotedIDs: Set(quotesStore.quotes.map(\.message_id)),
                         visibleSegmentCount: { vm.visibleSegmentCount(for: $0) }
                     ),
                     streamRevision: vm.streamRevision,
@@ -385,7 +420,8 @@ struct ChatView: View {
                     },
                     onSaveQuote: { message in
                         inputFocused = false
-                        quoteToSave = message
+                        if let quote = quotesStore.quote(messageID: message.serverID) { quoteToRemove = quote }
+                        else { quoteToSave = message }
                     },
                     onBackgroundTap: {
                         inputFocused = false
