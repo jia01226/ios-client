@@ -500,8 +500,12 @@ struct MessageRow: View {
         let tint = (message.sender == .me ? theme.color.bubbleMe : theme.color.bubbleKe)
             .opacity(min(1, theme.bubbleOpacity * fillScale))
         if #available(iOS 26.0, *) {
+            // 87：玻璃要透出来，染色得淡。默认（滑杆 1.2%）她的约 30%、柯的约 15%，拉满也不超过 60%。
+            let glassScale: Double = message.sender == .ke ? 12 : 25
+            let glassTint = (message.sender == .me ? theme.color.bubbleMe : theme.color.bubbleKe)
+                .opacity(min(0.6, theme.bubbleOpacity * glassScale))
             Color.clear.glassEffect(
-                .clear.tint(tint).interactive(),
+                .clear.tint(glassTint).interactive(),
                 in: .rect(cornerRadius: CGFloat(theme.bubbleCornerRadius))
             )
         } else {
