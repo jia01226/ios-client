@@ -811,12 +811,13 @@ struct ChatView: View {
             }
         }
         .frame(maxHeight: .infinity, alignment: .bottom)
-        // 86：往右划一下就返回（子页面回到设置首页，首页就关掉）
+        // 从左边缘右划返回，避免把 Slider 的横向拖动当成返回。
         .simultaneousGesture(
             DragGesture(minimumDistance: 24)
                 .onEnded { value in
                     let dx = value.translation.width, dy = value.translation.height
-                    guard dx > 80, abs(dx) > abs(dy) * 1.5 else { return }
+                    guard value.startLocation.x <= theme.metric.pagePadding,
+                          dx > 80, abs(dx) > abs(dy) * 1.5 else { return }
                     if settingsPage == .root { closeTransientPanels() } else { settingsPage = .root }
                 }
         )

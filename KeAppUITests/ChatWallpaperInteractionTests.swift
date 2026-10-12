@@ -7,7 +7,7 @@ final class ChatWallpaperInteractionTests: XCTestCase {
         XCTAssertTrue(app.buttons["打开聊天设置"].waitForExistence(timeout: 10))
         app.buttons["打开聊天设置"].tap()
         let entry = app.buttons["界面与气泡"]
-        if !entry.isHittable { app.scrollViews.firstMatch.swipeUp() }
+        for _ in 0..<6 where !entry.isHittable { app.scrollViews.firstMatch.swipeUp() }
         entry.tap()
         XCTAssertTrue(app.switches["chat-lockscreen-glass"].waitForExistence(timeout: 5))
     }

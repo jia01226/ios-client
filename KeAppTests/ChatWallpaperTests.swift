@@ -26,7 +26,8 @@ final class ChatWallpaperTests: XCTestCase {
         let loaded = ChatWallpaperStore(defaults: defaults, directory: directory)
         XCTAssertEqual(loaded.background, .photo)
         XCTAssertNotNil(loaded.sourceImage)
-        XCTAssertEqual(loaded.image?.size, image.size)
+        XCTAssertEqual(loaded.image?.cgImage?.width, image.cgImage?.width)
+        XCTAssertEqual(loaded.image?.cgImage?.height, image.cgImage?.height)
         XCTAssertEqual(loaded.blur, 12)
         XCTAssertEqual(loaded.dim, 0.25)
         loaded.background = .atmosphere
