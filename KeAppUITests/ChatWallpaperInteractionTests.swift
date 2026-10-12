@@ -58,9 +58,18 @@ final class ChatWallpaperInteractionTests: XCTestCase {
         app.buttons["chat-wallpaper-save"].tap()
         XCTAssertTrue(app.switches["chat-lockscreen-glass"].waitForExistence(timeout: 5))
         app.buttons["返回聊天设置"].tap()
-        app.buttons["关闭聊天设置"].tap()
+        let close = app.buttons["关闭聊天设置"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        close.tap()
+        // The half-panel expands to a full page before closing. Its accessibility
+        // frame can reach its destination before the spring presentation finishes.
+        if !close.waitForNonExistence(timeout: 2) { close.tap() }
+        XCTAssertTrue(close.waitForNonExistence(timeout: 5))
         let input = app.textFields["chat-composer"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
         input.tap()
+        if !app.keyboards.firstMatch.waitForExistence(timeout: 3) { input.tap() }
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         input.typeText("preview")
         snapshot(app, "wallpaper-white-composer-keyboard", in: testCase)
         XCTAssertTrue(app.staticTexts["这是最新一条回复。"].exists)
