@@ -28,6 +28,7 @@ final class ChatWallpaperStore: ObservableObject {
             .appendingPathComponent("ChatWallpaper", isDirectory: true)
         blur = min(max(defaults.double(forKey: "chat.wallpaper.blur"), 0), 20)
         dim = min(max(defaults.object(forKey: "chat.wallpaper.dim") as? Double ?? 0.1, 0), 0.4)
+        background = .atmosphere
         // A manifest switches both files together; incomplete writes never replace the old wallpaper.
         if let name = defaults.string(forKey: "chat.wallpaper.photoID"), UUID(uuidString: name) != nil {
             image = UIImage(contentsOfFile: self.directory.appendingPathComponent(name + "-crop.jpg").path)
