@@ -256,11 +256,9 @@ struct ChatView: View {
                     .transition(.opacity)
             }
         }
-        // 84：抬头「柯 / 在线」也浮在一枚玻璃胶囊上，和两边的按钮同一种玻璃。
-        .padding(.horizontal, 18)
-        .padding(.vertical, 6)
-        .background(FloatingGlassSurface(cornerRadius: 22))
     }
+
+    @State private var sendBounce = 0
 
     private var header: some View {
         ZStack {
@@ -502,6 +500,7 @@ struct ChatView: View {
                 // 佳佳 2026-10-06：「先回消息 不要等消息」——柯回着的时候也能接着发。
                 Image(systemName: "arrow.up")
                     .font(theme.font.sendIcon)
+                    .symbolEffect(.bounce.up, value: sendBounce)
                 .foregroundStyle(theme.color.textOnAccent)
                 .frame(width: 40, height: 40)
                 .background(
@@ -509,6 +508,7 @@ struct ChatView: View {
                         .fill(theme.sendColor)
                 )
             }
+            .buttonStyle(PressBounceStyle())
             .disabled(!canSend || vm.isUploading)
             .opacity(!canSend || vm.isUploading ? 0.45 : 1)
             .accessibilityLabel("发送消息")
@@ -1616,6 +1616,7 @@ struct ChatView: View {
     }
 
     private func send() {
+        sendBounce &+= 1
         let text = trimmedDraft
         guard canSend, !vm.isUploading, !vm.isRefreshingClaude else { return }
         draft = ""

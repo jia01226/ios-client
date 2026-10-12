@@ -115,10 +115,11 @@ struct RootTabView: View {
         .overlay(alignment: .top) { Rectangle().fill(theme.pageColor.separator.opacity(0.55)).frame(height: 0.5) }
     }
     private func journalTab(_ tab: Tab, label: String, symbol: String) -> some View {
-        Button { selection = tab } label: {
+        Button { withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) { selection = tab } } label: {
             VStack(spacing: 5) {
                 Image(systemName: tab == selection ? symbol + ".fill" : symbol)
                     .font(.system(size: 18, weight: .ultraLight)).frame(height: 22)
+                    .symbolEffect(.bounce, value: selection == tab)
                 Text(label).font(.custom("NotoSerifSC-ExtraLight", size: 11))
             }
             .foregroundStyle(tab == selection ? theme.pageAccent : theme.pageColor.textSecondary)
@@ -143,11 +144,12 @@ struct RootTabView: View {
 
     private func tabButton(_ tab: Tab, label: String) -> some View {
         Button {
-            selection = tab
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) { selection = tab }
         } label: {
             VStack(spacing: 1) {
                 Image(systemName: symbol(for: tab))
                     .font(.system(size: 23, weight: .light))
+                    .symbolEffect(.bounce, value: selection == tab)
                     .frame(width: 42, height: 30)
                 Text(label)
                     .font(.caption2.weight(selection == tab ? .semibold : .regular))

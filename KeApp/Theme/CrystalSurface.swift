@@ -6,31 +6,49 @@ import UIKit
 /// 玻璃才有东西可以透；卧室状态保持原来的纯色。
 struct AppAtmosphere: View {
     @EnvironmentObject private var theme: Theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// 85：她说「太平、没动效」。光晕很慢地来回漂（一个来回 18 秒），减弱动态效果时不动。
+    @State private var drift = false
 
     var body: some View {
         ZStack {
             theme.effectiveBackground
             if !theme.isBedroom {
                 let night = theme.skin == .night
+                let d: CGFloat = drift ? 1 : 0
                 RadialGradient(
-                    colors: [Color.white.opacity(night ? 0.10 : 0.55), .clear],
-                    center: UnitPoint(x: 0.82, y: 0.10), startRadius: 0, endRadius: 260
+                    colors: [Color.white.opacity(night ? 0.14 : 0.70), .clear],
+                    center: UnitPoint(x: 0.80 - 0.10 * d, y: 0.10 + 0.05 * d), startRadius: 0, endRadius: 280
                 )
                 RadialGradient(
-                    colors: [theme.color.accentSoft.opacity(night ? 0.30 : 0.50), .clear],
-                    center: UnitPoint(x: 0.12, y: 0.70), startRadius: 0, endRadius: 420
+                    colors: [theme.color.accentSoft.opacity(night ? 0.38 : 0.66), .clear],
+                    center: UnitPoint(x: 0.10 + 0.14 * d, y: 0.68 - 0.08 * d), startRadius: 0, endRadius: 440
                 )
                 RadialGradient(
-                    colors: [theme.sendColor.opacity(night ? 0.18 : 0.24), .clear],
-                    center: UnitPoint(x: 0.92, y: 0.92), startRadius: 0, endRadius: 380
+                    colors: [theme.sendColor.opacity(night ? 0.24 : 0.34), .clear],
+                    center: UnitPoint(x: 0.94 - 0.12 * d, y: 0.92 - 0.06 * d), startRadius: 0, endRadius: 400
                 )
             }
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 9).repeatForever(autoreverses: true)) { drift = true }
+        }
     }
 }
+
+/// 85：按下去轻轻一缩，松开弹回来。
+struct PressBounceStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.86 : 1)
+            .animation(.spring(response: 0.28, dampingFraction: 0.55), value: configuration.isPressed)
+    }
+}
+
 /// 玻璃不是实体粉色卡片：系统材质负责折射，令牌只控制薄薄的染色与边缘反光。
 struct CrystalSurface: View {
     @EnvironmentObject private var theme: Theme
