@@ -77,6 +77,10 @@ final class ChatWallpaperInteractionTests: XCTestCase {
         app.launchArguments += ["-app.skin", "night", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch()
         XCTAssertTrue(app.textFields["chat-composer"].waitForExistence(timeout: 10))
+        let header = app.staticTexts["chat-header-test1"]
+        let tarot = app.buttons["chat-tarot"]
+        XCTAssertTrue(header.waitForExistence(timeout: 5))
+        XCTAssertLessThan(header.frame.maxX, tarot.frame.minX)
         snapshot(app, "wallpaper-night-large-text", in: testCase)
         // Restore the appearance before the existing regression flows continue.
         openAppearance(app)

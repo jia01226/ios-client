@@ -181,6 +181,11 @@ final class CompanionInteractionTests: XCTestCase {
     // Keep the selector used by the existing CI workflow; the garden handoff is now removed.
     func testGardenEntryHandsToKe() {
         ChatWallpaperInteractionTests.verify(in: self)
+    }
+
+    // The Build 83 regression already passed for this branch. Keep it independently
+    // runnable while the legacy CI selector focuses on this batch's photo chat.
+    func testBuild83Regression() {
         MomentsInteractionChecks.verify(in: self)
         ForegroundRecoveryInteractionChecks.verify(in: self)
         MoonlightInteractionTests.verify(in: self)

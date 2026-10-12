@@ -344,6 +344,8 @@ struct ChatView: View {
         .padding(.bottom, theme.metric.headerBottomPadding)
         .foregroundStyle(theme.chatTextPrimary)
         .modifier(ChatLegibility())
+        // Toolbar glyphs stay inside their touch targets; message text remains uncapped.
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .frame(minHeight: theme.metric.headerMinHeight)
     }
 
