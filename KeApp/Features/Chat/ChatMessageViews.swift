@@ -111,7 +111,7 @@ struct ChatToolStatusRow: View {
                     if toolRun.state == .failed, toolRun.retryable {
                         Text("可以让柯再试一次")
                             .font(theme.font.caption)
-                            .foregroundStyle(theme.effectiveAccent)
+                            .foregroundStyle(theme.chatAccent)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -139,19 +139,19 @@ struct ChatToolStatusRow: View {
         case .running:
             ProgressView()
                 .controlSize(.small)
-                .tint(theme.effectiveAccent)
+                .tint(theme.chatAccent)
                 .accessibilityHidden(true)
         case .succeeded:
             Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(theme.effectiveAccent)
+                .foregroundStyle(theme.chatAccent)
                 .accessibilityHidden(true)
         case .failed:
             Image(systemName: "exclamationmark.circle")
-                .foregroundStyle(theme.effectiveAccent)
+                .foregroundStyle(theme.chatAccent)
                 .accessibilityHidden(true)
         case .awaitingApproval:
             Image(systemName: "hand.raised")
-                .foregroundStyle(theme.effectiveAccent)
+                .foregroundStyle(theme.chatAccent)
                 .accessibilityHidden(true)
         case .unknown:
             Image(systemName: "ellipsis.circle")
@@ -321,7 +321,7 @@ struct MessageRow: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(copied ? "已复制" : "复制消息")
-                        .foregroundStyle(copied ? theme.effectiveAccent : theme.chatTextSecondary)
+                        .foregroundStyle(copied ? theme.chatAccent : theme.chatTextSecondary)
                     }
 
                     if message.sender == .me && message.deliveryState == .sent {
@@ -330,7 +330,7 @@ struct MessageRow: View {
                             Image(systemName: "checkmark")
                         }
                         .font(theme.font.receiptIcon)
-                        .foregroundStyle(theme.effectiveAccent)
+                        .foregroundStyle(theme.chatAccent)
                     }
                 }
                 .font(theme.font.caption)
@@ -394,7 +394,7 @@ struct MessageRow: View {
         .overlay {
             if isHighlighted {
                 RoundedRectangle(cornerRadius: CGFloat(theme.bubbleCornerRadius), style: .continuous)
-                    .stroke(theme.effectiveAccent.opacity(0.72), lineWidth: 1.2)
+                    .stroke(theme.chatAccent.opacity(0.72), lineWidth: 1.2)
                     .allowsHitTesting(false)
                     .transition(.opacity)
             }
@@ -641,7 +641,7 @@ private struct AuthenticatedAttachmentImage: View {
             } else {
                 ProgressView()
                     .controlSize(.small)
-                    .tint(theme.effectiveAccent)
+                    .tint(theme.chatAccent)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }

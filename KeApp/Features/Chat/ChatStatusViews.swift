@@ -81,18 +81,22 @@ struct StatusBanner: View {
         HStack(spacing: theme.metric.gapS) {
             ProgressView()
                 .controlSize(.small)
-                .tint(theme.effectiveAccent)
+                .tint(theme.chatAccent)
             Text(text)
                 .font(theme.font.caption)
-                .foregroundStyle(theme.color.textSecondary)
+                .foregroundStyle(theme.chatTextSecondary)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, theme.metric.gapM)
         .padding(.vertical, theme.metric.gapS)
-        .background(
-            RoundedRectangle(cornerRadius: theme.metric.radiusChip, style: .continuous)
-                .fill(theme.color.card)
-        )
+        .modifier(ChatLegibility())
+        .background {
+            if theme.lockscreenGlass {
+                FloatingGlassSurface(cornerRadius: theme.metric.radiusChip, lockscreen: true)
+            } else {
+                RoundedRectangle(cornerRadius: theme.metric.radiusChip, style: .continuous).fill(theme.color.card)
+            }
+        }
     }
 }
 
@@ -106,20 +110,20 @@ struct ReplyFailureBanner: View {
         HStack(alignment: .top, spacing: theme.metric.gapS) {
             Image(systemName: "exclamationmark.circle")
                 .font(theme.font.body)
-                .foregroundStyle(theme.effectiveAccent)
+                .foregroundStyle(theme.chatAccent)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: theme.metric.gapXS) {
                 Text(failure.message)
                     .font(theme.font.caption)
-                    .foregroundStyle(theme.color.textPrimary)
+                    .foregroundStyle(theme.chatTextPrimary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if failure.canRetry {
                     Button("重试这条回复", action: retry)
                         .buttonStyle(.plain)
                         .font(theme.font.caption)
-                        .foregroundStyle(theme.effectiveAccent)
+                        .foregroundStyle(theme.chatAccent)
                         .frame(minHeight: theme.metric.touchTarget, alignment: .leading)
                         .accessibilityIdentifier("reply-failure-retry")
                 }
@@ -136,16 +140,20 @@ struct ReplyFailureBanner: View {
                     )
             }
             .buttonStyle(.plain)
-            .foregroundStyle(theme.color.textSecondary)
+            .foregroundStyle(theme.chatTextSecondary)
             .accessibilityLabel("收起回复失败提示")
         }
         .padding(.leading, theme.metric.gapM)
         .padding(.trailing, theme.metric.gapXS)
         .padding(.vertical, theme.metric.gapS)
-        .background(
-            RoundedRectangle(cornerRadius: theme.metric.radiusBubble, style: .continuous)
-                .fill(theme.color.card)
-        )
+        .modifier(ChatLegibility())
+        .background {
+            if theme.lockscreenGlass {
+                FloatingGlassSurface(cornerRadius: theme.metric.radiusBubble, lockscreen: true)
+            } else {
+                RoundedRectangle(cornerRadius: theme.metric.radiusBubble, style: .continuous).fill(theme.color.card)
+            }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("reply-failure-banner")
     }

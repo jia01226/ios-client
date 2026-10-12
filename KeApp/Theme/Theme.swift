@@ -334,6 +334,7 @@ final class Theme: ObservableObject {
         didSet { UserDefaults.standard.set(lockscreenGlass, forKey: "app.lockscreenGlass") }
     }
     var chatTextPrimary: Color { lockscreenGlass ? wallpaper.foreground : color.textPrimary }
+    var chatAccent: Color { lockscreenGlass ? wallpaper.foreground : effectiveAccent }
     var chatTextSecondary: Color { lockscreenGlass ? wallpaper.secondary : color.textSecondary }
     var chatTextShadow: Color { lockscreenGlass ? wallpaper.textShadow : .clear }
     var chatBubbleKeText: Color { lockscreenGlass ? wallpaper.foreground : color.bubbleKeText }

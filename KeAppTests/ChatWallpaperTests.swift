@@ -1,5 +1,6 @@
 import XCTest
 import UIKit
+import SwiftUI
 @testable import KeApp
 
 @MainActor
@@ -75,4 +76,57 @@ final class ChatWallpaperTests: XCTestCase {
         XCTAssertNotEqual(right.pngData(), zoomed.pngData())
         XCTAssertEqual(zoomed.size, right.size)
     }
+    // Component screenshots run in the existing unit-test job; full interaction
+    // coverage remains in ChatWallpaperInteractionTests for an Xcode UI-test run.
+    func testLockscreenComponentsRenderInDayNightAndLargeType() async throws {
+        let theme = Theme.shared
+        let previousGlass = theme.lockscreenGlass
+        let previousSkin = theme.skin
+        defer { theme.lockscreenGlass = previousGlass; theme.skin = previousSkin }
+        let oldWindow = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }.first { $0.isKeyWindow }
+        let window = UIWindow(frame: UIScreen.main.bounds)
+        window.windowScene = oldWindow?.windowScene
+        defer { window.isHidden = true; oldWindow?.makeKeyAndVisible() }
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 360, height: 780)).image { context in
+            UIColor.systemYellow.setFill(); context.fill(CGRect(x: 0, y: 0, width: 360, height: 390))
+            UIColor.systemIndigo.setFill(); context.fill(CGRect(x: 0, y: 390, width: 360, height: 390))
+        }
+        theme.lockscreenGlass = true
+        for skin in [Skin.day, .night] {
+            theme.skin = skin
+            let root = ZStack {
+                Image(uiImage: image).resizable().scaledToFill().ignoresSafeArea()
+                Color.black.opacity(0.1).ignoresSafeArea()
+                VStack(spacing: theme.metric.gapL) {
+                    MessageRow(message: Message(id: "preview-ke", sender: .ke, text: "照片透过玻璃，文字保持清楚。", time: .now),
+                               isHighlighted: false, visibleSegmentCount: nil, onAttachmentTap: { _ in })
+                    ThinkingTimelineRow(onOpen: {})
+                    MessageRow(message: Message(id: "preview-me", sender: .me, text: "两边用同一种透明玻璃。", time: .now),
+                               isHighlighted: false, visibleSegmentCount: nil, onAttachmentTap: { _ in })
+                    Spacer()
+                    TextField("和柯说点什么…", text: .constant("白色输入文字"))
+                        .foregroundStyle(theme.chatTextPrimary).modifier(ChatLegibility())
+                        .padding(theme.metric.gapL)
+                        .background(FloatingGlassSurface(cornerRadius: theme.metric.radiusComposer, lockscreen: true))
+                }.padding(theme.metric.pagePadding)
+            }
+            .environmentObject(theme)
+            .environment(\.colorScheme, skin == .night ? .dark : .light)
+            .environment(\.dynamicTypeSize, skin == .night ? .accessibility3 : .large)
+            window.rootViewController = UIHostingController(rootView: root)
+            window.makeKeyAndVisible()
+            window.layoutIfNeeded()
+            try await Task.sleep(nanoseconds: 500_000_000)
+            let rendered = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            }
+            XCTAssertGreaterThan(rendered.size.width, 0)
+            let attachment = XCTAttachment(image: rendered)
+            attachment.name = "lockscreen-components-\(skin.rawValue)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+    }
+
 }

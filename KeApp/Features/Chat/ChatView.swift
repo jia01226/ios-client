@@ -68,7 +68,9 @@ struct ChatView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background { ChatWallpaperBackground(store: wallpaperStore) }
+        .background {
+            if case .ready = vm.phase { ChatWallpaperBackground(store: wallpaperStore) }
+        }
 #if DEBUG
         .overlay(alignment: .topTrailing) { ChatRecoveryUITestTimingProbe() }
 #endif
@@ -454,7 +456,7 @@ struct ChatView: View {
                     .tint(theme.effectiveAccent)
                 Text("正在接回聊天记录…")
                     .font(theme.font.body)
-                    .foregroundStyle(theme.color.textSecondary)
+                    .foregroundStyle(theme.chatTextSecondary)
             }
             .frame(maxWidth: .infinity)
             .padding(.top, theme.metric.gapXL)
@@ -463,7 +465,7 @@ struct ChatView: View {
             VStack(spacing: theme.metric.gapM) {
                 Text("聊天记录这次没有接上。")
                     .font(theme.font.body)
-                    .foregroundStyle(theme.color.textSecondary)
+                    .foregroundStyle(theme.chatTextSecondary)
                 Button("重新加载聊天记录") {
                     Task { await vm.retryHistory() }
                 }
@@ -476,7 +478,7 @@ struct ChatView: View {
         } else {
             Text("这里还没有聊天记录。\n想说什么，就从下面开始。")
                 .font(theme.font.body)
-                .foregroundStyle(theme.color.textSecondary)
+                .foregroundStyle(theme.chatTextSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
                 .padding(.top, theme.metric.gapXL)
@@ -521,7 +523,8 @@ struct ChatView: View {
                 Image(systemName: "arrow.up")
                     .font(theme.font.sendIcon)
                     .symbolEffect(.bounce.up, value: sendBounce)
-                .foregroundStyle(theme.color.textOnAccent)
+                .foregroundStyle(theme.lockscreenGlass ? theme.chatTextPrimary : theme.color.textOnAccent)
+                .modifier(ChatLegibility())
                 .frame(width: 40, height: 40)
                 .background(
                     Circle()
