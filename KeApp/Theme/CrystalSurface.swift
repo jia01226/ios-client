@@ -34,6 +34,11 @@ struct AppAtmosphere: View {
         .allowsHitTesting(false)
         .accessibilityHidden(true)
         .onAppear {
+#if DEBUG
+            // Fixture screenshots use static halos so XCUITest can wait for idle.
+            // Release keeps the original drifting atmosphere.
+            if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("-ui-test-") }) { return }
+#endif
             guard !reduceMotion else { return }
             withAnimation(.easeInOut(duration: 9).repeatForever(autoreverses: true)) { drift = true }
         }
