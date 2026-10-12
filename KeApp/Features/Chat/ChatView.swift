@@ -767,13 +767,37 @@ struct ChatView: View {
             .scrollContentBackground(.hidden)
         }
         .frame(maxWidth: .infinity)
-        .frame(maxHeight: .infinity)
-        .background(theme.color.bg.ignoresSafeArea())
-        .overlay(alignment: .leading) {
-            Rectangle()
-                .fill(theme.color.glassEdge.opacity(theme.glass.drawerEdgeOpacity))
-                .frame(width: 0.7)
+        // 86：调字体、字号、透明度、配色时只占下半截，上面露出聊天，改了马上看得到
+        .frame(height: settingsPreviewsChat ? 380 : nil)
+        .frame(maxHeight: settingsPreviewsChat ? nil : .infinity)
+        .background {
+            if settingsPreviewsChat {
+                UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24, style: .continuous)
+                    .fill(theme.color.bg)
+                    .shadow(color: .black.opacity(0.12), radius: 18, y: -4)
+                    .ignoresSafeArea(edges: .bottom)
+            } else {
+                theme.color.bg.ignoresSafeArea()
+            }
         }
+        .overlay(alignment: .leading) {
+            if !settingsPreviewsChat {
+                Rectangle()
+                    .fill(theme.color.glassEdge.opacity(theme.glass.drawerEdgeOpacity))
+                    .frame(width: 0.7)
+            }
+        }
+        .frame(maxHeight: .infinity, alignment: .bottom)
+        // 86：往右划一下就返回（子页面回到设置首页，首页就关掉）
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 24)
+                .onEnded { value in
+                    let dx = value.translation.width, dy = value.translation.height
+                    guard dx > 80, abs(dx) > abs(dy) * 1.5 else { return }
+                    if settingsPage == .root { closeTransientPanels() } else { settingsPage = .root }
+                }
+        )
+        .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.85), value: settingsPage)
         .alert("删除选中的聊天记录？", isPresented: $showingDeleteConfirmation) {
             Button("取消", role: .cancel) {}
             Button("确认删除") {
@@ -785,6 +809,13 @@ struct ChatView: View {
             }
         } message: {
             Text("将删除 \(selectedMessageIDs.count) 条聊天记录。不会删除长期记忆。")
+        }
+    }
+
+    private var settingsPreviewsChat: Bool {
+        switch settingsPage {
+        case .appearance, .fonts, .palettes: return true
+        default: return false
         }
     }
 

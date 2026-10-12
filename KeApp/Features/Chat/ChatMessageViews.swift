@@ -491,17 +491,32 @@ struct MessageRow: View {
         .padding(.vertical, theme.metric.bubbleVerticalPadding)
     }
 
-    private var bubbleBackground: some View {
+    /// 86：她要「玻璃质感的气泡」。iOS 26 用系统 Liquid Glass（最透的 .clear，按下会亮一下、轻轻弹），
+    /// 染色仍跟「气泡透明度」滑杆走；iOS 26 以下保留原来的模糊 + 染色。
+    @ViewBuilder
+    private var bubbleFill: some View {
         let fillScale: Double = message.sender == .ke ? 36
             : (theme.skin == .day && !theme.isBedroom ? 80 : 13)
-        return ZStack {
-            BackdropBlur(
-                intensity: theme.glassBlur / theme.glass.maximumBlurValue,
-                dark: theme.skin == .night || theme.isBedroom
+        let tint = (message.sender == .me ? theme.color.bubbleMe : theme.color.bubbleKe)
+            .opacity(min(1, theme.bubbleOpacity * fillScale))
+        if #available(iOS 26.0, *) {
+            Color.clear.glassEffect(
+                .clear.tint(tint).interactive(),
+                in: .rect(cornerRadius: CGFloat(theme.bubbleCornerRadius))
             )
-            (message.sender == .me ? theme.color.bubbleMe : theme.color.bubbleKe)
-                .opacity(min(1, theme.bubbleOpacity * fillScale))
+        } else {
+            ZStack {
+                BackdropBlur(
+                    intensity: theme.glassBlur / theme.glass.maximumBlurValue,
+                    dark: theme.skin == .night || theme.isBedroom
+                )
+                tint
+            }
         }
+    }
+
+    private var bubbleBackground: some View {
+        bubbleFill
         .clipShape(RoundedRectangle(cornerRadius: CGFloat(theme.bubbleCornerRadius), style: .continuous))
         .overlay {
             if message.sender == .ke {
