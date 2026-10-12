@@ -20,7 +20,21 @@ cd ../ios-build89-review
 
 ## 云端安装包
 
-工作流为 `.github/workflows/ios-build.yml`（Build iOS），产物名 `KeApp-ipa`，保留 14 天。运行完成后在本节补充准确链接、源码提交和安装包核验结果；未记录成功前不要视为已生成安装包。
+工作流为 `.github/workflows/ios-build.yml`（Build iOS），产物名 `KeApp-ipa`，保留 14 天。
+
+- [Build 89 打包运行](https://github.com/jia01226/ios-client/actions/runs/38240991153)
+- 打包源码提交 `536fe098e7005f1c19e57b99112c7988c3cc84ba`；本提交之后若仅补交付结果和文档，不改变 IPA 源码。
+- 运行已完成，结果 **success**，Ad Hoc 签名安装包已生成：[下载 KeApp-ipa](https://github.com/jia01226/ios-client/actions/runs/38240991153/artifacts/11742709297)（通常需要登录 GitHub）。
+- 下载并解包核验：`柯.ipa`，版本 `0.1.0 (89)`，Bundle ID `love.jiagude.ke`，Team ID `527CR3MRV2`；`codesign --verify --deep --strict` 通过，`aps-environment=production`、`get-task-allow=false`。这些是静态包核验，未执行真机安装。
+- IPA 文件 SHA-256：`d2defc0cd77a7a7d8558bf6807e1f41f7b4fd3f95c8551db85d230e96e3b46bb`。这是解压 GitHub artifact 后的 IPA 校验值，不是 artifact ZIP 的校验值。
+
+Claude 可在自己的电脑上通过已登录的 GitHub CLI 下载，无需原开发电脑路径：
+
+```sh
+gh run download 38240991153 --repo jia01226/ios-client \
+  --name KeApp-ipa --dir ./build89-artifact
+shasum -a 256 ./build89-artifact/柯.ipa
+```
 
 ## 一朵山茶就是一条记忆
 
