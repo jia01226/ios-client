@@ -163,8 +163,17 @@ struct BackdropBlur: UIViewRepresentable {
 struct FloatingGlassSurface: View {
     @EnvironmentObject private var theme: Theme
     let cornerRadius: CGFloat
+    var lockscreen = false
     var body: some View {
-        if #available(iOS 26.0, *) {
+        if lockscreen {
+            if #available(iOS 26.0, *) {
+                Color.clear.glassEffect(.clear, in: .rect(cornerRadius: cornerRadius))
+            } else {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .environment(\.colorScheme, .dark)
+            }
+        } else if #available(iOS 26.0, *) {
             Color.clear.glassEffect(.clear.tint(theme.color.accentSoft.opacity(0.04)), in: .rect(cornerRadius: cornerRadius))
         } else {
             CrystalSurface(cornerRadius: cornerRadius)

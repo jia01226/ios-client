@@ -20,6 +20,7 @@ struct ChatView: View {
     @ObservedObject private var chatNotifications = ChatNotificationCoordinator.shared
     @StateObject private var vm: ChatViewModel
     @StateObject private var recentPhotos = RecentPhotosStore()
+    @StateObject private var wallpaperStore = ChatWallpaperStore.shared
     @State private var draft = ""
     @State private var showingCallPlaceholder = false
     @State private var tarotOpen = false
@@ -67,7 +68,7 @@ struct ChatView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.clear)
+        .background { ChatWallpaperBackground(store: wallpaperStore) }
 #if DEBUG
         .overlay(alignment: .topTrailing) { ChatRecoveryUITestTimingProbe() }
 #endif
@@ -87,6 +88,20 @@ struct ChatView: View {
                 .environmentObject(theme)
         }
         .task {
+#if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-ui-test-wallpaper"), wallpaperStore.image == nil {
+                let image = UIGraphicsImageRenderer(size: CGSize(width: 360, height: 780)).image { context in
+                    UIColor.systemIndigo.setFill()
+                    context.fill(CGRect(x: 0, y: 0, width: 360, height: 780))
+                    UIColor.systemYellow.setFill()
+                    context.fill(CGRect(x: 0, y: 0, width: 360, height: 260))
+                    UIColor.systemTeal.setFill()
+                    context.fill(CGRect(x: 0, y: 520, width: 360, height: 260))
+                }
+                try? wallpaperStore.save(source: image, cropped: image)
+                theme.lockscreenGlass = true
+            }
+#endif
             await vm.bootstrap()
             if chatNotifications.openRequest != nil {
                 await vm.resumeFromForeground(forceReconnect: true)
@@ -243,16 +258,16 @@ struct ChatView: View {
                         .font(.caption2.weight(.semibold))
                 }
             }
-            .foregroundStyle(theme.color.textPrimary)
+            .foregroundStyle(theme.chatTextPrimary)
 
             if vm.isSending {
-                WaitingShimmer(color: theme.color.textPrimary)
+                WaitingShimmer(color: theme.chatTextPrimary)
                     .transition(.opacity)
             } else {
                 let status = vm.isShowingCachedMessages ? "离线记录" : "在线"
                 Text(showsSwitcher ? "\(line.title) · \(status)" : status)
                     .font(.caption2)
-                    .foregroundStyle(theme.color.textSecondary)
+                    .foregroundStyle(theme.chatTextSecondary)
                     .transition(.opacity)
             }
         }
@@ -291,18 +306,18 @@ struct ChatView: View {
             HStack(spacing: 12) {
                 Image(systemName: "moon").font(.title3)
                     .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
-                    .background(FloatingGlassSurface(cornerRadius: 22))
+                    .background(FloatingGlassSurface(cornerRadius: 22, lockscreen: theme.lockscreenGlass))
                     .accessibilityHidden(true)
                 Spacer()
                 Button { tarotOpen = true } label: {
                     Image(systemName: "sparkles").font(.title3)
                         .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
-                        .background(FloatingGlassSurface(cornerRadius: 22))
+                        .background(FloatingGlassSurface(cornerRadius: 22, lockscreen: theme.lockscreenGlass))
                 }.buttonStyle(.plain).accessibilityLabel("塔罗").accessibilityIdentifier("chat-tarot")
                 Button { showingCallPlaceholder = true } label: {
                     Image(systemName: "phone").font(.title3)
                         .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
-                        .background(FloatingGlassSurface(cornerRadius: 22))
+                        .background(FloatingGlassSurface(cornerRadius: 22, lockscreen: theme.lockscreenGlass))
                 }.buttonStyle(.plain).accessibilityLabel("语音通话")
                 Button {
                     settingsOpen = true
@@ -313,10 +328,10 @@ struct ChatView: View {
                     Image(systemName: "ellipsis")
                         .symbolVariant(.none)
                         .font(theme.font.menuIcon)
-                        .foregroundStyle(theme.color.textPrimary)
+                        .foregroundStyle(theme.chatTextPrimary)
                         .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
                         .contentShape(Rectangle())
-                        .background(FloatingGlassSurface(cornerRadius: 22))
+                        .background(FloatingGlassSurface(cornerRadius: 22, lockscreen: theme.lockscreenGlass))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("打开聊天设置")
@@ -325,6 +340,8 @@ struct ChatView: View {
         .padding(.horizontal, theme.metric.pagePadding)
         .padding(.top, theme.metric.headerTopPadding)
         .padding(.bottom, theme.metric.headerBottomPadding)
+        .foregroundStyle(theme.chatTextPrimary)
+        .modifier(ChatLegibility())
         .frame(minHeight: theme.metric.headerMinHeight)
     }
 
@@ -484,14 +501,17 @@ struct ChatView: View {
                     .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
             }
             .buttonStyle(.plain)
-            .foregroundStyle(theme.color.textPrimary)
+            .foregroundStyle(theme.chatTextPrimary)
+                .modifier(ChatLegibility())
             .accessibilityLabel(attachmentsOpen ? "关闭附件" : "打开附件")
 
-            TextField("和柯说点什么…", text: $draft, axis: .vertical)
+            TextField("和柯说点什么…", text: $draft,
+                      prompt: Text("和柯说点什么…").foregroundColor(theme.chatTextSecondary), axis: .vertical)
                 .accessibilityIdentifier("chat-composer")
                 .lineLimit(1...5)
                 .font(theme.font.body)
-                .foregroundStyle(theme.color.textPrimary)
+                .foregroundStyle(theme.chatTextPrimary)
+                .modifier(ChatLegibility())
                 .focused($inputFocused)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 11)
@@ -516,7 +536,7 @@ struct ChatView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(FloatingGlassSurface(cornerRadius: theme.metric.radiusComposer))
+        .background(FloatingGlassSurface(cornerRadius: theme.metric.radiusComposer, lockscreen: theme.lockscreenGlass))
         .padding(.horizontal, theme.metric.pagePadding)
         .padding(.vertical, theme.metric.gapS)
     }
@@ -925,6 +945,7 @@ struct ChatView: View {
 
     private var appearanceSettings: some View {
         VStack(alignment: .leading, spacing: theme.metric.gapL) {
+            ChatWallpaperSettings(store: wallpaperStore)
             settingSlider(
                 title: "气泡透明度",
                 value: $theme.bubbleOpacity,

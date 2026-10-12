@@ -329,6 +329,16 @@ final class Theme: ObservableObject {
         }
     }
 
+    let wallpaper = ChatWallpaperTokens()
+    @Published var lockscreenGlass = UserDefaults.standard.bool(forKey: "app.lockscreenGlass") {
+        didSet { UserDefaults.standard.set(lockscreenGlass, forKey: "app.lockscreenGlass") }
+    }
+    var chatTextPrimary: Color { lockscreenGlass ? wallpaper.foreground : color.textPrimary }
+    var chatTextSecondary: Color { lockscreenGlass ? wallpaper.secondary : color.textSecondary }
+    var chatTextShadow: Color { lockscreenGlass ? wallpaper.textShadow : .clear }
+    var chatBubbleKeText: Color { lockscreenGlass ? wallpaper.foreground : color.bubbleKeText }
+    var chatBubbleMeText: Color { lockscreenGlass ? wallpaper.foreground : color.bubbleMeText }
+
     let metric = Metrics()
     let glass = GlassTokens()
     let motion = MotionTokens()
@@ -527,4 +537,31 @@ enum NotesTheme {
     static let readerShadowRadius: CGFloat = 18
     static let readerShadowOffset: CGFloat = 8
     static let archiveDuration: Double = 0.28
+}
+
+// Build 88：照片聊天背景与锁屏玻璃的视觉令牌。
+struct ChatWallpaperTokens {
+    let foreground = Color.white
+    let secondary = Color.white.opacity(0.7)
+    let textShadow = Color.black.opacity(0.25)
+    let shade = Color.black
+    let textShadowRadius: CGFloat = 2
+    let textShadowY: CGFloat = 1
+    let blurRange = 0.0...20.0
+    let dimRange = 0.0...0.4
+    let defaultDim = 0.1
+    let editorGap: CGFloat = 12
+    let editorPadding: CGFloat = 16
+    let editorRadius: CGFloat = 18
+    let editorPreviewHeight: CGFloat = 420
+    let editorZoom: CGFloat = 6
+}
+
+struct ChatLegibility: ViewModifier {
+    @EnvironmentObject private var theme: Theme
+    func body(content: Content) -> some View {
+        content.shadow(color: theme.chatTextShadow,
+                       radius: theme.wallpaper.textShadowRadius,
+                       y: theme.wallpaper.textShadowY)
+    }
 }

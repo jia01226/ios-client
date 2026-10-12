@@ -13,7 +13,8 @@ struct ThinkingTimelineRow: View {
                     .font(theme.font.thinkingChevron)
             }
             .font(theme.font.thinking)
-            .foregroundStyle(theme.color.textSecondary)
+            .foregroundStyle(theme.chatTextSecondary)
+                .modifier(ChatLegibility())
             .frame(
                 maxWidth: .infinity,
                 minHeight: theme.metric.touchTarget,
@@ -62,12 +63,13 @@ struct ChatToolStatusRow: View {
                     VStack(alignment: .leading, spacing: theme.metric.gapXS) {
                         Text(toolRun.title.isEmpty ? "柯正在处理" : toolRun.title)
                             .font(theme.font.caption.weight(.medium))
-                            .foregroundStyle(theme.color.textPrimary)
+                            .foregroundStyle(theme.chatTextPrimary)
                             .lineLimit(1)
 
                         Text(compactStatus)
                             .font(theme.font.caption)
-                            .foregroundStyle(theme.color.textSecondary)
+                            .foregroundStyle(theme.chatTextSecondary)
+                .modifier(ChatLegibility())
                             .lineLimit(1)
                     }
 
@@ -75,7 +77,8 @@ struct ChatToolStatusRow: View {
 
                     Image(systemName: "chevron.down")
                         .font(theme.font.disclosureIcon)
-                        .foregroundStyle(theme.color.textSecondary)
+                        .foregroundStyle(theme.chatTextSecondary)
+                .modifier(ChatLegibility())
                         .rotationEffect(.degrees(isExpanded ? 180 : 0))
                         .accessibilityHidden(true)
                 }
@@ -95,13 +98,14 @@ struct ChatToolStatusRow: View {
                 VStack(alignment: .leading, spacing: theme.metric.gapS) {
                     Text(detailText)
                         .font(theme.font.caption)
-                        .foregroundStyle(theme.color.textPrimary)
+                        .foregroundStyle(theme.chatTextPrimary)
                         .fixedSize(horizontal: false, vertical: true)
 
                     if let scheduledText {
                         Label(scheduledText, systemImage: "clock")
                             .font(theme.font.caption)
-                            .foregroundStyle(theme.color.textSecondary)
+                            .foregroundStyle(theme.chatTextSecondary)
+                .modifier(ChatLegibility())
                     }
 
                     if toolRun.state == .failed, toolRun.retryable {
@@ -151,7 +155,8 @@ struct ChatToolStatusRow: View {
                 .accessibilityHidden(true)
         case .unknown:
             Image(systemName: "ellipsis.circle")
-                .foregroundStyle(theme.color.textSecondary)
+                .foregroundStyle(theme.chatTextSecondary)
+                .modifier(ChatLegibility())
                 .accessibilityHidden(true)
         }
     }
@@ -249,12 +254,13 @@ struct ChatDateDividerRow: View {
             Spacer(minLength: 0)
             Text(ChatTimelineDate.visibleLabel(for: date))
                 .font(theme.font.caption.weight(.medium))
-                .foregroundStyle(theme.color.textOnAccent)
+                .foregroundStyle(theme.lockscreenGlass ? theme.chatTextSecondary : theme.color.textOnAccent)
+                .modifier(ChatLegibility())
                 .padding(.horizontal, theme.metric.gapM)
                 .padding(.vertical, theme.metric.gapXS)
                 .background(
                     Capsule(style: .continuous)
-                        .fill(theme.color.textPrimary.opacity(0.92))
+                        .fill(theme.lockscreenGlass ? .clear : theme.color.textPrimary.opacity(0.92))
                 )
             Spacer(minLength: 0)
         }
@@ -315,7 +321,7 @@ struct MessageRow: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(copied ? "已复制" : "复制消息")
-                        .foregroundStyle(copied ? theme.effectiveAccent : theme.color.textSecondary)
+                        .foregroundStyle(copied ? theme.effectiveAccent : theme.chatTextSecondary)
                     }
 
                     if message.sender == .me && message.deliveryState == .sent {
@@ -328,7 +334,8 @@ struct MessageRow: View {
                     }
                 }
                 .font(theme.font.caption)
-                .foregroundStyle(theme.color.textSecondary)
+                .foregroundStyle(theme.chatTextSecondary)
+                .modifier(ChatLegibility())
                 .padding(.horizontal, theme.metric.gapXS)
             }
             .frame(
@@ -480,8 +487,9 @@ struct MessageRow: View {
                 Text(text)
                     .font(theme.font.bubble)
                     .foregroundStyle(message.sender == .ke
-                                     ? theme.color.bubbleKeText
-                                     : theme.color.bubbleMeText)
+                                     ? theme.chatBubbleKeText
+                                     : theme.chatBubbleMeText)
+                    .modifier(ChatLegibility())
                     .lineSpacing(CGFloat(max(3, theme.chatFontSize * 0.28)))
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
@@ -523,9 +531,9 @@ struct MessageRow: View {
         bubbleFill
         .clipShape(RoundedRectangle(cornerRadius: CGFloat(theme.bubbleCornerRadius), style: .continuous))
         .overlay {
-            if message.sender == .ke {
+            if message.sender == .ke && !theme.lockscreenGlass {
                 RoundedRectangle(cornerRadius: CGFloat(theme.bubbleCornerRadius), style: .continuous)
-                    .strokeBorder(theme.color.bubbleKeText.opacity(0.10), lineWidth: 0.75)
+                    .strokeBorder(theme.chatBubbleKeText.opacity(0.10), lineWidth: 0.75)
                     .allowsHitTesting(false)
             }
         }
@@ -558,7 +566,8 @@ struct MessageRow: View {
                     .rotationEffect(.degrees(attachment.name.hasSuffix("·逆位") ? 180 : 0))
                 Text(attachment.name)
                     .font(theme.font.caption)
-                    .foregroundStyle(theme.color.textSecondary)
+                    .foregroundStyle(theme.chatTextSecondary)
+                .modifier(ChatLegibility())
                     .lineLimit(1)
             }
             .contentShape(Rectangle())
@@ -598,7 +607,8 @@ struct MessageRow: View {
                     .multilineTextAlignment(.leading)
             }
             .font(theme.font.caption)
-            .foregroundStyle(theme.color.textSecondary)
+            .foregroundStyle(theme.chatTextSecondary)
+                .modifier(ChatLegibility())
         }
     }
 
@@ -624,7 +634,8 @@ private struct AuthenticatedAttachmentImage: View {
                     Text("图片没有加载出来")
                         .font(theme.font.caption)
                 }
-                .foregroundStyle(theme.color.textSecondary)
+                .foregroundStyle(theme.chatTextSecondary)
+                .modifier(ChatLegibility())
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(theme.color.card.opacity(theme.glass.fixedSurfaceTintOpacity))
             } else {
