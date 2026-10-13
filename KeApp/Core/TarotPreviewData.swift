@@ -3,6 +3,14 @@ import Foundation
 
 /// Anonymous, local-only deals for UI verification. No live shuffle/pick mutations.
 enum TarotPreviewData {
+    private static let lock = NSLock()
+    private static var questions: [String: String] = [:]
+    private static var cardsForReading = ""
+    static var readingSummary: String {
+        lock.lock(); defer { lock.unlock() }
+        return cardsForReading
+    }
+
     static func response(for request: URLRequest) -> (Int, String)? {
         let path = request.url?.path ?? ""
         guard path.hasSuffix("/tarot/shuffle") || path.hasSuffix("/tarot/pick") else { return nil }
@@ -20,6 +28,7 @@ enum TarotPreviewData {
         let positions = spread == "one" ? ["此刻"] : spread == "celtic" ? ["现状", "阻碍", "根源", "过去", "目标", "未来", "自己", "环境", "希望", "结果"] : ["过去(根源/背景)", "现在(当下状态)", "未来(走向/建议)"]
         let result: [String: Any]
         if path.hasSuffix("/tarot/shuffle") {
+            lock.lock(); questions[spread] = body["question"] as? String ?? ""; lock.unlock()
             result = ["deal_id": "preview-\(spread)", "deck_size": 78, "spread": spread, "spread_name": "牌阵", "positions": positions]
         } else {
             let picks = body["picks"] as? [Int] ?? []
@@ -27,7 +36,11 @@ enum TarotPreviewData {
                   picks.allSatisfy({ (0..<78).contains($0) }) else { return (400, #"{"error":"选牌数量或序号不对"}"#) }
             let names = ["月亮", "圣杯二", "太阳"]
             let images = ["major18.webp", "cups02.webp", "major19.webp"]
-            result = ["id": 7, "question": "匿名测试", "spread": spread, "spread_name": "牌阵", "objective": "匿名牌面解读", "cards": positions.enumerated().map { index, position in
+            lock.lock()
+            let savedQuestion = questions[spread] ?? ""
+            cardsForReading = positions.indices.map { "\(names[$0 % 3])（\($0 == 0 ? "逆位" : "正位")）" }.joined(separator: "，")
+            lock.unlock()
+            result = ["id": 7, "question": savedQuestion, "spread": spread, "spread_name": "牌阵", "objective": "匿名牌面解读", "cards": positions.enumerated().map { index, position in
                 ["position": position, "name": "Card \(index)", "cn": names[index % 3], "type": "Major", "reversed": index == 0, "image": "tarot/cards/\(images[index % 3])"] as [String: Any]
             }]
         }

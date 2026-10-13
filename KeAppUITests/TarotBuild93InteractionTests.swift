@@ -72,6 +72,16 @@ enum TarotBuild93InteractionTests {
             XCTAssertTrue(app.buttons["tarot-confirm-preview"].exists)
             point.tap(); sleep(1)
             XCTAssertEqual(app.staticTexts["tarot-selection-count"].label, "已选 \(index + 1) / \(count)")
+            if spread == "three", index == 0 {
+                let selected = app.buttons["tarot-card-0"]
+                XCTAssertTrue(selected.isHittable)
+                selected.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                    .press(forDuration: 0.15, thenDragTo: point)
+                sleep(1)
+                XCTAssertEqual(app.staticTexts["tarot-selection-count"].label, "已选 0 / 3")
+                point.tap(); sleep(1); point.tap(); sleep(1)
+                XCTAssertEqual(app.staticTexts["tarot-selection-count"].label, "已选 1 / 3")
+            }
         }
         capture("tarot93-\(spread)-selected", in: test)
         let flip = app.buttons["tarot-flip"]
@@ -79,6 +89,13 @@ enum TarotBuild93InteractionTests {
         let handoff = app.buttons["tarot-ask-ke"]
         XCTAssertTrue(handoff.waitForExistence(timeout: 15))
         capture("tarot93-\(spread)-revealed", in: test)
+        if spread == "three" {
+            let selected = app.buttons["tarot-card-0"]
+            reach(selected, app: app, up: false); selected.tap()
+            XCTAssertTrue(app.buttons["tarot-inspector-close"].waitForExistence(timeout: 5))
+            XCTAssertEqual(app.staticTexts["tarot-inspector-title"].label, "月亮 · 逆位")
+            app.buttons["tarot-inspector-close"].tap()
+        }
         reach(handoff, app: app); handoff.tap()
         XCTAssertTrue(app.descendants(matching: .any)["chat-composer"].waitForExistence(timeout: 10))
         let sent = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "[塔罗#7]", question + " updated")).firstMatch

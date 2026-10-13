@@ -45,13 +45,19 @@ struct TarotView: View {
                     header
                     spreadPicker
                     HStack(alignment: .top, spacing: TarotTableStyle.smallGap) {
-                    TextField("想问的问题（可不填）", text: $question, axis: .vertical)
-                        .font(TarotTableStyle.body).lineLimit(1...3)
-                        .padding(TarotTableStyle.gap).background(TarotTableStyle.panel, in: RoundedRectangle(cornerRadius: TarotTableStyle.radius))
-                        .overlay(RoundedRectangle(cornerRadius: TarotTableStyle.radius).stroke(TarotTableStyle.border, lineWidth: TarotTableStyle.hairline))
-                        .focused($questionFocused).disabled(busy || selection.submitted)
-                        .submitLabel(.done).onSubmit { questionFocused = false }
-                        .accessibilityIdentifier("tarot-question")
+                        TextField("想问的问题（可不填）", text: $question, axis: .vertical)
+                            .font(TarotTableStyle.body).lineLimit(1...3)
+                            .padding(TarotTableStyle.gap).background(TarotTableStyle.panel, in: RoundedRectangle(cornerRadius: TarotTableStyle.radius))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: TarotTableStyle.radius)
+                                    .stroke(TarotTableStyle.border, lineWidth: TarotTableStyle.hairline)
+                                    .allowsHitTesting(false)
+                            }
+                            .contentShape(Rectangle())
+                            .simultaneousGesture(TapGesture().onEnded { questionFocused = true })
+                            .focused($questionFocused).disabled(busy || selection.submitted)
+                            .submitLabel(.done).onSubmit { questionFocused = false }
+                            .accessibilityIdentifier("tarot-question")
                         if questionFocused {
                             Button("完成") { questionFocused = false }
                                 .font(TarotTableStyle.caption)

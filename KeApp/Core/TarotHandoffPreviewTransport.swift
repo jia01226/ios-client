@@ -13,7 +13,7 @@ actor TarotHandoffPreviewTransport: ChatReplyTransport {
     func streamMessage(text: String, sessionID: Int, clientMessageID: String, model: String?, attachments: [ChatAttachment]) async throws -> AsyncThrowingStream<ChatStreamEvent, Error> {
         guard text.contains("[塔罗#7]"), attachments.isEmpty else { throw APIError.invalidResponse }
         let userID = 93000 + history.count
-        let reply = "牌面核对：月亮（逆位），圣杯二、太阳（正位）。已收到你写的问题。"
+        let reply = "牌面核对：\(TarotPreviewData.readingSummary)。已收到你写的问题。"
         history.append(Message(id: "server-\(userID)", serverID: userID, clientID: clientMessageID, sender: .me, text: text, time: .now))
         history.append(Message(id: "server-\(userID + 1)", serverID: userID + 1, sender: .ke, text: reply, time: .now))
         return AsyncThrowingStream { continuation in

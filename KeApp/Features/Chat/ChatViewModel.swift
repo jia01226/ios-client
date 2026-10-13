@@ -133,8 +133,8 @@ final class ChatViewModel: ObservableObject {
         let recoveryPreview = ProcessInfo.processInfo.arguments.contains("-ui-test-foreground-recovery")
         let tarotPreview = ProcessInfo.processInfo.arguments.contains("-ui-test-tarot-handoff")
         replyAPI = replyTransport ?? (tarotPreview ? TarotHandoffPreviewTransport() as any ChatReplyTransport : (recoveryPreview ? ChatRecoveryPreviewTransport() as any ChatReplyTransport : client))
-        self.replyCompleted = recoveryPreview ? {} : replyCompleted
-        cache = ChatCache(fileName: cacheFileName ?? (recoveryPreview ? "recovery-preview-\(UUID()).json" : line.cacheFileName))
+        self.replyCompleted = (recoveryPreview || tarotPreview) ? {} : replyCompleted
+        cache = ChatCache(fileName: cacheFileName ?? ((recoveryPreview || tarotPreview) ? "chat-preview-\(UUID()).json" : line.cacheFileName))
 #else
         replyAPI = replyTransport ?? client
         self.replyCompleted = replyCompleted
