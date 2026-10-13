@@ -65,113 +65,69 @@ struct MemoryGardenView: View {
     private var scene: MemoryScene { .forCategory(category) }
     private var darkScene: Bool { theme.skin == .night || scene == .moon }
 
+    // 92：正式花园换成 90 版的山茶探索（MemoryGardenExperience），接上真实记忆。
+    // 旧的 MemoryGardenCanvas 不再出现在正式页面。
+    @State private var correctingID: String?
+    @State private var correctionNote = ""
     var body: some View {
-        ZStack {
-            MemoryGardenCanvas(flowers: flowers, scene: scene, night: theme.skin == .night,
-                               witheredIDs: Set(store.flowers.filter { $0.state == "withered" }.map(\.id))) { selected = $0 }
-                .clipped()
-            VStack {
-                LinearGradient(colors: [(darkScene ? Color.black : Color.white).opacity(0.55), .clear],
-                               startPoint: .top, endPoint: .bottom).frame(height: 260)
-                Spacer()
-                LinearGradient(colors: [.clear, (darkScene ? Color.black : Color.white).opacity(0.8)],
-                               startPoint: .top, endPoint: .bottom).frame(height: 100)
-            }.allowsHitTesting(false)
         VStack(spacing: 0) {
             MemoryPageHeader(page: $page)
-                .environment(\.colorScheme, darkScene ? .dark : .light)
-            Toggle("也看以前整理的", isOn: $includeOthers)
-                .font(.caption).padding(.horizontal, 26).padding(.vertical, 4)
-                .accessibilityIdentifier("memory-include-others")
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(store.categories, id: \.self) { value in
-                        Button { category = value } label: {
-                            Text(value).font(.custom("NotoSerifSC-ExtraLight", size: 15, relativeTo: .body))
-                                .padding(.horizontal, 16).frame(minHeight: 44)
-                                .background(category == value ? theme.pageAccent.opacity(0.12) : .clear,
-                                            in: RoundedRectangle(cornerRadius: 4))
-                                .overlay(alignment: .bottom) {
-                                    if category == value { Rectangle().fill(theme.pageAccent).frame(height: 1) }
-                                }
-                        }.buttonStyle(.plain).accessibilityIdentifier("memory-category-\(value)")
-                            .accessibilityAddTraits(category == value ? .isSelected : [])
-                    }
-                }.padding(.horizontal, 22)
-            }
-            if let error = store.error {
-                HStack {
-                    Text(error).font(.caption)
-                    Spacer()
-                    Button("重试") { Task { await store.load() } }.disabled(store.loading || store.busy)
-                }.padding(12)
-                    .foregroundStyle(darkScene ? Color.white : Color(red: 0.25, green: 0.28, blue: 0.33))
-                    .background(darkScene ? Color(red: 0.09, green: 0.11, blue: 0.20) : Color.white.opacity(0.94))
-            }
-            ZStack(alignment: .top) {
-                VStack(spacing: 6) {
-                    Text(scene.title).font(.custom("NotoSerifSC-ExtraLight", size: 22, relativeTo: .title2))
-                    Text("\(category) · \(flowers.count) 条记忆").font(.caption)
-                }.padding(.top, 12).allowsHitTesting(false)
+                .environment(\.colorScheme, .dark)
+            HStack(spacing: 14) {
+                Toggle("也看以前整理的", isOn: $includeOthers)
+                    .toggleStyle(.switch).fixedSize()
+                    .accessibilityIdentifier("memory-include-others")
+                Spacer()
+                Button("枯掉的花") { witheredOpen = true }.accessibilityIdentifier("memory-withered")
+                Button { Task { await store.load() } } label: {
+                    Image(systemName: "arrow.clockwise").frame(width: 36, height: 36)
+                }.accessibilityLabel("刷新花园").disabled(store.loading || store.busy)
+            }.font(.caption).padding(.horizontal, 22).padding(.bottom, 4)
+            ZStack {
+                MemoryGardenExperience(
+                    flowers: store.visible(includeOthers: includeOthers),
+                    categories: store.categories,
+                    initialCategory: "约定",
+                    night: theme.skin == .night,
+                    isBusy: store.busy,
+                    interactionError: store.error,
+                    onLoveMemory: { id, _ in
+                        guard let flower = store.flowers.first(where: { $0.id == id }) else { return }
+                        Task { await store.change(flower, action: "love") }
+                    },
+                    onRequestCorrection: { id in correctionNote = ""; correctingID = id }
+                )
+                .id(includeOthers)
                 if store.loading && !store.loaded {
-                    ProgressView("正在走进花园").padding(20).background(.regularMaterial).frame(maxHeight: .infinity)
-                        .environment(\.colorScheme, darkScene ? .dark : .light)
-                } else if store.loaded && flowers.isEmpty {
+                    ProgressView("正在走进花园").padding(20)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                } else if store.loaded && store.visible(includeOthers: includeOthers).isEmpty {
                     VStack(spacing: 10) {
                         Image(systemName: "leaf").font(.title3).accessibilityHidden(true)
                         Text(emptyMessage).font(.subheadline).multilineTextAlignment(.center).lineSpacing(6)
                     }.padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-                        .padding(30).frame(maxHeight: .infinity).accessibilityIdentifier("memory-empty")
-                        .environment(\.colorScheme, darkScene ? .dark : .light)
+                        .padding(30).accessibilityIdentifier("memory-empty")
+                } else if let error = store.error, !store.loaded {
+                    VStack(spacing: 10) {
+                        Text(error).font(.subheadline).multilineTextAlignment(.center)
+                        Button("重试") { Task { await store.load() } }.disabled(store.loading || store.busy)
+                    }.padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12)).padding(30)
                 }
-            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            Text("轻触花朵 · 拖动浏览 · 双指缩放").font(.caption2).padding(.bottom, 2)
-                .allowsHitTesting(false)
-            HStack {
-                Button { listOpen = true } label: { Label("花朵列表", systemImage: "list.bullet") }
-                    .accessibilityIdentifier("memory-flower-list")
-                Spacer()
-                Button("枯掉的花") { witheredOpen = true }.accessibilityIdentifier("memory-withered")
-                Button { Task { await store.load() } } label: {
-                    Image(systemName: "arrow.clockwise").frame(width: 44, height: 44)
-                }.accessibilityLabel("刷新花园").disabled(store.loading || store.busy)
-            }.font(.caption).frame(minHeight: 44).padding(.horizontal, 22)
-        }
-        .foregroundStyle(darkScene ? Color.white.opacity(0.94) : Color(red: 0.25, green: 0.28, blue: 0.33))
-        }
-        .task { await store.load() }
-        .sheet(item: $selected) { flower in
-            MemoryFlowerDetail(store: store, flowerID: flower.id)
-                .presentationDetents([.medium, .large])
-                .presentationBackgroundInteraction(.enabled(upThrough: .large))
-                .presentationBackground(.regularMaterial)
-                .presentationDragIndicator(.visible)
-        }
-        .sheet(isPresented: $listOpen, onDismiss: {
-            if let flower = pendingFlower { selected = flower; pendingFlower = nil }
-        }) {
-            NavigationStack {
-                List(flowers) { flower in
-                    Button {
-                        listOpen = false
-                        // Present after the list sheet has finished dismissing.
-                        pendingFlower = flower
-                    } label: {
-                        HStack {
-                            Image(flower.state == "bud" ? "MemoryBud" : flower.state == "fallen" ? "MemoryPetals" : "MemoryBloom")
-                                .resizable().scaledToFit().frame(width: 40, height: 40).accessibilityHidden(true)
-                            VStack(alignment: .leading) {
-                                Text(flower.title)
-                                Text(flower.state == "fallen" ? "已归档" : flower.author == "ke" ? "柯亲手记的" : "以前整理的")
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                            if flower.loved { Image(systemName: "heart.fill").foregroundStyle(theme.pageAccent) }
-                        }
-                    }.accessibilityIdentifier("memory-flower-\(flower.id)")
-                }.navigationTitle("\(category)的山茶").navigationBarTitleDisplayMode(.inline)
-                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { listOpen = false } } }
             }
+            .environment(\.colorScheme, .dark)
         }
+        .background(Color(red: 0.06, green: 0.08, blue: 0.14).ignoresSafeArea())
+        .foregroundStyle(Color.white.opacity(0.94))
+        .task { await store.load() }
+        .alert("这件事记错了吗？", isPresented: Binding(get: { correctingID != nil }, set: { if !$0 { correctingID = nil } })) {
+            TextField("哪里错了，可以留空", text: $correctionNote)
+            Button("取消", role: .cancel) { correctingID = nil }
+            Button("确认记错了", role: .destructive) {
+                guard let id = correctingID, let flower = store.flowers.first(where: { $0.id == id }) else { return }
+                correctingID = nil
+                Task { await store.change(flower, action: "wither", note: correctionNote) }
+            }
+        } message: { Text("会告诉柯不再记起这件事。点错了，可以从「枯掉的花」找回来。") }
         .sheet(isPresented: $witheredOpen) {
             NavigationStack {
                 List {

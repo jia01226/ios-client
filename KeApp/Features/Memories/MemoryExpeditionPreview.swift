@@ -228,7 +228,7 @@ struct MemoryGardenExperience: View {
                 }
             }.saturation(0.62).contrast(0.88)
                 .colorMultiply(dark ? Color(red: 0.57, green: 0.66, blue: 0.81) : Color(red: 1, green: 0.97, blue: 0.95))
-                .opacity(0.6 + depth * 0.4).blur(radius: 0.4 + (1-depth) * 0.6)
+                .opacity((0.6 + depth * 0.4) * (flower.author == "ke" ? 1 : 0.5)).blur(radius: 0.4 + (1-depth) * 0.6)
                 .frame(width: max(48, diameter * 1.5), height: max(48, diameter * 1.4))
                 .contentShape(Rectangle())
         }.buttonStyle(.plain).position(point)
