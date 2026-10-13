@@ -34,6 +34,56 @@ private func requestBody(_ request: URLRequest) -> Data? {
 }
 
 final class CompanionAPITests: XCTestCase {
+    func testTarotShufflePickContractAndIdempotentRetry() async throws {
+        let dealJSON = #"{"deal_id":"locked-7","deck_size":78,"spread":"three","spread_name":"三张","positions":["过去","现在","未来"]}"#
+        CompanionStub.handler = { request in
+            XCTAssertEqual(request.url?.path, "/ke-test2/api/tarot/shuffle")
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertTrue(request.httpShouldHandleCookies)
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: requestBody(request)!) as? [String: String])
+            XCTAssertEqual(body, ["spread": "three", "question": "匿名问题"])
+            return (200, dealJSON)
+        }
+        let client = api()
+        let deal = try await client.shuffleTarot(question: "匿名问题", spread: "three")
+        var requests: [Data] = []
+        var fail = true
+        CompanionStub.handler = { request in
+            XCTAssertEqual(request.url?.path, "/ke-test2/api/tarot/pick")
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertTrue(request.httpShouldHandleCookies)
+            let bytes = try XCTUnwrap(requestBody(request)); requests.append(bytes)
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+            XCTAssertEqual(body["deal_id"] as? String, "locked-7")
+            XCTAssertEqual(body["picks"] as? [Int], [5, 40, 77])
+            if fail { throw URLError(.timedOut) }
+            let cards = ["过去", "现在", "未来"].enumerated().map { index, position in
+                ["position": position, "name": "card", "cn": "牌", "type": "Major", "reversed": index == 1, "image": "card.png"] as [String: Any]
+            }
+            let result: [String: Any] = ["id": 9, "question": "匿名问题", "spread": "three", "spread_name": "三张", "cards": cards]
+            return (200, String(data: try JSONSerialization.data(withJSONObject: result), encoding: .utf8)!)
+        }
+        do { _ = try await client.pickTarot(deal: deal, picks: [5, 40, 77]); XCTFail("Expected timeout") } catch { }
+        fail = false
+        let result = try await client.pickTarot(deal: deal, picks: [5, 40, 77])
+        XCTAssertEqual(result.id, 9); XCTAssertTrue(result.cards[1].reversed)
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertEqual(try JSONSerialization.jsonObject(with: requests[0]) as? NSDictionary,
+                       try JSONSerialization.jsonObject(with: requests[1]) as? NSDictionary)
+    }
+
+    func testTarotExpiredDealDoesNotAutomaticallyReshuffle() async throws {
+        let deal = TarotDeal(deal_id: .text("expired"), deck_size: 78, spread: "one", spread_name: "一张", positions: ["此刻"])
+        var count = 0
+        CompanionStub.handler = { request in
+            count += 1
+            XCTAssertEqual(request.url?.path, "/ke-test2/api/tarot/pick")
+            return (400, #"{"error":"deal expired"}"#)
+        }
+        do { _ = try await api().pickTarot(deal: deal, picks: [0]); XCTFail("Expected expired deal error") } catch { }
+        XCTAssertEqual(count, 1)
+    }
+
     func testGardenAndStickyMutationContractsKeepCookieAndLinePrefix() async throws {
         CompanionStub.handler = { request in
             XCTAssertEqual(request.url?.path, "/ke-test2/api/memory/garden")

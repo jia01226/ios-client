@@ -40,6 +40,24 @@ final class TarotSelectionTests: XCTestCase {
         XCTAssertEqual(selection.picks, []); XCTAssertEqual(selection.preview, 77)
         selection.tap(77); XCTAssertEqual(selection.picks, [77])
     }
+    func testFullFanFitsSmallAndLargeScreensIncludingLiftedCard() {
+        for width in [280.0, 350.0, 390.0] {
+            for index in 0..<78 {
+                let angle = Double.pi + Double(index) / 77 * Double.pi
+                let rotation = angle + Double.pi / 2
+                let halfWidth = width * Double(TarotTableStyle.fanCardWidth) / 2
+                let halfHeight = halfWidth / Double(TarotTableStyle.cardAspect)
+                for lifted in [false, true] {
+                    let radius = width * Double(TarotTableStyle.fanRadius + (lifted ? TarotTableStyle.previewLift : 0))
+                    let x = width / 2 + cos(angle) * radius
+                    let extentX = abs(cos(rotation)) * halfWidth + abs(sin(rotation)) * halfHeight
+                    XCTAssertGreaterThanOrEqual(x - extentX, 0)
+                    XCTAssertLessThanOrEqual(x + extentX, width)
+                }
+            }
+        }
+    }
+
     func testDealIDsRetainWireTypeAndDealValidation() throws {
         for id in [#""opaque-deal""#, "123"] {
             let json = "{\"deal_id\":\(id),\"deck_size\":78,\"spread\":\"one\",\"spread_name\":\"一张\",\"positions\":[\"现在\"]}"

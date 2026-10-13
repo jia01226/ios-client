@@ -13,7 +13,7 @@ enum TarotSemicircleInteractionTests {
         // The server fixture returns immediately; let the shuffle/unfold finish.
         sleep(3)
         capture("tarot91-01-full-fan", in: test)
-        let center = fan.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15))
+        let center = fan.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.30))
         center.tap()
         XCTAssertTrue(app.buttons["tarot-confirm-preview"].waitForExistence(timeout: 3))
         XCTAssertEqual(app.staticTexts["tarot-selection-count"].label, "已选 0 / 3")
@@ -27,7 +27,7 @@ enum TarotSemicircleInteractionTests {
         selected.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.15, thenDragTo: center)
         sleep(1)
         XCTAssertEqual(app.staticTexts["tarot-selection-count"].label, "已选 0 / 3")
-        for point in [CGVector(dx: 0.25, dy: 0.38), CGVector(dx: 0.5, dy: 0.15), CGVector(dx: 0.75, dy: 0.38)] {
+        for point in [CGVector(dx: 0.25, dy: 0.48), CGVector(dx: 0.5, dy: 0.30), CGVector(dx: 0.75, dy: 0.48)] {
             let target = fan.coordinate(withNormalizedOffset: point)
             target.tap(); sleep(1); target.tap(); sleep(1)
         }
@@ -40,6 +40,7 @@ enum TarotSemicircleInteractionTests {
         capture("tarot91-04-revealed", in: test)
     }
     static func verify(in test: XCTestCase) {
+        test.continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-app.skin", "day"]
         app.launch()
@@ -58,7 +59,44 @@ enum TarotSemicircleInteractionTests {
         if !handoff.isHittable { app.swipeUp() }
         handoff.tap()
         XCTAssertFalse(app.buttons["tarot-close"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.descendants(matching: .any)["chat-composer"].waitForExistence(timeout: 8))
         capture("tarot91-06-handoff", in: test)
+        app.terminate()
+        // Verify the one-card spread on the night skin, then the complete Celtic layout.
+        app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-app.skin", "night"]
+        app.launch()
+        XCTAssertTrue(app.buttons["tab-play"].waitForExistence(timeout: 8)); app.buttons["tab-play"].tap()
+        app.buttons["play-tarot"].tap()
+        app.buttons["tarot-spread-one"].tap(); app.buttons["tarot-draw"].tap(); sleep(3)
+        let nightFan = app.otherElements["tarot-fan"]
+        let target = nightFan.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.30))
+        target.tap(); sleep(1); target.tap(); sleep(1)
+        XCTAssertEqual(app.staticTexts["tarot-selection-count"].label, "已选 1 / 1")
+        let nightFlip = app.buttons["tarot-flip"]
+        if !nightFlip.isHittable { app.swipeUp() }; nightFlip.tap()
+        XCTAssertTrue(app.buttons["tarot-ask-ke"].waitForExistence(timeout: 10))
+        capture("tarot91-07-night-one-card", in: test)
+        if !app.buttons["tarot-close"].isHittable { app.swipeDown() }
+        app.buttons["tarot-close"].tap(); app.buttons["play-tarot"].tap()
+        app.buttons["tarot-spread-celtic"].tap()
+        let draw = app.buttons["tarot-draw"]
+        if !draw.isHittable { app.swipeUp() }; draw.tap(); sleep(3)
+        capture("tarot91-08-celtic-fan", in: test)
+        let celticFan = app.otherElements["tarot-fan"]
+        if !celticFan.isHittable { app.swipeUp() }
+        // Ten well-separated angular positions across the full semicircle.
+        for index in 0..<10 {
+            let angle = Double.pi + Double(index + 1) / 11 * Double.pi
+            let x = 0.5 + cos(angle) * 0.32
+            let y = (0.60 - 0.105 + sin(angle) * 0.32) / 0.60
+            let point = celticFan.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y))
+            point.tap(); sleep(1); point.tap(); sleep(1)
+        }
+        XCTAssertEqual(app.staticTexts["tarot-selection-count"].label, "已选 10 / 10")
+        let celticFlip = app.buttons["tarot-flip"]
+        if !celticFlip.isHittable { app.swipeUp() }; celticFlip.tap()
+        XCTAssertTrue(app.buttons["tarot-ask-ke"].waitForExistence(timeout: 15))
+        capture("tarot91-09-celtic-revealed", in: test)
         app.terminate()
     }
 }

@@ -57,7 +57,7 @@ struct TarotView: View {
                             .font(TarotTableStyle.caption).frame(minHeight: TarotTableStyle.controlHeight)
                             .accessibilityIdentifier("tarot-restart")
                     }
-                    if spread == "celtic", deal != nil {
+                    if (spread == "celtic" || typeSize.isAccessibilitySize), deal != nil {
                         VStack(alignment: .leading, spacing: TarotTableStyle.smallGap) {
                             ForEach(Array(positions.enumerated()), id: \.offset) { index, position in
                                 Text("\(index + 1) · \(position)\(cardDescription(index))")
@@ -128,7 +128,7 @@ struct TarotView: View {
                 let point = slotPoint(slot, width: width)
                 let cardWidth = slotWidth(width)
                 RoundedRectangle(cornerRadius: TarotTableStyle.cardRadius)
-                    .stroke(TarotTableStyle.border.opacity(0.55), style: StrokeStyle(lineWidth: TarotTableStyle.hairline, dash: [TarotTableStyle.smallGap]))
+                    .stroke(TarotTableStyle.slotBorder, style: StrokeStyle(lineWidth: TarotTableStyle.hairline, dash: [TarotTableStyle.smallGap]))
                     .frame(width: cardWidth, height: cardWidth / TarotTableStyle.cardAspect)
                     .rotationEffect(.degrees(spread == "celtic" && slot == 1 ? 90 : 0))
                     .position(point)
@@ -137,7 +137,7 @@ struct TarotView: View {
                     Text(shortPosition(positions[slot])).font(TarotTableStyle.body)
                         .frame(width: width / CGFloat(positions.count))
                         .position(x: point.x, y: width * TarotTableStyle.slotLabelY)
-                    if slot < revealed, let card = cast?.cards[slot] {
+                    if !typeSize.isAccessibilitySize, slot < revealed, let card = cast?.cards[slot] {
                         Text("\(card.cn)\n\(card.reversed ? "逆位" : "正位")")
                             .font(TarotTableStyle.caption).multilineTextAlignment(.center)
                             .frame(width: width / CGFloat(positions.count)).fixedSize(horizontal: false, vertical: true)
@@ -156,8 +156,8 @@ struct TarotView: View {
             // Angular hit testing gives every one of the 78 overlapping cards a selectable sector.
             // Sliding scans the fan; only a stationary second tap confirms the lifted card.
             Rectangle().fill(.clear).contentShape(Rectangle())
-                .frame(width: width, height: width * (TarotTableStyle.fanRadius + TarotTableStyle.fanCardWidth / TarotTableStyle.cardAspect))
-                .position(x: width / 2, y: height - width * (TarotTableStyle.fanRadius + TarotTableStyle.fanCardWidth / TarotTableStyle.cardAspect) / 2)
+                .frame(width: width, height: width * (TarotTableStyle.fanHitHeight))
+                .position(x: width / 2, y: height - width * (TarotTableStyle.fanHitHeight) / 2)
                 .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("tarot-table"))
                     .onChanged { value in
                         guard phase == .selecting, !selection.submitted,
@@ -193,10 +193,10 @@ struct TarotView: View {
         let radius = width * (TarotTableStyle.fanRadius + (lifted ? TarotTableStyle.previewLift : 0))
         let fanPoint = CGPoint(x: width / 2 + CGFloat(cos(angle)) * radius,
                                y: height - width * TarotTableStyle.fanBottom + CGFloat(sin(angle)) * radius)
-        let stackPoint = CGPoint(x: width / 2 + (shuffleOffset ? (index.isMultiple(of: 2) ? width * 0.10 : -width * 0.10) : 0),
-                                 y: height - width * 0.30 + CGFloat(index % 4) * TarotTableStyle.hairline)
+        let stackPoint = CGPoint(x: width / 2 + (shuffleOffset ? (index.isMultiple(of: 2) ? width * TarotTableStyle.shuffleSeparation : -width * TarotTableStyle.shuffleSeparation) : 0),
+                                 y: height - width * TarotTableStyle.stackY + CGFloat(index % 4) * TarotTableStyle.hairline)
         let point = slot.map { slotPoint($0, width: width) } ?? (fanOpen ? fanPoint : stackPoint)
-        let cardWidth = slot == nil ? width * TarotTableStyle.fanCardWidth : slotWidth(width)
+        let cardWidth = slot == nil ? width * (fanOpen ? TarotTableStyle.fanCardWidth : TarotTableStyle.stackCardWidth) : slotWidth(width)
         let rotation = slot == nil ? (fanOpen ? angle * 180 / .pi + 90 : (shuffleOffset ? Double(index % 5 - 2) * 3 : 0)) : (spread == "celtic" && slot == 1 ? 90.0 : 0.0)
         let card = slot.flatMap { cast?.cards.indices.contains($0) == true ? cast?.cards[$0] : nil }
         let faceUp = slot.map { $0 < revealed } ?? false
@@ -295,7 +295,7 @@ struct TarotView: View {
         let distance = hypot(x, y)
         guard y <= width * TarotTableStyle.fanCardWidth,
               distance > width * (TarotTableStyle.fanRadius - TarotTableStyle.fanCardWidth),
-              distance < width * (TarotTableStyle.fanRadius + TarotTableStyle.fanCardWidth / TarotTableStyle.cardAspect) else { return nil }
+              distance < width * (TarotTableStyle.fanHitHeight) else { return nil }
         var angle = atan2(Double(y), Double(x))
         if angle > 0 { angle = x < 0 ? -.pi : 0 }
         return min(77, max(0, Int(((angle + .pi) / .pi * 77).rounded())))

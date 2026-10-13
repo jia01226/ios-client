@@ -591,6 +591,11 @@ enum TarotTableStyle {
     static let caption = Moonlight.serif(13)
     static let tiny = Moonlight.serif(10)
     static let cardAspect: CGFloat = 0.58
+    static let stackCardWidth: CGFloat = 0.22
+    static let shuffleSeparation: CGFloat = 0.10
+    static let stackY: CGFloat = 0.30
+    static let slotBorder = border.opacity(0.55)
+    static let fanHitHeight: CGFloat = 0.60
     static let fanCardWidth: CGFloat = 0.105
     static let fanRadius: CGFloat = 0.32
     static let fanBottom: CGFloat = 0.105

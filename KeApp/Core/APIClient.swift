@@ -884,17 +884,25 @@ actor APIClient {
         request.httpBody = try JSONSerialization.data(withJSONObject: ["question": question, "spread": spread])
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let (data, _) = try await perform(request)
-        let deal = try decoder.decode(TarotDeal.self, from: data)
+        let deal: TarotDeal
+        do { deal = try decoder.decode(TarotDeal.self, from: data) }
+        catch { throw APIError.serverMessage("牌阵信息没有收完整，请重新洗牌。") }
         guard deal.isValid, deal.spread == spread else { throw APIError.serverMessage("牌阵没有准备好，请重新洗牌。") }
         return deal
     }
 
     func pickTarot(deal: TarotDeal, picks: [Int]) async throws -> TarotCast {
+        guard picks.count == deal.positions.count, Set(picks).count == picks.count,
+              picks.allSatisfy({ (0..<deal.deck_size).contains($0) }) else {
+            throw APIError.serverMessage("选牌数量或序号不对，请重新选牌。")
+        }
         var request = try makeRequest(path: "/api/tarot/pick", method: "POST")
         request.httpBody = try JSONEncoder().encode(TarotPickRequest(deal_id: deal.deal_id, picks: picks))
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let (data, _) = try await perform(request)
-        let cast = try decoder.decode(TarotCast.self, from: data)
+        let cast: TarotCast
+        do { cast = try decoder.decode(TarotCast.self, from: data) }
+        catch { throw APIError.serverMessage("牌面信息没有收完整，请重试翻牌。") }
         guard cast.cards.count == deal.positions.count, cast.spread == deal.spread,
               cast.cards.map(\.position) == deal.positions else {
             throw APIError.serverMessage("牌面没有收完整，请重试翻牌。")

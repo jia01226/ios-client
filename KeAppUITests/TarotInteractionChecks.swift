@@ -7,17 +7,10 @@ enum TarotInteractionChecks {
             shot.name = name; shot.lifetime = .keepAlways; testCase.add(shot)
         }
         app.buttons["play-tarot"].tap()
-        XCTAssertTrue(app.buttons["tarot-draw"].waitForExistence(timeout: 6))
-        let deck = app.descendants(matching: .any).matching(identifier: "tarot-deck-preview").firstMatch
-        XCTAssertEqual(deck.label, "月光山茶")
-        capture("tarot-01-moonlight-deck")
-        app.buttons["tarot-draw"].tap()
+        TarotSemicircleInteractionTests.chooseThree(in: testCase, app: app)
         let card = app.buttons["tarot-card-0"]
-        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: card)
-        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 15), .completed)
-        if !card.isHittable { app.swipeUp() }
+        if !card.isHittable { app.swipeDown() }
         let before = card.label
-        capture("tarot-02-drawn-cards")
         card.tap()
         XCTAssertTrue(app.buttons["tarot-inspector-close"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.staticTexts["tarot-inspector-title"].label, "月亮 · 逆位")

@@ -161,7 +161,7 @@ final class CompanionInteractionTests: XCTestCase {
         app.buttons["play-tarot"].tap()
         TarotSemicircleInteractionTests.chooseThree(in: self, app: app)
         app.buttons["tarot-ask-ke"].tap()
-        XCTAssertTrue(app.buttons["chat-input-more"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.descendants(matching: .any)["chat-composer"].waitForExistence(timeout: 8))
     }
 
     // Keep the selector used by the existing CI workflow; the garden handoff is now removed.
