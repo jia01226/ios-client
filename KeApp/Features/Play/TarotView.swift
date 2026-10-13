@@ -6,6 +6,11 @@ struct TarotView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
     let line: ChatLine
+    @State private var api: APIClient
+    init(line: ChatLine) {
+        self.line = line
+        _api = State(initialValue: APIClient(baseURL: line.apiBaseURL))
+    }
     @State private var question = ""
     @State private var spread = "three"
     @State private var deal: TarotDeal?
@@ -26,7 +31,6 @@ struct TarotView: View {
     @AppStorage("tarot.tableBack.v91") private var backID = "butterfly"
     @FocusState private var questionFocused: Bool
     private enum Phase { case idle, shuffling, selecting, submitting, revealing, done }
-    private var api: APIClient { APIClient(baseURL: line.apiBaseURL) }
     private var busy: Bool { phase == .shuffling || phase == .submitting || phase == .revealing }
     private var positions: [String] {
         deal?.positions ?? (spread == "one" ? ["此刻"] : spread == "three" ? ["过去", "现在", "未来"] : (1...10).map { "\($0)" })
@@ -304,7 +308,8 @@ struct TarotView: View {
     }
     private func tap(_ index: Int) {
         guard phase == .selecting else { return }
-        withAnimation(motion) { selection.tap(index) }
+        let duration = selection.preview == index ? TarotTableStyle.moveDuration : TarotTableStyle.liftDuration
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: duration)) { selection.tap(index) }
     }
     private func shortPosition(_ text: String) -> String { String(text.prefix { $0 != "(" && $0 != "（" }) }
     private func cardDescription(_ index: Int) -> String {
