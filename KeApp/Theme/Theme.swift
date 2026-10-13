@@ -601,6 +601,9 @@ enum TarotTableStyle {
     static let fanBottom: CGFloat = 0.105
     static let previewLift: CGFloat = 0.045
     static let stageHeight: CGFloat = 1.13
+    static let singleStageHeight: CGFloat = 1.24
+    static let singleSlotY: CGFloat = 0.31
+    static let singleCardLabelY: CGFloat = 0.60
     static let celticStageHeight: CGFloat = 1.65
     static let slotWidth: CGFloat = 0.255
     static let singleSlotWidth: CGFloat = 0.29

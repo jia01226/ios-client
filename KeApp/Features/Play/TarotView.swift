@@ -126,7 +126,7 @@ struct TarotView: View {
     }
 
     private func table(width: CGFloat) -> some View {
-        let height = width * (spread == "celtic" ? TarotTableStyle.celticStageHeight : TarotTableStyle.stageHeight)
+        let height = width * (spread == "celtic" ? TarotTableStyle.celticStageHeight : spread == "one" ? TarotTableStyle.singleStageHeight : TarotTableStyle.stageHeight)
         return ZStack(alignment: .topLeading) {
             ForEach(positions.indices, id: \.self) { slot in
                 let point = slotPoint(slot, width: width)
@@ -147,12 +147,14 @@ struct TarotView: View {
                         Text("\(card.cn)\n\(card.reversed ? "逆位" : "正位")")
                             .font(TarotTableStyle.caption).multilineTextAlignment(.center)
                             .frame(width: width / CGFloat(positions.count)).fixedSize(horizontal: false, vertical: true)
-                            .position(x: point.x, y: width * TarotTableStyle.cardLabelY)
+                            .position(x: point.x, y: width * (spread == "one" ? TarotTableStyle.singleCardLabelY : TarotTableStyle.cardLabelY))
                             .accessibilityHidden(true)
                     }
-                } else {
-                    Text("\(slot + 1)").font(TarotTableStyle.tiny)
-                        .position(x: point.x, y: point.y - cardWidth / TarotTableStyle.cardAspect / 2 - TarotTableStyle.smallGap)
+                } else if slot != 1 {
+                    // The crossed pair shares a label; staff numbers sit beside their cards.
+                    Text(slot == 0 ? "1 · 2" : "\(slot + 1)").font(TarotTableStyle.tiny)
+                        .position(x: slot >= 6 ? point.x - cardWidth / 2 - TarotTableStyle.gap : point.x,
+                                  y: slot >= 6 ? point.y : point.y - cardWidth / TarotTableStyle.cardAspect / 2 - TarotTableStyle.smallGap)
                         .accessibilityHidden(true)
                 }
             }
@@ -293,7 +295,7 @@ struct TarotView: View {
         if spread == "celtic" {
             return CGPoint(x: width * TarotTableStyle.celticX[slot], y: width * TarotTableStyle.celticY[slot])
         }
-        return CGPoint(x: width * CGFloat(2 * slot + 1) / CGFloat(positions.count * 2), y: width * TarotTableStyle.slotY)
+        return CGPoint(x: width * CGFloat(2 * slot + 1) / CGFloat(positions.count * 2), y: width * (spread == "one" ? TarotTableStyle.singleSlotY : TarotTableStyle.slotY))
     }
     private func fanIndex(_ point: CGPoint, width: CGFloat, height: CGFloat) -> Int? {
         let x = point.x - width / 2

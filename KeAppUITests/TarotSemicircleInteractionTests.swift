@@ -60,6 +60,7 @@ enum TarotSemicircleInteractionTests {
         handoff.tap()
         XCTAssertFalse(app.buttons["tarot-close"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.descendants(matching: .any)["chat-composer"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "[塔罗#7]")).firstMatch.waitForExistence(timeout: 5))
         capture("tarot91-06-handoff", in: test)
         app.terminate()
         // Verify the one-card spread on the night skin, then the complete Celtic layout.
@@ -102,6 +103,7 @@ enum TarotSemicircleInteractionTests {
         app.launch()
         XCTAssertTrue(app.buttons["tab-play"].waitForExistence(timeout: 8)); app.buttons["tab-play"].tap()
         app.buttons["play-tarot"].tap()
+        XCTAssertTrue(app.buttons["tarot-draw"].waitForExistence(timeout: 8)); sleep(1)
         capture("tarot91-10-accessibility-type-top", in: test)
         let largeDraw = app.buttons["tarot-draw"]
         for _ in 0..<4 { if largeDraw.isHittable { break }; app.swipeUp() }
