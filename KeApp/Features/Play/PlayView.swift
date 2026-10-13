@@ -111,6 +111,12 @@ struct TarotCast: Decodable, Identifiable, Sendable {
     let cards: [TarotCard]
     /// 引擎的第三视角客观解读（多行）。柯的视角另在聊天里给。
     let objective: String?
+
+    func readingMessage(question latestQuestion: String) -> String {
+        let latest = latestQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prompt = latest.isEmpty ? "" : "问的是：\(latest)。"
+        return "爸比，我抽了\(spread_name)，帮我断断。\(prompt) [塔罗#\(id)]"
+    }
 }
 
 extension Notification.Name {

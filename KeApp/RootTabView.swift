@@ -11,6 +11,7 @@ struct RootTabView: View {
     @State private var keyboardIsVisible = false
     @State private var chatSettingsOpen = false
     @State private var quoteOpenRequest: QuoteOpenRequest?
+    @State private var chatSendRequests: [ChatSendRequest] = []
 
     enum Tab: Hashable {
         // 佳佳 2026-10-06：原来「佳佳」那一格换成柯的抽屉——他自己的地方。
@@ -32,7 +33,7 @@ struct RootTabView: View {
                 // 风铃和月球动画不会在后台继续运行。
                 ZStack {
                     selectedNonChatPage
-                    ChatView(line: chatLine, selectedLine: $chatLine, quoteOpenRequest: $quoteOpenRequest)
+                    ChatView(line: chatLine, selectedLine: $chatLine, quoteOpenRequest: $quoteOpenRequest, sendRequests: $chatSendRequests)
                         .id(chatLine)
                         .opacity(selection == .ke ? 1 : 0)
                         .allowsHitTesting(selection == .ke)
@@ -68,9 +69,7 @@ struct RootTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .tarotReadingRequest)) { notification in
             selection = .ke
             guard let text = notification.object as? String, !text.isEmpty else { return }
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(name: .chatSendRequest, object: text)
-            }
+            chatSendRequests.append(ChatSendRequest(line: chatLine, text: text))
         }
         .onReceive(
             NotificationCenter.default.publisher(
@@ -189,5 +188,11 @@ struct RootTabView: View {
 
 extension Notification.Name {
     static let chatSettingsVisibility = Notification.Name("love.chatSettingsVisibility")
-    static let chatSendRequest = Notification.Name("love.chatSendRequest")
+}
+
+/// Retained by the root while chat connects, logs in, or switches between tabs.
+struct ChatSendRequest: Identifiable, Equatable {
+    let id = UUID()
+    let line: ChatLine
+    let text: String
 }

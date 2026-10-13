@@ -6,6 +6,7 @@ private final class ReplyServer: ChatReplyTransport {
     var streams: [AsyncThrowingStream<ChatStreamEvent, Error>.Continuation] = []
     var clientIDs: [String] = []
     var sentTexts: [String] = []
+    var sentAttachments: [[ChatAttachment]] = []
     var jobsByID: [String: ActiveChatJob] = [:]
     var history: [Message] = []
     var jobs: [ActiveChatJob] = []
@@ -25,6 +26,7 @@ private final class ReplyServer: ChatReplyTransport {
     func streamMessage(text: String, sessionID: Int, clientMessageID: String, model: String?, attachments: [ChatAttachment]) async throws -> AsyncThrowingStream<ChatStreamEvent, Error> {
         clientIDs.append(clientMessageID)
         sentTexts.append(text)
+        sentAttachments.append(attachments)
         return AsyncThrowingStream { continuation in
             streams.append(continuation)
             continuation.onTermination = { [weak self] termination in
@@ -66,6 +68,52 @@ private final class ReplyServer: ChatReplyTransport {
 
 @MainActor
 final class ChatForegroundRecoveryTests: XCTestCase {
+    func testExternalHandoffWaitsForSessionSendsOnceAndPreservesAttachments() async {
+        let server = ReplyServer()
+        let vm = ChatViewModel(monitorConnectivity: false, replyTransport: server,
+                               cacheFileName: "handoff-\(UUID()).json", replyCompleted: {})
+        let id = UUID(), text = "问的是：未来。 [塔罗#7]"
+        let early = await vm.sendExternalMessage(id: id, text: text)
+        XCTAssertFalse(early); XCTAssertTrue(server.sentTexts.isEmpty)
+        await vm.bootstrap()
+        let attachment = ChatAttachment(url: "/uploads/draft.png", name: "草稿", kind: "image")
+        vm.pendingAttachments = [attachment]
+        vm.isRefreshingClaude = true
+        let refreshing = await vm.sendExternalMessage(id: id, text: text)
+        XCTAssertFalse(refreshing)
+        vm.isRefreshingClaude = false; vm.isClearingWindow = true
+        let clearing = await vm.sendExternalMessage(id: id, text: text)
+        XCTAssertFalse(clearing); vm.isClearingWindow = false
+        let sending = Task { await vm.sendExternalMessage(id: id, text: text, reduceMotion: true) }
+        await wait { server.streams.count == 1 }
+        let duplicate = await vm.sendExternalMessage(id: id, text: text)
+        XCTAssertTrue(duplicate); XCTAssertEqual(server.sentTexts, [text])
+        XCTAssertTrue(server.sentAttachments[0].isEmpty)
+        XCTAssertEqual(vm.pendingAttachments.map(\.url), [attachment.url])
+        server.receive([.receipt(userMessageID: 93001, jobID: nil, bedroom: nil), .text("月亮逆位"),
+                        .completed(assistantMessageID: 93002, bedroom: nil, status: "done", error: nil, retryable: false, retryScheduled: false)])
+        server.streams[0].finish()
+        let accepted = await sending.value
+        XCTAssertTrue(accepted)
+        XCTAssertEqual(vm.messages.first(where: { $0.sender == .me })?.serverID, 93001)
+        XCTAssertEqual(vm.messages.first(where: { $0.sender == .me })?.deliveryState, .sent)
+        XCTAssertEqual(vm.messages.first(where: { $0.sender == .ke })?.text, "月亮逆位")
+    }
+
+    func testExternalHandoffCanSendWhileKeIsReplying() async {
+        let server = ReplyServer(); let vm = await model(server)
+        let first = await start(vm, server)
+        let next = Task { await vm.sendExternalMessage(id: UUID(), text: "十张 [塔罗#8]") }
+        await wait { server.streams.count == 2 }
+        server.receive([.receipt(userMessageID: 93003, jobID: nil, bedroom: nil)], at: 1)
+        let accepted = await next.value
+        XCTAssertTrue(accepted)
+        XCTAssertEqual(server.sentTexts, ["测试一句", "十张 [塔罗#8]"])
+        XCTAssertEqual(vm.messages.first(where: { $0.serverID == 93003 })?.deliveryState, .sent)
+        server.receive([.completed(assistantMessageID: 101, bedroom: nil, status: "done", error: nil, retryable: false, retryScheduled: false)])
+        server.streams[0].finish(); await first.value
+    }
+
     private func model(_ server: ReplyServer) async -> ChatViewModel {
         let vm = ChatViewModel(monitorConnectivity: false, replyTransport: server,
                                cacheFileName: "recovery-test-\(UUID()).json", replyCompleted: {})

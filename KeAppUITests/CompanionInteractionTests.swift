@@ -166,7 +166,7 @@ final class CompanionInteractionTests: XCTestCase {
 
     // Keep the selector used by the existing CI workflow; the garden handoff is now removed.
     func testGardenEntryHandsToKe() {
-        TarotSemicircleInteractionTests.verify(in: self)
+        TarotBuild93InteractionTests.verify(in: self)
     }
 
     // The Build 83 regression already passed for this branch. Keep it independently

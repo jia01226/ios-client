@@ -82,7 +82,9 @@ final class ChatViewModel: ObservableObject {
     private var pendingReceipts: [String: PendingReply] = [:]
     private var receiptTasks: [String: (owner: UUID, task: Task<Void, Never>)] = [:]
     private let cache: ChatCache
-    private var sessionID: Int?
+    @Published private var sessionID: Int?
+    @Published private var externalSessionReady = false
+    private var acceptedExternalMessages: Set<UUID> = []
     private var didBootstrap = false
     private var activeJobID: String?
     private var recoveringJobID: String?
@@ -129,7 +131,8 @@ final class ChatViewModel: ObservableObject {
         api = client
 #if DEBUG
         let recoveryPreview = ProcessInfo.processInfo.arguments.contains("-ui-test-foreground-recovery")
-        replyAPI = replyTransport ?? (recoveryPreview ? ChatRecoveryPreviewTransport() as any ChatReplyTransport : client)
+        let tarotPreview = ProcessInfo.processInfo.arguments.contains("-ui-test-tarot-handoff")
+        replyAPI = replyTransport ?? (tarotPreview ? TarotHandoffPreviewTransport() as any ChatReplyTransport : (recoveryPreview ? ChatRecoveryPreviewTransport() as any ChatReplyTransport : client))
         self.replyCompleted = recoveryPreview ? {} : replyCompleted
         cache = ChatCache(fileName: cacheFileName ?? (recoveryPreview ? "recovery-preview-\(UUID()).json" : line.cacheFileName))
 #else
@@ -402,6 +405,7 @@ final class ChatViewModel: ObservableObject {
 #endif
 #if DEBUG
         if uiTestFixture != nil {
+            externalSessionReady = sessionID != nil
             hasNetworkPath = true
             return
         }
@@ -545,6 +549,7 @@ final class ChatViewModel: ObservableObject {
 
     func login(passcode: String) async {
         isLoggingIn = true
+        externalSessionReady = false
         loginError = nil
         defer { isLoggingIn = false }
 
@@ -558,6 +563,7 @@ final class ChatViewModel: ObservableObject {
             await loadCache(sessionID: active.id)
             await refreshHistory(showFailure: true)
             await recoverActiveJobsIfNeeded()
+            externalSessionReady = true
         } catch APIError.unauthorized {
             loginError = "口令不对，再试一次。"
         } catch {
@@ -618,13 +624,28 @@ final class ChatViewModel: ObservableObject {
         if !isSending && activeJobID == nil { pendingReply = nil }
     }
 
-    func send(_ text: String, reduceMotion: Bool = false) async {
+    var canAcceptExternalMessage: Bool {
+        phase == .ready && externalSessionReady && sessionID != nil && !isRefreshingClaude && !isClearingWindow
+    }
+
+    /// Reserve once before any suspension. A repeated view task cannot send twice.
+    /// The root retains unaccepted requests while login/session preparation is pending.
+    func sendExternalMessage(id: UUID, text: String, reduceMotion: Bool = false) async -> Bool {
+        if acceptedExternalMessages.contains(id) { return true }
+        guard canAcceptExternalMessage, !text.isEmpty else { return false }
+        acceptedExternalMessages.insert(id)
+        await send(text, reduceMotion: reduceMotion, includePendingAttachments: false)
+        return true
+    }
+
+    func send(_ text: String, reduceMotion: Bool = false, includePendingAttachments: Bool = true) async {
         guard let sessionID, !isRefreshingClaude, !isClearingWindow else { return }
+        let attachments = includePendingAttachments ? pendingAttachments : []
         if isSending {
-            await sendWhileReplying(text, sessionID: sessionID)
+            if includePendingAttachments { pendingAttachments = [] }
+            await sendWhileReplying(text, sessionID: sessionID, attachments: attachments)
             return
         }
-        let attachments = pendingAttachments
         guard !text.isEmpty || !attachments.isEmpty else { return }
 
         abandonReplyConnection()
@@ -634,7 +655,7 @@ final class ChatViewModel: ObservableObject {
         activeJobID = nil
         // Invalidate any foreground recovery probe that is currently awaiting the network.
         recoveryProbeID = nil
-        pendingAttachments = []
+        if includePendingAttachments { pendingAttachments = [] }
 
         sendHaptics.prepare()
         let clientID = "ios-\(UUID().uuidString.lowercased())"
@@ -699,10 +720,8 @@ final class ChatViewModel: ObservableObject {
 
     /// 她在柯回话途中接着发：消息立刻送到服务器、立刻显示，不再锁发送键。
     /// 服务器把排在前面的几条并进最后一条（status=merged），柯看完一起回。
-    private func sendWhileReplying(_ text: String, sessionID: Int) async {
-        let attachments = pendingAttachments
+    private func sendWhileReplying(_ text: String, sessionID: Int, attachments: [ChatAttachment]) async {
         guard !text.isEmpty || !attachments.isEmpty else { return }
-        pendingAttachments = []
         let clientID = "ios-\(UUID().uuidString.lowercased())"
         let userLocalID = "user-\(clientID)"
         messages.append(
@@ -1192,6 +1211,7 @@ final class ChatViewModel: ObservableObject {
     }
 
     private func connect() async {
+        externalSessionReady = false
         if let snapshot = await cache.loadLatest() {
             prepareForSession(snapshot.sessionID)
             messages = snapshot.messages
@@ -1209,6 +1229,7 @@ final class ChatViewModel: ObservableObject {
             phase = .ready
             await refreshHistory(showFailure: messages.isEmpty)
             await recoverActiveJobsIfNeeded()
+            externalSessionReady = true
         } catch APIError.unauthorized {
             phase = .needsLogin
             statusText = nil

@@ -2,6 +2,15 @@ import XCTest
 @testable import KeApp
 
 final class TarotSelectionTests: XCTestCase {
+    func testHandoffUsesLatestQuestionAndExactCastID() {
+        let cast = TarotCast(id: 93, question: "旧的问题", spread: "celtic", spread_name: "凯尔特十字", cards: [], objective: nil)
+        let message = cast.readingMessage(question: "  后来改的问题\n")
+        XCTAssertTrue(message.contains("问的是：后来改的问题。"))
+        XCTAssertTrue(message.contains("凯尔特十字")); XCTAssertTrue(message.contains("[塔罗#93]"))
+        XCTAssertFalse(message.contains("旧的问题"))
+        XCTAssertFalse(cast.readingMessage(question: " ").contains("问的是"))
+    }
+
     func testPreviewSwitchAndSecondTapPreservePickOrder() {
         var selection = TarotSelection(deckSize: 78, requiredCount: 3)
         selection.tap(5)

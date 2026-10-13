@@ -17,6 +17,7 @@ struct TarotView: View {
     @State private var selection = TarotSelection(deckSize: 78, requiredCount: 3)
     @State private var cast: TarotCast?
     @State private var revealed = 0
+    @State private var didHandOff = false
     @State private var phase: Phase = .idle
     @State private var fanOpen = false
     @State private var shuffleOffset = false
@@ -43,12 +44,21 @@ struct TarotView: View {
                 VStack(spacing: TarotTableStyle.gap) {
                     header
                     spreadPicker
+                    HStack(alignment: .top, spacing: TarotTableStyle.smallGap) {
                     TextField("想问的问题（可不填）", text: $question, axis: .vertical)
                         .font(TarotTableStyle.body).lineLimit(1...3)
                         .padding(TarotTableStyle.gap).background(TarotTableStyle.panel, in: RoundedRectangle(cornerRadius: TarotTableStyle.radius))
                         .overlay(RoundedRectangle(cornerRadius: TarotTableStyle.radius).stroke(TarotTableStyle.border, lineWidth: TarotTableStyle.hairline))
-                        .focused($questionFocused).disabled(deal != nil || busy)
+                        .focused($questionFocused).disabled(busy || selection.submitted)
+                        .submitLabel(.done).onSubmit { questionFocused = false }
                         .accessibilityIdentifier("tarot-question")
+                        if questionFocused {
+                            Button("完成") { questionFocused = false }
+                                .font(TarotTableStyle.caption)
+                                .frame(minHeight: TarotTableStyle.controlHeight)
+                                .accessibilityIdentifier("tarot-question-done")
+                        }
+                    }
                     table(width: geometry.size.width - TarotTableStyle.padding * 2)
                     status
                     if let error {
@@ -111,15 +121,17 @@ struct TarotView: View {
         HStack(spacing: TarotTableStyle.padding) {
             ForEach(["one", "three", "celtic"], id: \.self) { key in
                 Button {
+                    guard spread != key else { return }
                     spread = key
-                    selection = TarotSelection(deckSize: 78, requiredCount: key == "one" ? 1 : key == "three" ? 3 : 10)
+                    // Choosing another spread starts a fresh round with the same question.
+                    reset()
                 } label: {
                     Text(key == "one" ? "一张" : key == "three" ? "三张" : "凯尔特十字")
                         .font(TarotTableStyle.body).padding(.vertical, TarotTableStyle.smallGap)
                         .overlay(alignment: .bottom) {
                             if spread == key { Rectangle().fill(TarotTableStyle.ink).frame(height: TarotTableStyle.hairline) }
                         }
-                }.disabled(deal != nil || busy).accessibilityIdentifier("tarot-spread-\(key)")
+                }.disabled(busy).accessibilityIdentifier("tarot-spread-\(key)")
                     .accessibilityAddTraits(spread == key ? .isSelected : [])
             }
         }.frame(minHeight: TarotTableStyle.controlHeight)
@@ -165,11 +177,13 @@ struct TarotView: View {
             // Sliding scans the fan; only a stationary second tap confirms the lifted card.
             Rectangle().fill(.clear).contentShape(Rectangle())
                 .frame(width: width, height: width * (TarotTableStyle.fanHitHeight))
-                .position(x: width / 2, y: height - width * (TarotTableStyle.fanHitHeight) / 2)
-                .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("tarot-table"))
+                // Attach gestures to the fan's own bounds, before position expands its layout.
+                // Simultaneous recognition lets a vertical drag scroll the ten-card table.
+                .simultaneousGesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("tarot-table"))
                     .onChanged { value in
                         guard phase == .selecting, !selection.submitted,
                               abs(value.translation.width) > TarotTableStyle.gap,
+                              abs(value.translation.width) > abs(value.translation.height),
                               let index = fanIndex(value.location, width: width, height: height) else { return }
                         withAnimation(reduceMotion ? nil : .easeInOut(duration: TarotTableStyle.liftDuration)) { selection.previewCard(index) }
                     }
@@ -189,6 +203,7 @@ struct TarotView: View {
                 .accessibilityAction { tap(accessibleIndex) }
                 .accessibilityIdentifier("tarot-fan")
                 .allowsHitTesting(phase == .selecting && !selection.submitted)
+                .position(x: width / 2, y: height - width * TarotTableStyle.fanHitHeight / 2)
         }
         .frame(width: width, height: height).coordinateSpace(name: "tarot-table")
         .padding(.top, TarotTableStyle.gap)
@@ -210,9 +225,8 @@ struct TarotView: View {
         let faceUp = slot.map { $0 < revealed } ?? false
         return TarotTableCard(backID: backID, card: card, api: api, faceUp: faceUp)
             .frame(width: cardWidth, height: cardWidth / TarotTableStyle.cardAspect)
-            .rotationEffect(.degrees(rotation)).position(x: point.x + (draggedIndex == index ? dragOffset.width : 0), y: point.y + (draggedIndex == index ? dragOffset.height : 0))
+            .contentShape(RoundedRectangle(cornerRadius: TarotTableStyle.cardRadius))
             .shadow(color: TarotTableStyle.shadow, radius: TarotTableStyle.shadowRadius, y: TarotTableStyle.shadowY)
-            .zIndex(slot.map { Double(100 + $0) } ?? (lifted ? 90 : Double(index)))
             .onTapGesture { if faceUp, let card { inspectedCard = card } }
             .gesture(DragGesture(minimumDistance: TarotTableStyle.gap, coordinateSpace: .named("tarot-table"))
                 .onChanged { value in
@@ -236,6 +250,11 @@ struct TarotView: View {
             .accessibilityIdentifier(slot.map { "tarot-card-\($0)" } ?? "tarot-deck-\(index)")
             .accessibilityHidden(slot == nil)
             .allowsHitTesting(slot != nil)
+            // Keep the card's tap/drag region local; positioned wrappers otherwise cover the fan.
+            .rotationEffect(.degrees(rotation))
+            .position(x: point.x + (draggedIndex == index ? dragOffset.width : 0),
+                      y: point.y + (draggedIndex == index ? dragOffset.height : 0))
+            .zIndex(slot.map { Double(100 + $0) } ?? (lifted ? 90 : Double(index)))
     }
 
     private var status: some View {
@@ -253,7 +272,7 @@ struct TarotView: View {
     }
     @ViewBuilder private var primaryAction: some View {
         if phase == .done, let cast {
-            actionButton("交给柯  →", id: "tarot-ask-ke") { askKe(cast) }
+            actionButton("交给柯  →", id: "tarot-ask-ke") { askKe(cast) }.disabled(didHandOff)
         } else if deal == nil {
             actionButton(phase == .shuffling ? "洗牌中…" : "洗牌", id: "tarot-draw") { operation = Task { await shuffle() } }.disabled(busy)
         } else {
@@ -348,6 +367,7 @@ struct TarotView: View {
     }
     @MainActor private func flip() async {
         guard !busy, let deal, selection.freeze() else { return }
+        questionFocused = false
         phase = .submitting; error = nil
         do {
             let result = try await api.pickTarot(deal: deal, picks: selection.picks)
@@ -366,12 +386,15 @@ struct TarotView: View {
         }
     }
     private func reset() {
-        operation?.cancel(); deal = nil; cast = nil; revealed = 0; error = nil; phase = .idle
+        operation?.cancel(); deal = nil; cast = nil; revealed = 0; error = nil; phase = .idle; didHandOff = false
         withAnimation(motion) { selection = TarotSelection(deckSize: 78, requiredCount: spread == "one" ? 1 : spread == "three" ? 3 : 10); fanOpen = false }
     }
     private func askKe(_ cast: TarotCast) {
-        let q = cast.question.isEmpty ? "" : "问的是：\(cast.question)。"
-        NotificationCenter.default.post(name: .tarotReadingRequest, object: "爸比，我抽了\(cast.spread_name)，帮我断断。\(q) [塔罗#\(cast.id)]")
+        guard !didHandOff else { return }
+        didHandOff = true
+        // The deal locks cards at shuffle time; edits to the question never reshuffle them.
+        NotificationCenter.default.post(name: .tarotReadingRequest,
+                                        object: cast.readingMessage(question: question))
         dismiss()
     }
 }

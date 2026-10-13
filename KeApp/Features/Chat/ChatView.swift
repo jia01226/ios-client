@@ -29,6 +29,7 @@ struct ChatView: View {
     @State private var quoteToSave: Message?
     @ObservedObject private var quotesStore: AppQuotesStore
     @Binding var quoteOpenRequest: QuoteOpenRequest?
+    @Binding var sendRequests: [ChatSendRequest]
     @State private var quoteToRemove: AppQuote?
     @State private var quoteNavigationError: String?
     @State private var messageToRecall: Message?
@@ -52,12 +53,13 @@ struct ChatView: View {
     @State private var showsScrollToLatest = false
     @State private var scrollToLatestRequest = 0
 
-    init(line: ChatLine, selectedLine: Binding<ChatLine>, quoteOpenRequest: Binding<QuoteOpenRequest?> = .constant(nil)) {
+    init(line: ChatLine, selectedLine: Binding<ChatLine>, quoteOpenRequest: Binding<QuoteOpenRequest?> = .constant(nil), sendRequests: Binding<[ChatSendRequest]> = .constant([])) {
         self.line = line
         _selectedLine = selectedLine
         _vm = StateObject(wrappedValue: ChatViewModel(line: line))
         quotesStore = .shared(line: line)
         _quoteOpenRequest = quoteOpenRequest
+        _sendRequests = sendRequests
     }
 
     var body: some View {
@@ -81,9 +83,12 @@ struct ChatView: View {
         .overlay(alignment: .topTrailing) { ChatRecoveryUITestTimingProbe() }
 #endif
         .animation(.easeInOut(duration: 0.6), value: theme.isBedroom)
-        .onReceive(NotificationCenter.default.publisher(for: .chatSendRequest)) { notification in
-            guard let text = notification.object as? String, !text.isEmpty else { return }
-            Task { await vm.send(text) }
+        .task(id: externalSendTaskID) {
+            guard let request = sendRequests.first(where: { $0.line == line }),
+                  vm.canAcceptExternalMessage else { return }
+            if await vm.sendExternalMessage(id: request.id, text: request.text, reduceMotion: reduceMotion) {
+                sendRequests.removeAll { $0.id == request.id }
+            }
         }
         .sheet(isPresented: $showingMemoryUsage) {
             NavigationStack { MemoryUsageView(line: line).environmentObject(theme) }
@@ -148,6 +153,11 @@ struct ChatView: View {
         .onChange(of: chatNotifications.openRequest) { _, _ in
             Task { await vm.resumeFromForeground(forceReconnect: true) }
         }
+    }
+
+    private var externalSendTaskID: String {
+        let request = sendRequests.first { $0.line == line }
+        return "\(request?.id.uuidString ?? "none")-\(vm.canAcceptExternalMessage)"
     }
 
     private var chatContent: some View {
