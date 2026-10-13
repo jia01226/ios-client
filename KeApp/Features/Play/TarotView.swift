@@ -150,7 +150,7 @@ struct TarotView: View {
                             .position(x: point.x, y: width * (spread == "one" ? TarotTableStyle.singleCardLabelY : TarotTableStyle.cardLabelY))
                             .accessibilityHidden(true)
                     }
-                } else if slot != 1 {
+                } else if slot != 1 && !typeSize.isAccessibilitySize {
                     // The crossed pair shares a label; staff numbers sit beside their cards.
                     Text(slot == 0 ? "1 · 2" : "\(slot + 1)").font(TarotTableStyle.tiny)
                         .position(x: slot >= 6 ? point.x - cardWidth / 2 - TarotTableStyle.gap : point.x,
