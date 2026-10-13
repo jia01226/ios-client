@@ -8,7 +8,7 @@ enum TarotSemicircleInteractionTests {
     static func chooseThree(in test: XCTestCase, app: XCUIApplication) {
         XCTAssertTrue(app.buttons["tarot-draw"].waitForExistence(timeout: 8))
         app.buttons["tarot-draw"].tap()
-        let fan = app.otherElements["tarot-fan"]
+        let fan = app.descendants(matching: .any)["tarot-fan"]
         XCTAssertTrue(fan.waitForExistence(timeout: 8))
         // The server fixture returns immediately; let the shuffle/unfold finish.
         sleep(3)
@@ -68,7 +68,7 @@ enum TarotSemicircleInteractionTests {
         XCTAssertTrue(app.buttons["tab-play"].waitForExistence(timeout: 8)); app.buttons["tab-play"].tap()
         app.buttons["play-tarot"].tap()
         app.buttons["tarot-spread-one"].tap(); app.buttons["tarot-draw"].tap(); sleep(3)
-        let nightFan = app.otherElements["tarot-fan"]
+        let nightFan = app.descendants(matching: .any)["tarot-fan"]
         let target = nightFan.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.30))
         target.tap(); sleep(1); target.tap(); sleep(1)
         XCTAssertEqual(app.staticTexts["tarot-selection-count"].label, "已选 1 / 1")
@@ -82,7 +82,7 @@ enum TarotSemicircleInteractionTests {
         let draw = app.buttons["tarot-draw"]
         if !draw.isHittable { app.swipeUp() }; draw.tap(); sleep(3)
         capture("tarot91-08-celtic-fan", in: test)
-        let celticFan = app.otherElements["tarot-fan"]
+        let celticFan = app.descendants(matching: .any)["tarot-fan"]
         if !celticFan.isHittable { app.swipeUp() }
         // Ten well-separated angular positions across the full semicircle.
         for index in 0..<10 {
