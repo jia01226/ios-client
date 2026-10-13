@@ -134,9 +134,11 @@ struct TarotView: View {
                     .position(point)
                     .accessibilityHidden(true)
                 if spread != "celtic" {
+                    if !typeSize.isAccessibilitySize {
                     Text(shortPosition(positions[slot])).font(TarotTableStyle.body)
                         .frame(width: width / CGFloat(positions.count))
                         .position(x: point.x, y: width * TarotTableStyle.slotLabelY)
+                    }
                     if !typeSize.isAccessibilitySize, slot < revealed, let card = cast?.cards[slot] {
                         Text("\(card.cn)\n\(card.reversed ? "逆位" : "正位")")
                             .font(TarotTableStyle.caption).multilineTextAlignment(.center)
@@ -218,7 +220,7 @@ struct TarotView: View {
                     withAnimation(motion) { selection.returnCard(index) }
                 })
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(card.map { "\($0.position)，\($0.cn)，\($0.reversed ? "逆位" : "正位")，点开大图" } ?? "第 \((slot ?? 0) + 1) 个位置，背面朝上")
+            .accessibilityLabel((faceUp ? card : nil).map { "\($0.position)，\($0.cn)，\($0.reversed ? "逆位" : "正位")，点开大图" } ?? "第 \((slot ?? 0) + 1) 个位置，背面朝上")
             .accessibilityAddTraits(.isButton)
             .accessibilityAction {
                 if faceUp, let card { inspectedCard = card }
@@ -378,16 +380,29 @@ private struct TarotTableCard: View {
     }
     var body: some View {
         ZStack {
-            Self.back(backID).opacity(faceUp ? 0 : 1)
+            Self.back(backID).modifier(TarotFaceVisibility(angle: faceUp ? 180 : 0, front: false))
             if let card {
                 CompanionImage(api: api, path: card.image)
                     .rotationEffect(.degrees(card.reversed ? 180 : 0))
                     .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
-                    .opacity(faceUp ? 1 : 0)
+                    .modifier(TarotFaceVisibility(angle: faceUp ? 180 : 0, front: true))
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: TarotTableStyle.cardRadius))
         .overlay(RoundedRectangle(cornerRadius: TarotTableStyle.cardRadius).stroke(TarotTableStyle.border, lineWidth: TarotTableStyle.hairline))
         .rotation3DEffect(.degrees(faceUp ? 180 : 0), axis: (x: 0, y: 1, z: 0))
+    }
+}
+
+/// Switch the visible face at the edge, instead of dissolving front and back together.
+private struct TarotFaceVisibility: AnimatableModifier {
+    var angle: Double
+    let front: Bool
+    var animatableData: Double {
+        get { angle }
+        set { angle = newValue }
+    }
+    func body(content: Content) -> some View {
+        content.opacity((angle >= 90) == front ? 1 : 0)
     }
 }

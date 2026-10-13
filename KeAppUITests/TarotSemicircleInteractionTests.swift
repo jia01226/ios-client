@@ -98,5 +98,16 @@ enum TarotSemicircleInteractionTests {
         XCTAssertTrue(app.buttons["tarot-ask-ke"].waitForExistence(timeout: 15))
         capture("tarot91-09-celtic-revealed", in: test)
         app.terminate()
+        app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-app.skin", "day", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        XCTAssertTrue(app.buttons["tab-play"].waitForExistence(timeout: 8)); app.buttons["tab-play"].tap()
+        app.buttons["play-tarot"].tap()
+        capture("tarot91-10-accessibility-type-top", in: test)
+        let largeDraw = app.buttons["tarot-draw"]
+        for _ in 0..<4 { if largeDraw.isHittable { break }; app.swipeUp() }
+        largeDraw.tap(); sleep(3)
+        capture("tarot91-11-accessibility-type-fan", in: test)
+        XCTAssertEqual(app.staticTexts["tarot-selection-count"].label, "已选 0 / 3")
+        app.terminate()
     }
 }
