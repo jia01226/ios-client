@@ -24,7 +24,7 @@ enum TarotSemicircleInteractionTests {
         // Drag the first selected card back to the fan, preserving the remaining deck.
         let selected = app.buttons["tarot-card-0"]
         XCTAssertTrue(selected.exists)
-        selected.press(forDuration: 0.15, thenDragTo: center)
+        selected.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.15, thenDragTo: center)
         sleep(1)
         XCTAssertEqual(app.staticTexts["tarot-selection-count"].label, "已选 0 / 3")
         for point in [CGVector(dx: 0.25, dy: 0.38), CGVector(dx: 0.5, dy: 0.15), CGVector(dx: 0.75, dy: 0.38)] {
