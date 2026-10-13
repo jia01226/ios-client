@@ -24,6 +24,7 @@ enum TarotBuild93InteractionTests {
     private static func run(_ spread: String, in test: XCTestCase) {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-ui-test-tarot-handoff", "-app.skin", spread == "one" ? "night" : "day"]
+        if spread != "one" { app.launchArguments.append("-ui-test-reduce-motion") }
         app.launch()
         XCTAssertTrue(app.buttons["tab-play"].waitForExistence(timeout: 10))
         app.buttons["tab-play"].tap(); app.buttons["play-tarot"].tap()

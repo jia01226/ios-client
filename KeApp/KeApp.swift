@@ -18,8 +18,16 @@ struct KeApp: App {
         }
     }
 
-    private var appRoot: some View {
+    @ViewBuilder private var appRoot: some View {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ui-test-reduce-motion") {
+            RootTabView().environment(\.accessibilityReduceMotion, true)
+        } else {
+            RootTabView()
+        }
+#else
         RootTabView()
+#endif
     }
 }
 
@@ -34,6 +42,13 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ui-test-reduce-motion") {
+            // System keyboard/glass animations can prevent XCUITest from reaching idle.
+            // Only this explicit accessibility fixture disables UIKit animations.
+            UIView.setAnimationsEnabled(false)
+        }
+#endif
         UNUserNotificationCenter.current().delegate = self
         PushRegistrationCoordinator.shared.prepareAtLaunch()
         LocationContextReporter.shared.prepareAtLaunch()
