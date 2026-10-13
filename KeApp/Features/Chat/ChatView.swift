@@ -84,8 +84,9 @@ struct ChatView: View {
 #endif
         .animation(.easeInOut(duration: 0.6), value: theme.isBedroom)
         .task(id: externalSendTaskID) {
-            guard let request = sendRequests.first(where: { $0.line == line }),
-                  vm.canAcceptExternalMessage else { return }
+            guard let request = sendRequests.first(where: { $0.line == line }) else { return }
+            await vm.prepareExternalSend()
+            guard !Task.isCancelled, vm.canAcceptExternalMessage else { return }
             if await vm.sendExternalMessage(id: request.id, text: request.text, reduceMotion: reduceMotion) {
                 sendRequests.removeAll { $0.id == request.id }
             }

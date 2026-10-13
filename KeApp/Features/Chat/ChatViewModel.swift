@@ -86,6 +86,7 @@ final class ChatViewModel: ObservableObject {
     @Published private var externalSessionReady = false
     private var acceptedExternalMessages: Set<UUID> = []
     private var didBootstrap = false
+    private var isConnecting = false
     private var activeJobID: String?
     private var recoveringJobID: String?
     private var activeStreamClientID: String?
@@ -622,6 +623,12 @@ final class ChatViewModel: ObservableObject {
         activeStreamClientID = nil
         // Keep owner identity so a history response begun by this owner can still be checked.
         if !isSending && activeJobID == nil { pendingReply = nil }
+    }
+
+    func prepareExternalSend() async {
+        guard !externalSessionReady, phase != .needsLogin else { return }
+        // A cached chat may have opened while offline, even if tarot now has a connection.
+        await connect()
     }
 
     var canAcceptExternalMessage: Bool {
@@ -1211,6 +1218,9 @@ final class ChatViewModel: ObservableObject {
     }
 
     private func connect() async {
+        guard !isConnecting else { return }
+        isConnecting = true
+        defer { isConnecting = false }
         externalSessionReady = false
         if let snapshot = await cache.loadLatest() {
             prepareForSession(snapshot.sessionID)

@@ -75,7 +75,8 @@ final class ChatForegroundRecoveryTests: XCTestCase {
         let id = UUID(), text = "问的是：未来。 [塔罗#7]"
         let early = await vm.sendExternalMessage(id: id, text: text)
         XCTAssertFalse(early); XCTAssertTrue(server.sentTexts.isEmpty)
-        await vm.bootstrap()
+        await vm.prepareExternalSend()
+        XCTAssertTrue(vm.canAcceptExternalMessage)
         let attachment = ChatAttachment(url: "/uploads/draft.png", name: "草稿", kind: "image")
         vm.pendingAttachments = [attachment]
         vm.isRefreshingClaude = true
