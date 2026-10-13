@@ -199,7 +199,7 @@ struct TarotView: View {
                                  y: height - width * TarotTableStyle.stackY + CGFloat(index % 4) * TarotTableStyle.hairline)
         let point = slot.map { slotPoint($0, width: width) } ?? (fanOpen ? fanPoint : stackPoint)
         let cardWidth = slot == nil ? width * (fanOpen ? TarotTableStyle.fanCardWidth : TarotTableStyle.stackCardWidth) : slotWidth(width)
-        let rotation = slot == nil ? (fanOpen ? angle * 180 / .pi + 90 : (shuffleOffset ? Double(index % 5 - 2) * 3 : 0)) : (spread == "celtic" && slot == 1 ? 90.0 : 0.0)
+        let rotation = slot == nil ? (fanOpen ? angle * 180 / .pi - 270 : (shuffleOffset ? Double(index % 5 - 2) * 3 : 0)) : (spread == "celtic" && slot == 1 ? 90.0 : 0.0)
         let card = slot.flatMap { cast?.cards.indices.contains($0) == true ? cast?.cards[$0] : nil }
         let faceUp = slot.map { $0 < revealed } ?? false
         return TarotTableCard(backID: backID, card: card, api: api, faceUp: faceUp)
