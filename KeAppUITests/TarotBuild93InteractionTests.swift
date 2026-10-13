@@ -29,8 +29,8 @@ enum TarotBuild93InteractionTests {
         app.buttons["tab-play"].tap(); app.buttons["play-tarot"].tap()
         let spreadButton = app.buttons["tarot-spread-\(spread)"]
         XCTAssertTrue(spreadButton.waitForExistence(timeout: 5))
-        if spread == "celtic" {
-            // A user can switch from an already shuffled default three-card spread to ten.
+        if spread != "three" {
+            // Both one and ten remain selectable after shuffling the default three-card spread.
             let initialDraw = app.buttons["tarot-draw"]
             reach(initialDraw, app: app); initialDraw.tap(); sleep(3)
             reach(spreadButton, app: app, up: false)
@@ -51,6 +51,9 @@ enum TarotBuild93InteractionTests {
         // Editing a question after shuffle must not disable it or discard the locked deck.
         reach(field, app: app, up: false)
         XCTAssertTrue(field.isEnabled); field.tap(); field.typeText(" updated")
+        let editedQuestion = (field.value as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        XCTAssertTrue(editedQuestion.contains("updated"))
+        XCTAssertGreaterThan(editedQuestion.count, question.count)
         app.buttons["tarot-question-done"].tap()
         let fan = app.descendants(matching: .any)["tarot-fan"]
         // Move the entire semicircle into view, not just its topmost hittable point.
@@ -98,7 +101,7 @@ enum TarotBuild93InteractionTests {
         }
         reach(handoff, app: app); handoff.tap()
         XCTAssertTrue(app.descendants(matching: .any)["chat-composer"].waitForExistence(timeout: 10))
-        let sent = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "[塔罗#7]", question + " updated")).firstMatch
+        let sent = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "[塔罗#7]", editedQuestion)).firstMatch
         XCTAssertTrue(sent.waitForExistence(timeout: 8))
         // This response can only appear after the view model actually sends and receives a receipt.
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "牌面核对：月亮")).firstMatch.waitForExistence(timeout: 8))
