@@ -3,7 +3,7 @@ import SwiftUI
 struct TarotView: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
     let line: ChatLine
     @State private var api: APIClient
@@ -35,6 +35,12 @@ struct TarotView: View {
     private var busy: Bool { phase == .shuffling || phase == .submitting || phase == .revealing }
     private var positions: [String] {
         deal?.positions ?? (spread == "one" ? ["此刻"] : spread == "three" ? ["过去", "现在", "未来"] : (1...10).map { "\($0)" })
+    }
+    private var reduceMotion: Bool {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ui-test-reduce-motion") { return true }
+#endif
+        return systemReduceMotion
     }
     private var motion: Animation? { reduceMotion ? nil : .easeInOut(duration: TarotTableStyle.moveDuration) }
 

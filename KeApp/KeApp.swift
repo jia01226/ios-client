@@ -18,16 +18,8 @@ struct KeApp: App {
         }
     }
 
-    @ViewBuilder private var appRoot: some View {
-#if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("-ui-test-reduce-motion") {
-            RootTabView().environment(\.accessibilityReduceMotion, true)
-        } else {
-            RootTabView()
-        }
-#else
+    private var appRoot: some View {
         RootTabView()
-#endif
     }
 }
 
