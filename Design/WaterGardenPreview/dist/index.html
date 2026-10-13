@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#7984ad"><title>水畔 · 记忆花园</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<main id="garden" aria-label="水畔记忆花园">
+ <canvas id="scene" tabindex="0" aria-label="可拖动的水畔花园。左右拖动看两岸，向上拖动抬头。用方向键也可以看景。点亮着的花打开匿名记忆。"></canvas>
+ <header><div><h1>水畔</h1><p lang="fr">Au bord de l’eau</p></div><button id="open-menu" aria-label="打开探索选项" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14M5 16h14"/></svg></button></header>
+ <section id="options" hidden aria-label="探索选项">
+  <p>水畔 · 月光习作</p><p class="small">24 朵匿名记忆，尚未接入你的记忆。</p>
+  <label><input type="checkbox" id="quiet">减弱动态</label>
+  <button id="reset">回到水边</button><button id="look-up">抬头看月亮</button>
+  <button id="open-list">寻找记忆花</button><button id="record">录一段 20 秒漫游</button>
+  <a id="download" hidden>保存漫游录像</a><p id="record-status" role="status" class="small"></p>
+ </section>
+ <section id="flower-list" hidden aria-label="记忆花列表"><div class="section-top"><h2>水边的记忆</h2><button id="close-list">返回花园</button></div><p class="small">这里的文字都是匿名示例。</p><div id="list-items"></div></section>
+ <section id="memory" hidden aria-label="花里的记忆" aria-live="polite"><button id="close-memory" aria-label="合上记忆"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></button><p id="memory-date" class="small"></p><h2 id="memory-title"></h2><p id="memory-body"></p><blockquote id="memory-quote"></blockquote><p class="small">匿名示例 · 只留在这次预览里</p></section>
+ <div id="notice" role="status" hidden><p id="notice-text"></p><button id="return">回到水边</button></div>
+ <footer><p id="hint">轻拖看两岸 · 向上拖看月亮<br>点一朵微亮的花，听它记得的事</p><nav aria-label="花园小路"><button data-exit="left"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg>石岸</button><button data-exit="forward">往深处<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 6-6 6 6"/></svg></button><button data-exit="right">沿着水边<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 6 6 6-6 6"/></svg></button></nav></footer>
+ <div id="loading" role="status"><p>水畔正在醒来…</p><button id="retry" hidden>重新打开</button></div>
+</main><script type="module" src="app.mjs"></script></body></html>

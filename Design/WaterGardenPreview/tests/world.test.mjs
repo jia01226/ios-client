@@ -1,0 +1,10 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';
+import {slots,allocateMemories,transform,project,unproject,nearestSlot} from '../dist/world.mjs';
+import {memories} from '../dist/fixtures.mjs';
+test('24 actual painting anchors, unique IDs and coordinates',()=>{assert.equal(slots.length,24);assert.equal(new Set(slots.map(s=>s.id)).size,24);assert.equal(new Set(slots.map(s=>`${s.x},${s.y}`)).size,24)});
+test('order does not change existing allocation',()=>{assert.deepEqual(allocateMemories(memories),allocateMemories([...memories].reverse()))});
+test('persistent manifest survives insertions and removal',()=>{const first=allocateMemories(memories);const changed=allocateMemories([{id:'a-new'},...memories.slice(1)],first.assignments);for(const m of memories.slice(1))assert.equal(changed.assignments[m.id],first.assignments[m.id])});
+test('647 records: 24 places, remaining 623 move deeper, never overlap',()=>{const a=allocateMemories(Array.from({length:647},(_,id)=>({id})));assert.equal(Object.keys(a.assignments).length,24);assert.equal(a.overflow.length,623);assert.equal(new Set(Object.values(a.assignments)).size,24);assert.equal(a.nextLocation,'water-deeper')});
+test('duplicate IDs cannot use two slots',()=>{const a=allocateMemories([{id:1},{id:1}]);assert.equal(Object.keys(a.assignments).length,1)});
+test('hotspots and hit testing share layer transform on phone and desktop',()=>{for(const view of [{w:390,h:844},{w:1280,h:800}])for(const zoom of [1,1.6]){const t=transform(view,{x:800,y:600,zoom});for(const slot of slots){const p=project(slot,t);const back=unproject(p,t);assert.ok(Math.abs(back.x-slot.x)<1e-8);assert.ok(Math.abs(back.y-slot.y)<1e-8);assert.equal(nearestSlot(p,slots,t).id,slot.id)}}});
+test('three layers cover viewport at extreme camera positions',()=>{for(const view of [{w:320,h:900},{w:1440,h:800}])for(const x of [170,1366])for(const y of [180,800])for(const factor of [.68,1,1.26]){const t=transform(view,{x,y,zoom:1},factor);assert.ok(t.x<=0&&t.y<=0);assert.ok(t.x+1536*t.scale>=view.w-.001);assert.ok(t.y+1024*t.scale>=view.h-.001)}});

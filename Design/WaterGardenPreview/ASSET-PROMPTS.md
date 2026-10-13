@@ -1,0 +1,19 @@
+# 水畔 2.5D 素材提示词
+
+生成日期：2026-10-13。内置图像生成；母画参照前轮已生成的 water-night.png，三层均以本轮母画为参考编辑。不是网页截图。
+
+## master.png
+
+Use case: stylized-concept. Create the MASTER PAINTING for a 2.5D French romantic camellia memory-garden exploration game. Reference image supplies only the beautiful paint texture and inviting luminous moonlit palette; change the layout entirely into a wide WATER-SIDE GARDEN, no village required. Wide landscape 3:2, 1536x1024. Continuous detailed hand-painted gouache with delicate oil brushstrokes, cinematic hand-painted animation background, restrained Morandi powder blue/periwinkle, lavender-pink and pearl ivory, foliage only muted sage green. Bright, safe, romantic moonlit evening, NOT gloomy, no gray-black fog. Pale moon near x72%,y20%, open sky top 36%, distant soft mountains at y35-43%. Gently flowing lake inlet / river curves diagonally from middle left toward middle right, occupying center 40-64%, silvery fine water reflections. Natural pale limestone shoreline and stones, asymmetrical flower beds flow organically around rocks and around both sides of the shore, much closer lush camellia flowers and leaves in lower 40%, no planted rows, no straight central avenue, no bridge, no cemetery. MANY CAMELLIA FLOWERS ARE PAINTED DIRECTLY INTO THE SCENE and grow on branching foliage at stone cracks and bank edges, white and dusty pale pink mostly, a few muted rose, natural sizes and angles and overlapping leaves; at least 30 individually distinguishable bloom centers 18-50 pixels wide in middle/near ground, plenty of ordinary flowers beyond them. Some nearer blooms cropped by bottom edge. Flower sea and terrain painted together in ONE composition, SAME soft moonlight from upper right on flower petals, leaves and stones, rich detailed brushwork but not photographic. Small curved bare passages at lower left and right imply exploration, not a central corridor. Scene must allow panning left/right and looking upward; no UI, no lettering, no arrows, no fireflies, no butterfly (these will animate). No separate floating plants, no object-sheet layout, no split panels.
+
+## midground.png
+
+Edit this exact painting into the MIDGROUND layer for a 2.5D game. Preserve composition and pixel positions of EVERY flower, stone, river shoreline, water and bottom foliage exactly, same 3:2 canvas. Remove ONLY upper sky, distant mountains, and the overhanging top-left foreground branch, replacing them with true transparent alpha. Keep river and all camellia banks below horizon around y40%. Keep irregular natural silhouette of shoreline foliage, no rectangular cutoff. Do not move or invent flowers. Do not change style, color or lighting. Transparent background outside retained midground. No white backing.
+
+## far.png
+
+Create the FAR BACKGROUND layer of this exact 3:2 painting, same composition moon at x81% y14%, same luminous blue lavender moonlight and oil/gouache brushwork. REMOVE ALL foreground branches, ALL flowers, close trees, close shoreline stones and near banks. Inpaint their areas seamlessly with distant mountains on horizon y32%, open sky above and broad soft lake below. This layer is the clean distant sky/mountains/lake under the foreground: uninterrupted scenery, no foreground plants anywhere, no framing branches. Preserve moon and sky composition from reference. No text.
+
+## foreground.png
+
+Create a foreground overlay layer derived from this exact painting for a 2.5D game. 3:2 landscape TRANSPARENT canvas. ONLY a delicate camellia branch entering from top left, and a few airy camellia leaves entering at bottom right corner. Center 80% fully transparent. Same hand-painted oil/gouache texture and same lavender blue pale moonlight from upper right as reference. Leaves muted sage/slate, not dark black, curved natural branch, restrained detail. No flowers at all, no sky, no scenery, no rectangle or backing, true alpha. Preserve ample open view.

@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-13T09:30:33Z",
+  "title": "Design System: 水畔网页预览",
+  "extensions": {
+    "shadows": [
+      { "name": "panel-ambient", "value": "0 12px 40px #29314633", "purpose": "选项、列表、记忆与未开放提示共用的环境阴影。" }
+    ],
+    "motion": [
+      { "name": "camera-ease", "value": "1 - (1 - t)^3", "purpose": "镜头 cubic-out 插值。" },
+      { "name": "camera-default", "value": "1300ms", "purpose": "默认镜头移动及点花靠近。" },
+      { "name": "butterfly-flight", "value": "1450ms", "purpose": "蝴蝶抵达花心后打开卡片。" },
+      { "name": "memory-rise", "value": "450ms cubic-bezier(.16,1,.3,1), 14px", "purpose": "记忆淡入上升；网页和系统减弱动态时停止。" }
+    ],
+    "breakpoints": [
+      { "name": "narrow", "value": "480px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "普通文字按钮",
+      "kind": "button",
+      "refersTo": "plain-button",
+      "description": "菜单内文字动作；最小点击高度44px。",
+      "html": "<button class=\"ds-plain\">回到水边</button>",
+      "css": ".ds-plain{font:14px Camellia,serif;color:var(--ink,#30384b);border:0;background:transparent;min-height:44px;padding:10px 14px;cursor:pointer}.ds-plain:hover{background:#fff5}.ds-plain:active{background:#e6d7e19c}.ds-plain:focus-visible{outline:2px solid var(--rose,#8f5367);outline-offset:3px}"
+    },
+    {
+      "name": "探索菜单按钮",
+      "kind": "button",
+      "refersTo": "menu-button",
+      "description": "画面右上角圆形探索选项入口。",
+      "html": "<button class=\"ds-menu\" aria-label=\"打开探索选项\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M5 8h14M5 16h14\"/></svg></button>",
+      "css": ".ds-menu{color:var(--ink,#30384b);border:0;background:#f6f3f0cc;border-radius:50%;min-height:44px;padding:11px;cursor:pointer}.ds-menu svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.25;stroke-linecap:round;vertical-align:middle}.ds-menu:hover,.ds-menu:active{background:#f6f3f0cc}.ds-menu:focus-visible{outline:2px solid var(--rose,#8f5367);outline-offset:3px}"
+    },
+    {
+      "name": "花园路径",
+      "kind": "nav",
+      "refersTo": "path-button",
+      "description": "三个未开放路径的现有视觉；此面板样例不执行镜头移动。",
+      "html": "<nav class=\"ds-paths\" aria-label=\"花园小路\"><button>石岸</button><button>往深处</button><button>沿着水边</button></nav>",
+      "css": ".ds-paths{display:flex;gap:10px;justify-content:center}.ds-paths button{font:13px Camellia,serif;color:var(--ink,#30384b);border:0;background:#f8f2f0e8;border-radius:24px;min-height:44px;padding:9px 14px;cursor:pointer}.ds-paths button:hover,.ds-paths button:active{background:#f8f2f0e8}.ds-paths button:focus-visible{outline:2px solid var(--rose,#8f5367);outline-offset:3px}"
+    },
+    {
+      "name": "记忆卡片",
+      "kind": "card",
+      "refersTo": "memory-card",
+      "description": "匿名样例阅读面，不包含全屏压暗背景。",
+      "html": "<section class=\"ds-memory\" aria-label=\"花里的记忆\"><button aria-label=\"合上记忆\">×</button><p class=\"ds-note\">2026.10.08 · 水畔</p><h2>沿着岸边走</h2><p>我记得你想看看小路的另一边。我们走得很慢，每块石头都有不同的影子。</p><blockquote>「往那边走走吧。」</blockquote><p class=\"ds-note\">匿名示例 · 只留在这次预览里</p></section>",
+      "css": ".ds-memory{position:relative;font-family:Camellia,serif;color:var(--ink,#30384b);background:var(--surface,rgba(247,243,245,.93));border-radius:var(--radius,14px);box-shadow:var(--shadow,0 12px 40px #29314633);backdrop-filter:blur(16px);border-top:1px solid #fff;padding:30px 28px 24px;width:min(430px,calc(100% - 36px));max-height:70dvh;overflow:auto}.ds-memory p{margin:0;font-size:15px;line-height:2.1}.ds-memory h2{font-size:22px;font-weight:500;line-height:1.5;margin:12px 0 18px}.ds-memory .ds-note{font-size:12px;line-height:1.8;color:#515a6d}.ds-memory blockquote{margin:22px 0;color:#66617c;font-size:14px;line-height:1.9}.ds-memory button{position:absolute;right:9px;top:7px;min-height:44px;padding:10px 14px;border:0;background:transparent;color:inherit;cursor:pointer}.ds-memory button:hover{background:#fff5}.ds-memory button:active{background:#e6d7e19c}.ds-memory button:focus-visible{outline:2px solid var(--rose,#8f5367);outline-offset:3px}"
+    },
+    {
+      "name": "寻找记忆花条目",
+      "kind": "button",
+      "description": "用文字选择画中花心的键盘替代入口。",
+      "html": "<button class=\"ds-flower-row\">沿着岸边走<span>2026.10.08</span></button>",
+      "css": ".ds-flower-row{display:flex;justify-content:space-between;gap:12px;width:100%;text-align:left;min-height:44px;padding:10px 14px;font:14px Camellia,serif;color:var(--ink,#30384b);border:0;border-bottom:1px solid #b9b9c452;background:transparent;cursor:pointer}.ds-flower-row span{font-size:11px;white-space:nowrap}.ds-flower-row:hover{background:#fff5}.ds-flower-row:active{background:#e6d7e19c}.ds-flower-row:focus-visible{outline:2px solid var(--rose,#8f5367);outline-offset:3px}"
+    },
+    {
+      "name": "减弱动态开关",
+      "kind": "input",
+      "description": "跟随系统初始化，也可在网页中主动勾选；样例仅呈现原生复选框。",
+      "html": "<label class=\"ds-quiet\"><input type=\"checkbox\">减弱动态</label>",
+      "css": ".ds-quiet{display:flex;gap:10px;align-items:center;min-height:44px;font:14px Camellia,serif;color:var(--ink,#30384b)}.ds-quiet input{accent-color:var(--rose,#8f5367)}.ds-quiet input:focus-visible{outline:2px solid var(--rose,#8f5367);outline-offset:3px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "月光水畔",
+    "overview": "本文件只约束 `Design/WaterGardenPreview/` 的网页候选，记录代码和已保存截图呈现的视觉事实，不替代仓库根部设计体系或原生 App 规范。此表面采用 Experience 模式：用户进入一幅能拖动、抬头和点花的画，界面让位于水岸本身。材料方向是手绘柔光油画，莫兰迪浅粉、蓝、紫覆盖花海、天空与水面；月光清冷而明亮，不营造阴森感。这是本轮表面的方向，不将根产品中其他地点的水彩约束改写为全局油画规则。",
+    "keyCharacteristics": [
+      "花海、石岸与枝叶共同存在于中景画中；24 处微亮花心是记忆入口，不另叠单花图片。",
+      "远、中、近三层制造有限画幅内的视差，保持单地点连续感。",
+      "蝴蝶飞落花心后出现浅色记忆卡片，背景保持可见。",
+      "中文衬线与一行法文手写体构成标题；功能文案小而可操作。",
+      "未开放的路径明确说明状态，所有记忆内容均为匿名合成示例。"
+    ],
+    "rules": [
+      { "name": "The Visible Water Rule", "body": "记忆卡片打开时不添加全屏压暗层；保留画面的月光、水色与花海。", "section": "colors" }
+    ],
+    "dos": [
+      "Do 保留单地点连续水岸，让画面先于菜单和卡片被看见。",
+      "Do 把真实记忆入口校准到中景花心，并让命中坐标与渲染坐标共用变换。",
+      "Do 保留本地字体与 OFL 文件，明确 Camellia 是 Noto Serif SC 的别名。",
+      "Do 同时尊重系统与网页减弱动态状态，保留直接可读的记忆和键盘替代入口。",
+      "Do 明示匿名示例、未开放地点和原型验收边界。"
+    ],
+    "donts": [
+      "Don't 在花海上重复叠单花或灌木素材来充当画中的记忆花。",
+      "Don't 打开记忆时压暗整幅背景，或把月光改成阴森夜景。",
+      "Don't 把母画、录像或单测当作用户批准的 UI comp、真机测试或桌面视觉验收。",
+      "Don't 把一张画里的全部装饰花计为已接入的记忆，或用一个 slot 叠放多条 ID。",
+      "Don't 把本文件推广为 App 全局设计、更改真实数据权限或发布授权。"
+    ]
+  }
+}
