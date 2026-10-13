@@ -6,13 +6,17 @@
 
 ## 先看效果
 
-![水边的实际网页截图](review/mobile-water.jpg)
+2026-10-13 高清修订：三层素材为 6144×4096，画布支持 3×，最大推近受源像素限制。保留全景构图，未改成单花贴图。
 
-![抬头看月亮](review/mobile-moon.jpg)
+![高清水边的实际网页截图](review/hd/browser-water.jpg)
 
-![点花后的记忆](review/mobile-memory.jpg)
+![高清点花后的记忆](review/hd/browser-memory.jpg)
 
-[20 秒实时漫游录像](review/walkthrough-20s.webm)
+[1170×2532 原尺寸全景](review/hd/overview-3x.png) · [1170×2532 最大推近](review/hd/detail-3x.png) · [本轮核验记录](review/hd/VERIFICATION.md)
+
+两张原尺寸 PNG 是同一网页渲染器的 3× Canvas 帧，没有缩小、不含 DOM 控件，**不是 iPhone 真机截图**。完整界面看上面的浏览器截图。
+
+[修清晰度前的 20 秒实时漫游录像](review/walkthrough-20s.webm)
 
 录像为浏览器 Canvas 实时录制，镜头路线由网页演示按钮驱动，不是静态图拼接，也不是真机手指操作录像。录像将网页标题、记忆卡片文字同步绘制到录制画布；实际 DOM 控件样式以截图和网页为准。没有录制桌面、麦克风或其他窗口。
 
@@ -25,6 +29,8 @@ node Design/WaterGardenPreview/serve.mjs
 ```
 
 打开 `http://127.0.0.1:8941/`。普通 GitHub 文件页面不能直接运行这个网站；本轮没有部署到公网，也没有启用 GitHub Pages。
+
+清晰度核验入口为 `/quality.html`：内部固定 390×844 页面、3× 画布，可导出原尺寸全景和最大推近帧。显示缩放不改变导出分辨率。正常预览跟随设备 DPR，最高 3×。
 
 也可以用任何静态服务器托管 `dist/`，只是自动保存录像的 `/capture` 接口需要上述本地服务；不支持保存时网页会提供下载链接。
 
@@ -44,11 +50,13 @@ node Design/WaterGardenPreview/serve.mjs
 | `dist/world.mjs` | 原画坐标、24 个花心锚点、镜头变换、命中测试、ID 分配与溢出 |
 | `dist/fixtures.mjs` | 24 条匿名示例。后续以适配器替换，不要把真实记忆提交仓库 |
 | `dist/app.mjs` | 三层渲染、拖动缩放、蝴蝶、记忆卡片、录制 |
-| `dist/assets/midground.png` | 花、枝叶、岸石、水面共同绘制的中景，透明天空 |
-| `dist/assets/far.png` | 天空、月亮、远山和远水 |
-| `dist/assets/foreground.png` | 透明近景叶枝 |
+| `dist/assets/midground-hd.webp` | 6144×4096 中景，花、枝叶、岸石、水面共同绘制，透明天空 |
+| `dist/assets/far-hd.webp` | 高清天空、月亮、远山和远水 |
+| `dist/assets/foreground-hd.webp` | 高清透明近景叶枝 |
+| `dist/assets/*-preview.webp` | 高清到齐前的轻量预览；失败时提示重试 |
 | `dist/assets/master.png` | 母画，便于校准和后续出图，不参与运行时叠图 |
 | `ASSET-PROMPTS.md` | 素材生成提示词及继承来源 |
+| `art/HD-PROMPTS.md` | 本轮修复提示词、官方 Real-ESRGAN 超分及 WebP 处理记录 |
 
 每个热点使用中景同一套变换，点击命中不会脱离花心。`allocateMemories(records, previousManifest)` 返回 ID→slot ID；把返回值持久保存，并在下一次分配传回，才能让新增/删除后已有花保持位置。24 个槽位满了后返回 `overflow` 与 `nextLocation: water-deeper`，不叠加到已有位置。当前没有持久化服务或深处地点实现。
 
@@ -60,7 +68,7 @@ node Design/WaterGardenPreview/serve.mjs
 node --test Design/WaterGardenPreview/tests/world.test.mjs
 ```
 
-7 项单元测试覆盖坐标唯一、分配稳定、持久映射、647 条容量分流、重复 ID、不同屏幕命中、边缘覆盖。647 条测试是数据分配测试，不等于 647 朵同时渲染的性能验收。
+12 项单元测试覆盖 DPR、源像素放大限制、高清坐标换算、坐标唯一、分配稳定、持久映射、647 条容量分流、重复 ID、不同屏幕命中、边缘覆盖。647 条测试是数据分配测试，不等于 647 朵同时渲染的性能验收。
 
 浏览器截图与交互检查用于本地网页。没有 iPhone 真机性能结果，没有帧率达标承诺，也没有 App 安装测试。完整检验记录见仓库交接文档。
 

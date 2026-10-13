@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-13T09:30:33Z",
+  "generatedAt": "2026-10-13T10:35:47Z",
   "title": "Design System: 水畔网页预览",
   "extensions": {
     "shadows": [
@@ -17,6 +17,14 @@
     ]
   },
   "components": [
+    {
+      "name": "高清加载与重试提示",
+      "kind": "button",
+      "refersTo": "quality-banner",
+      "description": "花园主 UI 左上方的高清加载状态；加载时禁用且不透明，失败时可点击重试，成功后隐藏。页面定位为 top 108px、left 22px、z-index 2；此样例展示失败状态。",
+      "html": "<button class=\"ds-quality\">高清图片未载完 · 点击重试</button>",
+      "css": ".ds-quality{font:12px Camellia,serif;color:var(--ink,#30384b);border:0;background:#f3f0f1eb;border-radius:12px;min-height:36px;padding:10px 14px;cursor:pointer;opacity:1}.ds-quality:hover,.ds-quality:active{background:#f3f0f1eb}.ds-quality:disabled{opacity:1;cursor:wait}.ds-quality:focus-visible{outline:2px solid var(--rose,#8f5367);outline-offset:3px}"
+    },
     {
       "name": "普通文字按钮",
       "kind": "button",
@@ -87,7 +95,7 @@
     "donts": [
       "Don't 在花海上重复叠单花或灌木素材来充当画中的记忆花。",
       "Don't 打开记忆时压暗整幅背景，或把月光改成阴森夜景。",
-      "Don't 把母画、录像或单测当作用户批准的 UI comp、真机测试或桌面视觉验收。",
+      "Don't 把母画、录像、无 DOM 的画布导出或单测当作用户批准的 UI comp、真机测试或桌面视觉验收。",
       "Don't 把一张画里的全部装饰花计为已接入的记忆，或用一个 slot 叠放多条 ID。",
       "Don't 把本文件推广为 App 全局设计、更改真实数据权限或发布授权。"
     ]

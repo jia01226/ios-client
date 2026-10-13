@@ -1,0 +1,25 @@
+{
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "canvas": {
+    "width": 1170,
+    "height": 2532
+  },
+  "renderDpr": 3,
+  "hostDpr": 2.4000000953674316,
+  "source": {
+    "width": 6144,
+    "height": 4096
+  },
+  "camera": {
+    "x": 760,
+    "y": 565,
+    "zoom": 1
+  },
+  "physicalPixelsPerSourcePixel": 0.8159765625000002,
+  "maxZoom": 1.2255253961415096,
+  "scale": 1.0879687500000002,
+  "type": "Unscaled live 3x canvas frame, no DOM overlay; not a device screenshot"
+}

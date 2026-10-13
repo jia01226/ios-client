@@ -1,6 +1,12 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
 import {slots,allocateMemories,transform,project,unproject,nearestSlot} from '../dist/world.mjs';
 import {memories} from '../dist/fixtures.mjs';
+import {renderPixelRatio, zoomLimit, samplingReport, imageSlots, SOURCE} from '../dist/world.mjs';
+test('DPR follows 1/2/3x displays, capped at 3 not 2',()=>{assert.equal(renderPixelRatio(3),3);assert.equal(renderPixelRatio(2),2);assert.equal(renderPixelRatio(4),3)});
+test('HD anchors preserve unique IDs and map to measured source pixels',()=>{assert.equal(SOURCE.height,4096);for(let i=0;i<slots.length;i++){assert.equal(slots[i].x*4,imageSlots[i][0]);assert.equal(slots[i].y*4,imageSlots[i][1])}});
+test('3x phone initial, detail and excessive zoom never enlarge source pixels',()=>{for(const [w,h] of [[365,733],[390,844],[393,852],[430,932],[440,956]]){const v={w,h,dpr:3,textureDensity:4};for(const zoom of [1,1.16,zoomLimit(v),99]){const r=samplingReport(v,{x:833,y:672,zoom});assert.ok(r.physicalPixelsPerSourcePixel<=1.0000001,JSON.stringify({w,h,zoom,...r}));}assert.ok(zoomLimit(v)>=1)}});
+test('inadequate resolution on very large displays does not magnify source pixels',()=>{const v={w:3000,h:2000,dpr:3,textureDensity:4};assert.ok(samplingReport(v,{x:760,y:565,zoom:1.65}).physicalPixelsPerSourcePixel<=1)});
+test('explicit temporary preview cannot zoom past default framing',()=>{assert.equal(zoomLimit({w:390,h:844,dpr:3,textureDensity:1,preview:true}),1)});
 test('24 actual painting anchors, unique IDs and coordinates',()=>{assert.equal(slots.length,24);assert.equal(new Set(slots.map(s=>s.id)).size,24);assert.equal(new Set(slots.map(s=>`${s.x},${s.y}`)).size,24)});
 test('order does not change existing allocation',()=>{assert.deepEqual(allocateMemories(memories),allocateMemories([...memories].reverse()))});
 test('persistent manifest survives insertions and removal',()=>{const first=allocateMemories(memories);const changed=allocateMemories([{id:'a-new'},...memories.slice(1)],first.assignments);for(const m of memories.slice(1))assert.equal(changed.assignments[m.id],first.assignments[m.id])});

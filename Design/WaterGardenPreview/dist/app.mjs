@@ -1,9 +1,11 @@
-import {WORLD, slots, clamp, ease, transform, project, nearestSlot, allocateMemories} from './world.mjs';
+import {WORLD, slots, clamp, ease, transform, project, nearestSlot, allocateMemories, renderPixelRatio, zoomLimit, samplingReport} from './world.mjs';
 import {memories} from './fixtures.mjs';
 
 const $ = id => document.getElementById(id);
 const canvas = $('scene'), ctx = canvas.getContext('2d', {alpha:false});
-const view = {w:innerWidth,h:innerHeight};
+const qualityTest = new URLSearchParams(location.search).get('quality') === '3x';
+const view = {w:innerWidth,h:innerHeight,dpr:1,textureDensity:1,preview:true};
+let hdState='loading';
 const origin = {x:760,y:565,zoom:1};
 let camera={...origin}, tween=null, selection=null, butterfly=null, returnCamera=null;
 let reduced=matchMedia('(prefers-reduced-motion: reduce)').matches, running=true, loaded=false;
@@ -12,13 +14,22 @@ const assets={}, allocation=allocateMemories(memories), memoryBySlot=new Map();
 for(const m of memories) memoryBySlot.set(allocation.assignments[m.id], m);
 const visibleSlots=slots.filter(s=>memoryBySlot.has(s.id));
 const metrics={frames:0,slowFrames:0,maxFrameMs:0};
-function resize(){view.w=innerWidth;view.h=innerHeight;const dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(view.w*dpr);canvas.height=Math.round(view.h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0)}
+function resize(){
+  view.w=innerWidth;view.h=innerHeight;
+  const dpr=renderPixelRatio(qualityTest?3:devicePixelRatio);
+  canvas.width=Math.ceil(view.w*dpr);canvas.height=Math.ceil(view.h*dpr);
+  view.dpr=Math.max(canvas.width/view.w,canvas.height/view.h);
+  ctx.setTransform(canvas.width/view.w,0,0,canvas.height/view.h,0,0);
+  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+  if(!view.preview){camera.zoom=Math.min(camera.zoom,zoomLimit(view));if(tween)tween.to.zoom=Math.min(tween.to.zoom,zoomLimit(view));}
+  schedule();
+}
 addEventListener('resize',resize);resize();
 $('quiet').checked=reduced;document.body.dataset.reduced=String(reduced);
 $('quiet').addEventListener('change',()=>{reduced=$('quiet').checked;document.body.dataset.reduced=String(reduced);if(reduced){if(tween)camera={...tween.to};tween=null;if(selection)showMemory();}schedule()});
 matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',e=>{reduced=e.matches;$('quiet').checked=reduced;document.body.dataset.reduced=String(reduced);if(reduced){if(tween)camera={...tween.to};tween=null;if(selection)showMemory();}schedule()});
 
-function move(to,duration=1300){tween=reduced?null:{from:{...camera},to:{...camera,...to},start:performance.now(),duration};if(reduced)camera={...camera,...to};schedule()}
+function move(to,duration=1300){const target={...camera,...to};target.zoom=Math.min(target.zoom,zoomLimit(view));tween=reduced?null:{from:{...camera},to:target,start:performance.now(),duration};if(reduced)camera=target;schedule()}
 function closePanels(){for(const id of ['options','flower-list','notice'])$(id).hidden=true;$('open-menu').setAttribute('aria-expanded','false')}
 function reset(){closeMemory(false);closePanels();move(origin)}
 function showMemory(){if(!selection)return;const m=memoryBySlot.get(selection.id);$('memory-date').textContent=`${m.date} · 水畔`;$('memory-title').textContent=m.title;$('memory-body').textContent=m.body;$('memory-quote').textContent=m.quote;$('memory').hidden=false;document.body.classList.add('has-memory');if(!demo)$('close-memory').focus({preventScroll:true})}
@@ -37,10 +48,10 @@ for(const slot of visibleSlots){const m=memoryBySlot.get(slot.id);const b=docume
 const pointers=new Map();let dragStart=null,dragDistance=0,pinchDistance=0;
 function cancelDemo(){if(demo){demo=null;if(recording){recording.cancelled=true;recording.recorder.stop();}$('record-status').textContent='漫游已停止，可以继续自己探索。'}}
 canvas.addEventListener('pointerdown',e=>{cancelDemo();if(selection)closeMemory(false);closePanels();tween=null;canvas.setPointerCapture(e.pointerId);pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});dragStart={x:e.clientX,y:e.clientY};dragDistance=0;if(pointers.size===2){const p=[...pointers.values()];pinchDistance=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y)}schedule()});
-canvas.addEventListener('pointermove',e=>{if(!pointers.has(e.pointerId))return;const old=pointers.get(e.pointerId);pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});dragDistance+=Math.hypot(e.clientX-old.x,e.clientY-old.y);if(pointers.size===2){const p=[...pointers.values()],dist=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);if(pinchDistance>0)camera.zoom=clamp(camera.zoom*dist/pinchDistance,1,1.65);pinchDistance=dist}else{const s=transform(view,camera).scale;camera.x=clamp(camera.x-(e.clientX-old.x)/s,170,1366);camera.y=clamp(camera.y+(e.clientY-old.y)/s,180,800)}schedule()});
+canvas.addEventListener('pointermove',e=>{if(!pointers.has(e.pointerId))return;const old=pointers.get(e.pointerId);pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});dragDistance+=Math.hypot(e.clientX-old.x,e.clientY-old.y);if(pointers.size===2){const p=[...pointers.values()],dist=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);if(pinchDistance>0)camera.zoom=clamp(camera.zoom*dist/pinchDistance,Math.min(1,zoomLimit(view)),zoomLimit(view));pinchDistance=dist}else{const s=transform(view,camera).scale;camera.x=clamp(camera.x-(e.clientX-old.x)/s,170,1366);camera.y=clamp(camera.y+(e.clientY-old.y)/s,180,800)}schedule()});
 canvas.addEventListener('pointerup',e=>{const click=pointers.size===1&&dragDistance<8;pointers.delete(e.pointerId);if(!pointers.size){pinchDistance=0;dragStart=null}if(click)selectFlower(nearestSlot({x:e.clientX,y:e.clientY},visibleSlots,transform(view,camera),28));schedule()});
 canvas.addEventListener('pointercancel',e=>{pointers.delete(e.pointerId);pinchDistance=0;dragDistance=100});
-canvas.addEventListener('wheel',e=>{e.preventDefault();cancelDemo();tween=null;camera.zoom=clamp(camera.zoom-e.deltaY*.0008,1,1.65);schedule()},{passive:false});
+canvas.addEventListener('wheel',e=>{e.preventDefault();cancelDemo();tween=null;camera.zoom=clamp(camera.zoom-e.deltaY*.0008,Math.min(1,zoomLimit(view)),zoomLimit(view));schedule()},{passive:false});
 addEventListener('keydown',e=>{if(e.key==='Escape'){cancelDemo();closeMemory();closePanels();return}if(document.activeElement!==canvas)return;const d={ArrowLeft:[-100,0],ArrowRight:[100,0],ArrowUp:[0,-100],ArrowDown:[0,100]}[e.key];if(d){e.preventDefault();cancelDemo();move({x:clamp(camera.x+d[0],170,1366),y:clamp(camera.y+d[1],180,800)},360)}});
 
 function paintLayer(img,factor,offset=0){const t=transform(view,camera,factor);ctx.drawImage(img,t.x+offset,t.y,WORLD.width*t.scale,WORLD.height*t.scale)}
@@ -63,6 +74,41 @@ $('record').onclick=async()=>{if(recording)return;if(!canvas.captureStream||!win
  $('record').disabled=true;$('record-status').textContent='正在录制 20 秒漫游；触碰画面可停止。';document.body.classList.add('recording');recorder.start(250);demo={start:performance.now(),caption:'沿水边，慢慢走',steps:[{at:900,caption:'转头看石岸',run:()=>move({x:420,y:575},2000)},{at:3800,caption:'抬头，月亮在这里',run:()=>move({x:1360,y:250},2600)},{at:7500,caption:'沿着水面，回到花丛',run:()=>move({x:760,y:590},1600)},{at:10000,caption:'一朵花，一条记忆',run:()=>selectFlower(slots[16])},{at:14900,caption:'合上记忆，继续走',run:()=>closeMemory()},{at:16600,caption:'小路还会继续',run:()=>exit('left')},{at:18800,caption:'回到水边',run:reset}]};schedule();}catch(error){$('record-status').textContent=`录像未开始：${error.message}`;$('record').disabled=false;document.body.classList.remove('recording')}};
 
 $('retry').onclick=()=>location.reload();
-try{await Promise.all(Object.entries({far:'far.png',mid:'midground.png',near:'foreground.png',butterfly:'butterfly-atlas.png'}).map(async([name,file])=>{const img=new Image();img.src=`assets/${file}`;await img.decode();assets[name]=img}));loaded=true;$('loading').hidden=true;schedule()}catch{$('loading').querySelector('p').textContent='花园图片没能打开。请检查连接后重试。';$('retry').hidden=false}
+const qualityStatus=document.createElement('p');qualityStatus.id='quality-status';qualityStatus.className='small';qualityStatus.setAttribute('role','status');qualityStatus.textContent='正在载入清晰画面…';$('options').append(qualityStatus);
+const qualityBanner=document.createElement('button');qualityBanner.id='quality-banner';qualityBanner.textContent='正在载入清晰画面…';qualityBanner.disabled=true;qualityBanner.onclick=loadHD;$('garden').append(qualityBanner);
+const retryHD=document.createElement('button');retryHD.textContent='重试高清图片';retryHD.hidden=true;retryHD.onclick=loadHD;$('options').append(retryHD);
+async function imageFile(file){const img=new Image();img.src='assets/'+file;await img.decode();return img;}
+async function loadHD(){
+  retryHD.hidden=true;qualityStatus.textContent='正在载入清晰画面…';qualityBanner.hidden=false;qualityBanner.disabled=true;qualityBanner.textContent='正在载入清晰画面…';
+  try{
+    // Decode sequentially to bound peak memory; release each preview as its HD layer arrives.
+    for(const [key,file] of [['far','far-hd.webp'],['mid','midground-hd.webp'],['near','foreground-hd.webp']]){
+      const img=await imageFile(file);
+      if(img.naturalWidth!==6144||img.naturalHeight!==4096)throw Error('高清图片尺寸不匹配');
+      assets[key]=img;schedule();
+    }
+    view.textureDensity=Math.min(...['far','mid','near'].map(k=>assets[k].naturalWidth/WORLD.width));
+    view.preview=false;hdState='ready';qualityBanner.hidden=true;camera.zoom=Math.min(camera.zoom,zoomLimit(view));
+    if(tween)tween.to.zoom=Math.min(tween.to.zoom,zoomLimit(view));
+    qualityStatus.textContent=qualityTest?'高清已就绪 · 3× 渲染核验':'高清画面已就绪';schedule();
+  }catch{hdState='failed';retryHD.hidden=false;qualityBanner.disabled=false;qualityBanner.textContent='高清图片未载完 · 点击重试';qualityStatus.textContent='高清图片未载完，当前是预览画面。请重试。';schedule();}
+}
+try{
+  await Promise.all(Object.entries({far:'far-preview.webp',mid:'midground-preview.webp',near:'foreground-preview.webp',butterfly:'butterfly-atlas.png'}).map(async([key,file])=>{assets[key]=await imageFile(file)}));
+  loaded=true;$('loading').hidden=true;schedule();loadHD();
+}catch{$('loading').querySelector('p').textContent='花园图片没能打开。请检查连接后重试。';$('retry').hidden=false}
+if(qualityTest){
+  const maxButton=document.createElement('button');maxButton.textContent='推近到清晰度上限';maxButton.onclick=()=>{closePanels();closeMemory(false);camera={x:833,y:672,zoom:zoomLimit(view)};tween=null;schedule();};$('options').append(maxButton);
+  for(const [kind,label] of [['overview','保存原尺寸全景'],['detail','保存原尺寸近景']]){
+    const button=document.createElement('button');button.textContent=label;button.onclick=async()=>{
+      if(hdState!=='ready'){qualityStatus.textContent='请等高清画面载入后再保存。';return;}
+      closePanels();tween=null;render(performance.now());
+      const metadata={viewport:{width:view.w,height:view.h},canvas:{width:canvas.width,height:canvas.height},renderDpr:view.dpr,hostDpr:devicePixelRatio,source:{width:6144,height:4096},camera:{...camera},...samplingReport(view,camera),type:'Unscaled live 3x canvas frame, no DOM overlay; not a device screenshot'};
+      const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+      try{const response=await fetch('/capture-still?kind='+kind,{method:'POST',headers:{'Content-Type':'image/png','X-Capture-Metadata':encodeURIComponent(JSON.stringify(metadata))},body:blob});if(!response.ok)throw Error('保存失败');qualityStatus.textContent='原尺寸 PNG 已保存到交接目录。';}catch{qualityStatus.textContent='本地保存未成功，请使用配套预览服务再试。';}
+      $('options').hidden=false;
+    };$('options').append(button);
+  }
+}
 // Read-only QA snapshot, no control API or production integration.
-Object.defineProperty(window,'gardenDiagnostics',{get:()=>({loaded,camera:{...camera},reduced,slots:visibleSlots.length,selected:selection?.id??null,cardVisible:!$('memory').hidden,recording:!!recording,metrics:{...metrics},transforms:{far:transform(view,camera,.68),mid:transform(view,camera),near:transform(view,camera,1.26)},projected:visibleSlots.map(s=>({id:s.id,...project(s,transform(view,camera))}))})});
+Object.defineProperty(window,'gardenDiagnostics',{get:()=>({loaded,camera:{...camera},reduced,slots:visibleSlots.length,selected:selection?.id??null,cardVisible:!$('memory').hidden,recording:!!recording,metrics:{...metrics},hdState,quality:samplingReport(view,camera),renderDpr:view.dpr,transforms:{far:transform(view,camera,.68),mid:transform(view,camera),near:transform(view,camera,1.26)},projected:visibleSlots.map(s=>({id:s.id,...project(s,transform(view,camera))}))})});

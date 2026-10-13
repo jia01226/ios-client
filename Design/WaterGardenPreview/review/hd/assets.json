@@ -1,0 +1,26 @@
+{
+  "method": "image_gen detail restoration, then Real-ESRGAN realesrgan-x4plus 4x",
+  "layers": {
+    "far": {
+      "width": 6144,
+      "height": 4096,
+      "bytes": 3825168,
+      "sha256": "488665264f18ad0683ed39dc318570eb97c2133d23a3975a1e92a86e5a6cbdb8",
+      "alpha": false
+    },
+    "midground": {
+      "width": 6144,
+      "height": 4096,
+      "bytes": 3402572,
+      "sha256": "eae58736497fab9a0e9075ffb1ddac16a64654e17f0c38ad35e451e7625b3574",
+      "alpha": true
+    },
+    "foreground": {
+      "width": 6144,
+      "height": 4096,
+      "bytes": 1725870,
+      "sha256": "31ed6bd5660889357ee0293c5a8e8773792f02ef3a9808a3058c49f8c029286a",
+      "alpha": true
+    }
+  }
+}

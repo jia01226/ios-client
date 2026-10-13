@@ -12,15 +12,17 @@
 
 ## 先看这些
 
+本次高清修订仍在同一分支。三层重新修复后 AI 超分到 6144×4096，支持 DPR 3，限制最大推近，先轻量预览后高清替换。详见 [本次核验与限制](../Design/WaterGardenPreview/review/hd/VERIFICATION.md) 和 [素材处理/完整提示词](../Design/WaterGardenPreview/art/HD-PROMPTS.md)。没有打包或上线。
+
+[3× 原尺寸全景](../Design/WaterGardenPreview/review/hd/overview-3x.png) · [3× 最大推近](../Design/WaterGardenPreview/review/hd/detail-3x.png)。均为 1170×2532 的网页 Canvas 原帧，不是真机截图；完整 DOM 界面见下面截图。
+
 [网页说明、截图及启动方式](../Design/WaterGardenPreview/README.md)
 
-[20 秒实时画布录像](../Design/WaterGardenPreview/review/walkthrough-20s.webm) · [录制元数据](../Design/WaterGardenPreview/review/capture.json)
+[修清晰度前的 20 秒实时画布录像](../Design/WaterGardenPreview/review/walkthrough-20s.webm) · [录制元数据](../Design/WaterGardenPreview/review/capture.json)
 
-![网页水畔](../Design/WaterGardenPreview/review/mobile-water.jpg)
+![当前高清网页水畔](../Design/WaterGardenPreview/review/hd/browser-water.jpg)
 
-![抬头看月亮](../Design/WaterGardenPreview/review/mobile-moon.jpg)
-
-![点花后的记忆卡片](../Design/WaterGardenPreview/review/mobile-memory.jpg)
+![当前点花后的记忆卡片](../Design/WaterGardenPreview/review/hd/browser-memory.jpg)
 
 GitHub 普通文件页面不会运行网页。本轮未启用 Pages；云端可读取源文件、图片、WebM，具备浏览器运行环境时可克隆分支并启动本地服务。
 
@@ -49,13 +51,13 @@ GitHub 普通文件页面不会运行网页。本轮未启用 Pages；云端可�
 入口为 `Design/WaterGardenPreview/dist/world.mjs` 的 `slots` 与 `allocateMemories(records, previousManifest)`。
 
 - 一个 slot 只对应一个记忆 ID。`previousManifest` 应持久保存，下一轮原样传入；不能每次随排序重新洗牌。
-- 花心坐标基于最终 `midground.png`（1536×1024），不是母画任意猜点。修改中景构图后必须重新校准坐标。
+- 高清花心坐标见 `imageSlots`，基于 `midground-hd.webp`（6144×4096），再按比例转换成 `slots` 的1536×1024逻辑坐标。24个ID沿用不变。修改中景构图后必须重新校准坐标。
 - 超过24条返回 `overflow` 和 `nextLocation: water-deeper`，由后续地点路由接住；不能复制同一热点塞多条记忆。
 - 需要表达重要性、心情、开合时，应另定“画中热点”的视觉语义；当前不会从数值改变已画好的花，不能宣称沿用了此前单花状态的完整表现。
 
 ## 检验与限制
 
-- Node 单测7/7通过：热点唯一、顺序稳定、保留映射、新增/删除、647条容量分流、重复ID、不同屏幕命中与边缘覆盖。
+- Node 单测12/12通过；本次新增DPR上限、高清锚点换算、3×屏初始与推近采样上限、大屏不放大源像素、低清预览推近限制。其余包括热点与647条分流，不是真机性能基准。
 - 本机窄视口365×733：进入、点真实花心、卡片、看月亮、录像与回放检查；浏览器未记录页面错误。
 - 桌面1280×800尺寸覆盖尝试有预览工具截图缩放偏差：实际CSS1066×666，截图内容被额外缩放、边缘多出空白。已排除这些无效截图，不宣称桌面视觉验收通过。坐标单测含横屏，但不替代视觉验收。
 - 静态检测降级为正则模式，不能检查计算对比度；两项字体文档警告由本目录设计说明记录，不能视为完整可访问性认证。
