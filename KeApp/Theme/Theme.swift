@@ -566,3 +566,48 @@ struct ChatLegibility: ViewModifier {
                        y: theme.wallpaper.textShadowY)
     }
 }
+
+// Build 91: approved grey-purple tarot table. All visual values live here.
+enum TarotTableStyle {
+    static let ink = Color(red: 0.98, green: 0.94, blue: 0.92)
+    static let pearl = Color(red: 0.88, green: 0.77, blue: 0.69)
+    static let cloth = Color(red: 0.46, green: 0.40, blue: 0.51)
+    static let shadow = Color.black.opacity(0.22)
+    static let panel = Color.white.opacity(0.09)
+    static let border = pearl.opacity(0.55)
+    static let muted = ink.opacity(0.76)
+    static let nightShade = Color.black.opacity(0.10)
+    static let gap: CGFloat = 12
+    static let smallGap: CGFloat = 6
+    static let padding: CGFloat = 20
+    static let controlHeight: CGFloat = 44
+    static let radius: CGFloat = 8
+    static let cardRadius: CGFloat = 4
+    static let hairline: CGFloat = 0.7
+    static let shadowRadius: CGFloat = 4
+    static let shadowY: CGFloat = 3
+    static let title = Moonlight.serif(24)
+    static let body = Moonlight.serif(16)
+    static let caption = Moonlight.serif(13)
+    static let tiny = Moonlight.serif(10)
+    static let cardAspect: CGFloat = 0.58
+    static let fanCardWidth: CGFloat = 0.105
+    static let fanRadius: CGFloat = 0.32
+    static let fanBottom: CGFloat = 0.105
+    static let previewLift: CGFloat = 0.045
+    static let stageHeight: CGFloat = 1.13
+    static let celticStageHeight: CGFloat = 1.65
+    static let slotWidth: CGFloat = 0.255
+    static let singleSlotWidth: CGFloat = 0.29
+    static let celticSlotWidth: CGFloat = 0.14
+    static let slotY: CGFloat = 0.27
+    static let slotLabelY: CGFloat = 0.018
+    static let cardLabelY: CGFloat = 0.535
+    static let celticX: [CGFloat] = [0.33, 0.33, 0.33, 0.13, 0.33, 0.54, 0.83, 0.83, 0.83, 0.83]
+    static let celticY: [CGFloat] = [0.50, 0.50, 0.81, 0.50, 0.19, 0.50, 0.94, 0.68, 0.42, 0.16]
+    static let liftDuration = 0.22
+    static let moveDuration = 0.48
+    static let shuffleDuration = 0.34
+    static let unfoldDuration = 0.8
+    static let flipDuration = 0.48
+}

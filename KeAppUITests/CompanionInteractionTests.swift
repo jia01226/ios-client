@@ -157,30 +157,16 @@ final class CompanionInteractionTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-scroll-control", "-ui-test-companion", "-app.skin", "day"]
         app.launch()
-        // 塔罗入口在聊天页顶上（玩页那颗珠子 0923 让给了共读）。
-        XCTAssertTrue(app.buttons["chat-tarot"].waitForExistence(timeout: 5))
-        capture("tarot-chat-entry")
-        app.buttons["chat-tarot"].tap()
-        XCTAssertTrue(app.buttons["tarot-draw"].waitForExistence(timeout: 5))
-        let question = app.textFields["问题"].firstMatch.exists ? app.textFields["问题"].firstMatch : app.textViews.firstMatch
-        question.tap()
-        question.typeText("他今晚会不会来找我")
-        app.buttons["三张"].tap()
-        capture("tarot-before-draw")
-        app.buttons["tarot-draw"].tap()
-        // 洗牌→发牌→翻牌的仪式动画比原来长，放宽等待。
-        XCTAssertTrue(app.buttons["tarot-ask-ke"].waitForExistence(timeout: 25))
-        sleep(2)
-        capture("tarot-cards")
+        app.buttons["玩"].tap()
+        app.buttons["play-tarot"].tap()
+        TarotSemicircleInteractionTests.chooseThree(in: self, app: app)
         app.buttons["tarot-ask-ke"].tap()
-        XCTAssertTrue(app.buttons["柯"].waitForExistence(timeout: 5))
-        sleep(2)
-        capture("tarot-handoff-chat")
+        XCTAssertTrue(app.buttons["chat-input-more"].waitForExistence(timeout: 8))
     }
 
     // Keep the selector used by the existing CI workflow; the garden handoff is now removed.
     func testGardenEntryHandsToKe() {
-        ChatWallpaperInteractionTests.verify(in: self)
+        TarotSemicircleInteractionTests.verify(in: self)
     }
 
     // The Build 83 regression already passed for this branch. Keep it independently
