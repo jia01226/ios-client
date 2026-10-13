@@ -44,7 +44,7 @@ private struct MemoryPageHeader: View {
                 Text("记忆").font(.custom("NotoSerifSC-ExtraLight", size: 13, relativeTo: .caption))
             }
             Picker("记忆", selection: $page) {
-                Text("花园").tag(0)
+                Text("星图").tag(0)
                 Text("语录").tag(1)
             }.pickerStyle(.segmented).accessibilityIdentifier("memory-pages")
         }.padding(.horizontal, 26).padding(.top, 6).padding(.bottom, 5)
@@ -52,58 +52,36 @@ private struct MemoryPageHeader: View {
 }
 
 struct MemoryGardenView: View {
-    @EnvironmentObject private var theme: Theme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var store: MemoryGardenStore
     @Binding var page: Int
     @State private var includeOthers = false
-    @State private var category = "约定"
-    @State private var selected: MemoryFlower?
-    @State private var listOpen = false
-    @State private var witheredOpen = false
-    private var flowers: [MemoryFlower] { store.visible(includeOthers: includeOthers, category: category) }
-    private var scene: MemoryScene { .forCategory(category) }
-    private var darkScene: Bool { theme.skin == .night || scene == .moon }
+    @State private var openID: String?
+    @State private var dimmedOpen = false
 
-    // 92：正式花园换成 90 版的山茶探索（MemoryGardenExperience），接上真实记忆。
-    // 旧的 MemoryGardenCanvas 不再出现在正式页面。
-    @State private var correctingID: String?
-    @State private var correctionNote = ""
+    // 94：记忆页换成宇宙星图（MemoryStarMapView），喜欢、记错了、熄灭的星沿用花园的接口。
     var body: some View {
         VStack(spacing: 0) {
             MemoryPageHeader(page: $page)
-                .environment(\.colorScheme, .dark)
             HStack(spacing: 14) {
-                Toggle("也看以前整理的", isOn: $includeOthers)
+                Toggle("以前整理的", isOn: $includeOthers)
                     .toggleStyle(.switch).fixedSize()
                     .accessibilityIdentifier("memory-include-others")
                 Spacer()
-                Button("枯掉的花") { witheredOpen = true }.accessibilityIdentifier("memory-withered")
+                Button("熄灭的星") { dimmedOpen = true }.accessibilityIdentifier("memory-withered")
                 Button { Task { await store.load() } } label: {
                     Image(systemName: "arrow.clockwise").frame(width: 36, height: 36)
-                }.accessibilityLabel("刷新花园").disabled(store.loading || store.busy)
-            }.font(.caption).padding(.horizontal, 22).padding(.bottom, 4)
+                }.accessibilityLabel("刷新星图").disabled(store.loading || store.busy)
+            }.font(.caption).padding(.horizontal, 22).padding(.bottom, 2)
             ZStack {
-                MemoryGardenExperience(
-                    flowers: store.visible(includeOthers: includeOthers),
-                    categories: store.categories,
-                    initialCategory: "约定",
-                    night: theme.skin == .night,
-                    isBusy: store.busy,
-                    interactionError: store.error,
-                    onLoveMemory: { id, _ in
-                        guard let flower = store.flowers.first(where: { $0.id == id }) else { return }
-                        Task { await store.change(flower, action: "love") }
-                    },
-                    onRequestCorrection: { id in correctionNote = ""; correctingID = id }
-                )
-                .id(includeOthers)
+                MemoryStarMapView(store: store, includeOthers: $includeOthers,
+                                  onOpen: { openID = $0.id },
+                                  onLove: { flower in Task { await store.change(flower, action: "love") } })
                 if store.loading && !store.loaded {
-                    ProgressView("正在走进花园").padding(20)
+                    ProgressView("正在点亮星星").padding(20)
                         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
                 } else if store.loaded && store.visible(includeOthers: includeOthers).isEmpty {
                     VStack(spacing: 10) {
-                        Image(systemName: "leaf").font(.title3).accessibilityHidden(true)
+                        Image(systemName: "sparkles").font(.title3).accessibilityHidden(true)
                         Text(emptyMessage).font(.subheadline).multilineTextAlignment(.center).lineSpacing(6)
                     }.padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
                         .padding(30).accessibilityIdentifier("memory-empty")
@@ -114,62 +92,57 @@ struct MemoryGardenView: View {
                     }.padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12)).padding(30)
                 }
             }
-            .environment(\.colorScheme, .dark)
         }
-        .background(Color(red: 0.06, green: 0.08, blue: 0.14).ignoresSafeArea())
+        .environment(\.colorScheme, .dark)
+        .background(Color(red: 0.027, green: 0.035, blue: 0.078).ignoresSafeArea())
         .foregroundStyle(Color.white.opacity(0.94))
         .task { await store.load() }
-        .alert("这件事记错了吗？", isPresented: Binding(get: { correctingID != nil }, set: { if !$0 { correctingID = nil } })) {
-            TextField("哪里错了，可以留空", text: $correctionNote)
-            Button("取消", role: .cancel) { correctingID = nil }
-            Button("确认记错了", role: .destructive) {
-                guard let id = correctingID, let flower = store.flowers.first(where: { $0.id == id }) else { return }
-                correctingID = nil
-                Task { await store.change(flower, action: "wither", note: correctionNote) }
-            }
-        } message: { Text("会告诉柯不再记起这件事。点错了，可以从「枯掉的花」找回来。") }
-        .sheet(isPresented: $witheredOpen) {
+        .sheet(isPresented: Binding(get: { openID != nil }, set: { if !$0 { openID = nil } })) {
+            if let openID { MemoryStarDetail(store: store, starID: openID) }
+        }
+        .sheet(isPresented: $dimmedOpen) {
             NavigationStack {
                 List {
                     if let error = store.error { Text(error).foregroundStyle(.secondary) }
-                    let withered = store.flowers.filter { $0.state == "withered" && (includeOthers || $0.author == "ke") }
-                    if withered.isEmpty { Text("这里还没有枯掉的花。") }
-                    ForEach(withered) { flower in
+                    let dimmed = store.flowers.filter { $0.state == "withered" && (includeOthers || $0.author == "ke") }
+                    if dimmed.isEmpty { Text("还没有熄灭的星。") }
+                    ForEach(dimmed) { flower in
                         VStack(alignment: .leading, spacing: 12) {
                             Text(flower.title)
                             Text(flower.body).font(.subheadline).foregroundStyle(.secondary)
-                            Button("找回来") { Task { await store.change(flower, action: "revive") } }
+                            Button("重新点亮") { Task { await store.change(flower, action: "revive") } }
                                 .disabled(store.busy || store.loading)
                                 .accessibilityIdentifier("memory-revive-\(flower.id)")
                         }.padding(.vertical, 8)
                     }
-                }.navigationTitle("枯掉的花").navigationBarTitleDisplayMode(.inline)
-                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { witheredOpen = false } } }
+                }.navigationTitle("熄灭的星").navigationBarTitleDisplayMode(.inline)
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dimmedOpen = false } } }
             }
         }
     }
-    @State private var pendingFlower: MemoryFlower?
     private var emptyMessage: String {
         if !includeOthers && !store.flowers.contains(where: { $0.author == "ke" && $0.isDrawable }) {
-            return "柯还没开始种花，他每天会自己记下你们的事"
+            return "柯还没开始点星星，他每天会自己记下你们的事"
         }
-        return "这片花圃还没有记忆，先让月光落在这里。"
+        return "这片天空还没有星星。"
     }
 }
 
-private struct MemoryFlowerDetail: View {
+private struct MemoryStarDetail: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var theme: Theme
     @ObservedObject var store: MemoryGardenStore
-    let flowerID: String
+    let starID: String
     @State private var correcting = false
     @State private var note = ""
-    private var flower: MemoryFlower? { store.flowers.first { $0.id == flowerID } }
+    private var flower: MemoryFlower? { store.flowers.first { $0.id == starID } }
     var body: some View {
         NavigationStack {
             ScrollView {
                 if let flower {
                     VStack(alignment: .leading, spacing: 18) {
+                        Text(flower.author == "ke" ? "柯亲手记下 · \(flower.category)" : "以前整理的 · \(flower.category)")
+                            .font(.caption).foregroundStyle(.secondary)
                         Text(flower.title).font(.custom("NotoSerifSC-ExtraLight", size: 23, relativeTo: .title2))
                         Text(flower.body).font(.body).lineSpacing(7).textSelection(.enabled)
                         ForEach(Array(flower.quotes.prefix(3).enumerated()), id: \.offset) { _, quote in
@@ -185,7 +158,7 @@ private struct MemoryFlowerDetail: View {
                         HStack {
                             Button("记错了") { correcting = true }.frame(minHeight: 44).accessibilityIdentifier("memory-correct")
                             Spacer()
-                            Button(flower.loved ? "取消喜欢" : "这朵我很喜欢") {
+                            Button(flower.loved ? "♥ 喜欢着" : "♡ 这颗我很喜欢") {
                                 Task { await store.change(flower, action: "love") }
                             }.frame(minHeight: 44).accessibilityIdentifier("memory-love")
                         }.frame(minHeight: 44).disabled(store.busy || store.loading)
@@ -196,6 +169,7 @@ private struct MemoryFlowerDetail: View {
                 ToolbarItem(placement: .confirmationAction) { Button("收好") { dismiss() } }
             }
         }.tint(theme.pageAccent)
+            .presentationDetents([.medium, .large])
             .alert("这件事记错了吗？", isPresented: $correcting) {
                 TextField("哪里错了，可以留空", text: $note)
                 Button("取消", role: .cancel) {}
@@ -203,6 +177,6 @@ private struct MemoryFlowerDetail: View {
                     guard let flower else { return }
                     Task { if await store.change(flower, action: "wither", note: note) { dismiss() } }
                 }
-            } message: { Text("会告诉柯不再记起这件事。点错了，可以从「枯掉的花」找回来。") }
+            } message: { Text("会告诉柯不再记起这件事。这颗星会熄灭，点错了可以从「熄灭的星」重新点亮。") }
     }
 }
