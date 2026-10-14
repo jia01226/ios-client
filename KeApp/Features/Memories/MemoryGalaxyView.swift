@@ -46,26 +46,39 @@ enum GalaxyArt {
         return Image(decorative: image, scale: 1).renderingMode(.template)
     }()
 
-    /// 星云：整片偏紫，左上亮、右边沉下去。开页时画一张。
+    /// 星云：照最早那版星图（她 10-14 点名要回来的）——墨蓝的夜，几团深紫、玫瑰粉、靛蓝的云，一条斜着的淡银河带。
     static let nebula: Image = {
         let s = 1024
         guard let ctx = context(s) else { return Image(systemName: "circle") }
-        ctx.setFillColor(CGColor(red: 0.035, green: 0.035, blue: 0.09, alpha: 1))
+        ctx.setFillColor(CGColor(red: 0.027, green: 0.035, blue: 0.078, alpha: 1))
         ctx.fill(CGRect(x: 0, y: 0, width: s, height: s))
         var random = GalaxyRandom(seed: 7)
         let S = CGFloat(s)
-        // (x, y 从上往下, 半径, 颜色, 浓度)
-        let clouds: [(CGFloat, CGFloat, CGFloat, (CGFloat, CGFloat, CGFloat), CGFloat)] = [
-            (0.18, 0.28, 0.55, (0.47, 0.41, 0.76), 0.16), (0.30, 0.55, 0.45, (0.40, 0.36, 0.70), 0.12),
-            (0.55, 0.42, 0.50, (0.33, 0.30, 0.62), 0.10), (0.25, 0.85, 0.40, (0.30, 0.28, 0.55), 0.08),
-            (0.70, 0.75, 0.35, (0.36, 0.26, 0.48), 0.06), (0.85, 0.20, 0.30, (0.22, 0.22, 0.42), 0.05)
+        // (x, y 从上往下, 半径, 颜色)
+        let clouds: [(CGFloat, CGFloat, CGFloat, (CGFloat, CGFloat, CGFloat))] = [
+            (0.30, 0.35, 0.42, (96 / 255, 62 / 255, 140 / 255)), (0.72, 0.30, 0.38, (52 / 255, 64 / 255, 140 / 255)),
+            (0.55, 0.68, 0.46, (120 / 255, 58 / 255, 104 / 255)), (0.20, 0.75, 0.30, (40 / 255, 70 / 255, 120 / 255)),
+            (0.80, 0.78, 0.30, (90 / 255, 50 / 255, 110 / 255)), (0.50, 0.45, 0.55, (30 / 255, 34 / 255, 80 / 255))
         ]
-        for (x, y, r, rgb, a) in clouds {
-            for _ in 0..<24 {
-                let p = CGPoint(x: (x + CGFloat(random.next() - 0.5) * 0.3) * S, y: (1 - y + CGFloat(random.next() - 0.5) * 0.24) * S)
-                radial(ctx, p, r * S * CGFloat(0.3 + random.next() * 0.5), rgb, a * CGFloat(0.5 + random.next() * 0.7))
+        for (x, y, r, rgb) in clouds {
+            for _ in 0..<26 {
+                let p = CGPoint(x: (x + CGFloat(random.next() - 0.5) * 0.28) * S, y: (1 - y + CGFloat(random.next() - 0.5) * 0.22) * S)
+                radial(ctx, p, r * S * CGFloat(0.25 + random.next() * 0.45), rgb, CGFloat(0.07 + random.next() * 0.06))
             }
         }
+        ctx.saveGState()
+        ctx.translateBy(x: S / 2, y: S / 2)
+        ctx.rotate(by: 0.55)
+        for _ in 0..<70 {
+            let p = CGPoint(x: CGFloat(random.next() - 0.5) * S * 1.3, y: CGFloat(random.next() - 0.5) * S * 0.13)
+            radial(ctx, p, S * CGFloat(0.04 + random.next() * 0.09), (0.86, 0.82, 0.94), CGFloat(0.025 + random.next() * 0.03))
+        }
+        for _ in 0..<2600 {
+            let d: CGFloat = random.next() < 0.9 ? 0.7 : 1.3
+            ctx.setFillColor(CGColor(red: 0.94, green: 0.93, blue: 0.98, alpha: CGFloat(random.next() * 0.35)))
+            ctx.fill(CGRect(x: CGFloat(random.next() - 0.5) * S * 1.4, y: CGFloat(random.next() + random.next() + random.next() - 1.5) * S * 0.06, width: d, height: d))
+        }
+        ctx.restoreGState()
         guard let image = ctx.makeImage() else { return Image(systemName: "circle") }
         return Image(decorative: image, scale: 1)
     }()
@@ -191,15 +204,16 @@ struct GalaxyProjection {
     let view: GalaxyView3
     let size: CGSize
     static let roll = -0.19
-    var scale: Double { Double(min(size.width, size.height * 0.62)) * 0.52 * view.zoom }
-    var center: CGPoint { CGPoint(x: size.width / 2 + view.pan.width, y: size.height * 0.54 + view.pan.height) }
+    var scale: Double { Double(min(size.width, size.height * 0.62)) * 0.45 * view.zoom }
+    var center: CGPoint { CGPoint(x: size.width / 2 + view.pan.width, y: size.height * 0.55 + view.pan.height) }
     /// 返回屏幕位置和「远近」（-1 远 … 1 近）
-    func project(_ x: Double, _ y: Double) -> (CGPoint, Double) {
+    /// z：记忆星不全贴在盘面上，有高有低，所以上下也散得开（网页版同一个公式）
+    func project(_ x: Double, _ y: Double, _ z: Double = 0) -> (CGPoint, Double) {
         let c = cos(view.angle), s = sin(view.angle)
-        let xr = x * c - y * s, yr = (x * s + y * c) * view.tilt
+        let xr = x * c - y * s, yr = (x * s + y * c) * view.tilt - z * sqrt(max(0, 1 - view.tilt * view.tilt))
         let cr = cos(Self.roll), sr = sin(Self.roll)
         let px = (xr * cr - yr * sr) * scale, py = (xr * sr + yr * cr) * scale
-        return (CGPoint(x: center.x + px, y: center.y + py), max(-1, min(1, (x * s + y * c) / 1.2)))
+        return (CGPoint(x: center.x + px, y: center.y + py), max(-1, min(1, (x * s + y * c) / 1.6)))
     }
 }
 
@@ -210,7 +224,7 @@ struct GalaxyStar: Identifiable {
     let title: String
     let category: String
     let ke: Bool
-    let x: Double, y: Double
+    let x: Double, y: Double, z: Double
     let importance: Int
     let loved: Bool
     let phase: Double
@@ -220,11 +234,11 @@ struct GalaxyStar: Identifiable {
         id = f.id; title = f.title; category = f.category; ke = f.author == "ke"; importance = f.importance; loved = f.loved
         var random = GalaxyRandom(seed: GalaxyRandom.hash(f.id))
         if ke {
-            let i = Double(index), r = 0.38 + 0.15 * sqrt(i), a = i * 2.399_963 + 0.6
-            x = cos(a) * r; y = sin(a) * r
+            let i = Double(index), r = 0.5 + 0.19 * sqrt(i), a = i * 2.399_963 + 0.6
+            x = cos(a) * r; y = sin(a) * r; z = (random.next() - 0.5) * 0.9
         } else {
-            let r = 0.2 + pow(random.next(), 0.7) * 0.95, a = random.next() * 2 * .pi
-            x = cos(a) * r; y = sin(a) * r
+            let r = 0.18 + pow(random.next(), 0.7) * 1.1, a = random.next() * 2 * .pi
+            x = cos(a) * r; y = sin(a) * r; z = (random.next() - 0.5) * 0.12
         }
         phase = random.next() * 6.28
     }
@@ -274,11 +288,19 @@ private struct GalaxyCanvas: View {
     private func hit(_ point: CGPoint) -> String? {
         let pr = GalaxyProjection(view: motion.view(at: Date()), size: size)
         var best: (String, CGFloat)?
-        for star in stars where visible(star) {
+        for star in stars where star.ke && visible(star) {
             if let until = motion.hiddenUntil[star.id], until > Date() { continue }
-            let (p, _) = pr.project(star.x, star.y)
-            let d = hypot(p.x - point.x, p.y - point.y) + (star.ke ? 0 : 14)
-            if d < (star.ke ? 34 : 22), d < (best?.1 ?? .infinity) { best = (star.id, d) }
+            let (p, _) = pr.project(star.x, star.y, star.z)
+            let d = hypot(p.x - point.x, p.y - point.y)
+            if d < 34, d < (best?.1 ?? .infinity) { best = (star.id, d) }
+        }
+        if best == nil {
+            let reach = 16 + CGFloat(pr.view.zoom) * 6
+            for star in stars where !star.ke && visible(star) {
+                let (p, _) = pr.project(star.x, star.y, star.z)
+                let d = hypot(p.x - point.x, p.y - point.y)
+                if d < reach, d < (best?.1 ?? .infinity) { best = (star.id, d) }
+            }
         }
         return best?.0
     }
@@ -304,17 +326,35 @@ private struct GalaxyCanvas: View {
         let gw = 1024 * pr.scale / Double(GalaxyArt.galaxyUnit)
         g.draw(GalaxyArt.galaxy, in: CGRect(x: -gw / 2, y: -gw / 2, width: gw, height: gw))
 
-        // 以前整理的：暗的小点，没有名字
+        // 以前整理的：小而暗的星，每颗都点得开；拉近（≥1.8 倍）才写名字
+        let glow = ctx.resolve(GalaxyArt.glow)
+        let oldLabels = v.zoom >= 1.8
         for star in stars where !star.ke {
-            let (p, depth) = pr.project(star.x, star.y)
-            let a = (visible(star) ? 0.5 : 0.12) * (0.8 + 0.2 * depth)
-            ctx.fill(Path(ellipseIn: CGRect(x: p.x - 1.3, y: p.y - 1.3, width: 2.6, height: 2.6)),
-                     with: .color(Color(red: 0.8, green: 0.78, blue: 0.92).opacity(a)))
+            let (p, depth) = pr.project(star.x, star.y, star.z)
+            guard p.x > -20, p.x < size.width + 20, p.y > -20, p.y < size.height + 20 else { continue }
+            let on = visible(star)
+            let a = (on ? 0.55 : 0.1) * (0.85 + 0.15 * depth) * (reduceMotion ? 1 : 0.85 + 0.15 * sin(t * 0.9 + star.phase))
+            let r = 1.4 * (0.8 + v.zoom * 0.25)
+            var sprite = glow
+            sprite.shading = .color(Color(red: 0.9, green: 0.89, blue: 0.97))
+            var layer = ctx
+            layer.opacity = a * 0.6
+            layer.draw(sprite, in: CGRect(x: p.x - r * 3, y: p.y - r * 3, width: r * 6, height: r * 6))
+            ctx.fill(Path(ellipseIn: CGRect(x: p.x - r * 0.45, y: p.y - r * 0.45, width: r * 0.9, height: r * 0.9)),
+                     with: .color(Color(red: 0.9, green: 0.89, blue: 0.97).opacity(a)))
+            if star.id == selectedID {
+                ctx.stroke(Path(ellipseIn: CGRect(x: p.x - 10, y: p.y - 10, width: 20, height: 20)),
+                           with: .color(Color(red: 0.94, green: 0.88, blue: 0.73).opacity(0.85)), lineWidth: 1)
+            }
+            if oldLabels && on {
+                ctx.draw(Text(star.title).font(.system(size: 10)).foregroundColor(Color(red: 0.85, green: 0.83, blue: 0.92).opacity(min(1, (v.zoom - 1.8) * 3) * 0.75)),
+                         at: CGPoint(x: p.x, y: p.y + 12))
+            }
         }
         // 柯记的：亮星 + 名字
-        let glow = ctx.resolve(GalaxyArt.glow)
+        var labels: [(title: String, at: CGPoint, r: Double, alpha: Double, rank: Int, selected: Bool)] = []
         for star in stars where star.ke {
-            let (p, depth) = pr.project(star.x, star.y)
+            let (p, depth) = pr.project(star.x, star.y, star.z)
             var alpha = visible(star) ? 0.85 : 0.15
             var reveal = 1.0
             if let until = motion.hiddenUntil[star.id] {
@@ -325,7 +365,7 @@ private struct GalaxyCanvas: View {
             let pulse = reduceMotion ? 1 : 0.82 + 0.13 * sin(t * (0.83 + Double(star.importance) * 0.037) + star.phase)
                 + 0.25 * exp(-pow((((t + star.phase * 2.73).truncatingRemainder(dividingBy: 17)) / 17 - 0.5) / 0.026, 2))
             let near = 0.88 + 0.12 * depth
-            let r = (4 + Double(star.importance) * 0.45) * near * pulse * (1 + (1 - reveal) * 2) * (0.8 + v.zoom * 0.2)
+            let r = (4.2 + Double(star.importance) * 0.45) * near * pulse * (1 + (1 - reveal) * 2) * (0.8 + v.zoom * 0.2)
             var sprite = glow
             sprite.shading = .color(Color(red: 0.95, green: 0.93, blue: 1))
             var layer = ctx
@@ -343,10 +383,19 @@ private struct GalaxyCanvas: View {
                 ctx.stroke(Path(ellipseIn: CGRect(x: p.x - ring, y: p.y - ring, width: ring * 2, height: ring * 2)),
                            with: .color(Color(red: 0.94, green: 0.88, blue: 0.73).opacity(0.85)), lineWidth: 1)
             }
-            if alpha > 0.3 {
-                ctx.draw(Text(star.title).font(.system(size: 12)).foregroundColor(Color(red: 0.93, green: 0.9, blue: 0.97).opacity(alpha)),
-                         at: CGPoint(x: p.x, y: p.y + r * 2 + 14))
-            }
+            if alpha > 0.3 { labels.append((star.title, p, r, alpha, star.importance, star.id == selectedID)) }
+        }
+        // 名字不打架：选中的、重要的先放；下面撞了就放上面；上下都撞，先不写（拉近了自然分开）。也不出屏幕边。
+        var placed: [CGRect] = []
+        for l in labels.sorted(by: { ($0.selected ? 1 : 0, $0.rank) > ($1.selected ? 1 : 0, $1.rank) }) {
+            let w = CGFloat(l.title.count) * 12.5 + 6, hgt: CGFloat = 16
+            let x = min(max(l.at.x, w / 2 + 4), size.width - w / 2 - 4)
+            let below = CGRect(x: x - w / 2, y: l.at.y + l.r * 2 + 6, width: w, height: hgt)
+            let above = CGRect(x: x - w / 2, y: l.at.y - l.r * 2 - 6 - hgt, width: w, height: hgt)
+            guard let spot = [below, above].first(where: { c in !placed.contains { $0.intersects(c) } }) else { continue }
+            placed.append(spot)
+            ctx.draw(Text(l.title).font(.system(size: 12)).foregroundColor(Color(red: 0.93, green: 0.9, blue: 0.97).opacity(l.alpha)),
+                     at: CGPoint(x: spot.midX, y: spot.midY))
         }
 
         // 流星：偶尔一颗从右上划到左下；新记忆的那颗落到它的位置
@@ -361,7 +410,7 @@ private struct GalaxyCanvas: View {
             guard p > 0 else { continue }
             let from = CGPoint(x: m.from.x * size.width, y: m.from.y * size.height)
             var end = CGPoint(x: from.x + m.delta.x * size.width, y: from.y + m.delta.y * size.height)
-            if let id = m.target, let star = stars.first(where: { $0.id == id }) { end = pr.project(star.x, star.y).0 }
+            if let id = m.target, let star = stars.first(where: { $0.id == id }) { end = pr.project(star.x, star.y, star.z).0 }
             let e = m.target == nil ? 1 - pow(1 - p, 2.2) : 1 - pow(1 - p, 3)
             let head = CGPoint(x: from.x + (end.x - from.x) * e, y: from.y + (end.y - from.y) * e)
             let ang = atan2(end.y - from.y, end.x - from.x), len: CGFloat = m.target == nil ? 110 : 130
@@ -382,7 +431,7 @@ struct MemoryGalaxyView: View {
     @Binding var page: Int
     var onClose: (() -> Void)?
     @State private var motion = GalaxyMotion()
-    @State private var includeOthers = false
+    @State private var includeOthers = true
     @State private var category: String?
     @State private var selectedID: String?
     @State private var listOpen = false
@@ -403,6 +452,7 @@ struct MemoryGalaxyView: View {
     }
     private var others: [MemoryFlower] { store.visible(includeOthers: true).filter { $0.author != "ke" } }
     private var ordered: [MemoryFlower] { mine.filter { category == nil || $0.category == category } }
+    private var orderedOthers: [MemoryFlower] { others.filter { category == nil || $0.category == category } }
     private var stars: [GalaxyStar] {
         let placed = mine.sorted { ($0.written_at ?? "", $0.id) < ($1.written_at ?? "", $1.id) }
         return placed.enumerated().map { GalaxyStar($1, index: $0) } + (includeOthers ? others.map { GalaxyStar($0) } : [])
@@ -415,7 +465,7 @@ struct MemoryGalaxyView: View {
 
     var body: some View {
         ZStack {
-            Color(red: 0.035, green: 0.035, blue: 0.09).ignoresSafeArea()
+            Color(red: 0.027, green: 0.035, blue: 0.078).ignoresSafeArea()
             GalaxyCanvas(stars: stars, motion: motion, category: category, selectedID: selectedID,
                          paused: !visible, reduceMotion: reduceMotion, onTap: tapped)
                 .ignoresSafeArea()
@@ -505,7 +555,7 @@ struct MemoryGalaxyView: View {
                 .padding(.top, 2)
                 .shadow(color: .black.opacity(0.35), radius: 6)
                 .accessibilityHidden(true)
-            Text("\(Self.monthName())的星河 · \(ordered.count) 颗记忆")
+            Text(includeOthers ? "\(Self.monthName())的星河 · 柯记的 \(ordered.count) 颗 · 以前的 \(orderedOthers.count) 颗" : "\(Self.monthName())的星河 · \(ordered.count) 颗记忆")
                 .font(.system(size: 12)).tracking(1.3).foregroundStyle(Self.muted)
                 .shadow(color: .black.opacity(0.5), radius: 4)
             ScrollView(.horizontal, showsIndicators: false) {
@@ -539,7 +589,7 @@ struct MemoryGalaxyView: View {
 
     private var footer: some View {
         VStack(spacing: 12) {
-            Text(mine.isEmpty ? " " : "拖动转星河 · 双指拉近 · 点一颗星")
+            Text(mine.isEmpty ? " " : (includeOthers ? "亮的是柯亲手记的 · 小的是以前整理的 · 拉近能看见名字" : "拖动转星河 · 双指拉近 · 点一颗星"))
                 .font(.system(size: 11)).tracking(0.6).foregroundStyle(Self.muted)
                 .shadow(color: .black.opacity(0.5), radius: 4)
             HStack {
@@ -561,7 +611,7 @@ struct MemoryGalaxyView: View {
     // MARK: 卡片
 
     private func card(_ flower: MemoryFlower) -> some View {
-        let list = ordered, index = list.firstIndex { $0.id == flower.id }
+        let list = flower.author == "ke" ? ordered : orderedOthers, index = list.firstIndex { $0.id == flower.id }
         return VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text(flower.category).font(.system(size: 12)).tracking(1.7).foregroundStyle(Color(red: 0.8, green: 0.74, blue: 0.9))
@@ -601,7 +651,7 @@ struct MemoryGalaxyView: View {
             }
             .buttonStyle(.plain).disabled(store.busy).padding(.top, 14)
             .accessibilityIdentifier("memory-love")
-            if flower.author == "ke" {
+            if index != nil {
                 HStack {
                     Button("上一颗") { if let index, index > 0 { selectedID = list[index - 1].id } }
                         .disabled(index == nil || index == 0)
@@ -703,7 +753,7 @@ struct MemoryGalaxyView: View {
         }
         var v = motion.view(at: Date())
         v.zoom = max(v.zoom, 1.35); v.pan = .zero
-        let p = GalaxyProjection(view: v, size: canvasSize).project(star.x, star.y).0
+        let p = GalaxyProjection(view: v, size: canvasSize).project(star.x, star.y, star.z).0
         v.pan = CGSize(width: canvasSize.width / 2 - p.x, height: canvasSize.height * 0.3 - p.y)
         motion.fly(v, duration: reduceMotion ? 0 : 0.8)
     }
