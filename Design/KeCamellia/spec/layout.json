@@ -1,0 +1,951 @@
+{
+  "schemaVersion": 1,
+  "coordinateSystem": {
+    "origin": "top-left",
+    "units": "normalized-to-artboard",
+    "artboardPoints": {
+      "width": 390,
+      "height": 844
+    },
+    "referenceAspect": {
+      "width": 853,
+      "height": 1844
+    },
+    "note": "All frame values include transparent padding. 390×844 native artboard differs from frozen web aspect by <0.11%; scale the whole artboard uniformly, never distort single sprites."
+  },
+  "background": {
+    "asset": "background",
+    "frame": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1
+    },
+    "baseColor": "#edf6fc",
+    "opacity": 0.55
+  },
+  "branch": {
+    "asset": "stem",
+    "frame": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 0.8317535545023697
+    },
+    "anchor": {
+      "x": 0.95,
+      "y": 0
+    },
+    "anchorSpace": "whole-artboard",
+    "zIndex": 1
+  },
+  "flowers": [
+    {
+      "id": "diary",
+      "label": "日记",
+      "previewIndex": 0,
+      "asset": "diary",
+      "center": {
+        "x": 0.81,
+        "y": 0.142
+      },
+      "frame": {
+        "x": 0.661282,
+        "y": 0.07328,
+        "width": 0.297436,
+        "height": 0.137441
+      },
+      "hitFrame": {
+        "x": 0.7,
+        "y": 0.091,
+        "width": 0.22,
+        "height": 0.102
+      },
+      "zIndex": 2,
+      "tag": {
+        "asset": "tag-diary",
+        "text": "日记",
+        "frame": {
+          "x": 0.808574,
+          "y": 0.230245,
+          "width": 0.08205128205128205,
+          "height": 0.08056872037914692
+        },
+        "textInsetPoints": {
+          "top": 12,
+          "right": 8,
+          "bottom": 17,
+          "left": 8
+        },
+        "string": {
+          "x": 0.8496,
+          "top": 0.196833,
+          "bottom": 0.2338
+        }
+      },
+      "butterflyPerch": {
+        "center": {
+          "x": 0.745,
+          "y": 0.113
+        },
+        "size": {
+          "width": 0.16,
+          "height": 0.07393364928909953
+        },
+        "rotationDegrees": -25
+      }
+    },
+    {
+      "id": "dream",
+      "label": "梦",
+      "previewIndex": 1,
+      "asset": "dream",
+      "center": {
+        "x": 0.66,
+        "y": 0.27
+      },
+      "frame": {
+        "x": 0.511282,
+        "y": 0.20128,
+        "width": 0.297436,
+        "height": 0.137441
+      },
+      "hitFrame": {
+        "x": 0.55,
+        "y": 0.219,
+        "width": 0.22,
+        "height": 0.102
+      },
+      "zIndex": 2,
+      "tag": {
+        "asset": "tag-dream",
+        "text": "梦",
+        "frame": {
+          "x": 0.643174,
+          "y": 0.350085,
+          "width": 0.08205128205128205,
+          "height": 0.061611374407582936
+        },
+        "textInsetPoints": {
+          "top": 12,
+          "right": 8,
+          "bottom": 17,
+          "left": 8
+        },
+        "string": {
+          "x": 0.6842,
+          "top": 0.316673,
+          "bottom": 0.35364
+        }
+      },
+      "butterflyPerch": {
+        "center": {
+          "x": 0.595,
+          "y": 0.241
+        },
+        "size": {
+          "width": 0.16,
+          "height": 0.07393364928909953
+        },
+        "rotationDegrees": -25
+      }
+    },
+    {
+      "id": "drawer",
+      "label": "抽屉",
+      "previewIndex": 2,
+      "asset": "drawer",
+      "center": {
+        "x": 0.47,
+        "y": 0.403
+      },
+      "frame": {
+        "x": 0.316154,
+        "y": 0.33191,
+        "width": 0.307692,
+        "height": 0.14218
+      },
+      "hitFrame": {
+        "x": 0.36,
+        "y": 0.352,
+        "width": 0.22,
+        "height": 0.102
+      },
+      "zIndex": 2,
+      "tag": {
+        "asset": "tag-drawer",
+        "text": "抽屉",
+        "frame": {
+          "x": 0.461974,
+          "y": 0.484105,
+          "width": 0.08205128205128205,
+          "height": 0.08056872037914692
+        },
+        "textInsetPoints": {
+          "top": 12,
+          "right": 8,
+          "bottom": 17,
+          "left": 8
+        },
+        "string": {
+          "x": 0.503,
+          "top": 0.450693,
+          "bottom": 0.48766
+        }
+      },
+      "butterflyPerch": {
+        "center": {
+          "x": 0.405,
+          "y": 0.374
+        },
+        "size": {
+          "width": 0.16,
+          "height": 0.07393364928909953
+        },
+        "rotationDegrees": -25
+      }
+    },
+    {
+      "id": "tarot",
+      "label": "塔罗",
+      "previewIndex": 3,
+      "asset": "tarot",
+      "center": {
+        "x": 0.83,
+        "y": 0.462
+      },
+      "frame": {
+        "x": 0.68641,
+        "y": 0.395649,
+        "width": 0.287179,
+        "height": 0.132701
+      },
+      "hitFrame": {
+        "x": 0.72,
+        "y": 0.411,
+        "width": 0.22,
+        "height": 0.102
+      },
+      "zIndex": 2,
+      "tag": {
+        "asset": "tag-tarot",
+        "text": "塔罗",
+        "frame": {
+          "x": 0.788974,
+          "y": 0.538005,
+          "width": 0.08205128205128205,
+          "height": 0.08056872037914692
+        },
+        "textInsetPoints": {
+          "top": 12,
+          "right": 8,
+          "bottom": 17,
+          "left": 8
+        },
+        "string": {
+          "x": 0.83,
+          "top": 0.504593,
+          "bottom": 0.54156
+        }
+      },
+      "butterflyPerch": {
+        "center": {
+          "x": 0.765,
+          "y": 0.433
+        },
+        "size": {
+          "width": 0.16,
+          "height": 0.07393364928909953
+        },
+        "rotationDegrees": -25
+      }
+    },
+    {
+      "id": "moments",
+      "label": "朋友圈",
+      "previewIndex": 4,
+      "asset": "moments",
+      "center": {
+        "x": 0.26,
+        "y": 0.578
+      },
+      "frame": {
+        "x": 0.108718,
+        "y": 0.508095,
+        "width": 0.302564,
+        "height": 0.13981
+      },
+      "hitFrame": {
+        "x": 0.15,
+        "y": 0.527,
+        "width": 0.22,
+        "height": 0.102
+      },
+      "zIndex": 2,
+      "tag": {
+        "asset": "tag-moments",
+        "text": "朋友圈",
+        "frame": {
+          "x": 0.218974,
+          "y": 0.647885,
+          "width": 0.08205128205128205,
+          "height": 0.0995260663507109
+        },
+        "textInsetPoints": {
+          "top": 12,
+          "right": 8,
+          "bottom": 17,
+          "left": 8
+        },
+        "string": {
+          "x": 0.26,
+          "top": 0.614473,
+          "bottom": 0.65144
+        }
+      },
+      "butterflyPerch": {
+        "center": {
+          "x": 0.195,
+          "y": 0.549
+        },
+        "size": {
+          "width": 0.16,
+          "height": 0.07393364928909953
+        },
+        "rotationDegrees": -25
+      }
+    },
+    {
+      "id": "memory",
+      "label": "记忆",
+      "previewIndex": 5,
+      "asset": "memory",
+      "center": {
+        "x": 0.3,
+        "y": 0.272
+      },
+      "frame": {
+        "x": 0.192308,
+        "y": 0.222237,
+        "width": 0.215385,
+        "height": 0.099526
+      },
+      "hitFrame": {
+        "x": 0.19,
+        "y": 0.221,
+        "width": 0.22,
+        "height": 0.102
+      },
+      "zIndex": 2,
+      "tag": {
+        "asset": "tag-memory",
+        "text": "记忆",
+        "frame": {
+          "x": 0.247974,
+          "y": 0.348005,
+          "width": 0.08205128205128205,
+          "height": 0.08056872037914692
+        },
+        "textInsetPoints": {
+          "top": 12,
+          "right": 8,
+          "bottom": 17,
+          "left": 8
+        },
+        "string": {
+          "x": 0.289,
+          "top": 0.314593,
+          "bottom": 0.35156
+        }
+      },
+      "butterflyPerch": {
+        "center": {
+          "x": 0.235,
+          "y": 0.243
+        },
+        "size": {
+          "width": 0.16,
+          "height": 0.07393364928909953
+        },
+        "rotationDegrees": -25
+      }
+    }
+  ],
+  "butterfly": {
+    "assets": [
+      "wing-left",
+      "wing-right",
+      "body"
+    ],
+    "frameSize": {
+      "width": 0.16,
+      "height": 0.07393364928909953
+    },
+    "localLayers": {
+      "wing-left": {
+        "frame": {
+          "x": 0,
+          "y": 0,
+          "width": 1,
+          "height": 1
+        },
+        "anchor": {
+          "x": 0.48,
+          "y": 0.51
+        }
+      },
+      "wing-right": {
+        "frame": {
+          "x": 0,
+          "y": 0,
+          "width": 1,
+          "height": 1
+        },
+        "anchor": {
+          "x": 0.51,
+          "y": 0.51
+        }
+      },
+      "body": {
+        "frame": {
+          "x": 0.08,
+          "y": 0.025,
+          "width": 0.84,
+          "height": 0.84
+        },
+        "anchor": {
+          "x": 0.5,
+          "y": 0.5
+        }
+      }
+    },
+    "zIndex": 4
+  },
+  "petals": {
+    "assets": [
+      "petal-01",
+      "petal-02",
+      "petal-03"
+    ],
+    "sizeWidthRange": [
+      0.035,
+      0.065
+    ],
+    "zIndex": 3
+  },
+  "card": {
+    "frame": {
+      "x": 0.13,
+      "y": 0.77,
+      "width": 0.79,
+      "height": 0.11
+    },
+    "frameAsset": "diamond-frame",
+    "frameCenter": {
+      "x": 0.23665,
+      "y": 0.825
+    },
+    "frameSize": {
+      "width": 0.328205,
+      "height": 0.151659
+    },
+    "imageMask": "diamond",
+    "imageSource": "use selected content thumbnail; preview only uses decorative flowers"
+  },
+  "renderingOrder": [
+    "baseColor",
+    "background",
+    "stem",
+    "flowers",
+    "tags-and-strings",
+    "petals",
+    "butterfly",
+    "card",
+    "navigation"
+  ],
+  "assets": {
+    "stem": {
+      "file": "assets/stem@3x.png",
+      "logicalSize": {
+        "width": 390,
+        "height": 702
+      },
+      "pixelSize": {
+        "width": 1170,
+        "height": 2106
+      },
+      "scale": 3,
+      "kind": "imagegen-separated-layer",
+      "alpha": {
+        "transparentPixels": 2129414,
+        "partialPixels": 333886
+      },
+      "contentBoundsPixels": {
+        "x": 94,
+        "y": 0,
+        "width": 1076,
+        "height": 1696
+      }
+    },
+    "background": {
+      "file": "assets/background@3x.png",
+      "logicalSize": {
+        "width": 390,
+        "height": 844
+      },
+      "pixelSize": {
+        "width": 1170,
+        "height": 2532
+      },
+      "scale": 3,
+      "kind": "imagegen-separated-layer",
+      "alpha": {
+        "transparentPixels": 807086,
+        "partialPixels": 2155354
+      },
+      "contentBoundsPixels": {
+        "x": 0,
+        "y": 0,
+        "width": 1170,
+        "height": 2532
+      }
+    },
+    "diary": {
+      "file": "assets/diary@3x.png",
+      "logicalSize": {
+        "width": 116,
+        "height": 116
+      },
+      "pixelSize": {
+        "width": 348,
+        "height": 348
+      },
+      "scale": 3,
+      "kind": "imagegen-separated-layer",
+      "alpha": {
+        "transparentPixels": 59159,
+        "partialPixels": 61322
+      },
+      "contentBoundsPixels": {
+        "x": 16,
+        "y": 38,
+        "width": 319,
+        "height": 276
+      }
+    },
+    "dream": {
+      "file": "assets/dream@3x.png",
+      "logicalSize": {
+        "width": 116,
+        "height": 116
+      },
+      "pixelSize": {
+        "width": 348,
+        "height": 348
+      },
+      "scale": 3,
+      "kind": "imagegen-separated-layer",
+      "alpha": {
+        "transparentPixels": 57073,
+        "partialPixels": 63384
+      },
+      "contentBoundsPixels": {
+        "x": 18,
+        "y": 39,
+        "width": 320,
+        "height": 276
+      }
+    },
+    "drawer": {
+      "file": "assets/drawer@3x.png",
+      "logicalSize": {
+        "width": 120,
+        "height": 120
+      },
+      "pixelSize": {
+        "width": 360,
+        "height": 360
+      },
+      "scale": 3,
+      "kind": "imagegen-separated-layer",
+      "alpha": {
+        "transparentPixels": 60418,
+        "partialPixels": 68513
+      },
+      "contentBoundsPixels": {
+        "x": 23,
+        "y": 32,
+        "width": 327,
+        "height": 298
+      }
+    },
+    "tarot": {
+      "file": "assets/tarot@3x.png",
+      "logicalSize": {
+        "width": 112,
+        "height": 112
+      },
+      "pixelSize": {
+        "width": 336,
+        "height": 336
+      },
+      "scale": 3,
+      "kind": "imagegen-separated-layer",
+      "alpha": {
+        "transparentPixels": 66500,
+        "partialPixels": 45833
+      },
+      "contentBoundsPixels": {
+        "x": 36,
+        "y": 44,
+        "width": 272,
+        "height": 259
+      }
+    },
+    "moments": {
+      "file": "assets/moments@3x.png",
+      "logicalSize": {
+        "width": 118,
+        "height": 118
+      },
+      "pixelSize": {
+        "width": 354,
+        "height": 354
+      },
+      "scale": 3,
+      "kind": "imagegen-separated-layer",
+      "alpha": {
+        "transparentPixels": 62209,
+        "partialPixels": 62461
+      },
+      "contentBoundsPixels": {
+        "x": 18,
+        "y": 44,
+        "width": 320,
+        "height": 286
+      }
+    },
+    "memory": {
+      "file": "assets/memory@3x.png",
+      "logicalSize": {
+        "width": 84,
+        "height": 84
+      },
+      "pixelSize": {
+        "width": 252,
+        "height": 252
+      },
+      "scale": 3,
+      "kind": "imagegen-separated-layer",
+      "alpha": {
+        "transparentPixels": 35161,
+        "partialPixels": 27905
+      },
+      "contentBoundsPixels": {
+        "x": 26,
+        "y": 29,
+        "width": 203,
+        "height": 200
+      }
+    },
+    "wing-left": {
+      "file": "assets/wing-left@3x.png",
+      "logicalSize": {
+        "width": 64,
+        "height": 64
+      },
+      "pixelSize": {
+        "width": 192,
+        "height": 192
+      },
+      "scale": 3,
+      "kind": "imagegen-separated-layer",
+      "alpha": {
+        "transparentPixels": 28198,
+        "partialPixels": 8386
+      },
+      "contentBoundsPixels": {
+        "x": 2,
+        "y": 26,
+        "width": 92,
+        "height": 143
+      }
+    },
+    "wing-right": {
+      "file": "assets/wing-right@3x.png",
+      "logicalSize": {
+        "width": 64,
+        "height": 64
+      },
+      "pixelSize": {
+        "width": 192,
+        "height": 192
+      },
+      "scale": 3,
+      "kind": "imagegen-separated-layer",
+      "alpha": {
+        "transparentPixels": 28275,
+        "partialPixels": 8321
+      },
+      "contentBoundsPixels": {
+        "x": 98,
+        "y": 26,
+        "width": 91,
+        "height": 142
+      }
+    },
+    "body": {
+      "file": "assets/body@3x.png",
+      "logicalSize": {
+        "width": 64,
+        "height": 64
+      },
+      "pixelSize": {
+        "width": 192,
+        "height": 192
+      },
+      "scale": 3,
+      "kind": "imagegen-separated-layer",
+      "alpha": {
+        "transparentPixels": 35382,
+        "partialPixels": 1340
+      },
+      "contentBoundsPixels": {
+        "x": 66,
+        "y": 34,
+        "width": 59,
+        "height": 129
+      }
+    },
+    "petal-01": {
+      "file": "assets/petal-01@3x.png",
+      "logicalSize": {
+        "width": 32,
+        "height": 32
+      },
+      "pixelSize": {
+        "width": 96,
+        "height": 96
+      },
+      "scale": 3,
+      "kind": "imagegen-separated-layer",
+      "alpha": {
+        "transparentPixels": 7446,
+        "partialPixels": 1637
+      },
+      "contentBoundsPixels": {
+        "x": 14,
+        "y": 15,
+        "width": 71,
+        "height": 64
+      }
+    },
+    "petal-02": {
+      "file": "assets/petal-02@3x.png",
+      "logicalSize": {
+        "width": 32,
+        "height": 32
+      },
+      "pixelSize": {
+        "width": 96,
+        "height": 96
+      },
+      "scale": 3,
+      "kind": "imagegen-separated-layer",
+      "alpha": {
+        "transparentPixels": 6529,
+        "partialPixels": 2546
+      },
+      "contentBoundsPixels": {
+        "x": 19,
+        "y": 12,
+        "width": 69,
+        "height": 71
+      }
+    },
+    "petal-03": {
+      "file": "assets/petal-03@3x.png",
+      "logicalSize": {
+        "width": 32,
+        "height": 32
+      },
+      "pixelSize": {
+        "width": 96,
+        "height": 96
+      },
+      "scale": 3,
+      "kind": "imagegen-separated-layer",
+      "alpha": {
+        "transparentPixels": 8066,
+        "partialPixels": 1043
+      },
+      "contentBoundsPixels": {
+        "x": 22,
+        "y": 13,
+        "width": 54,
+        "height": 69
+      }
+    },
+    "tag-diary": {
+      "file": "assets/tag-diary@3x.png",
+      "logicalSize": {
+        "width": 32,
+        "height": 68
+      },
+      "pixelSize": {
+        "width": 96,
+        "height": 204
+      },
+      "scale": 3,
+      "kind": "code-native-ui-shape",
+      "alpha": {
+        "transparentPixels": 5100,
+        "partialPixels": 12908
+      },
+      "contentBoundsPixels": {
+        "x": 9,
+        "y": 9,
+        "width": 78,
+        "height": 186
+      }
+    },
+    "tag-dream": {
+      "file": "assets/tag-dream@3x.png",
+      "logicalSize": {
+        "width": 32,
+        "height": 52
+      },
+      "pixelSize": {
+        "width": 96,
+        "height": 156
+      },
+      "scale": 3,
+      "kind": "code-native-ui-shape",
+      "alpha": {
+        "transparentPixels": 4236,
+        "partialPixels": 9452
+      },
+      "contentBoundsPixels": {
+        "x": 9,
+        "y": 9,
+        "width": 78,
+        "height": 138
+      }
+    },
+    "tag-drawer": {
+      "file": "assets/tag-drawer@3x.png",
+      "logicalSize": {
+        "width": 32,
+        "height": 68
+      },
+      "pixelSize": {
+        "width": 96,
+        "height": 204
+      },
+      "scale": 3,
+      "kind": "code-native-ui-shape",
+      "alpha": {
+        "transparentPixels": 5100,
+        "partialPixels": 12908
+      },
+      "contentBoundsPixels": {
+        "x": 9,
+        "y": 9,
+        "width": 78,
+        "height": 186
+      }
+    },
+    "tag-tarot": {
+      "file": "assets/tag-tarot@3x.png",
+      "logicalSize": {
+        "width": 32,
+        "height": 68
+      },
+      "pixelSize": {
+        "width": 96,
+        "height": 204
+      },
+      "scale": 3,
+      "kind": "code-native-ui-shape",
+      "alpha": {
+        "transparentPixels": 5100,
+        "partialPixels": 12908
+      },
+      "contentBoundsPixels": {
+        "x": 9,
+        "y": 9,
+        "width": 78,
+        "height": 186
+      }
+    },
+    "tag-moments": {
+      "file": "assets/tag-moments@3x.png",
+      "logicalSize": {
+        "width": 32,
+        "height": 84
+      },
+      "pixelSize": {
+        "width": 96,
+        "height": 252
+      },
+      "scale": 3,
+      "kind": "code-native-ui-shape",
+      "alpha": {
+        "transparentPixels": 5964,
+        "partialPixels": 16364
+      },
+      "contentBoundsPixels": {
+        "x": 9,
+        "y": 9,
+        "width": 78,
+        "height": 234
+      }
+    },
+    "tag-memory": {
+      "file": "assets/tag-memory@3x.png",
+      "logicalSize": {
+        "width": 32,
+        "height": 68
+      },
+      "pixelSize": {
+        "width": 96,
+        "height": 204
+      },
+      "scale": 3,
+      "kind": "code-native-ui-shape",
+      "alpha": {
+        "transparentPixels": 5100,
+        "partialPixels": 12908
+      },
+      "contentBoundsPixels": {
+        "x": 9,
+        "y": 9,
+        "width": 78,
+        "height": 186
+      }
+    },
+    "diamond-frame": {
+      "file": "assets/diamond-frame@3x.png",
+      "logicalSize": {
+        "width": 128,
+        "height": 128
+      },
+      "pixelSize": {
+        "width": 384,
+        "height": 384
+      },
+      "scale": 3,
+      "kind": "code-native-ui-shape",
+      "alpha": {
+        "transparentPixels": 122700,
+        "partialPixels": 24756
+      },
+      "contentBoundsPixels": {
+        "x": 0,
+        "y": 0,
+        "width": 384,
+        "height": 384
+      }
+    }
+  }
+}

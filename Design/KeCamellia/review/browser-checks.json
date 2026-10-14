@@ -1,0 +1,24 @@
+{
+  "date": "2026-10-14",
+  "preview": "local HTTP delivery directory, using in-app browser",
+  "checked": [
+    "Frozen preview image load, visible branch motion, zero captured console errors",
+    "Layer preview desktop composition and no missing images",
+    "New moments event: butterfly target moments, card title 柯刚刚分享, matching excerpt after flight",
+    "All six flower selectors while paused: matching selected ID, title and announcement",
+    "390×844 viewport: no horizontal overflow, six accessible button labels",
+    "Pause/resume control state"
+  ],
+  "screenshots": [
+    "approved-preview.jpg",
+    "layers-diary.jpg",
+    "layers-moments.jpg"
+  ],
+  "notChecked": [
+    "Native iOS integration",
+    "Real server event ingestion",
+    "Sustained battery/frame-rate measurement",
+    "Automated file-scheme browser execution",
+    "Full assistive-technology testing"
+  ]
+}

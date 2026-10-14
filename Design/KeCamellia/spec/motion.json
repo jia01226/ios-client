@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "implementedFrozenPreview": {
+    "branch": {
+      "anchor": [
+        0.95,
+        0
+      ],
+      "rotationDegrees": [
+        -0.48,
+        0.58
+      ],
+      "periodMs": 9000,
+      "easing": "ease-in-out",
+      "children": "branch, flower hit areas, tags, butterfly"
+    },
+    "butterfly": {
+      "durationMs": 3000,
+      "easing": "smoothstep t*t*(3-2*t)",
+      "path": "lerp(start,end,t) + [side*0.105*sin(pi*t), -0.06*sin(pi*t)] in normalized artboard",
+      "wingYDegrees": {
+        "left": [
+          12,
+          66
+        ],
+        "right": [
+          -12,
+          -66
+        ]
+      },
+      "idleWingPeriodMs": 1900,
+      "flyingWingPeriodMs": 220,
+      "bodyRotationDegrees": -25,
+      "firstDwellMs": 6500,
+      "nextFlightIntervalMs": 9500,
+      "autoTourOnly": true
+    },
+    "petals": "Original background petals are static.",
+    "pageExpansion": false
+  },
+  "layerPreview": {
+    "eventSource": "in-memory fixtures only; no network/storage",
+    "autoTour": false,
+    "cardCommit": "on arrival; latest event wins; interruption starts at current position",
+    "petals": {
+      "intervalMs": 5500,
+      "lifetimeMs": 11000,
+      "maxConcurrent": 3,
+      "widthNormalized": [
+        0.035,
+        0.065
+      ],
+      "opacity": 0.55,
+      "travelX": -0.18,
+      "travelY": 0.65,
+      "rotationDegrees": [
+        -15,
+        80
+      ]
+    },
+    "wingBodyRegistration": "layout.json butterfly.localLayers"
+  },
+  "proposedProduction": {
+    "autoTour": false,
+    "eventDriven": true,
+    "pauseWhen": [
+      "scene inactive",
+      "backgrounded",
+      "offscreen",
+      "user pauses"
+    ],
+    "reduceMotion": "No branch sway, wing flap or falling petals; instant perch change; 120ms page crossfade.",
+    "avoid": "Do not write fixture content into user data or infer unread state from animation."
+  },
+  "proposedPageExpansion": {
+    "implemented": false,
+    "press": {
+      "scale": 0.97,
+      "durationMs": 100
+    },
+    "transition": {
+      "durationMs": 420,
+      "easing": "cubic-bezier(.22,1,.36,1)",
+      "source": "selected flower frame",
+      "decorationFadeMs": 180,
+      "contentFadeDelayMs": 120
+    },
+    "navigationWaitsForFullButterflyFlight": false,
+    "return": "reverse transition; retain selected event and perch; no autoplay reset"
+  }
+}

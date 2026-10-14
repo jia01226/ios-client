@@ -1,0 +1,23 @@
+{
+  "date": "2026-10-14",
+  "result": "pass",
+  "transparent3xPNGs": 21,
+  "assetsWithPartialAlpha": 21,
+  "checks": [
+    "all @3x dimensions",
+    "real transparent pixels",
+    "six stable IDs and final labels",
+    "normalized flower/tag/hit/perch coordinates",
+    "JSON and offline JS manifest identical",
+    "local HTML/CSS references exist",
+    "no network or storage in previews",
+    "JavaScript parse",
+    "tag/frame native shapes contain no text nodes"
+  ],
+  "limitations": [
+    "Imagegen layers are reconstructed, not lossless original-layer extraction.",
+    "No native app build or device testing.",
+    "File-open execution not automated in browser; previews use classic local scripts without fetch/modules.",
+    "This report is static validation, not a performance benchmark."
+  ]
+}

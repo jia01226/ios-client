@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#edf6fc">
+  <title>柯的 · 山茶微风</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="preview">
+    <section class="phone" aria-label="柯的页面动效预览">
+      <div class="light" aria-hidden="true"></div>
+      <div class="branch-shadow" aria-hidden="true"></div>
+      <header class="status"><span>21:08</span><span class="signals" aria-hidden="true"><span class="signal"><i></i><i></i><i></i><i></i></span><svg viewBox="0 0 24 20"><path d="M2 5Q12-3 22 5M6 10Q12 5 18 10M10 15Q12 13 14 15"/></svg><span class="battery"></span></span></header>
+      <div class="garden">
+        <img class="branch" src="branch-six-light-sage.png" alt="六朵淡粉山茶与浅鼠尾草绿叶沿细枝开放，中段左侧记忆花朵由自然下弯的细枝连接主枝">
+        <div class="flowers">
+          <button class="flower" data-flower="0" style="--x:81;--y:14.2;--tx:18;--ty:90" aria-label="日记，让蝴蝶飞到这朵花"><span class="tag">日记</span></button>
+          <button class="flower" data-flower="1" style="--x:66;--y:27;--tx:11;--ty:82" aria-label="梦，让蝴蝶飞到这朵花"><span class="tag">梦</span></button>
+          <button class="flower" data-flower="2" style="--x:47;--y:40.3;--tx:15;--ty:83" aria-label="抽屉，让蝴蝶飞到这朵花"><span class="tag">抽屉</span></button>
+          <button class="flower" data-flower="3" style="--x:83;--y:46.2;--tx:0;--ty:78" aria-label="塔罗，让蝴蝶飞到这朵花"><span class="tag">塔罗</span></button>
+          <button class="flower" data-flower="4" style="--x:26;--y:57.8;--tx:0;--ty:72" aria-label="朋友圈，让蝴蝶飞到这朵花"><span class="tag">朋友圈</span></button>
+          <button class="flower" data-flower="5" style="--x:30;--y:27.2;--tx:-5;--ty:78" aria-label="记忆，让蝴蝶飞到这朵花"><span class="tag">记忆</span></button>
+        </div>
+        <div class="butterfly" aria-hidden="true"><div class="butterfly-shape"><img class="wing left" src="butterfly.png" alt=""><img class="wing right" src="butterfly.png" alt=""><img class="body" src="butterfly.png" alt=""></div></div>
+      </div>
+      <article class="diary"><div class="photo" aria-hidden="true"><div></div></div><div class="diary-copy"><h1>柯刚刚写下</h1><p>今晚的月色，让我想起你。</p><time>十分钟前</time></div></article>
+      <nav class="navigation" aria-label="App 导航示意"><div><svg viewBox="0 0 32 32"><path d="M26 14c0 7-7 12-15 9l-6 3 2-7C2 9 9 3 16 4s10 5 10 10Z"/></svg><span>聊天</span></div><div class="selected" aria-current="page"><svg viewBox="0 0 32 32"><path d="M16 16C4 14 7 4 11 5s5 6 5 11C16 4 27 4 27 10s-7 6-11 6c12 2 9 13 4 11s-4-7-4-11c0 12-12 11-12 5s7-5 12-5Z"/></svg><span>柯的</span></div><div><svg viewBox="0 0 32 32"><path d="M20 12a6 6 0 1 0-10 0M6 27v-4c0-9 16-9 16 0v4ZM24 10c6 0 6 9 1 10 5 1 6 4 6 7h-6"/></svg><span>我们</span></div></nav>
+    </section>
+    <aside class="controls"><button id="pause" type="button" aria-pressed="false">暂停动效</button><p>点一朵花，蝴蝶会飞过去。</p><span id="selection" aria-live="polite">蝴蝶停在梦上</span></aside>
+  </main>
+  <script src="motion.js"></script>
+</body>
+</html>
