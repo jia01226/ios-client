@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#eaf4fb">
+  <title>我们 · 月下游鱼</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="palettes.css">
+  <script src="palettes.js" defer></script>
+  <link rel="stylesheet" href="calendar-ui.css">
+  <link rel="stylesheet" href="notebooks.css">
+  <script src="calendar-model.js" defer></script>
+  <script src="calendar-ui.js" defer></script>
+  <script src="fish-motion.js" defer></script>
+  <script src="app.js" defer></script>
+  <script src="notebooks.js" defer></script>
+</head>
+<body>
+<!-- THESIS: Faithful living version of the user's pale-blue pond reference, not a new dashboard.
+OWN-WORLD: Porcelain blue water, blush koi and petals, navy Song typography, French script, fine rules.
+STORY: Read a shared verse, explore an illustrative calendar, watch two koi swim between four open-water entries.
+FIRST VIEWPORT: One portrait page; verse above calendar, pond below, three-tab footer. Signature interaction: articulated koi glide and turn through water; a tap makes ripples.
+FORM: User-pinned reference / code-led / seed: user-reference-8f1ccaf1.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance -->
+  <aside class="preview-tools" aria-label="预览工具">
+    <span>我们 · 月下游鱼</span><button id="motionToggle" aria-pressed="false">暂停动效</button>
+    <small>示例预览 · 点日期排班、记月经 · 上下滑动切换纪念日 · 刷新重置</small>
+  </aside>
+  <main class="phone" aria-label="我们的月光水面">
+    <div class="status" aria-hidden="true"><span>09:41</span><span class="status-icons">▂▅▇ <span class="wifi">⌁</span> <span class="battery">100</span></span></div>
+    <section class="verse" aria-labelledby="verseTitle">
+      <h2 class="section-title" id="verseTitle">寄语 <i>·</i> <span>VERSE</span><b></b></h2>
+      <p class="script">With you, even ordinary days shine.</p>
+      <p class="verse-cn">和你一起，平常的日子也有光。</p>
+      <p class="together">在一起 <strong>111</strong> 天</p>
+      <img class="moon" src="assets/moon.png" alt="" draggable="false">
+    </section>
+    <section class="calendar" aria-labelledby="calendarTitle">
+      <h2 class="section-title" id="calendarTitle">这个月 <i>·</i> <span>NOTRE MOIS</span><b></b><button id="schedule">写班表</button></h2>
+      <div class="month-heading"><h3 id="monthLabel">2026 · 十月</h3><div><button id="previousMonth" aria-label="上个月">‹</button><button id="nextMonth" aria-label="下个月">›</button></div></div>
+      <div class="weekdays" aria-hidden="true"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+      <div id="days" class="days" role="group" aria-label="日期"></div>
+      <div class="calendar-bottom"><button id="dayNote">14日 · 今日记事</button><div class="legend"><span><i class="today-dot"></i>今天</span><span><i class="period-dot"></i>月经</span><span><i class="anniversary">☾</i>纪念日</span></div></div>
+    </section>
+    <section class="also" aria-labelledby="alsoTitle">
+      <h2 class="section-title" id="alsoTitle">也去看看 <i>·</i> <span>ALSO HERE</span><b></b></h2>
+      <div class="pond" id="pond">
+        <canvas id="water" aria-label="两条粉白锦鲤在水中缓缓游动，轻触水面泛起涟漪" role="img"></canvas>
+        <button class="water-entry purse" data-name="荷包" data-description="一起存下的小心愿，都收在这里。" aria-label="荷包，演示入口"><span>荷包</span><span class="reflection" aria-hidden="true">荷包</span><em>Bourse</em></button>
+        <button class="water-entry menu" data-name="食单" data-description="把想一起吃的饭，慢慢记下来。" aria-label="食单，演示入口"><span>食单</span><span class="reflection" aria-hidden="true">食单</span><em>Menu</em></button>
+        <button class="water-entry notes" data-name="纸条" data-description="那些突然想说的话，留一张小纸条给你。" aria-label="纸条，演示入口"><span>纸条</span><span class="reflection" aria-hidden="true">纸条</span><em>Billets</em></button>
+        <button class="water-entry remedy" data-name="药盒" data-description="日常照顾的小记录，可以放在这里。" aria-label="药盒，演示入口"><span>药盒</span><span class="reflection" aria-hidden="true">药盒</span><em>Remèdes</em></button>
+      </div>
+    </section>
+    <nav class="bottom-nav" aria-label="主导航"><button data-tab="柯">柯</button><button aria-current="page" data-tab="我们">我们<i></i></button><button data-tab="柯的">柯的</button></nav>
+  </main>
+  <dialog id="sheet" aria-labelledby="sheetTitle"><button class="close" aria-label="返回月光水面">完成</button><h2 id="sheetTitle"></h2><p id="sheetText"></p><div id="sheetExtra"></div><p id="saveStatus" class="save-status" role="status" aria-live="polite"></p><p class="demo-notice">只试示例内容，刷新后重置。不上传、不与 App 同步。</p></dialog>
+  <p id="pageStatus" class="sr-only" role="status" aria-live="polite"></p>
+</body></html>

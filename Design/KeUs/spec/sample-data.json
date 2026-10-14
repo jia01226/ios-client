@@ -1,0 +1,17 @@
+{
+  "verse":{"en":"With you, even ordinary days shine.","zh":"和你一起，平常的日子也有光。","daysTogether":111},
+  "moon":{"nextAnniversary":"在一起 120 天","daysLeft":9,"phase":0.7},
+  "calendar":{"month":"2026-10","days":[
+    {"date":"2026-10-12","today":false,"period":false,"shift":"早班","anniversary":null,"private":false},
+    {"date":"2026-10-13","today":false,"period":false,"shift":"副班","anniversary":null,"private":false},
+    {"date":"2026-10-14","today":true,"period":false,"shift":"","anniversary":null,"private":false},
+    {"date":"2026-10-15","today":false,"period":false,"shift":"正常班","anniversary":null,"private":false}
+  ]},
+  "dayDetail":{"date":"2026-10-14","notes":["示例记事"],"billets":["示例纸条"]},
+  "entries":[
+    {"id":"entry-purse","title":"荷包","sub":"Bourse","badge":"还能花 ¥1,860","fresh":false},
+    {"id":"entry-menu","title":"食单","sub":"Menu","badge":"虾滑蒸蛋 · 好吃","fresh":true},
+    {"id":"entry-notes","title":"纸条","sub":"Billets","badge":null,"fresh":false},
+    {"id":"entry-meds","title":"药盒","sub":"Remèdes","badge":"今晚的还没吃","fresh":false}
+  ]
+}

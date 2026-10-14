@@ -1,0 +1,52 @@
+[hidden]{display:none!important}
+.notebook{font-size:var(--type-body,16px);line-height:var(--leading-body,26px)}
+.notebook{padding:0 28px 28px;min-height:100dvh;font-size:16px;line-height:1.65}
+.notebook::before{opacity:.12;background-size:auto 100%;filter:grayscale(1)}
+.book-top{display:flex;justify-content:space-between;align-items:center;padding-top:8px}
+.book-action,.book-back{font-size:13px;min-height:44px;padding:8px 0;color:var(--muted);text-underline-offset:4px}
+.book-action:hover,.book-back:hover{text-decoration:underline}
+.book-back{color:var(--ink)}
+.book-title{margin:24px 0 16px}.book-title h1{font-size:28px;line-height:40px;font-weight:400;letter-spacing:2px;margin:0}.book-script{font:27px/1.5 PondPinyon,cursive;color:var(--muted);margin:0}
+.notebook .book-title{padding-bottom:20px;margin-bottom:28px;border-bottom:1px solid var(--line)}
+.book-section{margin-top:28px}.book-section-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:4px}.book-section h2{font-weight:400;font-size:17px;letter-spacing:1px;line-height:26px;margin:0}.book-section-heading .book-action{font-size:12px}
+.record-row{display:flex;flex-direction:column;text-align:left;width:100%;padding:17px 0;gap:7px;border-bottom:1px solid var(--line);font-size:16px;line-height:1.65;min-width:0}.record-row:active{transform:none;background:color-mix(in srgb,var(--accent) 5%,transparent)}
+.record-line{display:flex;align-items:baseline;justify-content:space-between;gap:14px;width:100%;min-width:0}.record-title{overflow-wrap:anywhere}.record-meta{font:400 14px/1.5 Baskerville,'Times New Roman',serif;white-space:nowrap;color:var(--muted);flex-shrink:0;font-variant-numeric:tabular-nums}
+.author-label{display:inline-flex;align-self:flex-start;align-items:center;font:12px/18px system-ui,sans-serif;padding:1px 6px;border-radius:3px;white-space:nowrap}.author-label small{font:inherit}.by-ke{color:var(--author-ke);background:var(--author-ke-bg)}.by-user{color:var(--author-user);background:var(--author-user-bg)}
+.record-detail{font-size:14px;line-height:1.8;color:var(--muted);overflow-wrap:anywhere}.record-state{font-size:12px;color:var(--muted)}
+.balance-section{padding-bottom:20px;border-bottom:1px solid var(--line)}.balance-label{margin:0;font-size:14px;color:var(--muted)}.balance-number{margin:2px 0 12px;font:400 40px/1.35 Baskerville,'Times New Roman',serif;font-variant-numeric:tabular-nums}.balance-footer{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12px;color:var(--muted)}.balance-footer button{font-size:12px}.balance-section .author-label{margin-top:8px}
+.meal-caption{display:flex;gap:12px;align-items:center;font-size:12px;color:var(--muted)}.rating-good{color:var(--positive)}.rating-bad{color:var(--negative)}
+.check-row{display:flex;align-items:flex-start;gap:10px}.check-row .record-row{flex:1}.check-target{min-width:34px;min-height:44px;display:grid;place-items:center;margin-top:9px;cursor:pointer}.check-target input{width:18px;height:18px;margin:0;accent-color:var(--accent)}.completed .record-title{text-decoration:line-through;color:var(--muted)}
+.book-lead{font-size:14px;color:var(--muted);margin:0 0 24px}.book-empty{font-size:14px;color:var(--muted);padding:20px 0}
+.stopped-meds,.completed-notes{margin-top:28px}.stopped-meds summary,.completed-notes summary{min-height:44px;padding:10px 0;font-size:14px;color:var(--muted);cursor:pointer}
+.sticky-note{padding:8px 16px 16px;margin:14px 0;background:var(--author-ke-bg);border-radius:2px;box-shadow:0 5px 12px #233a4710}.sticky-note.note-user{background:var(--author-user-bg)}.sticky-note .record-row{border-bottom:0;padding:12px 0}.sticky-note .check-target{margin-top:5px}.note-detail{font-size:14px;color:var(--muted);margin:0 0 8px 44px;white-space:pre-wrap;overflow-wrap:anywhere}.note-time{font:12px/1.6 Baskerville,serif;color:var(--muted);margin:0 0 0 44px}
+.book-demo{font:11px/1.8 system-ui,sans-serif;margin:36px 0 4px;color:var(--muted)}.book-feedback{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px);background:var(--surface);color:var(--ink);border:1px solid var(--line);padding:8px 16px;z-index:10;font-size:13px}.book-feedback button{margin-left:16px}
+.today-meds{margin-top:0}.medicine-dose-group{padding:10px 0 18px;border-bottom:1px solid var(--line)}.dose-check{display:flex;align-items:center;gap:12px;min-height:44px;cursor:pointer;font-size:16px}.dose-check input{width:18px;height:18px;accent-color:var(--accent);flex-shrink:0}.dose-check small{font-size:12px;color:var(--muted);margin-left:auto}.dose-names{font-size:14px;color:var(--muted);margin:0 0 8px 30px}.dose-authors{display:flex;gap:8px;margin-left:30px}.book-help{font-size:12px;color:var(--muted);margin:0 0 6px}.record-detail{white-space:pre-wrap}
+.record-form{margin-top:20px}.field-label select{width:100%;min-height:44px;padding:8px 12px;font:16px/1.5 'Songti SC',serif;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink)}
+.delete-action{color:var(--negative);font-size:14px;min-height:44px;margin-top:12px;padding:8px 0}.delete-confirm{border-top:1px solid var(--line);margin-top:16px}.delete-confirm .book-action{margin-right:24px}.delete-confirm p{margin-bottom:0}
+.field-label,.field-label input,.field-label textarea{color:var(--ink)}.field-label input,.field-label textarea{border-color:var(--line);background:var(--surface)}.primary-action{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}.primary-action:hover{background:var(--accent);filter:brightness(.94)}
+.quick-choice[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}.period-button{color:var(--period-text);background:var(--pink);border-color:var(--line)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
+@media(max-width:360px){.notebook{padding-inline:22px}.record-line{flex-wrap:wrap;gap:4px 12px}.balance-footer{flex-wrap:wrap;gap:0 10px}}
+.book-title h1{font-size:var(--type-page-title);line-height:var(--leading-page-title)}
+.book-title h1[tabindex="-1"]:focus{outline:none}
+.book-script{font-size:var(--type-script-subtitle);line-height:var(--leading-script-subtitle)}
+.book-section h2{font-size:var(--type-section-title);line-height:var(--leading-section-title)}
+.record-row{font-size:var(--type-body);line-height:var(--leading-body)}
+.author-label{font-size:var(--type-author);line-height:var(--leading-author)}
+.balance-number{font-size:var(--type-amount);line-height:var(--leading-amount)}
+.balance-visual{padding:20px 18px;background:color-mix(in srgb,var(--surface) 80%,transparent);border:1px solid color-mix(in srgb,var(--line) 30%,transparent);border-radius:14px}
+.balance-visual .balance-number{margin:3px 0 16px}
+.money-progress{width:100%;height:6px;overflow:hidden;border-radius:3px;background:var(--progress-track)}
+.money-progress-fill{height:100%;display:block;border-radius:inherit;background:var(--accent)}
+.saving-progress .money-progress-fill{background:var(--saving-accent)}
+.balance-visual .balance-footer{margin-top:4px;align-items:center}
+.balance-visual .balance-footer button{min-height:44px}
+.balance-visual .author-label{margin-top:0}
+.saving-summary{margin-top:18px;padding-top:12px;border-top:1px solid color-mix(in srgb,var(--line) 35%,transparent)}
+.saving-edit{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;width:100%;min-height:44px;text-align:left;flex-wrap:wrap;font-size:13px;line-height:1.6;padding:4px 0 10px}
+.saving-edit:hover .saving-name{text-decoration:underline;text-underline-offset:4px}
+.saving-amount{font-family:Baskerville,'Times New Roman',serif;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--muted)}
+.saving-summary .author-label{margin-top:10px}
+.purse-help{margin:14px 0 0}
+.over-budget{color:var(--negative)}
+@media(max-width:360px){.balance-visual{padding:18px 14px}.balance-visual .balance-footer{align-items:baseline}.saving-edit{gap:2px 10px}}

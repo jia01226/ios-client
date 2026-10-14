@@ -1,0 +1,11 @@
+{
+  "asOf":"2026-10-14",
+  "shifts":["早班","副班","正常班"],
+  "periods":[{"start":"2026-10-05","end":"2026-10-09"}],
+  "anniversaries":[
+    {"id":"together","title":"在一起","date":"2026-06-25","annual":false},
+    {"id":"confession","title":"表白日","date":"2026-06-15","annual":false},
+    {"id":"birthday-me","title":"我的生日","date":"2000-11-16","annual":true},
+    {"id":"birthday-ke","title":"柯的生日","date":"2000-12-21","annual":true}
+  ]
+}
