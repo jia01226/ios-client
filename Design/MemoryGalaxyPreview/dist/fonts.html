@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>星图 · 花体挑选</title>
+<style>
+@font-face{font-family:Pinyon;src:url('assets/PinyonScript-Regular.ttf');font-display:swap}
+@font-face{font-family:Monsieur;src:url('assets/MonsieurLaDoulaise-Regular.ttf');font-display:swap}
+@font-face{font-family:Tangerine;src:url('assets/Tangerine-Regular.ttf');font-display:swap}
+@font-face{font-family:Italianno;src:url('assets/Italianno-Regular.ttf');font-display:swap}
+@font-face{font-family:GreatVibes;src:url('assets/GreatVibes-Regular.ttf');font-display:swap}
+@font-face{font-family:Parisienne;src:url('assets/Parisienne-Regular.ttf');font-display:swap}
+*{box-sizing:border-box}html{color-scheme:dark;background:#05070d;color:#ececf1;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif}body{margin:0}main{max-width:480px;margin:auto;padding:22px 24px 18px}h1{font-family:'Songti SC',serif;font-size:23px;font-weight:400;letter-spacing:.1em;margin:0 0 9px}header p{font-size:12px;color:#bbc0cf;line-height:1.7;margin:0 0 14px}.option{display:block;width:100%;border:0;border-top:1px solid #252a35;text-align:left;background:transparent;color:inherit;padding:10px 0 6px;cursor:pointer}.label{display:flex;justify-content:space-between;gap:8px;font-size:11px;line-height:17px;color:#bbc0cf}.number{font-variant-numeric:tabular-nums;color:#eee7ec;margin-right:8px}.sample{display:block;white-space:nowrap;font-weight:400;font-size:36px;line-height:1.6;letter-spacing:0;color:#f0eef3;padding-left:2px}.option[aria-pressed=true]{background:#b9b3cb0c}.option[aria-pressed=true] .label{color:#f1d4dd}.option:focus-visible{outline:1px solid #e6cfdb;outline-offset:4px}.option:hover .sample{color:#fff}footer{margin-top:10px;padding-top:12px;border-top:1px solid #252a35;font-size:11px;line-height:1.8;color:#bbc0cf}footer a{color:#e2d3df;text-underline-offset:4px}#choice{margin:0 0 4px;min-height:20px}::selection{background:#655768;color:white}@media(min-width:600px){main{padding-top:34px}.sample{font-size:44px}.option{padding-top:15px;padding-bottom:10px}}@media(max-width:350px){main{padding-left:20px;padding-right:20px}.sample{font-size:32px}.option{padding-top:8px;padding-bottom:5px}}
+</style>
+</head>
+<body><main>
+<header><h1>挑一款花体</h1><p>同一句英文 · 同一字号 · 星图夜色底<br>点击可标记喜欢的款式，不会改动星图。</p></header>
+<div aria-label="花体对照">
+<button class="option" aria-pressed="false" data-name="Pinyon Script"><span class="label"><span><span class="number">01</span>Pinyon Script</span><span>古典 · 流畅</span></span><span class="sample" style="font-family:Pinyon,cursive">A small universe of us</span></button>
+<button class="option" aria-pressed="false" data-name="Monsieur La Doulaise"><span class="label"><span><span class="number">02</span>Monsieur La Doulaise</span><span>卷曲 · 华丽</span></span><span class="sample" style="font-family:Monsieur,cursive">A small universe of us</span></button>
+<button class="option" aria-pressed="false" data-name="Tangerine"><span class="label"><span><span class="number">03</span>Tangerine</span><span>纤细 · 轻盈</span></span><span class="sample" style="font-family:Tangerine,cursive">A small universe of us</span></button>
+<button class="option" aria-pressed="false" data-name="Italianno"><span class="label"><span><span class="number">04</span>Italianno</span><span>舒展 · 克制</span></span><span class="sample" style="font-family:Italianno,cursive">A small universe of us</span></button>
+<button class="option" aria-pressed="false" data-name="Great Vibes"><span class="label"><span><span class="number">05</span>Great Vibes</span><span>连笔 · 丰盈</span></span><span class="sample" style="font-family:GreatVibes,cursive">A small universe of us</span></button>
+<button class="option" aria-pressed="false" data-name="Parisienne"><span class="label"><span><span class="number">06</span>Parisienne</span><span>自然 · 圆润</span></span><span class="sample" style="font-family:Parisienne,cursive">A small universe of us</span></button>
+</div>
+<footer><p id="choice" role="status">告诉我编号，选定后再放进星图。</p><a href="/">回到星图</a></footer>
+</main><script>
+const options=[...document.querySelectorAll('.option')];
+options.forEach((button,index)=>button.addEventListener('click',()=>{options.forEach(option=>option.setAttribute('aria-pressed',String(option===button)));document.getElementById('choice').textContent=`已标记 ${String(index+1).padStart(2,'0')} · ${button.dataset.name}，尚未应用。`;}));
+</script></body></html>

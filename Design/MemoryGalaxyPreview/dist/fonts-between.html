@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>花体 · 介于 02 和 04 之间</title>
+<style>
+@font-face{font-family:Monsieur;src:url('assets/MonsieurLaDoulaise-Regular.ttf');font-display:swap}
+@font-face{font-family:Italianno;src:url('assets/Italianno-Regular.ttf');font-display:swap}
+@font-face{font-family:Ruthie;src:url('assets/Ruthie-Regular.ttf');font-display:swap}
+@font-face{font-family:Qwigley;src:url('assets/Qwigley-Regular.ttf');font-display:swap}
+@font-face{font-family:Arizonia;src:url('assets/Arizonia-Regular.ttf');font-display:swap}
+*{box-sizing:border-box}html{color-scheme:dark;background:#05070d;color:#eeedf2;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif}body{margin:0}main{max-width:480px;margin:auto;padding:26px 24px}h1{font-family:'Songti SC',serif;font-weight:400;font-size:23px;letter-spacing:.05em;margin:0 0 12px}header p{font-size:12px;line-height:1.8;color:#bfc2cf;margin:0 0 18px}.option{display:block;width:100%;text-align:left;cursor:pointer;background:transparent;border:0;border-top:1px solid #292c38;color:inherit;padding:14px 0 10px}.label{display:flex;justify-content:space-between;gap:8px;font-size:11px;line-height:1.5;color:#c5c4d0}.label b{font-weight:400;color:#ecd5df;font-variant-numeric:tabular-nums;margin-right:8px}.sample{display:block;white-space:nowrap;font-weight:400;font-size:42px;line-height:1.65;letter-spacing:0;padding-left:2px}.option[aria-pressed=true]{background:#b9b3cb0c}.option[aria-pressed=true] .label{color:#f1d4dd}.option:focus-visible{outline:1px solid #e6cfdb;outline-offset:3px}footer{border-top:1px solid #292c38;padding-top:14px;font-size:12px;line-height:1.8;color:#bfc2cf}footer p{margin:0 0 6px}a{color:#e2d3df;text-underline-offset:4px}::selection{background:#655768;color:white}@media(max-width:500px){.sample{font-size:36px}.option{padding:10px 0 7px}}@media(max-width:350px){main{padding:22px 20px}.sample{font-size:32px}}
+</style></head><body><main>
+<header><h1>在 02 和 04 之间</h1><p>保留卷曲的花体，少一点繁复。<br>新增 07—09，上下保留原款方便比较。</p></header>
+<div aria-label="花体对照">
+<button class="option" aria-pressed="false" data-number="02" data-name="Monsieur La Doulaise"><span class="label"><span><b>02</b>Monsieur La Doulaise</span><span>原款 · 华丽</span></span><span class="sample" style="font-family:Monsieur,cursive">A small universe of us</span></button>
+<button class="option" aria-pressed="false" data-number="07" data-name="Ruthie"><span class="label"><span><b>07</b>Ruthie</span><span>卷曲起笔 · 柔和</span></span><span class="sample" style="font-family:Ruthie,cursive">A small universe of us</span></button>
+<button class="option" aria-pressed="false" data-number="08" data-name="Qwigley"><span class="label"><span><b>08</b>Qwigley</span><span>细长连笔 · 轻盈</span></span><span class="sample" style="font-family:Qwigley,cursive">A small universe of us</span></button>
+<button class="option" aria-pressed="false" data-number="09" data-name="Arizonia"><span class="label"><span><b>09</b>Arizonia</span><span>弧线舒展 · 随性</span></span><span class="sample" style="font-family:Arizonia,cursive">A small universe of us</span></button>
+<button class="option" aria-pressed="false" data-number="04" data-name="Italianno"><span class="label"><span><b>04</b>Italianno</span><span>原款 · 克制</span></span><span class="sample" style="font-family:Italianno,cursive">A small universe of us</span></button>
+</div>
+<footer><p id="choice" role="status">点击标记喜欢的款式，尚不应用到星图。</p><a href="fonts.html">回看最初 6 款</a></footer>
+</main><script>
+const options=[...document.querySelectorAll('.option')];options.forEach(button=>button.addEventListener('click',()=>{options.forEach(option=>option.setAttribute('aria-pressed',String(option===button)));document.getElementById('choice').textContent=`已标记 ${button.dataset.number} · ${button.dataset.name}，尚未应用。`;}));
+</script></body></html>
