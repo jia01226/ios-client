@@ -1,0 +1,34 @@
+{
+  "month":"2026-10",
+  "budget":{"id":"budget-month","title":"每月上限","amount":3000,"author":"user"},
+  "saving":{"id":"saving-shared","title":"一起去海边","amount":1200,"target":5000,"author":"ke"},
+  "purchases":[
+    {"id":"purchase-1","title":"一盏阅读灯","amount":168,"status":"柯点头了","quote":"挑一盏不刺眼的，晚上一起看书。","author":"ke"},
+    {"id":"purchase-2","title":"新耳机","amount":599,"status":"先等等","quote":"先把想要的型号留在这里。","author":"user"}
+  ],
+  "transactions":[
+    {"id":"transaction-1","title":"日常用品","amount":420,"date":"2026-10-06","author":"user"},
+    {"id":"transaction-2","title":"这个月的食材","amount":480,"date":"2026-10-10","author":"ke"},
+    {"id":"transaction-3","title":"周末的一餐","amount":240,"date":"2026-10-12","author":"user"}
+  ],
+  "meals":[
+    {"id":"meal-1","title":"虾滑蒸蛋","place":"自己做","rating":"好吃","date":"2026-10-14","quote":"这道留在食单里，下次还做。","author":"ke"},
+    {"id":"meal-2","title":"砂锅粥","place":"街角的小店","rating":"好吃","date":"2026-10-13","quote":"慢慢吃，不着急。","author":"user"},
+    {"id":"meal-3","title":"外卖拌面","place":"外卖","rating":"一般","date":"2026-10-10","quote":"下次换一家试试。","author":"ke"}
+  ],
+  "promises":[
+    {"id":"promise-1","title":"一起做糖醋排骨","done":false,"author":"ke"},
+    {"id":"promise-2","title":"去吃那家小馄饨","done":false,"author":"user"}
+  ],
+  "medicines":[
+    {"id":"medicine-1","title":"示例药 A","dose":"0.25g","note":"截图中的虚构药品与剂量，仅作版式示例","time":"早","active":true,"taken":true,"author":"user"},
+    {"id":"medicine-2","title":"示例药 B","dose":"5mg","note":"截图中的虚构药品与剂量，仅作版式示例","time":"睡前","active":true,"taken":false,"author":"ke"},
+    {"id":"medicine-3","title":"示例药 C","dose":"50mg","note":"截图中的虚构药品与剂量，仅作版式示例","time":"睡前","active":true,"taken":false,"author":"ke"}
+  ],
+  "changes":[{"id":"change-1","title":"药单已更新","detail":"新增示例药 B、示例药 C；时间记为睡前。","date":"2026-10-12","author":"ke"}],
+  "notes":[
+    {"id":"note-1","title":"出门记得带伞","detail":"放在门边，就不容易忘了。","reminder":"2026-10-15T08:00","done":false,"author":"ke"},
+    {"id":"note-2","title":"周末把书还掉","detail":"顺路去一趟图书馆。","reminder":"2026-10-17T10:00","done":false,"author":"user"},
+    {"id":"note-3","title":"给窗边的花浇水","detail":"","reminder":"","done":true,"author":"user"}
+  ]
+}

@@ -1051,6 +1051,44 @@ actor APIClient {
         try await writeResource("/api/companion/records", body: ["kind": "anniversary", "action": "update", "id": id, "date": date, "note": name, "operation_id": operationID])
     }
 
+    // MARK: 我们的小本子（荷包、食单、药盒；2026-10-14）。她记的都标 me，柯在聊天里记的标 ke。
+
+    func fetchNotebook() async throws -> NotebookSnapshot { try await readResource("/api/notebook") }
+
+    @discardableResult func createNotebookItem(kind: String, fields: [String: Any]) async throws -> NotebookItem {
+        var body = fields; body["kind"] = kind
+        return try await postNotebook("/api/notebook/items", body: body)
+    }
+
+    @discardableResult func updateNotebookItem(id: Int, fields: [String: Any]) async throws -> NotebookItem {
+        try await postNotebook("/api/notebook/items/\(id)", body: fields)
+    }
+
+    func deleteNotebookItem(id: Int) async throws {
+        try await writeResource("/api/notebook/items/\(id)/delete", body: [:])
+    }
+
+    func setNotebookDose(when: String, taken: Bool) async throws {
+        try await writeResource("/api/notebook/dose", body: ["when": when, "taken": taken])
+    }
+
+    func setNotebookCap(yuan: Double) async throws {
+        try await writeResource("/api/notebook/settings", body: ["cap": yuan])
+    }
+
+    func saveNotebookMoney(yuan: Double, note: String) async throws {
+        try await writeResource("/api/notebook/save", body: ["amount": yuan, "note": note])
+    }
+
+    private func postNotebook<T: Decodable>(_ path: String, body: [String: Any]) async throws -> T {
+        var request = try makeRequest(path: path, method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, _) = try await perform(request)
+        do { return try decoder.decode(T.self, from: data) }
+        catch { throw APIError.decoding(error) }
+    }
+
     private func readResource<T: Decodable>(_ path: String) async throws -> T {
         let (data, _) = try await perform(try makeRequest(path: path))
         do { return try decoder.decode(T.self, from: data) }

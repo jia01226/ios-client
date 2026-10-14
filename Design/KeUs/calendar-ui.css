@@ -1,0 +1,30 @@
+.verse{height:auto;padding-bottom:2.5cqw}
+.anniversary-panel{display:grid;grid-template-columns:minmax(85px,28cqw) max-content 1fr;align-items:center;gap:6px;margin-top:0;position:relative}
+.anniversary-wheel{height:88px;overflow-y:auto;scroll-snap-type:y mandatory;overscroll-behavior-y:contain;scrollbar-width:none;padding-block:22px;touch-action:pan-y;mask-image:linear-gradient(transparent,#000 28%,#000 72%,transparent)}
+.anniversary-wheel::-webkit-scrollbar{display:none}
+.wheel-item{height:44px;min-height:44px;display:block;width:100%;text-align:left;scroll-snap-align:center;padding:0 5px;font-size:clamp(14px,3.4cqw,17px);letter-spacing:.12em;color:var(--muted);opacity:.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wheel-item[aria-pressed=true]{opacity:1;color:var(--ink)}
+.anniversary-count{display:flex;align-items:center;gap:5px;white-space:nowrap;font-size:12px;font-variant-numeric:tabular-nums}
+.rolling-number{display:flex;font:400 clamp(25px,7cqw,34px)/1.25 'Baskerville','Times New Roman',serif;letter-spacing:0;font-variant-numeric:tabular-nums}
+.digit-slot{height:1.25em;overflow:hidden;display:block;width:.55em}
+.digit-strip{display:block}.digit-strip>span{display:block;height:1.25em;text-align:center}
+.add-anniversary{min-height:44px;min-width:38px;justify-self:end;padding:0;font-size:12px;color:var(--muted);text-decoration:underline;text-underline-offset:4px}
+.anniversary-wheel:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+.day-section{padding:0 0 18px;margin:0 0 18px;border-bottom:1px solid var(--line)}
+.day-section h3{font-size:17px;font-weight:400;margin:0 0 12px}
+.quick-shifts{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.quick-choice{min-height:44px;min-width:70px;padding:8px 13px;border:1px solid var(--line);border-radius:5px;font-size:15px;overflow-wrap:anywhere;max-width:100%}
+.quick-choice[aria-pressed=true]{background:#526d88;color:#fff;border-color:#526d88}
+.time-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.period-state{font-size:13px!important;color:var(--muted);margin:0 0 12px}
+.period-actions{display:flex;gap:10px;align-items:center}
+.period-button{min-height:44px;min-width:95px;border:1px solid #b895a0;background:#f5dfe6;border-radius:5px;font-size:16px;color:#63414e}
+.period-button:disabled{background:transparent;opacity:.45}
+.annual-choice{display:flex;gap:10px;align-items:center;font-size:14px;min-height:44px}
+.annual-choice input{width:20px;height:20px;accent-color:#526d88}
+.custom-shift summary{min-height:44px;display:flex;align-items:center}
+.date.today.period .number{background:var(--pink);color:var(--ink);box-shadow:none;outline:1px solid #547d9f;outline-offset:2px}
+.date small{font-size:clamp(10px,2.35cqw,12px);max-width:95%}
+::selection{background:#d4e2e8;color:#294361}
+@media(max-width:360px){.anniversary-panel{gap:4px}.anniversary-count{gap:3px;font-size:11px}.wheel-item{letter-spacing:.04em}}
+@media(prefers-reduced-motion:reduce){.anniversary-wheel{scroll-behavior:auto}}

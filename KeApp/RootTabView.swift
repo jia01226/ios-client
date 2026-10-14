@@ -46,21 +46,22 @@ struct RootTabView: View {
                 if !keyboardIsVisible && !chatSettingsOpen {
                     Group {
                         // 记忆页永远是夜：底栏跟着用夜里的玻璃
-                        if selection == .drawer || (theme.skin == .day && selection != .memory) { journalTabBar } else { crystalTabBar }
+                        // 101：底栏先做最简单的三个字，正式样子等 GPT 设计
+                        simpleTabBar
                     }
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("root-tab-bar")
                 }
             }
             .background {
-                if selection == .drawer {
+                if selection == .drawer || selection == .us {
                     camelliaPalette.paper.ignoresSafeArea()
                 } else if selection != .ke {
                     theme.pageBackground.ignoresSafeArea()
                 }
             }
         }
-        .preferredColorScheme(selection == .drawer || theme.skin != .night ? .light : .dark)
+        .preferredColorScheme(selection == .drawer || selection == .us || theme.skin != .night ? .light : .dark)
         .task {
             if chatNotifications.openRequest != nil { selection = .ke }
             await chatNotifications.clearBadgeIfActive()
@@ -99,7 +100,7 @@ struct RootTabView: View {
     private var selectedNonChatPage: some View {
         switch selection {
         case .us:
-            UsView(line: chatLine).id(chatLine)
+            UsPondView(line: chatLine).id(chatLine)
         case .ke:
             Color.clear.allowsHitTesting(false)
         case .play:
@@ -115,6 +116,28 @@ struct RootTabView: View {
                 quoteOpenRequest = QuoteOpenRequest(messageID: quote.message_id)
             }.id(chatLine)
         }
+    }
+
+    /// 柯 · 我们 · 柯的：三个字，当前那页下面一个小圆点。
+    private var simpleTabBar: some View {
+        HStack(spacing: 0) {
+            ForEach([(Tab.ke, "柯"), (Tab.us, "我们"), (Tab.drawer, "柯的")], id: \.1) { tab, label in
+                Button { withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { selection = tab } } label: {
+                    VStack(spacing: 5) {
+                        Text(label).font(.custom("Songti SC", size: 14)).tracking(2.4)
+                        Circle().fill(selection == tab ? Ink.accent : Color.clear).frame(width: 4.5, height: 4.5)
+                    }
+                    .foregroundStyle(selection == tab ? Ink.primary : Ink.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 48).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selection == tab ? .isSelected : [])
+                .accessibilityIdentifier("tab-\(tab)")
+            }
+        }
+        .padding(.horizontal, 18).padding(.top, 6)
+        .background(selection == .ke ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(camelliaPalette.paper))
+        .overlay(alignment: .top) { Rectangle().fill(Ink.line.opacity(0.6)).frame(height: 0.5).padding(.horizontal, 18) }
     }
 
     private var journalTabBar: some View {

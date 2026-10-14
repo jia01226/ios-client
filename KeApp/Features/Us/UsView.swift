@@ -730,7 +730,7 @@ private struct CalendarDayButtonStyle: ButtonStyle {
     }
 }
 
-private struct ScheduleEditorSheet: View {
+struct ScheduleEditorSheet: View {
     @ObservedObject var model: UsViewModel
     @Environment(\.dismiss) private var dismiss
     let date: Date
