@@ -39,4 +39,10 @@
 - 打开塔罗时测试记录了一条 `Invalid frame dimension (negative or non-finite)` 运行时警告；入口和返回断言通过，塔罗源码未修改。尚未定位警告来源，交给 Claude 核对，不宣称全 App 无警告。
 - 未验证真实账号联网、真机持续动效性能或手机安装；没有生成真实内容。
 
-安装包通过仓库原有 `Build iOS` 工作流按本分支生成，供核对，不执行 OTA 发布。工作流及下载链接在打包结束后记录。
+安装包已通过仓库原有 `Build iOS` 工作流生成，供核对，没有执行 OTA 发布或真机安装。
+
+- 打包源码提交：`9db507cb02d181c5644e983dcb50cc276933eb16`。后续交付记录提交只更新文档，不改变此安装包的源码。
+- [签名打包工作流（成功）](https://github.com/jia01226/ios-client/actions/runs/38559437833)。
+- [下载 KeApp-ipa](https://github.com/jia01226/ios-client/actions/runs/38559437833/artifacts/11891687590)，需要仓库访问权限；保留至 2026-10-28 19:52（台北时间）。
+- 下载后本机静态核验：版本 `0.1.0 (99)`，Bundle ID `love.jiagude.ke`，严格签名校验通过；推送 entitlement 为 production，get-task-allow 为 false。此核验不代表已在手机安装或验证线上接口。
+- IPA SHA-256：`f2806386ee9253d705da0fecc8ee1fe7b7b02b3a1261a1c17032fb5fdced9d65`。
