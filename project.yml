@@ -10,7 +10,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    CURRENT_PROJECT_VERSION: "94"
+    CURRENT_PROJECT_VERSION: "95"
     MARKETING_VERSION: "0.1.0"
 
 packages:
@@ -40,6 +40,7 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UIAppFonts:
           - Allura-Regular.ttf
+          - PinyonScript-Regular.ttf
           - NotoSerifSC.ttf
           - LXGWWenKai-Regular.ttf
         LSRequiresIPhoneOS: true

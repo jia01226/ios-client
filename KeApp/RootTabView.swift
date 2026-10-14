@@ -43,7 +43,8 @@ struct RootTabView: View {
 
                 if !keyboardIsVisible && !chatSettingsOpen {
                     Group {
-                        if theme.skin == .day { journalTabBar } else { crystalTabBar }
+                        // 记忆页永远是夜：底栏跟着用夜里的玻璃
+                        if theme.skin == .day && selection != .memory { journalTabBar } else { crystalTabBar }
                     }
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("root-tab-bar")
