@@ -13,7 +13,7 @@ struct KeDiaryPage: Identifiable, Equatable {
     }
     static func collect(_ entries: [RemoteDiary]) -> [KeDiaryPage] {
         let visible = entries.filter {
-            !$0.locked_hidden && ["柯", "ai", "assistant", "ke"].contains($0.author ?? "柯")
+            !$0.locked_hidden && $0.kind != "dream" && ["柯", "ai", "assistant", "ke"].contains($0.author ?? "柯")
         }
         let dated = visible.compactMap { entry -> (Date, RemoteDiary)? in
             guard let date = CompanionDate.parse(entry.created_at) else { return nil }

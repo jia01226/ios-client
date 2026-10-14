@@ -5,9 +5,10 @@ struct MemoryTabView: View {
     @StateObject private var garden: MemoryGardenStore
     let line: ChatLine
     var onOpenQuote: (AppQuote) -> Void
+    var onClose: (() -> Void)?
     @State private var page = 0
-    init(line: ChatLine, onOpenQuote: @escaping (AppQuote) -> Void) {
-        self.line = line; self.onOpenQuote = onOpenQuote
+    init(line: ChatLine, onOpenQuote: @escaping (AppQuote) -> Void, onClose: (() -> Void)? = nil) {
+        self.line = line; self.onOpenQuote = onOpenQuote; self.onClose = onClose
         _garden = StateObject(wrappedValue: MemoryGardenStore(api: APIClient(baseURL: line.apiBaseURL)))
     }
     var body: some View {
@@ -24,7 +25,7 @@ struct MemoryTabView: View {
     private var standardBody: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if page == 0 { MemoryGardenView(store: garden, page: $page) }
+                if page == 0 { MemoryGardenView(store: garden, page: $page, onClose: onClose) }
                 else {
                     MemoryPageHeader(page: $page)
                     AppQuotesView(line: line, onOpen: onOpenQuote)
@@ -55,5 +56,6 @@ private struct MemoryPageHeader: View {
 struct MemoryGardenView: View {
     @ObservedObject var store: MemoryGardenStore
     @Binding var page: Int
-    var body: some View { MemoryGalaxyView(store: store, page: $page) }
+    var onClose: (() -> Void)?
+    var body: some View { MemoryGalaxyView(store: store, page: $page, onClose: onClose) }
 }

@@ -1,12 +1,23 @@
 import SwiftUI
 
-struct KeSpaceView: View {
+/// 98：原来的「柯的」页（日记 / 抽屉），现在从山茶的「日记」「抽屉」两朵花点进来。
+struct KeDiaryDrawerView: View {
     @EnvironmentObject private var theme: Theme
     let line: ChatLine
-    @State private var diary = true
+    @State private var diary: Bool
+    var onClose: () -> Void
+    init(line: ChatLine, startOnDrawer: Bool, onClose: @escaping () -> Void) {
+        self.line = line; self.onClose = onClose
+        _diary = State(initialValue: !startOnDrawer)
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            MoonlightHeader(title: "柯的").padding(.horizontal, 26)
+            HStack(alignment: .firstTextBaseline) {
+                MoonlightHeader(title: "柯的")
+                Spacer()
+                Button("合上", action: onClose).font(Moonlight.serif(15)).foregroundStyle(theme.pageAccent)
+                    .frame(minWidth: 44, minHeight: 44).accessibilityIdentifier("ke-space-close")
+            }.padding(.horizontal, 26)
             HStack(spacing: 28) {
                 section("日记", selected: diary) { diary = true }
                 section("抽屉", selected: !diary) { diary = false }

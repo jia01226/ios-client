@@ -380,6 +380,7 @@ struct MemoryGalaxyView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var store: MemoryGardenStore
     @Binding var page: Int
+    var onClose: (() -> Void)?
     @State private var motion = GalaxyMotion()
     @State private var includeOthers = false
     @State private var category: String?
@@ -471,6 +472,12 @@ struct MemoryGalaxyView: View {
             HStack {
                 Text("记忆").font(.custom("NotoSerifSC-Regular", size: 28, relativeTo: .title)).tracking(3.4)
                 Spacer()
+                if let onClose {
+                    Button("合上", action: onClose)
+                        .font(.system(size: 13)).foregroundStyle(Self.muted)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .accessibilityIdentifier("memory-close")
+                }
                 Button("语录") { page = 1 }
                     .font(.system(size: 13)).foregroundStyle(Self.muted)
                     .frame(minWidth: 44, minHeight: 44)

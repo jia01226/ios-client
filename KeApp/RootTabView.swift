@@ -100,7 +100,10 @@ struct RootTabView: View {
         case .play:
             PlayView(line: chatLine).id(chatLine)
         case .drawer:
-            KeSpaceView(line: chatLine).id(chatLine)
+            KeSpaceView(line: chatLine) { quote in
+                selection = .ke
+                quoteOpenRequest = QuoteOpenRequest(messageID: quote.message_id)
+            }.id(chatLine)
         case .memory:
             MemoryTabView(line: chatLine) { quote in
                 selection = .ke

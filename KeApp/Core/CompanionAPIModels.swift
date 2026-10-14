@@ -52,6 +52,8 @@ struct RemoteDiary: Decodable, Identifiable, Sendable {
     let created_at: String
     let locked_hidden: Bool
     let comments: Int
+    /// 「dream」是柯夜里的梦；没有或其它值都是日记。
+    var kind: String? = nil
 }
 
 struct RemoteMoment: Decodable, Identifiable, Sendable {
