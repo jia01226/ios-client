@@ -12,6 +12,8 @@ struct RootTabView: View {
     @State private var chatSettingsOpen = false
     @State private var quoteOpenRequest: QuoteOpenRequest?
     @State private var chatSendRequests: [ChatSendRequest] = []
+    @AppStorage(CamelliaPalette.storageKey) private var camelliaPaletteValue = CamelliaPalette.defaultPalette.rawValue
+    private var camelliaPalette: CamelliaPalette { .resolve(camelliaPaletteValue) }
 
     enum Tab: Hashable {
         // 佳佳 2026-10-06：原来「佳佳」那一格换成柯的抽屉——他自己的地方。
@@ -44,18 +46,21 @@ struct RootTabView: View {
                 if !keyboardIsVisible && !chatSettingsOpen {
                     Group {
                         // 记忆页永远是夜：底栏跟着用夜里的玻璃
-                        if theme.skin == .day && selection != .memory { journalTabBar } else { crystalTabBar }
+                        if selection == .drawer || (theme.skin == .day && selection != .memory) { journalTabBar } else { crystalTabBar }
                     }
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("root-tab-bar")
                 }
             }
             .background {
-                if selection != .ke {
+                if selection == .drawer {
+                    camelliaPalette.paper.ignoresSafeArea()
+                } else if selection != .ke {
                     theme.pageBackground.ignoresSafeArea()
                 }
             }
         }
+        .preferredColorScheme(selection == .drawer || theme.skin != .night ? .light : .dark)
         .task {
             if chatNotifications.openRequest != nil { selection = .ke }
             await chatNotifications.clearBadgeIfActive()
@@ -121,7 +126,7 @@ struct RootTabView: View {
             journalTab(.drawer, label: "柯的", symbol: "archivebox")
         }
         .padding(.horizontal, 12).padding(.top, 9).padding(.bottom, 3)
-        .background(theme.pageBackground.opacity(0.96))
+        .background(selection == .drawer ? camelliaPalette.paper : theme.pageBackground.opacity(0.96))
         .overlay(alignment: .top) { Rectangle().fill(theme.pageColor.separator.opacity(0.55)).frame(height: 0.5) }
     }
     private func journalTab(_ tab: Tab, label: String, symbol: String) -> some View {
@@ -132,7 +137,9 @@ struct RootTabView: View {
                     .symbolEffect(.bounce, value: tab != .memory && selection == tab)
                 Text(label).font(.custom("NotoSerifSC-ExtraLight", size: 11))
             }
-            .foregroundStyle(tab == selection ? theme.pageAccent : theme.pageColor.textSecondary)
+            .foregroundStyle(selection == .drawer
+                ? (tab == selection ? CamelliaPalette.ink : CamelliaPalette.secondaryInk)
+                : (tab == selection ? theme.pageAccent : theme.pageColor.textSecondary))
             .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityIdentifier("tab-\(tab)")
     }

@@ -13,7 +13,6 @@ struct KeApp: App {
         WindowGroup {
             appRoot
                 .environmentObject(theme)
-                .preferredColorScheme(theme.skin == .night ? .dark : .light)
                 .tint(theme.effectiveAccent)
         }
     }

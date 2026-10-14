@@ -153,7 +153,14 @@ final class CamelliaButterfly {
 
 struct KeSpaceView: View {
     @EnvironmentObject private var theme: Theme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    private var reduceMotion: Bool {
+        #if DEBUG
+        systemReduceMotion || ProcessInfo.processInfo.arguments.contains("-ui-test-reduce-motion")
+        #else
+        systemReduceMotion
+        #endif
+    }
     @Environment(\.scenePhase) private var scenePhase
     let line: ChatLine
     var onOpenQuote: (AppQuote) -> Void
@@ -165,10 +172,11 @@ struct KeSpaceView: View {
     @State private var pressed: CamelliaEntry?
     @State private var visible = false
     @AppStorage("camellia.perch") private var savedPerch = CamelliaEntry.diary.rawValue
+    @AppStorage(CamelliaPalette.storageKey) private var savedPalette = CamelliaPalette.defaultPalette.rawValue
+    private var palette: CamelliaPalette { .resolve(savedPalette) }
 
     private static let ink = Color(red: 0.24, green: 0.33, blue: 0.47)
     private static let muted = Color(red: 0.45, green: 0.52, blue: 0.62)
-    private static let base = Color(red: 0.929, green: 0.965, blue: 0.988)
 
     init(line: ChatLine, onOpenQuote: @escaping (AppQuote) -> Void) {
         self.line = line; self.onOpenQuote = onOpenQuote
@@ -185,9 +193,11 @@ struct KeSpaceView: View {
             let s = min(geo.size.width / 390, geo.size.height / (844 * 0.9))
             let w = 390 * s, h = 844 * s
             ZStack(alignment: .topLeading) {
-                Self.base
+                palette.paper
                 Image("KeCamelliaBackground").resizable().scaledToFill()
-                    .frame(width: geo.size.width, height: geo.size.height).clipped().opacity(0.55)
+                    .frame(width: geo.size.width, height: geo.size.height).clipped()
+                    .saturation(palette.mistSaturation).opacity(palette.mistOpacity)
+                    .blendMode(.multiply)
                     .accessibilityHidden(true)
                 TimelineView(.animation(minimumInterval: nil, paused: !visible || reduceMotion || scenePhase != .active)) { timeline in
                     artboard(w: w, h: h, s: s, now: timeline.date)
@@ -203,7 +213,10 @@ struct KeSpaceView: View {
         .onDisappear { visible = false }
         .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await refresh() } } }
         .sensoryFeedback(.selection, trigger: open)
-        .fullScreenCover(item: $open) { entry in destination(entry).environmentObject(theme) }
+        .fullScreenCover(item: $open) { entry in
+            destination(entry).environmentObject(theme)
+                .preferredColorScheme(theme.skin == .night ? .dark : .light)
+        }
     }
 
     // MARK: 标题
@@ -215,9 +228,33 @@ struct KeSpaceView: View {
             Text("蝴蝶停的地方，\n有我留给你的东西")
                 .font(.custom("NotoSerifSC-Regular", size: 11.5, relativeTo: .caption)).tracking(1.5).lineSpacing(5)
                 .foregroundStyle(Self.muted)
+            Menu {
+                ForEach(CamelliaPalette.allCases) { option in
+                    Button {
+                        savedPalette = option.rawValue
+                    } label: {
+                        if palette == option {
+                            Label(option.label, systemImage: "checkmark")
+                        } else {
+                            Text(option.label)
+                        }
+                    }
+                    .accessibilityIdentifier("camellia-palette-\(option.rawValue)")
+                }
+            } label: {
+                Label(palette.label, systemImage: "paintpalette")
+                    .font(.caption)
+                    .foregroundStyle(CamelliaPalette.secondaryInk)
+                    .frame(minWidth: 44, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("山茶配色")
+            .accessibilityValue(palette.label)
+            .accessibilityHint("选择浅雾蓝、冷白、暖白或浅米色，仅在本机保存")
+            .accessibilityIdentifier("camellia-palette-picker")
         }
         .padding(.top, 50)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 
     // MARK: 画布
@@ -229,14 +266,18 @@ struct KeSpaceView: View {
         func r(_ rect: CGRect) -> CGRect { CGRect(x: rect.minX * w, y: rect.minY * h, width: rect.width * w, height: rect.height * h) }
         return ZStack(alignment: .topLeading) {
             ZStack(alignment: .topLeading) {
-                Image("KeCamelliaStem").resizable().frame(width: w, height: 0.8318 * h).accessibilityHidden(true)
-                ForEach(CamelliaEntry.allCases) { entry in
-                    let f = r(entry.spot.frame)
-                    Image(entry.flowerAsset).resizable().frame(width: f.width, height: f.height)
-                        .scaleEffect(pressed == entry ? 0.97 : 1)
-                        .offset(x: f.minX, y: f.minY)
-                        .accessibilityHidden(true)
+                ZStack(alignment: .topLeading) {
+                    Image("KeCamelliaStem").resizable().frame(width: w, height: 0.8318 * h).accessibilityHidden(true)
+                    ForEach(CamelliaEntry.allCases) { entry in
+                        let f = r(entry.spot.frame)
+                        Image(entry.flowerAsset).resizable().frame(width: f.width, height: f.height)
+                            .scaleEffect(pressed == entry ? 0.97 : 1)
+                            .offset(x: f.minX, y: f.minY)
+                            .accessibilityHidden(true)
+                    }
                 }
+                .frame(width: w, height: h, alignment: .topLeading)
+                .modifier(CamelliaSoftArtwork(scale: s))
                 // 挂线和挂签画在花的前面，字不会被花挡住
                 ForEach(CamelliaEntry.allCases) { entry in
                     let sp = entry.spot.string
@@ -268,7 +309,9 @@ struct KeSpaceView: View {
             .overlay(alignment: .top) {
                 VStack(spacing: 1 * s) {
                     ForEach(Array(entry.label.enumerated()), id: \.offset) { _, ch in
-                        Text(String(ch)).font(.custom("NotoSerifSC-Regular", size: 13.5 * s))
+                        // These labels belong to fixed-size illustrated tags; their full names
+                        // remain available on the independent, minimum-44pt accessible buttons.
+                        Text(String(ch)).font(.custom("NotoSerifSC-Regular", fixedSize: 13.5 * s))
                     }
                 }
                 .foregroundStyle(Self.ink)
@@ -307,6 +350,8 @@ struct KeSpaceView: View {
                 .offset(x: (0.08 + 0.42 - 0.5) * bw, y: (0.025 + 0.42 - 0.5) * bh)
         }
         .frame(width: bw, height: bh)
+        .compositingGroup()
+        .saturation(0.42).contrast(0.8).brightness(0.08).opacity(0.64)
         .rotationEffect(.degrees(-25))
         .position(x: p.x * w, y: p.y * h)
         .allowsHitTesting(false)
@@ -352,6 +397,7 @@ struct KeSpaceView: View {
                             Image(event.entry.flowerAsset).resizable().scaledToFill()
                                 .frame(width: fs.width * 0.5, height: fs.width * 0.5)
                                 .clipShape(Rectangle().rotation(.degrees(45)).scale(0.72))
+                                .modifier(CamelliaSoftArtwork(scale: s))
                             Image("KeCamelliaDiamondFrame").resizable().frame(width: fs.width, height: fs.height)
                         }
                         .frame(width: fs.width, height: fs.height)
@@ -378,6 +424,7 @@ struct KeSpaceView: View {
             }
         }
         .frame(width: w * 0.92, alignment: .leading)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .position(x: center.x - fs.width / 2 + w * 0.46, y: center.y)
         .animation(.easeInOut(duration: 0.5), value: shown)
     }
