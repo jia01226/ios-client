@@ -91,6 +91,16 @@ struct CamelliaEvent: Equatable {
                 }
             }
         }
+        // 110：柯往抽屉里放了便签、小画，蝴蝶也去抽屉那朵停一停（不推送）
+        if let drawer = try? await api.fetchDrawer() {
+            for item in drawer.outside {
+                let at = KeDrawerPage.when(item)
+                if found[.drawer].map({ $0.at < at }) ?? true {
+                    let excerpt = item.kind == "pixel" ? "画了一幅小画" : (item.visibility == "teaser" ? "锁上了一件东西" : Self.firstLine(item.content))
+                    found[.drawer] = CamelliaEvent(entry: .drawer, at: at, title: item.title, excerpt: excerpt)
+                }
+            }
+        }
         if let page = try? await api.memoryGarden() {
             for flower in page.flowers where flower.author == "ke" && flower.isDrawable {
                 guard let at = flower.written_at else { continue }

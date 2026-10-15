@@ -10,6 +10,9 @@ struct RemoteDrawer: Decodable, Sendable {
         let content: String
         let visibility: String
         let created_at: String
+        /// 110：note 便签 / pixel 像素小画 / 其他是原来藏着锁着的那种
+        var kind: String? = nil
+        var released_at: String? = nil
     }
 }
 

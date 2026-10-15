@@ -309,29 +309,3 @@ private struct DiaryPage: View {
         return "\(p[0])年\(m)月\(d)日 · \(w)"
     }
 }
-
-/// 抽屉那朵花：只放抽屉（原来和日记挤在一页的两个页签拆开了）
-struct KeDrawerPage: View {
-    @EnvironmentObject private var theme: Theme
-    let line: ChatLine
-    var onClose: () -> Void
-    var body: some View {
-        VStack(spacing: 0) {
-            ZStack {
-                VStack(spacing: 0) {
-                    Text("抽屉").font(Ink.song(20)).tracking(4)
-                    Text("Tiroir").font(Ink.script(18)).foregroundStyle(Ink.secondary).padding(.top, -4)
-                }
-                HStack {
-                    Button(action: onClose) { Image(systemName: "chevron.left").font(.system(size: 20, weight: .light)).frame(width: 44, height: 44, alignment: .leading) }
-                        .accessibilityLabel("返回").accessibilityIdentifier("drawer-close")
-                    Spacer()
-                }
-            }
-            .padding(.horizontal, 26).padding(.top, 6)
-            .foregroundStyle(Ink.primary)
-            MoonDrawerView(line: line)
-        }
-        .background(theme.pageBackground.ignoresSafeArea())
-    }
-}
