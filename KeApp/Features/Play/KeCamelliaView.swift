@@ -478,8 +478,8 @@ struct KeSpaceView: View {
 
     @ViewBuilder private func destination(_ entry: CamelliaEntry) -> some View {
         switch entry {
-        case .diary: KeDiaryDrawerView(line: line, startOnDrawer: false) { open = nil }
-        case .drawer: KeDiaryDrawerView(line: line, startOnDrawer: true) { open = nil }
+        case .diary: KeDiaryListView(line: line) { open = nil }
+        case .drawer: KeDrawerPage(line: line) { open = nil }
         case .dream: KeDreamListView(line: line) { open = nil }
         case .moments:
             MomentsView(store: moments, line: line)

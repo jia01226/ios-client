@@ -356,11 +356,7 @@ struct ChatView: View {
                     .background(FloatingGlassSurface(cornerRadius: 22, lockscreen: theme.lockscreenGlass))
                     .accessibilityHidden(true)
                 Spacer()
-                Button { tarotOpen = true } label: {
-                    Image(systemName: "sparkles").font(.title3)
-                        .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
-                        .background(FloatingGlassSurface(cornerRadius: 22, lockscreen: theme.lockscreenGlass))
-                }.buttonStyle(.plain).accessibilityLabel("塔罗").accessibilityIdentifier("chat-tarot")
+                // 105：塔罗在「柯的」那枝山茶里，聊天顶上不再放塔罗按钮，清爽一点
                 Button { showingCallPlaceholder = true } label: {
                     Image(systemName: "phone").font(.title3)
                         .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
