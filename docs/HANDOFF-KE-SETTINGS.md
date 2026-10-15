@@ -1,3 +1,5 @@
+> 当前版本已更新为聊天页＋四页设置的单文件原型。请先读 `Design/KeSettings/README.md` 和 `DESIGN.md`。当前默认象牙、中文思源宋体；下文是原八页抽屉的历史交接，预览入口改为 `moon-drawer-original.html`。
+
 # 柯 App 统一设置抽屉交接
 
 ## 交付范围

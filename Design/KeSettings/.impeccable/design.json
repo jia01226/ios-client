@@ -1,20 +1,20 @@
 {
   "schemaVersion": 2,
-  "title": "Design System: 月隐 · 设置抽屉",
+  "title": "Design System: 柯 · 月隐与长窗",
   "extensions": {
     "status": "visual-proposal",
     "scope": "Design/KeSettings only",
-    "sourceCommit": "7602c46",
+    "sourceCommit": "working-tree: index.html single-file prototype",
     "sources": {
-      "colors": "spec/tokens.json",
-      "layout": "spec/layout.json",
-      "motion": "spec/motion.json",
-      "defaults": "spec/sample-data.json",
-      "renderedStyles": "style.css"
+      "current": "index.html",
+      "legacy": "moon-drawer-original.html",
+      "documentation": "DESIGN.md"
     },
     "runtimeDefaults": {
-      "palette": "white",
-      "appearance": "day"
+      "palette": "ivory",
+      "appearance": "day",
+      "fontSize": 16,
+      "fontWeight": 250
     },
     "colorMeta": {
       "mist": {
@@ -40,8 +40,8 @@
     },
     "typographyMeta": {
       "chinese": {
-        "displayName": "中文宋体",
-        "purpose": "目录、二级标题与正文；实际字号见 style.css。"
+        "displayName": "Noto Serif SC · 250",
+        "purpose": "内嵌思源宋体细字重子集；新输入的缺失字回退系统宋体。"
       },
       "script": {
         "displayName": "Pinyon Script",
@@ -52,67 +52,31 @@
         "purpose": "版本号和示例天数；时间输入使用系统字体。"
       }
     },
-    "motion": [
-      {
-        "name": "drawer",
-        "value": {
-          "stiffness": 350,
-          "damping": 38,
-          "mass": 1,
-          "positionEpsilon": 0.001,
-          "velocityEpsilon": 0.005,
-          "maxFrameStepSeconds": 0.032,
-          "dragThresholdPx": 8,
-          "horizontalIntentRatio": 1.2,
-          "projectionSeconds": 0.18,
-          "releaseThreshold": 0.5,
-          "velocityWindowMs": 100,
-          "closeDirection": "right",
-          "scrimOpacity": 0.12
-        },
-        "purpose": "唯一右侧抽屉弹簧；关闭到终点后隐藏覆盖层。"
-      },
-      {
-        "name": "detail",
-        "value": {
-          "enterMs": 180,
-          "translatePx": 10,
-          "exit": "return to directory inside same drawer"
-        },
-        "purpose": "同一抽屉中的二级页切换。"
-      }
-    ],
     "verification": {
-      "nodeTests": {
-        "passed": 7,
+      "singleFileTests": {
+        "passed": 6,
         "failed": 0
       },
-      "syntax": [
-        "app.js",
-        "motion.js"
-      ],
-      "browser": "本次确认目录预览加载；不是完整手势回归。",
       "nativeAcceptance": false
     },
     "implementationNotes": [
-      "tokens.json 的共享 defaults 和 scope 不等于本预览运行时默认值。",
-      "颜色真源保留在 spec/tokens.json；本文件不另建色值。",
-      "字号和部分固定布局直接来自 style.css；layout 的 anchor 尚未被网页消费。"
+      "当前原型所有运行参数、样式和资源均在 index.html。",
+      "原 spec 仅用于保留的八页抽屉，默认值和路由不再代表当前原型。"
     ]
   },
   "components": [],
   "narrative": {
     "northStar": "把零散的小设置，收在一枝月色里。",
-    "overview": "75% 右侧浅纸抽屉保留左侧原页面。植物目录进入八个清楚的设置页；装饰静止，操作具有直接反馈。当前为独立网页视觉提案。",
+    "overview": "聊天、月隐四页设置、整轮钉住与换窗的独立单 HTML 原型；顶部演示目录可直达全部主状态。",
     "keyCharacteristics": [
       "四款既有白天纸色与 Pinyon 花体。",
       "透明水彩素材保留独立图层和完整画布。",
       "目录可滚动，二级设置清楚易改。"
     ],
     "rules": [
-      "颜色只以 spec/tokens.json 为准。",
-      "当前默认纸色以 spec/sample-data.json 为准。",
-      "不把网页示例写回真实用户设置。"
+      "当前实际参数与交互以 index.html 为准。",
+      "默认象牙；四纸色和现有月隐素材保持用户要求。",
+      "所有历史、用量与模型均为示例，刷新重置。"
     ],
     "dos": [
       "保留月牙与右边缘两个等价入口。",
