@@ -215,6 +215,7 @@ struct KeSpaceView: View {
         .sensoryFeedback(.selection, trigger: open)
         .fullScreenCover(item: $open) { entry in
             destination(entry).environmentObject(theme)
+                .swipeBackToClose { open = nil }
                 .preferredColorScheme(theme.skin == .night ? .dark : .light)
         }
     }

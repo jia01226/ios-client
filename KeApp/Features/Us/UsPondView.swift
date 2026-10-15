@@ -55,7 +55,7 @@ struct UsPondView: View {
         .onDisappear { visible = false }
         .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await load() } } }
         .sheet(item: $editDay) { day in daySheet(day.date) }
-        .fullScreenCover(item: $open) { entry in page(entry) }
+        .fullScreenCover(item: $open) { entry in page(entry).swipeBackToClose { open = nil; Task { await book.load(); await notes.load() } } }
     }
 
     private func load() async {

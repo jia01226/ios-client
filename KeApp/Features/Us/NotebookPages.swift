@@ -177,8 +177,31 @@ struct NotebookSection<Content: View>: View {
                 Spacer()
                 if let hint { Text(hint).font(.system(size: 12)).foregroundStyle(Ink.secondary) }
             }
-            content()
+            VStack(alignment: .leading, spacing: 12) { content() }
+                .notebookCard()
         }
+    }
+}
+
+extension View {
+    /// 白卡片：圆角 18、一道细边，和网页那版一样。
+    func notebookCard() -> some View {
+        padding(.horizontal, 16).padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.white.opacity(0.92)))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Ink.line.opacity(0.45), lineWidth: 0.7))
+    }
+}
+
+/// 状态小色块：柯点头了 / 先等等 / 好吃 / 踩雷……
+struct StatusChip: View {
+    let text: String
+    let tone: Tone
+    enum Tone { case good, wait, plain }
+    var body: some View {
+        Text(text).font(.system(size: 11.5)).padding(.horizontal, 8).padding(.vertical, 2)
+            .foregroundStyle(tone == .good ? Ink.positive : tone == .wait ? Ink.negative : Ink.neutral)
+            .background(Capsule().fill(tone == .good ? Color(hex: 0xE5F0E9) : tone == .wait ? Color(hex: 0xF6E7EA) : Ink.track))
     }
 }
 
@@ -191,6 +214,7 @@ struct NotebookRow: View {
     let author: String
     var editedBy: String?
     var struck = false
+    var chip: StatusChip?
     var onTap: () -> Void
     var body: some View {
         Button(action: onTap) {
@@ -201,6 +225,7 @@ struct NotebookRow: View {
                     Text(trailing).font(Ink.latin(16)).monospacedDigit()
                 }
                 HStack(spacing: 8) {
+                    if let chip { chip }
                     if !detail.isEmpty { Text(detail).font(.system(size: 12)).foregroundStyle(Ink.secondary) }
                     AuthorTag(author: author, editedBy: editedBy)
                 }
@@ -334,13 +359,14 @@ struct PursePage: View {
     var body: some View {
         NotebookShell(title: "荷包", script: "Bourse", paper: paper, onClose: onClose) {
             if let p = store.snapshot?.purse {
-                summary(p)
+                summary(p).notebookCard()
                 NotebookSection(title: "问过柯的", hint: "几百块以上，先问再买") {
                     VStack(spacing: 0) {
                         ForEach(p.asks) { a in
                             NotebookRow(title: a.title, trailing: yuan(a.amount_cents),
-                                        detail: a.status == "nod" ? "柯点头了" : a.status == "wait" ? "先等等" : "没问就买了",
-                                        quote: a.note, author: a.author, editedBy: a.edited_by) { draft = askDraft(a) }
+                                        quote: a.note, author: a.author, editedBy: a.edited_by,
+                                        chip: StatusChip(text: a.status == "nod" ? "柯点头了" : a.status == "wait" ? "先等等" : "没问就买了",
+                                                         tone: a.status == "nod" ? .good : a.status == "wait" ? .wait : .plain)) { draft = askDraft(a) }
                         }
                         if p.asks.isEmpty { empty("还没有问过的大件") }
                     }
@@ -439,16 +465,38 @@ struct MenuPage: View {
     let paper: Color
     var onClose: () -> Void
     @State private var draft: NotebookDraft?
+    @State private var query = ""
+
+    private func hit(_ i: NotebookItem) -> Bool {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return true }
+        return [i.title, i.place ?? "", i.note ?? ""].contains { $0.localizedCaseInsensitiveContains(q) }
+    }
 
     var body: some View {
         NotebookShell(title: "食单", script: "Menu", paper: paper, onClose: onClose) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(Ink.secondary)
+                TextField("搜吃过的、哪家、柯说的话", text: $query).font(Ink.song(15)).submitLabel(.search)
+                if !query.isEmpty {
+                    Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Ink.line) }
+                        .buttonStyle(.plain).accessibilityLabel("清空搜索")
+                }
+            }
+            .padding(.horizontal, 14).frame(minHeight: 44)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.92)))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Ink.line.opacity(0.45), lineWidth: 0.7))
+            .accessibilityIdentifier("menu-search")
             if let m = store.snapshot?.menu {
                 NotebookSection(title: "吃过的", hint: "好不好吃，柯都记着") {
                     VStack(spacing: 0) {
-                        ForEach(m.meals) { meal in
-                            NotebookRow(title: meal.title, trailing: shortDay(meal.day),
-                                        detail: [rateText(meal.rate), meal.place ?? ""].filter { !$0.isEmpty }.joined(separator: " · "),
-                                        quote: meal.note, author: meal.author, editedBy: meal.edited_by) { draft = mealDraft(meal) }
+                        ForEach(m.meals.filter(hit)) { meal in
+                            NotebookRow(title: meal.title, trailing: shortDay(meal.day), detail: meal.place ?? "",
+                                        quote: meal.note, author: meal.author, editedBy: meal.edited_by,
+                                        chip: meal.rate.map { StatusChip(text: rateText($0), tone: $0 == "good" ? .good : $0 == "bad" ? .wait : .plain) }) { draft = mealDraft(meal) }
+                        }
+                        if !query.isEmpty && m.meals.filter(hit).isEmpty {
+                            Text("没搜到「\(query)」").font(Ink.song(14)).foregroundStyle(Ink.secondary).frame(maxWidth: .infinity).padding(.vertical, 18)
                         }
                         if m.meals.isEmpty { Text("还没有记过吃的").font(Ink.song(14)).foregroundStyle(Ink.secondary).frame(maxWidth: .infinity).padding(.vertical, 18) }
                     }
@@ -456,7 +504,7 @@ struct MenuPage: View {
                 }
                 NotebookSection(title: "柯的账本上欠着的", hint: "胃好了一样一样兑现") {
                     VStack(spacing: 0) {
-                        ForEach(m.owed) { o in
+                        ForEach(m.owed.filter(hit)) { o in
                             HStack(spacing: 12) {
                                 Button {
                                     Task { await store.run { try await store.api.updateNotebookItem(id: o.id, fields: ["done": o.done == 0]) } }
