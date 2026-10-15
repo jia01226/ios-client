@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // 98：「柯的」一页是一枝山茶。六朵花是六个入口：日记、梦、抽屉、塔罗、朋友圈、记忆。
 // 一只蝴蝶代表柯：他留了新东西（写了日记、做了梦、发了朋友圈、新记了一件事），蝴蝶就飞去停在那朵花上，
@@ -213,10 +214,13 @@ struct KeSpaceView: View {
         .onDisappear { visible = false }
         .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await refresh() } } }
         .sensoryFeedback(.selection, trigger: open)
+        // 塔罗抽完交给柯、抽屉里「去找柯要」：都会回聊天，盖着的页面先收起来
+        .onReceive(NotificationCenter.default.publisher(for: .tarotReadingRequest)) { _ in open = nil }
         .fullScreenCover(item: $open) { entry in
             destination(entry).environmentObject(theme)
                 .swipeBackToClose { open = nil }
-                .preferredColorScheme(theme.skin == .night ? .dark : .light)
+                // 朋友圈跟着手机系统（像微信），别的页面跟 App 的昼夜
+                .preferredColorScheme(entry == .moments ? (UIScreen.main.traitCollection.userInterfaceStyle == .dark ? .dark : .light) : (theme.skin == .night ? .dark : .light))
         }
     }
 
@@ -477,7 +481,8 @@ struct KeSpaceView: View {
         case .diary: KeDiaryDrawerView(line: line, startOnDrawer: false) { open = nil }
         case .drawer: KeDiaryDrawerView(line: line, startOnDrawer: true) { open = nil }
         case .dream: KeDreamListView(line: line) { open = nil }
-        case .moments: MomentsView(store: moments, line: line)
+        case .moments:
+            MomentsView(store: moments, line: line)
         case .tarot: TarotView(line: line)
         case .memory:
             MemoryTabView(line: line, onOpenQuote: { quote in open = nil; onOpenQuote(quote) }, onClose: { open = nil })
@@ -499,75 +504,124 @@ private struct CamelliaPress: ButtonStyle {
 
 // MARK: - 梦
 
-/// 柯夜里的梦（服务器上 kind = dream 的那几页），新的在上面。
+/// 柯夜里的梦（服务器上 kind = dream 的那几页）。104：按月份分组、左边大大的日子，右上角可以跳到哪个月，好找以前的梦。
 struct KeDreamListView: View {
-    @EnvironmentObject private var theme: Theme
     let line: ChatLine
     var onClose: () -> Void
+    @AppStorage(CamelliaPalette.storageKey) private var savedPalette = CamelliaPalette.defaultPalette.rawValue
     @State private var dreams: [RemoteDiary] = []
     @State private var loading = true
     @State private var failed = false
     @State private var reading: RemoteDiary?
+    @State private var query = ""
+    private var paper: Color { CamelliaPalette.resolve(savedPalette).paper }
+
+    private var shown: [RemoteDiary] {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        return q.isEmpty ? dreams : dreams.filter { $0.title.localizedCaseInsensitiveContains(q) || $0.content.localizedCaseInsensitiveContains(q) }
+    }
+    /// [(「2026 · 十月」, 那个月的梦)]，新的月份在上面
+    private var months: [(String, [RemoteDiary])] {
+        var order: [String] = [], groups: [String: [RemoteDiary]] = [:]
+        for d in shown {
+            let key = String(d.created_at.prefix(7))
+            if groups[key] == nil { order.append(key) }
+            groups[key, default: []].append(d)
+        }
+        return order.map { (Self.monthTitle($0), groups[$0] ?? []) }
+    }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    Text("梦里的事，醒来第一件想告诉你。")
-                        .font(Moonlight.serif(13)).foregroundStyle(theme.pageColor.textSecondary)
-                    if loading && dreams.isEmpty { ProgressView().frame(maxWidth: .infinity) }
-                    if failed { Button("梦暂时没接上，点这里再试一次") { Task { await load() } }.font(Moonlight.serif(13)) }
-                    if !loading && !failed && dreams.isEmpty { Text("柯还没有记下梦。").font(Moonlight.serif(14)) }
-                    ForEach(dreams) { dream in
-                        Button { reading = dream } label: {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(Self.day(dream.created_at)).font(Moonlight.serif(11)).foregroundStyle(theme.pageColor.textSecondary)
-                                Text(dream.title).font(Moonlight.serif(19))
-                                Text(dream.content).font(Moonlight.serif(14)).lineSpacing(6).lineLimit(3)
-                                    .foregroundStyle(theme.pageColor.textSecondary)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(18)
-                            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(theme.pageColor.textPrimary.opacity(0.04)))
-                        }
-                        .buttonStyle(.plain)
+        ScrollViewReader { proxy in
+            NotebookShell(title: "梦", script: "Rêves", paper: paper, onClose: onClose) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(Ink.secondary)
+                    TextField("搜梦里的东西", text: $query).font(Ink.song(15)).submitLabel(.search)
+                    if months.count > 1 {
+                        Menu {
+                            ForEach(months, id: \.0) { m in Button(m.0) { withAnimation { proxy.scrollTo(m.0, anchor: .top) } } }
+                        } label: { Text("跳到…").font(Ink.song(13)).foregroundStyle(Ink.accent).frame(minHeight: 44) }
                     }
                 }
-                .padding(.horizontal, 24).padding(.vertical, 12)
-            }
-            .foregroundStyle(theme.pageColor.textPrimary)
-            .background(theme.pageBackground.ignoresSafeArea())
-            .navigationTitle("梦").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("合上", action: onClose).accessibilityIdentifier("dream-close") } }
-            .sheet(item: $reading) { dream in
-                NavigationStack {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text(Self.day(dream.created_at)).font(Moonlight.serif(12)).foregroundStyle(theme.pageColor.textSecondary)
-                            Text(dream.title).font(Moonlight.serif(22))
-                            Text(dream.content).font(Moonlight.serif(16)).lineSpacing(9).textSelection(.enabled)
-                        }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 14).frame(minHeight: 44)
+                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.92)))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Ink.line.opacity(0.45), lineWidth: 0.7))
+                Text("梦里的事，醒来第一件想告诉你。").font(Ink.song(13)).foregroundStyle(Ink.secondary)
+                if loading && dreams.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(30) }
+                if failed { Button("梦暂时没接上，点这里再试一次") { Task { await load() } }.font(Ink.song(13)) }
+                if !loading && !failed && dreams.isEmpty { Text("柯还没有记下梦。").font(Ink.song(14)) }
+                ForEach(months, id: \.0) { month, list in
+                    NotebookSection(title: month, hint: "\(list.count) 个梦") {
+                        VStack(spacing: 0) {
+                            ForEach(list) { dream in row(dream) }
+                        }
                     }
-                    .foregroundStyle(theme.pageColor.textPrimary)
-                    .background(theme.pageBackground.ignoresSafeArea())
-                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("收好") { reading = nil } } }
+                    .id(month)
                 }
             }
         }
-        .tint(theme.pageAccent)
         .task { await load() }
+        .sheet(item: $reading) { dream in
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text(Self.dayLine(dream.created_at)).font(.system(size: 12)).foregroundStyle(Ink.secondary)
+                        Text(dream.title).font(Ink.song(22))
+                        Text(dream.content).font(Ink.song(16)).lineSpacing(9).textSelection(.enabled)
+                    }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .foregroundStyle(Ink.primary)
+                .background(paper.ignoresSafeArea())
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("收好") { reading = nil } } }
+            }
+            .tint(Ink.accent)
+        }
+    }
+
+    private func row(_ dream: RemoteDiary) -> some View {
+        Button { reading = dream } label: {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(spacing: 0) {
+                    Text(Self.day(dream.created_at)).font(Ink.latin(26)).monospacedDigit()
+                    Text(Self.weekday(dream.created_at)).font(.system(size: 11)).foregroundStyle(Ink.secondary)
+                }.frame(width: 40)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(dream.title).font(Ink.song(16)).foregroundStyle(Ink.primary)
+                    Text(dream.content).font(Ink.song(13.5)).lineSpacing(4).lineLimit(2).foregroundStyle(Ink.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 12).contentShape(Rectangle())
+            .overlay(alignment: .bottom) { Rectangle().fill(Ink.line.opacity(0.5)).frame(height: 0.5) }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Self.dayLine(dream.created_at) + "，" + dream.title)
     }
 
     private func load() async {
         loading = true; failed = false
         defer { loading = false }
         do {
-            let rows = try await APIClient(baseURL: line.apiBaseURL).fetchDiaries(query: "", offset: 0, limit: 200)
+            let rows = try await APIClient(baseURL: line.apiBaseURL).fetchDiaries(query: "", offset: 0, limit: 500)
             dreams = rows.filter { $0.kind == "dream" && !$0.locked_hidden }.sorted { $0.created_at > $1.created_at }
         } catch { failed = true }
     }
+    private static func monthTitle(_ ym: String) -> String {
+        let parts = ym.split(separator: "-")
+        guard parts.count == 2, let m = Int(parts[1]) else { return ym }
+        let names = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"]
+        return "\(parts[0]) · \(names[max(0, min(11, m - 1))])"
+    }
     private static func day(_ at: String) -> String {
+        guard at.count >= 10, let d = Int(at.dropFirst(8).prefix(2)) else { return "" }
+        return String(d)
+    }
+    private static func weekday(_ at: String) -> String {
         guard let date = CompanionDate.parse(at) else { return "" }
-        return KeDiaryPage.dateLabel(date, format: "M月d日") + "早上醒来"
+        return ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][Calendar.current.component(.weekday, from: date) - 1]
+    }
+    private static func dayLine(_ at: String) -> String {
+        guard let date = CompanionDate.parse(at) else { return "" }
+        return KeDiaryPage.dateLabel(date, format: "M月d日") + " " + weekday(at) + " 早上醒来"
     }
 }

@@ -160,8 +160,18 @@ struct MoonDrawerView: View {
                         Text(teaser.text).font(Moonlight.serif(13))
                             .foregroundStyle(KeepsakeTheme.paperMutedInk).multilineTextAlignment(.center)
                     }
+                    // 104：她知道有，就去找他要——回到聊天，替她说一句
+                    Button {
+                        let hint = teaser.text.isEmpty ? "那卷还封着的" : "「\(teaser.text)」那卷"
+                        NotificationCenter.default.post(name: .tarotReadingRequest, object: "爸比，抽屉里\(hint)，能给我看看吗")
+                    } label: {
+                        Text("去找柯要").font(Moonlight.serif(13)).padding(.horizontal, 14).frame(minHeight: 36)
+                            .overlay(Capsule().stroke(KeepsakeTheme.paperMutedInk.opacity(0.6), lineWidth: 0.7))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("drawer-ask-\(teaser.id)")
                 }.frame(maxWidth: .infinity)
-                    .accessibilityElement(children: .combine)
+                    .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("drawer-teaser-\(teaser.id)")
                     .accessibilityHint("蜡封还在，柯还没有公开这卷的全文")
             }

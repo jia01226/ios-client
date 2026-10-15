@@ -2,6 +2,21 @@ import SwiftUI
 import PhotosUI
 import UIKit
 
+/// 104：她说朋友圈不像微信——是颜色的问题。整页改用跟着手机系统走的那套颜色（白天白底、夜里黑底），
+/// 名字用微信那种蓝，字用系统字体；不再跟 App 的纸色和宋体走。
+enum WX {
+    static let background = Color(uiColor: .systemBackground)
+    static let card = Color(uiColor: .secondarySystemBackground)
+    static let text = Color(uiColor: .label)
+    static let secondary = Color(uiColor: .secondaryLabel)
+    static let separator = Color(uiColor: .separator)
+    /// 微信里名字和链接的蓝；夜里换成亮一点的
+    static let link = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor(red: 0.49, green: 0.58, blue: 0.75, alpha: 1) : UIColor(red: 0.34, green: 0.42, blue: 0.58, alpha: 1) })
+    static let name = Font.system(size: 16, weight: .semibold)
+    static let title = Font.system(size: 20, weight: .semibold)
+    static let caption = Font.system(size: 13)
+}
+
 /// A small, shared timeline. Only the user's own words expose editing controls.
 struct MomentsView: View {
     @EnvironmentObject private var theme: Theme
@@ -37,12 +52,12 @@ struct MomentsView: View {
                             Image(systemName: "bubble.left.and.bubble.right")
                                 .font(theme.font.unavailableIcon)
                             Text("把今天的小事，留在这里。")
-                                .font(theme.font.journalHeading)
+                                .font(WX.name)
                             Button("发第一条动态") { sheet = .compose }
                                 .frame(minHeight: theme.metric.touchTarget)
                                 .accessibilityIdentifier("moments-first-post")
                         }
-                        .foregroundStyle(theme.pageColor.textSecondary)
+                        .foregroundStyle(WX.secondary)
                         .padding(theme.metric.gapXL)
                         .accessibilityIdentifier("moments-empty")
                     }
@@ -64,7 +79,7 @@ struct MomentsView: View {
                 .frame(maxWidth: MomentsTheme.maximumWidth)
                 .frame(maxWidth: .infinity)
             }
-            .background(theme.pageBackground.ignoresSafeArea())
+            .background(WX.background.ignoresSafeArea())
             .scrollIndicators(.hidden)
             .refreshable { await store.load() }
             .navigationTitle("朋友圈")
@@ -118,8 +133,8 @@ struct MomentsView: View {
                 Button("保留", role: .cancel) { deletion = nil }
             }
         }
-        .tint(theme.pageAccent)
-        .foregroundStyle(theme.pageColor.textPrimary)
+        .tint(WX.link)
+        .foregroundStyle(WX.text)
         .font(theme.font.body)
         .task(id: scenePhase == .active && sheet == nil) {
             guard scenePhase == .active, sheet == nil else { return }
@@ -134,7 +149,7 @@ struct MomentsView: View {
 
     private var cover: some View {
         VStack(alignment: .trailing, spacing: theme.metric.gapS) {
-            LinearGradient(colors: [theme.pageColor.accentSoft, theme.pageColor.cardElevated, theme.pageColor.bg],
+            LinearGradient(colors: [WX.card, WX.card, WX.background],
                            startPoint: .topLeading, endPoint: .bottomTrailing)
                 .frame(height: MomentsTheme.coverHeight)
                 .overlay(alignment: .topTrailing) {
@@ -145,20 +160,20 @@ struct MomentsView: View {
                 }
                 .overlay(alignment: .bottomLeading) {
                     VStack(alignment: .leading, spacing: theme.metric.gapS) {
-                        Text("我们的日常").font(theme.font.journalTitle)
+                        Text("我们的日常").font(WX.title)
                         Text("有话想说，就留在这里。")
-                            .font(theme.font.journalCaption)
-                            .foregroundStyle(theme.pageColor.textSecondary)
+                            .font(WX.caption)
+                            .foregroundStyle(WX.secondary)
                     }
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, theme.metric.gapXL)
                     .padding(.vertical, theme.metric.gapM)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(theme.pageBackground.opacity(MomentsTheme.coverCaptionOpacity))
+                    .background(WX.background.opacity(MomentsTheme.coverCaptionOpacity))
                 }
                 .clipped()
             HStack(alignment: .bottom, spacing: theme.metric.gapM) {
-                Text("佳佳").font(theme.font.journalHeading)
+                Text("佳佳").font(WX.name)
                     .padding(.bottom, theme.metric.gapS)
                 MomentAvatar(author: "user", size: MomentsTheme.profileAvatarSize)
             }
@@ -217,18 +232,18 @@ private struct MomentAvatar: View {
     let size: CGFloat
     var body: some View {
         ZStack {
-            theme.pageColor.cardElevated
+            WX.card
             Image("CamelliaMoonlight").resizable().scaledToFill()
             Text(author == "user" ? "佳" : "柯")
-                .font(theme.font.journalHeading)
-                .foregroundStyle(theme.pageColor.textPrimary)
+                .font(WX.name)
+                .foregroundStyle(WX.text)
                 .padding(theme.metric.gapXS)
-                .background(theme.pageColor.card, in: Circle())
+                .background(WX.card, in: Circle())
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: theme.metric.radiusChip))
         .overlay(RoundedRectangle(cornerRadius: theme.metric.radiusChip)
-            .stroke(theme.pageColor.separator, lineWidth: theme.metric.glassStrokeWidth))
+            .stroke(WX.separator, lineWidth: theme.metric.glassStrokeWidth))
         .accessibilityHidden(true)
     }
 }
@@ -253,7 +268,7 @@ private struct MomentRow: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text(moment.author == "user" ? "佳佳" : "柯")
                         .font(theme.font.sectionTitle)
-                        .foregroundStyle(theme.pageAccent)
+                        .foregroundStyle(WX.link)
                     Spacer(minLength: theme.metric.gapS)
                     if moment.author == "user" {
                         Menu {
@@ -284,7 +299,7 @@ private struct MomentRow: View {
                 HStack(spacing: theme.metric.gapS) {
                     Text(MomentDate.label(moment.created_at))
                         .font(theme.font.caption)
-                        .foregroundStyle(theme.pageColor.textSecondary)
+                        .foregroundStyle(WX.secondary)
                     Spacer(minLength: theme.metric.gapXS)
                     Button(action: like) {
                         Label(moment.user_liked != 0 ? "已赞" : "赞", systemImage: moment.user_liked != 0 ? "heart.fill" : "heart")
@@ -304,7 +319,7 @@ private struct MomentRow: View {
                 if moment.user_liked != 0 || moment.ai_liked != 0 || !moment.comments.isEmpty {
                     responses
                 }
-                Divider().overlay(theme.pageColor.separator)
+                Divider().overlay(WX.separator)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -318,16 +333,16 @@ private struct MomentRow: View {
             if moment.user_liked != 0 || moment.ai_liked != 0 {
                 Label(likeNames, systemImage: "heart")
                     .font(theme.font.caption)
-                    .foregroundStyle(theme.pageAccent)
+                    .foregroundStyle(WX.link)
                     .accessibilityIdentifier("moment-likes-\(moment.id)")
             }
             if (moment.user_liked != 0 || moment.ai_liked != 0) && !moment.comments.isEmpty {
-                Divider().overlay(theme.pageColor.separator)
+                Divider().overlay(WX.separator)
             }
             ForEach(moment.comments) { item in
                 HStack(alignment: .top, spacing: theme.metric.gapXS) {
                     (Text(item.author == "user" ? "佳佳：" : "柯：")
-                        .foregroundColor(theme.pageAccent) + Text(item.content))
+                        .foregroundColor(WX.link) + Text(item.content))
                         .font(theme.font.caption)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -351,7 +366,7 @@ private struct MomentRow: View {
         }
         .padding(theme.metric.gapM)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.pageColor.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusChip))
+        .background(WX.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusChip))
     }
 
     private var likeNames: String {
@@ -377,13 +392,13 @@ private struct MomentComposer: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: theme.metric.gapL) {
-                    Text("今天有什么想告诉柯？").font(theme.font.journalHeading)
+                    Text("今天有什么想告诉柯？").font(WX.name)
                     TextEditor(text: $drafts.text)
                         .font(theme.font.body)
                         .scrollContentBackground(.hidden)
                         .frame(minHeight: MomentsTheme.editorHeight)
                         .padding(theme.metric.gapS)
-                        .background(theme.pageColor.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
+                        .background(WX.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
                         .accessibilityLabel("动态正文")
                         .accessibilityIdentifier("moment-draft-text")
                         .disabled(busy)
@@ -411,15 +426,15 @@ private struct MomentComposer: View {
                     if submitting { ProgressView(drafts.uploadedImage.isEmpty && drafts.imageData != nil ? "正在上传照片" : "正在发布") }
                     if let message = imageError ?? drafts.persistenceError ?? store.error {
                         Text(message).font(theme.font.caption)
-                            .foregroundStyle(theme.pageColor.textSecondary)
+                            .foregroundStyle(WX.secondary)
                             .accessibilityIdentifier("moment-editor-error")
                     }
                     Text("可以只发文字，也可以只放一张照片。")
-                        .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
+                        .font(theme.font.caption).foregroundStyle(WX.secondary)
                 }
                 .padding(theme.metric.pagePadding)
             }
-            .background(theme.pageBackground.ignoresSafeArea())
+            .background(WX.background.ignoresSafeArea())
             .navigationTitle("发动态")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -434,8 +449,8 @@ private struct MomentComposer: View {
                 }
             }
         }
-        .tint(theme.pageAccent)
-        .foregroundStyle(theme.pageColor.textPrimary)
+        .tint(WX.link)
+        .foregroundStyle(WX.text)
         .interactiveDismissDisabled(busy)
         .task(id: photo) { await preparePhoto() }
     }
@@ -498,19 +513,19 @@ private struct MomentTextEditor: View {
                         .scrollContentBackground(.hidden)
                         .frame(minHeight: MomentsTheme.editorHeight)
                         .padding(theme.metric.gapS)
-                        .background(theme.pageColor.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
+                        .background(WX.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
                         .disabled(busy)
                         .accessibilityLabel(title)
                         .accessibilityIdentifier("moment-editor-text")
                     if busy { ProgressView("正在保存") }
                     if let error = drafts.persistenceError ?? store.error {
                         Text(error).font(theme.font.caption)
-                            .foregroundStyle(theme.pageColor.textSecondary)
+                            .foregroundStyle(WX.secondary)
                             .accessibilityIdentifier("moment-editor-error")
                     }
                 }.padding(theme.metric.pagePadding)
             }
-            .background(theme.pageBackground.ignoresSafeArea())
+            .background(WX.background.ignoresSafeArea())
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -532,8 +547,8 @@ private struct MomentTextEditor: View {
                 }
             }
         }
-        .foregroundStyle(theme.pageColor.textPrimary)
-        .tint(theme.pageAccent)
+        .foregroundStyle(WX.text)
+        .tint(WX.link)
         .interactiveDismissDisabled(busy)
     }
 }
@@ -570,13 +585,13 @@ private struct MomentRemoteImage: View {
                         Text("图片未加载，点此重试").font(theme.font.caption)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(theme.pageColor.card)
+                    .background(WX.card)
                 }
                 .accessibilityIdentifier("moment-image-retry")
             } else {
                 ProgressView("正在载入照片")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(theme.pageColor.card)
+                    .background(WX.card)
             }
         }
         .buttonStyle(.plain)
@@ -603,7 +618,7 @@ private struct MomentImagePreview: View {
         NavigationStack {
             MomentRemoteImage(url: url, line: line)
                 .padding(theme.metric.pagePadding)
-                .background(theme.pageBackground.ignoresSafeArea())
+                .background(WX.background.ignoresSafeArea())
                 .navigationTitle("照片")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -613,7 +628,7 @@ private struct MomentImagePreview: View {
                     }
                 }
                 .accessibilityIdentifier("moment-image-preview")
-        }.tint(theme.pageAccent)
+        }.tint(WX.link)
     }
 }
 
@@ -631,7 +646,7 @@ private struct MomentErrorBanner: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(theme.metric.gapM)
-        .background(theme.pageColor.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
+        .background(WX.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusCard))
         .accessibilityIdentifier("moments-error")
     }
 }
