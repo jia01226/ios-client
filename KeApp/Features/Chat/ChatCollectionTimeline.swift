@@ -5,6 +5,8 @@ import UIKit
 
 enum ChatTimelineItemKind: Equatable {
     case date(String)
+    /// 111：她隔了一个钟头以上才回，中间放一行「你消失了 1 小时 36 分」
+    case gap(Int)
     case thinking
     case tool(String)
     case message
@@ -82,6 +84,8 @@ struct ChatTimelineItem: Identifiable, Equatable {
         switch kind {
         case let .date(dayKey):
             return "date::\(dayKey)"
+        case .gap:
+            return "\(message.id)::gap"
         case .thinking:
             return "\(message.id)::thinking"
         case let .tool(toolRunID):
@@ -106,10 +110,13 @@ struct ChatTimelineItem: Identifiable, Equatable {
     ) -> [Self] {
         var result: [Self] = []
         var previousDayKey: String?
+        var previousTime: Date?
 
         for message in messages {
+            var newDay = false
             if let dayKey = ChatTimelineDate.dayKey(for: message) {
                 if dayKey != previousDayKey {
+                    newDay = true
                     result.append(Self(
                         kind: .date(dayKey),
                         message: message,
@@ -119,6 +126,13 @@ struct ChatTimelineItem: Identifiable, Equatable {
                 }
                 previousDayKey = dayKey
             }
+            if message.sender == .me, !newDay, let previousTime {
+                let minutes = Int(message.time.timeIntervalSince(previousTime) / 60)
+                if minutes >= 60 {
+                    result.append(Self(kind: .gap(minutes), message: message, isHighlighted: false, visibleSegmentCount: nil))
+                }
+            }
+            previousTime = message.time
             result.append(contentsOf: make(
                 message: message,
                 isHighlighted: highlightedMessageID == message.id,
@@ -761,6 +775,9 @@ final class ChatCollectionTimelineController: UIViewController,
                 ChatDateDividerRow(date: item.message.time)
                     .environmentObject(Theme.shared)
                     .accessibilityIdentifier("chat-date-\(item.id)")
+            case let .gap(minutes):
+                ChatGapRow(minutes: minutes)
+                    .environmentObject(Theme.shared)
             case .thinking:
                 ThinkingTimelineRow { [weak self] in
                     self?.onThinkingOpen(item.messageID)
@@ -817,7 +834,7 @@ final class ChatCollectionTimelineController: UIViewController,
     ) -> CGFloat? {
         guard kind == .cell, items.indices.contains(indexPath.item) else { return nil }
         switch items[indexPath.item].kind {
-        case .date:
+        case .date, .gap:
             return Theme.shared.metric.gapS
         case .thinking:
             return Theme.shared.metric.thinkingBubbleGap

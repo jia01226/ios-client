@@ -245,6 +245,35 @@ struct ThinkingSheetView: View {
     }
 }
 
+/// 111：她隔了一个钟头以上才回，中间一行淡淡的「你消失了 1 小时 36 分」
+struct ChatGapRow: View {
+    @EnvironmentObject private var theme: Theme
+    let minutes: Int
+
+    static func label(_ minutes: Int) -> String {
+        let h = minutes / 60, m = minutes % 60
+        return "你消失了 \(h) 小时" + (m > 0 ? " \(m) 分" : "")
+    }
+
+    var body: some View {
+        HStack {
+            Spacer(minLength: 0)
+            Text(Self.label(minutes))
+                .font(theme.font.caption)
+                .foregroundStyle(theme.chatTextSecondary)
+                .modifier(ChatLegibility())
+                .padding(.horizontal, theme.metric.gapM)
+                .padding(.vertical, theme.metric.gapXS)
+                .background(Capsule(style: .continuous).fill(theme.chatTextSecondary.opacity(0.10)))
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, theme.metric.pagePadding)
+        .padding(.vertical, theme.metric.gapXS)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Self.label(minutes))
+    }
+}
+
 struct ChatDateDividerRow: View {
     @EnvironmentObject private var theme: Theme
     let date: Date
