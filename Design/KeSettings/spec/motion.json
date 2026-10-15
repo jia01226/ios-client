@@ -1,0 +1,7 @@
+{
+  "drawer":{"stiffness":350,"damping":38,"mass":1,"positionEpsilon":0.001,"velocityEpsilon":0.005,"maxFrameStepSeconds":0.032,"dragThresholdPx":8,"horizontalIntentRatio":1.2,"projectionSeconds":0.18,"releaseThreshold":0.5,"velocityWindowMs":100,"closeDirection":"right","scrimOpacity":0.12},
+  "layers":{"underlyingPage":"kept mounted; overlay root transparent; only paper panel paints a background","dismiss":"one spring to right, then remove overlay immediately; no second system dismissal animation"},
+  "detail":{"enterMs":180,"translatePx":10,"exit":"return to directory inside same drawer"},
+  "ornament":{"enabledByDefault":false,"reason":"Settings remain still so names are easy to scan; physical motion is reserved for the drawer."},
+  "reducedMotion":{"drawer":"instant state change; no spatial spring or ornament animation","detail":"instant swap"}
+}

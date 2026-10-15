@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>月隐 · 柯的设置抽屉</title><link rel="stylesheet" href="style.css"><script src="motion.js" defer></script><script src="app.js" defer></script></head>
+<body>
+<!-- THESIS: A botanical margin opens into practical settings, preserving the page below.
+OWN-WORLD: Four confirmed pale papers, Songti, Pinyon, detached watercolor camellia assets and fine rules.
+STORY: Open by moon or right-edge drag, find a named branch, edit a local example, return.
+FIRST VIEWPORT: A 75% right paper panel; a central vine and pearl crescent; four names on each side; vertical title upper right. The remaining left quarter shows the original page.
+FORM: User-pinned reference and explicit topology; extension of the established KeUs world, no concept tournament.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance -->
+<svg class="symbols" aria-hidden="true"><defs><symbol id="moon-icon" viewBox="0 0 24 24"><path d="M20 15.5A8.6 8.6 0 0 1 8.5 4a8.7 8.7 0 1 0 11.5 11.5Z"/></symbol><symbol id="close-icon" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol><symbol id="back-icon" viewBox="0 0 24 24"><path d="m14 5-7 7 7 7"/></symbol><symbol id="arrow-icon" viewBox="0 0 24 24"><path d="m10 6 6 6-6 6"/></symbol></defs></svg>
+<main class="preview">
+  <aside class="preview-guide"><h1>月隐</h1><p class="script">A quiet place for little things.</p><p>把零散的小设置，收在一枝月色里。</p><div class="guide-actions"><button id="moon-demo">演示 · 点月牙打开</button><button id="edge-demo">演示 · 右边缘左滑</button></div><p class="guide-note">左侧露出的页面可以点，抽屉也可以往右划回去。<br>每个入口都有一页清楚的设置。</p><p class="demo-note">独立设计预览 · 全部为示例<br>只在本页保留，刷新重置；不触发通知、解锁或更新。</p></aside>
+  <div class="phone" id="phone">
+    <div class="base-page" id="base-page">
+      <div class="status-bar" aria-hidden="true"><span>09:41</span><span>•••　100%</span></div>
+      <header class="home-header"><h2 id="home-title">柯</h2><button class="icon-button moon-button" id="open-drawer" aria-label="打开设置抽屉" aria-haspopup="dialog" aria-expanded="false"><svg><use href="#moon-icon"/></svg></button></header>
+      <section class="home-content" id="home-content"></section>
+      <nav class="home-tabs" aria-label="示例页面"><button data-page="chat" aria-current="page">柯</button><button data-page="us">我们</button><button data-page="ke">柯的</button></nav>
+    </div>
+    <button id="edge-handle" class="edge-handle" aria-label="从右边缘打开设置"><span></span></button>
+    <div id="gesture-demo" class="gesture-demo" hidden aria-hidden="true"><span></span><p>从右边缘，向左轻划</p></div>
+    <div id="overlay" class="overlay" hidden>
+      <button class="scrim" id="scrim" aria-label="关闭设置，返回原页面" tabindex="-1"></button>
+      <section class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="统一设置" tabindex="-1">
+        <header class="drawer-bar"><button class="back-button" id="back-directory" hidden><svg><use href="#back-icon"/></svg>目录</button><span class="drawer-caption" id="drawer-caption">设置</span><button class="icon-button" id="close-drawer" aria-label="收起设置抽屉"><svg><use href="#close-icon"/></svg></button></header>
+        <div class="drawer-scroll" id="drawer-scroll"><div id="directory" class="directory"><div class="botanical" id="botanical" aria-hidden="true"></div><div class="directory-title"><h2>月隐</h2><p>一枝收月色</p></div><nav id="directory-links" aria-label="设置目录"></nav></div><section id="detail" class="detail" hidden></section></div>
+        <footer class="drawer-footer">设置预览 · 修改仅留在本页</footer>
+      </section>
+    </div>
+    <p class="toast" id="toast" role="status" hidden></p>
+    <p id="load-status" class="load-status" role="status">正在打开月隐…</p>
+  </div>
+</main></body></html>

@@ -1,0 +1,15 @@
+{
+  "demo":true,"version":"103（示例）","palette":"white","drawerTitle":"月隐",
+  "entries":[
+    {"id":"chat","title":"话笺","label":"聊天","en":"Conversation"},
+    {"id":"visits","title":"来信","label":"柯来找你","en":"A little closer"},
+    {"id":"reminders","title":"晚声","label":"提醒","en":"Gentle reminders"},
+    {"id":"palette","title":"素笺","label":"底色","en":"Paper & light"},
+    {"id":"notifications","title":"铃语","label":"通知","en":"Little signals"},
+    {"id":"privacy","title":"藏心","label":"私密","en":"Just between us"},
+    {"id":"updates","title":"新枝","label":"更新","en":"A new leaf"},
+    {"id":"about","title":"小序","label":"关于","en":"Our little story"}
+  ],
+  "settings":{"bubble":"轻透","wallpaper":"沿用纸色","model":"沿用 App 设置","visits":true,"frequency":"适中","quiet":true,"quietStart":"23:00","quietEnd":"08:00","medicine":true,"medicineTime":"20:30","home":false,"homeTime":"18:30","bedtime":true,"bedtimeTime":"22:30","notifyMessages":true,"notifyDiary":true,"notifyReminders":true,"notifyUpdates":false,"faceID":false,"privateSpace":false,"message":""},
+  "shells":[{"id":"chat","name":"柯","subtitle":"有些话，慢慢说。"},{"id":"us","name":"我们","subtitle":"平常的日子，也有光。"},{"id":"ke","name":"柯的","subtitle":"有我留给你的东西。"}]
+}

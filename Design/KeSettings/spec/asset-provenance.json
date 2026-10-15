@@ -1,0 +1,63 @@
+{
+  "generatedAt": "2026-10-15",
+  "assets": [
+    {
+      "file": "vine@3x.png",
+      "width": 724,
+      "height": 2172,
+      "scale": 3,
+      "origin": "Generated for this settings preview with OpenAI image generation",
+      "prompt": "Use case: stylized-concept. Asset type: isolated transparent botanical UI asset for a quiet Chinese/French moonlit paper settings drawer. Primary request: ONE extremely slender vertical meandering vine, graceful continuous S curves descending, fine pale sage and blue-grey leaves, tiny sparse tendrils, fine natural botanical watercolor texture with translucent edges and delicate silver veins. No flowers (flowers will be separate). No moon, no butterfly, no frame, no text, no backdrop, no glow, no ground shadow. Tall portrait 1:3 composition with the complete vine fitting comfortably and a small transparent safety margin; the vine is airy and narrow rather than a dense bush, with many open gaps. Cool muted sage and slate-blue, soft right-upper moonlight. True transparent alpha PNG. High-resolution 768 by 2304 pixels if possible, intended as 3x asset, not a screenshot."
+    },
+    {
+      "file": "moon-tassel@3x.png",
+      "width": 887,
+      "height": 1774,
+      "scale": 3,
+      "origin": "Generated for this settings preview with OpenAI image generation",
+      "prompt": "Use case: stylized-concept. Asset type: isolated transparent ornament for quiet moonlit botanical UI. Primary request: ONE delicate pale silver-white crescent moon with five very fine dangling pearl chains and TWO wispy blush-pink silk tassels at different heights, each long and fine. Some minuscule pearlescent bead highlights, translucent porcelain crescent, subtle botanical engraving, no flowers. Whole ornament is airy, elegant French antique jewelry rendered in fine watercolor-realistic illustration, not cartoon, not shiny gold. Cool moonlight from upper right. Tall portrait canvas, full ornament visible with transparent safety margin, no frame, no text, no background, no ambient halo or ground shadow. True transparent alpha PNG. High resolution 768 by 1536 pixels if possible for 3x use."
+    },
+    {
+      "file": "flower@3x.png",
+      "width": 348,
+      "height": 348,
+      "scale": 3,
+      "origin": "Reused approved KeCamellia asset, source working tree at 28dfbee367dd50aabafa39e35f50f5735cd2b9b9",
+      "source": "Design/KeCamellia/assets/diary@3x.png",
+      "prompt": "REUSED ASSET — not generated in this task. Approved LoveApp KeCamellia flower asset; original generation prompt unavailable. Preserve the watercolor texture and true alpha; source documented in spec/asset-provenance.json."
+    },
+    {
+      "file": "wing-left@3x.png",
+      "width": 192,
+      "height": 192,
+      "scale": 3,
+      "origin": "Reused approved KeCamellia asset, source working tree at 28dfbee367dd50aabafa39e35f50f5735cd2b9b9",
+      "source": "Design/KeCamellia/assets/wing-left@3x.png",
+      "prompt": "REUSED ASSET — not generated in this task. Approved LoveApp KeCamellia wing-left asset; original generation prompt unavailable. Preserve the watercolor texture and true alpha; source documented in spec/asset-provenance.json."
+    },
+    {
+      "file": "wing-right@3x.png",
+      "width": 192,
+      "height": 192,
+      "scale": 3,
+      "origin": "Reused approved KeCamellia asset, source working tree at 28dfbee367dd50aabafa39e35f50f5735cd2b9b9",
+      "source": "Design/KeCamellia/assets/wing-right@3x.png",
+      "prompt": "REUSED ASSET — not generated in this task. Approved LoveApp KeCamellia wing-right asset; original generation prompt unavailable. Preserve the watercolor texture and true alpha; source documented in spec/asset-provenance.json."
+    },
+    {
+      "file": "body@3x.png",
+      "width": 192,
+      "height": 192,
+      "scale": 3,
+      "origin": "Reused approved KeCamellia asset, source working tree at 28dfbee367dd50aabafa39e35f50f5735cd2b9b9",
+      "source": "Design/KeCamellia/assets/body@3x.png",
+      "prompt": "REUSED ASSET — not generated in this task. Approved LoveApp KeCamellia body asset; original generation prompt unavailable. Preserve the watercolor texture and true alpha; source documented in spec/asset-provenance.json."
+    }
+  ],
+  "notes": [
+    "@3x means use image pixel dimensions / 3 for intrinsic logical canvas, not that all assets share the same logical size.",
+    "Vine and moon output dimensions are preserved exactly; not resized to invented dimensions.",
+    "layout.json defines contain-fit boxes and opacity. Butterfly parts overlay on the same 64×64 logical canvas.",
+    "All six PNGs have an alpha channel. No screenshot or background paper is baked into the design assets."
+  ]
+}

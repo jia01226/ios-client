@@ -1,0 +1,25 @@
+{
+  "coordinateSystem":"Normalized fractions of the directory content box; left/top/width/height describe uncropped image boxes, not opaque bounds.",
+  "referencePhone":{"width":390,"height":844},
+  "drawer":{"widthRatio":0.75,"edgeHitPx":20,"minimumDirectoryHeight":720,"topBarHeight":48,"minimumHitSize":44},
+  "art":[
+    {"id":"vine","file":"vine@3x.png","left":0.30,"top":0.20,"width":0.48,"height":0.78,"opacity":0.52,"anchor":[0.5,0]},
+    {"id":"moon","file":"moon-tassel@3x.png","left":0.24,"top":0.005,"width":0.36,"height":0.33,"opacity":0.68,"anchor":[0.5,0]},
+    {"id":"flower-one","file":"flower@3x.png","left":0.47,"top":0.42,"width":0.14,"height":0.06,"opacity":0.62,"anchor":[0.5,0.5]},
+    {"id":"flower-two","file":"flower@3x.png","left":0.40,"top":0.73,"width":0.15,"height":0.065,"opacity":0.62,"anchor":[0.5,0.5]}
+  ],
+  "butterfly":{"left":0.35,"top":0.58,"widthPx":46,"heightPx":46,"opacity":0.55,"anchor":[0.5,0.5]},
+  "title":{"right":0.07,"top":0.11,"poem":"一枝收月色"},
+  "entries":[
+    {"id":"chat","left":0.08,"top":0.26,"side":"left"},
+    {"id":"visits","left":0.08,"top":0.39,"side":"left"},
+    {"id":"reminders","left":0.08,"top":0.52,"side":"left"},
+    {"id":"palette","left":0.08,"top":0.65,"side":"left"},
+    {"id":"notifications","left":0.67,"top":0.48,"side":"right"},
+    {"id":"privacy","left":0.67,"top":0.61,"side":"right"},
+    {"id":"updates","left":0.67,"top":0.74,"side":"right"},
+    {"id":"about","left":0.67,"top":0.87,"side":"right"}
+  ],
+  "assetScale":3,
+  "detail":{"inlinePadding":20,"rowMinimumHeight":58,"fontSource":"spec/tokens.json"}
+}
