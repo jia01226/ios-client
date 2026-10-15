@@ -106,8 +106,10 @@ enum Ink {
     static let meText = Color(hex: 0x795363), meFill = Color(hex: 0xF5E8ED)
     static let positive = Color(hex: 0x466859), neutral = Color(hex: 0x626C76), negative = Color(hex: 0x905664)
     static let track = Color(hex: 0xE4E9EE), saving = Color(hex: 0xB8788B)
-    static func song(_ size: CGFloat) -> Font { .custom("Songti SC", size: size) }
-    static func latin(_ size: CGFloat) -> Font { .custom("Baskerville", size: size) }
+    /// 108：她喜欢以前那种瘦瘦的字——思源宋体的极细款。大字用极细，小字用细一档，免得看不清。聊天不跟这套。
+    static func song(_ size: CGFloat) -> Font { .custom(size >= 17 ? "NotoSerifSC-ExtraLight" : "NotoSerifSC-Light", size: size) }
+    /// 数字、日期也用同一款细字，和中文配套
+    static func latin(_ size: CGFloat) -> Font { .custom(size >= 17 ? "NotoSerifSC-ExtraLight" : "NotoSerifSC-Light", size: size) }
     static func script(_ size: CGFloat) -> Font { .custom("PinyonScript-Regular", size: size) }
 }
 

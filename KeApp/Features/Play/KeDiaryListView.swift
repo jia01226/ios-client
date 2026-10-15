@@ -1,27 +1,31 @@
 import SwiftUI
 
-// 105：日记照 GPT 的「日记目录 / 点开一篇」做。只放柯写的（她一般不写），
-// 左边大日子、按月份、日历跳到某天、搜索；点开读全文，轻轻翻页进来，底下有「同一天的另一篇」。
-// 柯锁着的那几页只露标题和一把小锁，正文要他同意了才看得到（和抽屉一个道理）。
+// 105：日记照 GPT 的「日记目录 / 点开一篇」做。只放柯写的（她一般不写）。
+// 108：她的意见——锁着的和没锁的一眼分清（锁过后来打开的也标出来）；点开不要翻页动画；
+// 月份标题跟着往下翻（翻到九月就显示九月）；每一篇一样高，同一天的几篇是一整块，篇与篇之间一条短线，两天之间一条通栏线。
 
 struct KeDiaryListView: View {
     let line: ChatLine
     var onClose: () -> Void
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(CamelliaPalette.storageKey) private var savedPalette = CamelliaPalette.defaultPalette.rawValue
     @State private var entries: [RemoteDiary] = []
     @State private var loading = true
     @State private var failed = false
     @State private var query = ""
+    @State private var onlyLocked = false
     @State private var reading: RemoteDiary?
     @State private var pickingDate = false
     @State private var jumpDate = Date()
     private var paper: Color { CamelliaPalette.resolve(savedPalette).paper }
+    private static let rowHeight: CGFloat = 66
 
+    private var lockedCount: Int { entries.filter(Self.isLocked).count }
     private var shown: [RemoteDiary] {
         let q = query.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty else { return entries }
-        return entries.filter { $0.title.localizedCaseInsensitiveContains(q) || (!$0.locked_hidden && $0.content.localizedCaseInsensitiveContains(q)) }
+        return entries.filter { e in
+            (!onlyLocked || Self.isLocked(e)) &&
+            (q.isEmpty || e.title.localizedCaseInsensitiveContains(q) || (!e.locked_hidden && e.content.localizedCaseInsensitiveContains(q)))
+        }
     }
     /// [(yyyy-MM, [(yyyy-MM-dd, 那天的几篇)])]，新的在上面
     private var months: [(String, [(String, [RemoteDiary])])] {
@@ -34,24 +38,34 @@ struct KeDiaryListView: View {
         }
         return monthOrder.map { m in (m, (days[m] ?? []).map { ($0, byDay[$0] ?? []) }) }
     }
+    static func isLocked(_ e: RemoteDiary) -> Bool { e.locked_hidden || ((e.locked ?? 0) == 1 && (e.revealed ?? 0) == 0) }
+    static func wasUnlocked(_ e: RemoteDiary) -> Bool { (e.locked ?? 0) == 1 && (e.revealed ?? 0) == 1 }
 
     var body: some View {
         ZStack {
             paper.ignoresSafeArea()
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
+                    LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                         header
                         controls(proxy)
                         if loading && entries.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(40) }
                         if failed { Button("日记暂时没接上，点这里再试一次") { Task { await load() } }.font(Ink.song(14)).padding(.top, 20) }
                         if !loading && !failed && shown.isEmpty {
-                            Text(query.isEmpty ? "柯还没有写日记。" : "没搜到「\(query)」").font(Ink.song(14)).foregroundStyle(Ink.secondary)
-                                .frame(maxWidth: .infinity).padding(.vertical, 30)
+                            Text(onlyLocked ? "没有锁着的了。" : (query.isEmpty ? "柯还没有写日记。" : "没搜到「\(query)」"))
+                                .font(Ink.song(14)).foregroundStyle(Ink.secondary).frame(maxWidth: .infinity).padding(.vertical, 30)
                         }
                         ForEach(months, id: \.0) { month, days in
-                            Color.clear.frame(height: 1).id(month)
-                            ForEach(days, id: \.0) { day, list in dayBlock(day, list).id(day) }
+                            Section {
+                                ForEach(days, id: \.0) { day, list in dayBlock(day, list).id(day) }
+                            } header: {
+                                // 往下翻的时候这一行贴在顶上：翻到九月就显示九月
+                                Text(Self.monthTitle(month)).font(Ink.latin(17)).tracking(1)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 10)
+                                    .background(paper.opacity(0.97))
+                                    .id(month)
+                            }
                         }
                         if !entries.isEmpty {
                             Text("— 继续往下，翻看更早的日子 —").font(Ink.song(11.5)).foregroundStyle(Ink.secondary)
@@ -70,7 +84,6 @@ struct KeDiaryListView: View {
                                     Button("去这天") {
                                         pickingDate = false
                                         let key = Self.key(jumpDate)
-                                        // 那天没写，就跳到它之前最近的一天
                                         let target = months.flatMap { $0.1.map(\.0) }.first { $0 <= key }
                                         if let target { withAnimation { proxy.scrollTo(target, anchor: .top) } }
                                     }
@@ -82,13 +95,11 @@ struct KeDiaryListView: View {
                 }
             }
             if let entry = reading {
+                // 点开直接打开，不要翻页动画
                 DiaryPage(entry: entry, sameDay: entries.filter { $0.id != entry.id && $0.created_at.prefix(10) == entry.created_at.prefix(10) },
-                          paper: paper, reduceMotion: reduceMotion,
-                          onBack: { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) { reading = nil } },
-                          onOpen: { other in withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) { reading = other } })
+                          paper: paper,
+                          onBack: { reading = nil }, onOpen: { other in reading = other })
                     .id(entry.id)
-                    .transition(reduceMotion ? .opacity : .asymmetric(insertion: .modifier(active: PageTurn(angle: -28, opacity: 0), identity: PageTurn(angle: 0, opacity: 1)),
-                                                                       removal: .opacity))
                     .zIndex(1)
             }
         }
@@ -112,17 +123,27 @@ struct KeDiaryListView: View {
     }
 
     private func controls(_ proxy: ScrollViewProxy) -> some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 12) {
             HStack {
                 Menu {
                     ForEach(months, id: \.0) { m in Button(Self.monthTitle(m.0)) { withAnimation { proxy.scrollTo(m.0, anchor: .top) } } }
                 } label: {
-                    HStack(spacing: 6) {
-                        Text(Self.monthTitle(months.first?.0 ?? Self.key(Date()).prefix(7).description)).font(Ink.latin(19))
-                        Image(systemName: "chevron.down").font(.system(size: 11))
-                    }.foregroundStyle(Ink.primary).frame(minHeight: 44)
+                    HStack(spacing: 6) { Text("跳到月份").font(Ink.song(15)); Image(systemName: "chevron.down").font(.system(size: 11)) }
+                        .foregroundStyle(Ink.primary).frame(minHeight: 44)
                 }
                 Spacer()
+                if lockedCount > 0 || onlyLocked {
+                    Button { onlyLocked.toggle() } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "lock").font(.system(size: 12))
+                            Text(onlyLocked ? "看全部" : "锁着 \(lockedCount) 篇").font(Ink.song(13))
+                        }
+                        .padding(.horizontal, 12).frame(minHeight: 32)
+                        .background(Capsule().fill(onlyLocked ? Ink.meFill : Ink.primary.opacity(0.05)))
+                    }
+                    .buttonStyle(.plain).foregroundStyle(onlyLocked ? Ink.meText : Ink.secondary)
+                    .accessibilityIdentifier("diary-only-locked")
+                }
                 Button { jumpDate = Date(); pickingDate = true } label: {
                     Image(systemName: "calendar").font(.system(size: 20, weight: .light)).frame(width: 44, height: 44)
                 }.accessibilityLabel("跳到某一天")
@@ -137,45 +158,58 @@ struct KeDiaryListView: View {
             .padding(.horizontal, 14).frame(minHeight: 42)
             .background(Capsule().fill(Ink.primary.opacity(0.06)))
         }
-        .padding(.top, 10).padding(.bottom, 8)
+        .padding(.top, 10).padding(.bottom, 4)
     }
 
+    /// 一天一整块：左边日子只写一次；右边每篇一样高，篇与篇之间一条短线；两天之间一条通栏线
     private func dayBlock(_ day: String, _ list: [RemoteDiary]) -> some View {
         HStack(alignment: .top, spacing: 0) {
             VStack(spacing: 2) {
-                Text(Self.dayNumber(day)).font(Ink.latin(34)).monospacedDigit()
+                Text(Self.dayNumber(day)).font(Ink.latin(30)).monospacedDigit()
                 Text(Self.weekday(day)).font(Ink.song(12)).foregroundStyle(Ink.secondary)
             }
-            .frame(width: 58, alignment: .leading)
-            .padding(.top, 14)
-            Rectangle().fill(Ink.line.opacity(0.5)).frame(width: 0.7).padding(.vertical, 14)
+            .frame(width: 54, height: Self.rowHeight, alignment: .center)
             VStack(spacing: 0) {
                 ForEach(Array(list.enumerated()), id: \.element.id) { i, e in
-                    Button { withAnimation(reduceMotion ? nil : .easeOut(duration: 0.45)) { reading = e } } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack(spacing: 6) {
-                                    if e.locked_hidden { Image(systemName: "lock").font(.system(size: 13)).foregroundStyle(Ink.secondary) }
-                                    Text(e.title.isEmpty ? "这一页" : e.title).font(Ink.song(17)).lineLimit(2)
-                                }
-                                Text("\(Self.time(e.created_at)) · 柯记的\(e.locked_hidden ? " · 锁着" : "")")
-                                    .font(Ink.latin(12.5)).foregroundStyle(Ink.secondary)
-                            }
-                            Spacer(minLength: 8)
-                            Image(systemName: "chevron.right").font(.system(size: 13, weight: .light)).foregroundStyle(Ink.secondary)
-                        }
-                        .padding(.vertical, 14).padding(.leading, 16)
-                        .contentShape(Rectangle())
-                        .overlay(alignment: .bottom) {
-                            if i < list.count - 1 { Rectangle().fill(Ink.line.opacity(0.4)).frame(height: 0.5).padding(.leading, 16) }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\(e.title)，\(Self.time(e.created_at))\(e.locked_hidden ? "，锁着" : "")")
+                    if i > 0 { Rectangle().fill(Ink.line.opacity(0.4)).frame(height: 0.5).padding(.leading, 14) }
+                    row(e)
                 }
             }
         }
-        .overlay(alignment: .bottom) { Rectangle().fill(Ink.line.opacity(0.6)).frame(height: 0.7) }
+        .overlay(alignment: .bottom) { Rectangle().fill(Ink.line.opacity(0.7)).frame(height: 0.7) }
+    }
+
+    private func row(_ e: RemoteDiary) -> some View {
+        let locked = Self.isLocked(e), opened = Self.wasUnlocked(e)
+        return Button { reading = e } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 6) {
+                        if locked { Image(systemName: "lock.fill").font(.system(size: 11)).foregroundStyle(Ink.meText) }
+                        else if opened { Image(systemName: "lock.open").font(.system(size: 11)).foregroundStyle(Ink.secondary) }
+                        Text(e.title.isEmpty ? "这一页" : e.title).font(Ink.song(17)).lineLimit(1)
+                            .foregroundStyle(locked ? Ink.secondary : Ink.primary)
+                    }
+                    HStack(spacing: 6) {
+                        Text("\(Self.time(e.created_at)) · 柯记的").font(Ink.latin(12)).foregroundStyle(Ink.secondary)
+                        if locked { tag("锁着", fg: Ink.meText, bg: Ink.meFill) }
+                        else if opened { tag("解锁了", fg: Ink.keText, bg: Ink.keFill) }
+                    }
+                }
+                Spacer(minLength: 6)
+                Image(systemName: "chevron.right").font(.system(size: 13, weight: .light)).foregroundStyle(Ink.secondary)
+            }
+            .padding(.leading, 14)
+            .frame(height: Self.rowHeight)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(e.title)，\(Self.time(e.created_at))\(locked ? "，锁着" : opened ? "，解锁了" : "")")
+    }
+
+    private func tag(_ text: String, fg: Color, bg: Color) -> some View {
+        Text(text).font(.system(size: 10.5)).padding(.horizontal, 6).padding(.vertical, 1)
+            .foregroundStyle(fg).background(Capsule().fill(bg))
     }
 
     /// 107：她说每次点开都转圈。看过一次就记住，再点开先摆上次的，后台悄悄更新。
@@ -211,23 +245,11 @@ struct KeDiaryListView: View {
     static func time(_ at: String) -> String { at.count >= 16 ? String(at.dropFirst(11).prefix(5)) : "" }
 }
 
-/// 轻轻翻页：从左边书脊转过来
-private struct PageTurn: ViewModifier {
-    let angle: Double
-    let opacity: Double
-    func body(content: Content) -> some View {
-        content
-            .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), anchor: .leading, perspective: 0.5)
-            .opacity(opacity)
-    }
-}
-
 /// 点开的一篇
 private struct DiaryPage: View {
     let entry: RemoteDiary
     let sameDay: [RemoteDiary]
     let paper: Color
-    let reduceMotion: Bool
     var onBack: () -> Void
     var onOpen: (RemoteDiary) -> Void
 

@@ -126,7 +126,7 @@ struct RootTabView: View {
             ForEach([(Tab.ke, "柯"), (Tab.us, "我们"), (Tab.drawer, "柯的")], id: \.1) { tab, label in
                 Button { withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { selection = tab } } label: {
                     VStack(spacing: 5) {
-                        Text(label).font(.custom("Songti SC", size: 14)).tracking(2.4)
+                        Text(label).font(.custom("NotoSerifSC-Light", size: 14)).tracking(2.4)
                         Circle().fill(selection == tab ? Ink.accent : Color.clear).frame(width: 4.5, height: 4.5)
                     }
                     .foregroundStyle(selection == tab ? Ink.primary : Ink.secondary)
