@@ -21,6 +21,9 @@ struct UsPondView: View {
     @State private var open: PondEntry?
     @State private var visible = false
     @State private var ripples: [PondRipple] = []
+    @State private var choosingAnniversary = false
+    @State private var managingDates = false
+    @AppStorage("us.hero.anniversary") private var heroID = "together"
     private var palette: CamelliaPalette { .resolve(savedPalette) }
 
     init(line: ChatLine) {
@@ -36,10 +39,13 @@ struct UsPondView: View {
         GeometryReader { geo in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    verse.padding(.horizontal, 28).padding(.top, 14)
-                    calendar.padding(.horizontal, 28).padding(.top, 20)
-                    sectionTitle("也去看看", "ALSO HERE").padding(.horizontal, 28).padding(.top, 22)
-                    pond(width: geo.size.width)
+                    verse.padding(.horizontal, 28).padding(.top, 10)
+                    calendar.padding(.horizontal, 28).padding(.top, 18)
+                    Text("往下滑，去池子边 ⌄").font(Ink.song(11.5)).tracking(2).foregroundStyle(Ink.secondary)
+                        .frame(maxWidth: .infinity).padding(.top, 14).padding(.bottom, 4)
+                        .accessibilityHidden(true)
+                    sectionTitle("也去看看", "ALSO HERE").padding(.horizontal, 28).padding(.top, 10)
+                    pond(width: geo.size.width, height: max(geo.size.width * 1.25, geo.size.height - 60))
                 }
                 .padding(.bottom, 12)
             }
@@ -55,6 +61,10 @@ struct UsPondView: View {
         .onDisappear { visible = false }
         .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await load() } } }
         .sheet(item: $editDay) { day in daySheet(day.date) }
+        .sheet(isPresented: $choosingAnniversary) { anniversarySheet }
+        .sheet(isPresented: $managingDates, onDismiss: { Task { await vm.loadReminders() } }) {
+            CompanionPages(page: .anniversaries, line: line).environmentObject(Theme.shared)
+        }
         .fullScreenCover(item: $open) { entry in page(entry).swipeBackToClose { open = nil; Task { await book.load(); await notes.load() } } }
     }
 
@@ -78,43 +88,103 @@ struct UsPondView: View {
         .foregroundStyle(Ink.primary)
     }
 
-    private var together: Anniversary? { vm.anniversaries.first { $0.id == "together" } ?? vm.anniversaries.first }
+    // 106：她选了方案 B——寄语收成一行小字，纪念日放大当主角，点名字换成别的纪念日。
+    private var hero: Anniversary? { vm.anniversaries.first { $0.id == heroID } ?? vm.anniversaries.first }
+
+    static func shortName(_ a: Anniversary) -> String {
+        ["together": "在一起", "confession": "表白日", "mine": "我的生日", "ke": "柯的生日"][a.id] ?? a.title
+    }
+    private func numbers(_ a: Anniversary) -> (number: String, unit: String, line: String, past: Bool) {
+        let c = Calendar.current, comps = c.dateComponents([.year, .month, .day], from: a.date)
+        if a.isYearly {
+            let left = vm.daysUntil(a)
+            let line = "每年 \(comps.month ?? 0) 月 \(comps.day ?? 0) 日"
+            return left == 0 ? ("今天", "", "今天是" + Self.shortName(a), false) : ("\(left)", "天后", line, false)
+        }
+        return ("\(vm.daysTogether(since: a.date))", "天", "从 \(comps.year ?? 0) 年 \(comps.month ?? 0) 月 \(comps.day ?? 0) 日那天起", true)
+    }
 
     private var verse: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            sectionTitle("寄语", "VERSE")
-            ZStack(alignment: .topTrailing) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(book.snapshot?.verse?.en ?? "With you, even ordinary days shine.")
-                        .font(Ink.script(23)).lineLimit(1).minimumScaleFactor(0.6)
-                        .padding(.top, 10)
-                    Text(book.snapshot?.verse?.zh ?? "和你一起，平常的日子也有光。")
-                        .font(Ink.song(15)).tracking(1.2)
-                    if let t = together {
-                        HStack(alignment: .firstTextBaseline, spacing: 4) {
-                            Text("在一起").font(Ink.song(12)).tracking(1.6)
-                            Text("\(vm.daysTogether(since: t.date))").font(Ink.latin(17)).monospacedDigit()
-                            Text("天").font(Ink.song(12))
-                        }.padding(.top, 4)
+        VStack(alignment: .leading, spacing: 2) {
+            Text(book.snapshot?.verse?.en ?? "With you, even ordinary days shine.")
+                .font(Ink.script(18)).foregroundStyle(Ink.secondary).lineLimit(1).minimumScaleFactor(0.6)
+            Text(book.snapshot?.verse?.zh ?? "和你一起，平常的日子也有光。")
+                .font(Ink.song(12)).tracking(1.2).foregroundStyle(Ink.secondary)
+            if let a = hero {
+                let n = numbers(a)
+                HStack(alignment: .bottom) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Button { choosingAnniversary = true } label: {
+                            HStack(spacing: 5) {
+                                Text(Self.shortName(a)).font(Ink.song(15)).tracking(3)
+                                Image(systemName: "chevron.down").font(.system(size: 11))
+                            }.frame(minHeight: 40)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("换一个纪念日，现在是\(Self.shortName(a))")
+                        .accessibilityIdentifier("us-anniversary-pick")
+                        HStack(alignment: .lastTextBaseline, spacing: 4) {
+                            Text(n.number).font(Ink.latin(n.number == "今天" ? 56 : 76)).monospacedDigit()
+                                .lineLimit(1).minimumScaleFactor(0.5)
+                            Text(n.unit).font(Ink.song(16)).tracking(1.5)
+                        }
+                        Text(n.line).font(Ink.song(11.5)).tracking(0.6).foregroundStyle(Ink.secondary)
                     }
+                    Spacer()
+                    Image("KeUsMoon").resizable().scaledToFit().frame(width: 58, height: 58)
+                        .saturation(0.15).opacity(0.55).padding(.bottom, 26)
+                        .accessibilityHidden(true)
                 }
-                Image("KeUsMoon").resizable().scaledToFit().frame(width: 42, height: 42)
-                    .saturation(0.15).opacity(0.55).padding(.top, 34).padding(.trailing, 6)
-                    .accessibilityHidden(true)
+                .padding(.top, 10)
+                .accessibilityElement(children: .contain)
             }
         }
-        .accessibilityElement(children: .combine)
+    }
+
+    private var anniversarySheet: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(vm.anniversaries) { a in
+                        let n = numbers(a)
+                        Button { heroID = a.id; choosingAnniversary = false } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(Self.shortName(a)).font(Ink.song(17))
+                                    Text(n.line).font(.system(size: 12)).foregroundStyle(Ink.secondary)
+                                }
+                                Spacer()
+                                Text(n.number == "今天" ? "就是今天" : (n.past ? "已过 " : "还有 ") + n.number + " 天")
+                                    .font(Ink.latin(17)).monospacedDigit()
+                                Image(systemName: a.id == heroID ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(a.id == heroID ? Ink.accent : Ink.line).font(.system(size: 20))
+                            }
+                            .frame(minHeight: 52).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } footer: {
+                    Text("在一起、表白日往前数；生日每年往后数。").font(.system(size: 12))
+                }
+            }
+            .navigationTitle("我们的纪念日").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("关上") { choosingAnniversary = false } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("管理日期") { choosingAnniversary = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { managingDates = true } }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .tint(Ink.accent)
+        .foregroundStyle(Ink.primary)
     }
 
     // MARK: 这个月
 
     private var calendar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                sectionTitle("这个月", "NOTRE MOIS")
-                Button("写班表") { editDay = PondDay(date: Calendar.current.startOfDay(for: .now)) }
-                    .font(Ink.song(11)).tracking(1.4).frame(minHeight: 32)
-            }
+            sectionTitle("这个月", "NOTRE MOIS")
             HStack {
                 Text(vm.monthTitle(for: month)).font(Ink.song(16)).tracking(1.8)
                 Spacer()
@@ -209,8 +279,7 @@ struct UsPondView: View {
 
     // MARK: 也去看看（锦鲤池）
 
-    private func pond(width: CGFloat) -> some View {
-        let height = width * 0.78
+    private func pond(width: CGFloat, height: CGFloat) -> some View {
         let snap = book.snapshot
         return ZStack(alignment: .topLeading) {
             PondCanvas(paused: !visible || reduceMotion || scenePhase != .active, reduceMotion: reduceMotion, ripples: ripples)
@@ -221,13 +290,13 @@ struct UsPondView: View {
                     if ripples.count > 8 { ripples.removeFirst() }
                 }
                 .accessibilityHidden(true)
-            entry(.purse, x: 0.127, y: 0.09, width: width, height: height,
+            entry(.purse, x: 0.12, y: 0.07, width: width, height: height,
                   badge: snap.map { p in p.purse.cap_cents > 0 ? "还能花 ¥\(max(0, (p.purse.left_cents ?? 0)) / 100)" : "这个月花了 ¥\(p.purse.spent_cents / 100)" })
-            entry(.menu, x: 0.66, y: 0.26, width: width, height: height,
+            entry(.menu, x: 0.62, y: 0.28, width: width, height: height,
                   badge: snap?.menu.meals.first.map { $0.title })
-            entry(.notes, x: 0.145, y: 0.47, width: width, height: height,
+            entry(.notes, x: 0.14, y: 0.50, width: width, height: height,
                   badge: { let n = notes.notes.filter { !$0.acked }.count; return n > 0 ? "\(n) 张贴着" : nil }())
-            entry(.meds, x: 0.65, y: 0.68, width: width, height: height,
+            entry(.meds, x: 0.62, y: 0.72, width: width, height: height,
                   badge: snap.flatMap { s in
                       let left = (s.meds.order ?? []).filter { !(s.meds.today[$0]?.taken ?? false) }
                       return s.meds.rx.isEmpty ? nil : (left.isEmpty ? "今天的都吃了" : "\(left.first!)的还没吃")
