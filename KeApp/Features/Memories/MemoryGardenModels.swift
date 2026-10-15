@@ -86,7 +86,12 @@ extension APIClient: MemoryGardenAPI {}
     @Published private(set) var busy = false
     @Published var error: String?
     private let api: any MemoryGardenAPI
-    init(api: any MemoryGardenAPI) { self.api = api }
+    /// 107：点开记忆不再转圈——上次拿到的先摆上，后台再刷新
+    private static var cache: (flowers: [MemoryFlower], categories: [String])?
+    init(api: any MemoryGardenAPI) {
+        self.api = api
+        if let c = Self.cache { flowers = c.flowers; categories = c.categories; loaded = true }
+    }
 
     func visible(includeOthers: Bool, category: String? = nil) -> [MemoryFlower] {
         flowers.filter { $0.isDrawable && (includeOthers || $0.author == "ke") && (category == nil || $0.category == category) }
@@ -107,6 +112,7 @@ extension APIClient: MemoryGardenAPI {}
         categories = (["约定", "关系", "生活", "身体", "喜好"] + page.categories + flowers.map(\.category))
             .filter { categorySeen.insert($0).inserted }
         loaded = true
+        Self.cache = (flowers, categories)
     }
     @discardableResult func change(_ flower: MemoryFlower, action: String, note: String? = nil) async -> Bool {
         guard !busy, !loading else { return false }

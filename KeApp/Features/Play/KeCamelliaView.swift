@@ -598,13 +598,16 @@ struct KeDreamListView: View {
         .accessibilityLabel(Self.dayLine(dream.created_at) + "，" + dream.title)
     }
 
+    @MainActor static var cache: [RemoteDiary] = []
     private func load() async {
-        loading = true; failed = false
+        if !Self.cache.isEmpty { dreams = Self.cache; loading = false } else { loading = true }
+        failed = false
         defer { loading = false }
         do {
             let rows = try await APIClient(baseURL: line.apiBaseURL).fetchDiaries(query: "", offset: 0, limit: 500)
             dreams = rows.filter { $0.kind == "dream" && !$0.locked_hidden }.sorted { $0.created_at > $1.created_at }
-        } catch { failed = true }
+            Self.cache = dreams
+        } catch { if dreams.isEmpty { failed = true } }
     }
     private static func monthTitle(_ ym: String) -> String {
         let parts = ym.split(separator: "-")

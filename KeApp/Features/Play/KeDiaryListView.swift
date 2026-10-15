@@ -178,14 +178,19 @@ struct KeDiaryListView: View {
         .overlay(alignment: .bottom) { Rectangle().fill(Ink.line.opacity(0.6)).frame(height: 0.7) }
     }
 
+    /// 107：她说每次点开都转圈。看过一次就记住，再点开先摆上次的，后台悄悄更新。
+    @MainActor static var cache: [RemoteDiary] = []
     private func load() async {
-        loading = true; failed = false
+        if !Self.cache.isEmpty { entries = Self.cache; loading = false }
+        else { loading = true }
+        failed = false
         defer { loading = false }
         do {
             let rows = try await APIClient(baseURL: line.apiBaseURL).fetchDiaries(query: "", offset: 0, limit: 500)
             let ke: Set<String> = ["柯", "ke", "ai", "assistant"]
             entries = rows.filter { $0.kind != "dream" && ke.contains($0.author ?? "柯") }.sorted { ($0.created_at, $0.id) > ($1.created_at, $1.id) }
-        } catch { failed = true }
+            Self.cache = entries
+        } catch { if entries.isEmpty { failed = true } }
     }
 
     static func key(_ d: Date) -> String {

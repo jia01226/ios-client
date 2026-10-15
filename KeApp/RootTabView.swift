@@ -63,6 +63,8 @@ struct RootTabView: View {
         }
         .preferredColorScheme(selection == .drawer || selection == .us || theme.skin != .night ? .light : .dark)
         .task {
+            // 107：星河的星云、银河两张大图第一次用时现画会卡一下，先在后台画好
+            Task.detached(priority: .utility) { _ = GalaxyArt.nebula; _ = GalaxyArt.galaxy; _ = GalaxyArt.glow }
             if chatNotifications.openRequest != nil { selection = .ke }
             await chatNotifications.clearBadgeIfActive()
         }
