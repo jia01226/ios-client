@@ -44,7 +44,7 @@ python3 -m http.server 8774 --bind 127.0.0.1
 - 中文宋体；英文花体固定 **Pinyon Script**，字体和 OFL 授权已随素材提供。不要替换成另一种连笔花体。数字用 Baskerville，系统时间控件保留系统字体。
 - `spec/layout.json` 定义目录内的归一化位置；坐标原点是可滚动目录内容左上角，不包含 48px 顶部工具条。图片坐标是完整透明画布框，使用 contain，不要裁掉透明边缘后照搬坐标。
 - 目录最小高度 720px。矮屏允许滚动，不把八个入口挤到一屏。常规点击范围至少 44px；右边缘手势带宽 20px，另有 44px 月牙按钮作为等价入口。
-- 用户要求先打包交给下一位 Codex，专属 `DESIGN.md` 与 `.impeccable/design.json` 尚待补齐，详见 `Design/KeSettings/CONTINUE-HERE.md`。页面具体坐标以 layout 为准。细节页中文标题 28px、正文 16px、说明 12px、花体 27px；目录雅称桌面 24px/窄屏 22px。
+- 专属设计记录已补齐，见 `Design/KeSettings/DESIGN.md` 与 `Design/KeSettings/.impeccable/design.json`；记录按实际源码提取，视觉仍待用户继续确认。页面具体坐标以 layout 为准。细节页中文标题 28px、正文 16px、说明 12px、花体 27px；目录雅称桌面 24px/窄屏 22px。
 
 ## 拆分素材
 

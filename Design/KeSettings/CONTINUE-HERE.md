@@ -12,9 +12,15 @@
 - 截图在 `.impeccable/review/`。素材均嵌有来源元数据，六张 PNG 的 provenance scan 无缺失。
 - 静态设计 detector 只运行一次，缺少 HTML 解析依赖而降级为正则扫描；没有发现项，但不能据此声称已验证全部对比度和计算样式。
 
+## 本次接手补充
+
+- 已从 `7602c46` 拉取本分支到独立目录，补齐本设计专属 `DESIGN.md` / `.impeccable/design.json`；按当前源码提取，未修改视觉或 spec。
+- 原有 7 项 Node 测试重新通过，app.js / motion.js 语法检查通过；本机浏览器已加载预览。
+- 文档已明确：当前默认冷白来自 sample-data，tokens 的共享 scope/defaults 不等于设置页实现，部分布局和字号仍直接在 CSS 中。
+
 ## 尚未完成
 
-- 用户要求现在交接，因此未运行收尾 documenter，尚无本设计专属 `DESIGN.md` / `.impeccable/design.json`。后续按实际代码提取，颜色真源仍是 `spec/tokens.json`，不要重新发明纸色和花体。
+- 设计文档已按源码补齐；未调用原交接环境的 documenter，未新增独立设计评审。颜色真源仍是 `spec/tokens.json`，不要重新发明纸色和花体。
 - 没有原生接入、App 打包或真机测试。全部设置只保存在页面内存；刷新清空，不发送提醒或留言，不申请权限，不下载更新。
 - 需要用户继续确认视觉。不要把本网页视为她最终定稿，也不要自行合并、打包 App、发布或碰服务器。
 
@@ -22,5 +28,5 @@
 
 1. 读 `docs/HANDOFF-KE-SETTINGS.md` 和本文件，核对当前分支 `codex/settings-drawer`，基线 `claude/swipe-103` 的 `f0335fb526d7fd42df9db8411755e6cd0554d66d`。
 2. 开网页看效果，用户要改哪里就局部改，不碰其他工作树。
-3. 若继续完善交付，补齐设计文档；如改布局/交互，复验对应截图和手势。
+3. 设计文档已补齐；后续改布局/交互时同步更新，并复验对应截图和手势。
 4. 用户把 GitHub 交接链接发给 Claude 后，由 Claude 负责真实设置和原生接入。

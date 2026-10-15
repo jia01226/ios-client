@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 2,
+  "title": "Design System: 月隐 · 设置抽屉",
+  "extensions": {
+    "status": "visual-proposal",
+    "scope": "Design/KeSettings only",
+    "sourceCommit": "7602c46",
+    "sources": {
+      "colors": "spec/tokens.json",
+      "layout": "spec/layout.json",
+      "motion": "spec/motion.json",
+      "defaults": "spec/sample-data.json",
+      "renderedStyles": "style.css"
+    },
+    "runtimeDefaults": {
+      "palette": "white",
+      "appearance": "day"
+    },
+    "colorMeta": {
+      "mist": {
+        "displayName": "浅雾蓝",
+        "role": "neutral",
+        "source": "spec/tokens.json#/palettes/mist/dayPaper"
+      },
+      "white": {
+        "displayName": "冷白",
+        "role": "neutral",
+        "source": "spec/tokens.json#/palettes/white/dayPaper"
+      },
+      "ivory": {
+        "displayName": "暖白",
+        "role": "neutral",
+        "source": "spec/tokens.json#/palettes/ivory/dayPaper"
+      },
+      "cream": {
+        "displayName": "浅米色",
+        "role": "neutral",
+        "source": "spec/tokens.json#/palettes/cream/dayPaper"
+      }
+    },
+    "typographyMeta": {
+      "chinese": {
+        "displayName": "中文宋体",
+        "purpose": "目录、二级标题与正文；实际字号见 style.css。"
+      },
+      "script": {
+        "displayName": "Pinyon Script",
+        "purpose": "本地 PondPinyon 花体，仅用于英文装饰文字。"
+      },
+      "latin": {
+        "displayName": "Baskerville",
+        "purpose": "版本号和示例天数；时间输入使用系统字体。"
+      }
+    },
+    "motion": [
+      {
+        "name": "drawer",
+        "value": {
+          "stiffness": 350,
+          "damping": 38,
+          "mass": 1,
+          "positionEpsilon": 0.001,
+          "velocityEpsilon": 0.005,
+          "maxFrameStepSeconds": 0.032,
+          "dragThresholdPx": 8,
+          "horizontalIntentRatio": 1.2,
+          "projectionSeconds": 0.18,
+          "releaseThreshold": 0.5,
+          "velocityWindowMs": 100,
+          "closeDirection": "right",
+          "scrimOpacity": 0.12
+        },
+        "purpose": "唯一右侧抽屉弹簧；关闭到终点后隐藏覆盖层。"
+      },
+      {
+        "name": "detail",
+        "value": {
+          "enterMs": 180,
+          "translatePx": 10,
+          "exit": "return to directory inside same drawer"
+        },
+        "purpose": "同一抽屉中的二级页切换。"
+      }
+    ],
+    "verification": {
+      "nodeTests": {
+        "passed": 7,
+        "failed": 0
+      },
+      "syntax": [
+        "app.js",
+        "motion.js"
+      ],
+      "browser": "本次确认目录预览加载；不是完整手势回归。",
+      "nativeAcceptance": false
+    },
+    "implementationNotes": [
+      "tokens.json 的共享 defaults 和 scope 不等于本预览运行时默认值。",
+      "颜色真源保留在 spec/tokens.json；本文件不另建色值。",
+      "字号和部分固定布局直接来自 style.css；layout 的 anchor 尚未被网页消费。"
+    ]
+  },
+  "components": [],
+  "narrative": {
+    "northStar": "把零散的小设置，收在一枝月色里。",
+    "overview": "75% 右侧浅纸抽屉保留左侧原页面。植物目录进入八个清楚的设置页；装饰静止，操作具有直接反馈。当前为独立网页视觉提案。",
+    "keyCharacteristics": [
+      "四款既有白天纸色与 Pinyon 花体。",
+      "透明水彩素材保留独立图层和完整画布。",
+      "目录可滚动，二级设置清楚易改。"
+    ],
+    "rules": [
+      "颜色只以 spec/tokens.json 为准。",
+      "当前默认纸色以 spec/sample-data.json 为准。",
+      "不把网页示例写回真实用户设置。"
+    ],
+    "dos": [
+      "保留月牙与右边缘两个等价入口。",
+      "保留焦点回返、纵向滚动与减少动态效果支持。",
+      "原生接入使用真实模型、版本、权限与持久化。"
+    ],
+    "donts": [
+      "不自行改纸色或替换花体。",
+      "不把页内开关视为真实认证、通知或权限成功。",
+      "不把浏览器与 Node 验证表述为真机验收。"
+    ]
+  }
+}

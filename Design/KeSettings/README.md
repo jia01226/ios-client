@@ -12,3 +12,5 @@
 Claude 接入前请读 [交接文档](../../docs/HANDOFF-KE-SETTINGS.md)。素材尺寸、来源与生成描述在 [asset-provenance.json](spec/asset-provenance.json)，位置和动效分别在 [layout.json](spec/layout.json)、[motion.json](spec/motion.json)。
 
 测试：`node --test tests/preview.test.cjs`。
+
+当前源码提取的设计记录见 [DESIGN.md](DESIGN.md)；设计面板记录见 [.impeccable/design.json](.impeccable/design.json)。视觉仍待继续确认。
