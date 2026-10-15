@@ -499,7 +499,7 @@ struct MessageRow: View {
                 }
             }
             if let text, !text.isEmpty {
-                Text(text)
+                Text(ChatLinks.linked(text))
                     .font(theme.font.bubble)
                     .foregroundStyle(message.sender == .ke
                                      ? theme.chatBubbleKeText
@@ -720,5 +720,40 @@ struct AttachmentImageViewer: View {
             .padding(theme.metric.pagePadding)
         }
         .statusBarHidden()
+    }
+}
+
+
+/// 109：柯自己逛小红书、把喜欢的发给她。气泡里的链接点一下就能打开（小红书的链接很长，显示成「去小红书看 ›」）。
+enum ChatLinks {
+    private static let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+
+    static func linked(_ text: String) -> AttributedString {
+        guard let detector, text.contains("http") || text.contains("xhslink") else { return AttributedString(text) }
+        let ns = text as NSString
+        let matches = detector.matches(in: text, range: NSRange(location: 0, length: ns.length))
+        guard !matches.isEmpty else { return AttributedString(text) }
+        var out = AttributedString()
+        var cursor = 0
+        for m in matches {
+            guard let url = m.url, url.scheme?.hasPrefix("http") == true else { continue }
+            if m.range.location > cursor {
+                out += AttributedString(ns.substring(with: NSRange(location: cursor, length: m.range.location - cursor)))
+            }
+            var piece = AttributedString(label(for: url, raw: ns.substring(with: m.range)))
+            piece.link = url
+            piece.underlineStyle = .single
+            out += piece
+            cursor = m.range.location + m.range.length
+        }
+        if cursor < ns.length { out += AttributedString(ns.substring(from: cursor)) }
+        return out
+    }
+
+    private static func label(for url: URL, raw: String) -> String {
+        let host = url.host?.lowercased() ?? ""
+        if host.hasSuffix("xiaohongshu.com") || host.hasSuffix("xhslink.com") { return "去小红书看 ›" }
+        if host.hasSuffix("x.com") || host.hasSuffix("twitter.com") { return "去 X 看 ›" }
+        return raw.count > 40 ? (host.isEmpty ? String(raw.prefix(36)) + "…" : host + " ›") : raw
     }
 }
