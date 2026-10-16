@@ -43,7 +43,8 @@ struct Message: Identifiable, Hashable, Codable, Sendable {
         case me   // 佳佳
     }
 
-    let id: String
+    /// 113：服务器拉回来的同一条要沿用本机的 id（见 mergeRemoteHistory），所以是 var
+    var id: String
     var serverID: Int? = nil
     var clientID: String? = nil
     let sender: Sender

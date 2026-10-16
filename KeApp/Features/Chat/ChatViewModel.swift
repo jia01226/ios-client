@@ -1844,7 +1844,18 @@ final class ChatViewModel: ObservableObject {
 
     private func mergeRemoteHistory(_ remote: [Message]) -> [Message] {
         let remoteServerIDs = Set(remote.compactMap(\.serverID))
-        var merged = remote
+        // 113 她：「柯发消息还是会往下掉一下 回来」。回完一句会重新拉记录，服务器那份换了 id，
+        // 列表认不出是同一条，整个重排一次就跳。同一条（serverID 一样）沿用本机原来的 id。
+        var localIDs: [Int: String] = [:]
+        for local in messages {
+            if let serverID = local.serverID, localIDs[serverID] == nil { localIDs[serverID] = local.id }
+        }
+        var merged = remote.map { item -> Message in
+            guard let serverID = item.serverID, let localID = localIDs[serverID], localID != item.id else { return item }
+            var kept = item
+            kept.id = localID
+            return kept
+        }
         for local in messages {
             if let serverID = local.serverID, remoteServerIDs.contains(serverID) {
                 continue
