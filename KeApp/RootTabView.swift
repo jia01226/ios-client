@@ -10,6 +10,8 @@ struct RootTabView: View {
     @State private var chatLine: ChatLine = .test1
     @State private var keyboardIsVisible = false
     @State private var chatSettingsOpen = false
+    /// 112：在「我们」「柯的」从最右边往左划也能拉出设置；收起后回到原来那一页
+    @State private var settingsReturnTab: Tab?
     @State private var quoteOpenRequest: QuoteOpenRequest?
     @State private var chatSendRequests: [ChatSendRequest] = []
     @AppStorage(CamelliaPalette.storageKey) private var camelliaPaletteValue = CamelliaPalette.defaultPalette.rawValue
@@ -42,6 +44,26 @@ struct RootTabView: View {
                         .accessibilityHidden(selection != .ke)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay(alignment: .trailing) {
+                    if selection != .ke && !chatSettingsOpen {
+                        Color.clear
+                            .frame(width: KeDrawerEdge.width)
+                            .contentShape(Rectangle())
+                            .gesture(
+                                DragGesture(minimumDistance: 12)
+                                    .onEnded { value in
+                                        guard value.translation.width < -40,
+                                              abs(value.translation.width) > abs(value.translation.height) else { return }
+                                        settingsReturnTab = selection
+                                        selection = .ke
+                                        DispatchQueue.main.async {
+                                            NotificationCenter.default.post(name: .openKeSettings, object: nil)
+                                        }
+                                    }
+                            )
+                            .accessibilityHidden(true)
+                    }
+                }
 
                 if !keyboardIsVisible && !chatSettingsOpen {
                     Group {
@@ -74,6 +96,10 @@ struct RootTabView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .chatSettingsVisibility)) { notification in
             chatSettingsOpen = notification.object as? Bool ?? false
+            if !chatSettingsOpen, let back = settingsReturnTab {
+                settingsReturnTab = nil
+                selection = back
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .tarotReadingRequest)) { notification in
             selection = .ke
@@ -224,6 +250,7 @@ struct RootTabView: View {
 
 extension Notification.Name {
     static let chatSettingsVisibility = Notification.Name("love.chatSettingsVisibility")
+    static let openKeSettings = Notification.Name("love.openKeSettings")
 }
 
 /// Retained by the root while chat connects, logs in, or switches between tabs.

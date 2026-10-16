@@ -902,14 +902,22 @@ extension ChatCollectionTimelineController: UIGestureRecognizerDelegate {
               pan.view === collectionView else { return true }
         let velocity = pan.velocity(in: view)
         let start = pan.location(in: view)
-        // 左边缘留给别处的「右划返回」；这里只要明显往左、横着走的划动。
-        return start.x > 24 && velocity.x < 0 && abs(velocity.x) > abs(velocity.y) * 1.3
+        // 112 她：「右滑时候 聊天界面会往下掉」。只认从最右边缘起手、明显往左横着走的划动，
+        // 而且这一下不跟上下滚动同时动（见下面），聊天记录就不会被带着跑。
+        return start.x > view.bounds.width - KeDrawerEdge.width
+            && velocity.x < 0 && abs(velocity.x) > abs(velocity.y) * 1.3
     }
 
     func gestureRecognizer(
         _ gestureRecognizer: UIGestureRecognizer,
         shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
     ) -> Bool {
-        true
+        // 拉设置的那一下不和列表自己的滚动一起动；长按菜单之类照常
+        otherGestureRecognizer !== collectionView.panGestureRecognizer
     }
+}
+
+/// 112：拉设置抽屉只认屏幕最右边这一条（三个页面都一样）
+enum KeDrawerEdge {
+    static let width: CGFloat = 20
 }

@@ -149,11 +149,14 @@ struct KeWordsPage: View {
                     .buttonStyle(KeDrawerButtonStyle())
             } else {
                 if let error = vm.modelError { KeDrawerHint("刚才没换成：\(error)") }
-                modelGroup(
-                    "Claude",
-                    caption: "柯的长窗：一直开着、记得刚才",
-                    sections: sections.filter { $0.id.hasPrefix("claude") }
-                )
+                // 112 她：「之前不是两个号码吗 2个claude额度 没有了」——1 号、2 号分开列，各自带额度
+                ForEach(sections.filter { $0.id.hasPrefix("claude") }) { section in
+                    modelGroup(
+                        section.title,
+                        caption: claudeCaption(section.id),
+                        sections: [section]
+                    )
+                }
                 modelGroup(
                     "GPT",
                     caption: "不走长窗：能看到最近聊天和设定，但不是同一扇窗",
@@ -165,6 +168,43 @@ struct KeWordsPage: View {
                     sections: sections.filter { $0.id == "deepseek" }
                 )
             }
+        }
+    }
+
+    private func claudeCaption(_ id: String) -> String {
+        let line = "柯的长窗：一直开着、记得刚才；这个号额度用完会自动换另一个，会推送告诉你"
+        guard let quota = quotaSummary(id) else { return line }
+        return line + "\n额度：" + quota
+    }
+
+    private func quotaSummary(_ id: String) -> String? {
+        let normalized = ChatModelSection.normalizedGroup(id)
+        guard let quota = vm.modelQuotaCatalog?.groups.first(where: { ChatModelSection.normalizedGroup($0.id) == normalized }) else {
+            if vm.isLoadingModelQuotas { return "正在读取…" }
+            return vm.modelQuotaError != nil ? "暂时没读到" : nil
+        }
+        let reset = quota.resetAt.flatMap { epoch -> String? in
+            guard epoch > 0 else { return nil }
+            let date = Date(timeIntervalSince1970: epoch)
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "zh_CN")
+            f.dateFormat = Calendar.current.isDateInToday(date) ? "HH:mm" : "M月d日 HH:mm"
+            return f.string(from: date) + " 恢复"
+        }
+        switch quota.status {
+        case "cooldown":
+            return "已用完" + (reset.map { " · " + $0 } ?? "")
+        case "auth_required":
+            return "需要重新登录"
+        case "not_configured":
+            return "尚未接入"
+        case "unknown":
+            return "暂时没读到"
+        default:
+            if let remaining = quota.remainingPercent {
+                return "剩余 \(Int(min(100, max(0, remaining)).rounded()))%" + (reset.map { " · " + $0 } ?? "")
+            }
+            return "可用"
         }
     }
 

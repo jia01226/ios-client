@@ -256,6 +256,7 @@ struct ChatView: View {
             NotificationCenter.default.post(name: .chatSettingsVisibility, object: value)
         }
         .task { await keWindow.loadWindow() }
+        .onReceive(NotificationCenter.default.publisher(for: .openKeSettings)) { _ in openKeDrawer() }
         .alert("没钉上", isPresented: Binding(
             get: { keWindow.pinError != nil && !keDrawerOpen },
             set: { if !$0 { keWindow.clearPinError() } }
@@ -425,18 +426,22 @@ struct ChatView: View {
         DragGesture(minimumDistance: 18, coordinateSpace: .global)
             .onChanged { value in
                 let dx = value.translation.width, dy = value.translation.height
-                guard value.startLocation.x > 24, abs(dx) > abs(dy) * 1.3 else { return }
+                guard Self.fromRightEdge(value.startLocation.x), abs(dx) > abs(dy) * 1.3 else { return }
                 handleDrawerPan(.changed(dx))
             }
             .onEnded { value in
                 let dx = value.translation.width, dy = value.translation.height
-                guard value.startLocation.x > 24, abs(dx) > abs(dy) * 1.3 else {
+                guard Self.fromRightEdge(value.startLocation.x), abs(dx) > abs(dy) * 1.3 else {
                     handleDrawerPan(.cancelled)
                     return
                 }
                 let fling = value.predictedEndTranslation.width - dx
                 handleDrawerPan(.ended(dx, velocity: fling * 4))
             }
+    }
+
+    static func fromRightEdge(_ x: CGFloat) -> Bool {
+        x > UIScreen.main.bounds.width - KeDrawerEdge.width
     }
 
     private func handleDrawerPan(_ pan: ChatDrawerPan) {
