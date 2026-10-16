@@ -4,10 +4,10 @@ import SwiftUI
 // 聊天页往左划，从右边拉出四分之三宽的纸；左边露出一条变暗的聊天，点它或往右划就收回。
 // 四页：话笺（字体·气泡·模型）、来信（柯来找我）、素笺（四款纸色）、换窗（带着这一程）。
 
-enum KeDrawerPage: String, CaseIterable, Identifiable {
+enum KeSettingsTab: String, CaseIterable, Identifiable {
     case garden, words, visits, paper, window
 
-    static let tabs: [KeDrawerPage] = [.words, .visits, .paper, .window]
+    static let tabs: [KeSettingsTab] = [.words, .visits, .paper, .window]
 
     var id: String { rawValue }
 
@@ -184,7 +184,7 @@ struct KeSettingsDrawer: View {
     let isOpen: Bool
     @ObservedObject var vm: ChatViewModel
     @ObservedObject var store: KeWindowStore
-    @Binding var page: KeDrawerPage
+    @Binding var page: KeSettingsTab
     let onClose: () -> Void
     let onOpenTool: (KeDrawerTool) -> Void
     let onStartPick: () -> Void
@@ -240,7 +240,7 @@ struct KeSettingsDrawer: View {
         }
     }
 
-    private func go(_ next: KeDrawerPage) {
+    private func go(_ next: KeSettingsTab) {
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { page = next }
     }
 
@@ -282,7 +282,7 @@ struct KeSettingsDrawer: View {
 
     private var tabs: some View {
         HStack(spacing: 0) {
-            ForEach(KeDrawerPage.tabs) { tab in
+            ForEach(KeSettingsTab.tabs) { tab in
                 Button { go(tab) } label: {
                     Text(tab.title)
                         .font(Ink.song(14))
@@ -311,7 +311,7 @@ struct KeSettingsDrawer: View {
 // MARK: - 目录：月亮、藤蔓、四个名字
 
 struct KeDrawerGarden: View {
-    let onPick: (KeDrawerPage) -> Void
+    let onPick: (KeSettingsTab) -> Void
 
     var body: some View {
         GeometryReader { geo in
@@ -402,7 +402,7 @@ struct KeDrawerGarden: View {
         }
     }
 
-    private func link(_ page: KeDrawerPage, leading: Bool) -> some View {
+    private func link(_ page: KeSettingsTab, leading: Bool) -> some View {
         Button { onPick(page) } label: {
             HStack(alignment: .top, spacing: 6) {
                 if !leading { stroke }

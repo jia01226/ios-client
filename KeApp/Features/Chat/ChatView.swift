@@ -56,7 +56,7 @@ struct ChatView: View {
     @StateObject private var keWindow = KeWindowStore()
     @State private var keDrawerOpen = false
     @State private var keDrawerPull: CGFloat = 0
-    @State private var keDrawerPage: KeDrawerPage = .garden
+    @State private var keDrawerPage: KeSettingsTab = .garden
     @State private var keWindowPickerOpen = false
 
     init(line: ChatLine, selectedLine: Binding<ChatLine>, quoteOpenRequest: Binding<QuoteOpenRequest?> = .constant(nil), sendRequests: Binding<[ChatSendRequest]> = .constant([])) {
@@ -465,7 +465,7 @@ struct ChatView: View {
         }
     }
 
-    private func showKeDrawer(page: KeDrawerPage) {
+    private func showKeDrawer(page: KeSettingsTab) {
         keDrawerPage = page
         keDrawerOpen = true
         attachmentsOpen = false
