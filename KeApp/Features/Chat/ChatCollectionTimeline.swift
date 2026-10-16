@@ -79,6 +79,8 @@ struct ChatTimelineItem: Identifiable, Equatable {
     let isHighlighted: Bool
     let visibleSegmentCount: Int?
     var isQuoted = false
+    /// 112：这一轮已钉住，下个窗会带上
+    var isPinned = false
 
     var id: String {
         switch kind {
@@ -106,6 +108,7 @@ struct ChatTimelineItem: Identifiable, Equatable {
         messages: [Message],
         highlightedMessageID: String?,
         quotedIDs: Set<Int> = [],
+        pinnedIDs: Set<Int> = [],
         visibleSegmentCount: (Message) -> Int?
     ) -> [Self] {
         var result: [Self] = []
@@ -142,6 +145,7 @@ struct ChatTimelineItem: Identifiable, Equatable {
         return result.map { item in
             var item = item
             item.isQuoted = item.message.serverID.map(quotedIDs.contains) ?? false
+            item.isPinned = item.message.serverID.map(pinnedIDs.contains) ?? false
             return item
         }
     }
@@ -239,6 +243,9 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable, Equatable {
     let onAttachmentTap: (ChatAttachment) -> Void
     var onRecall: (Message) -> Void = { _ in }
     var onSaveQuote: (Message) -> Void = { _ in }
+    var onTogglePin: (Message) -> Void = { _ in }
+    /// 112：在聊天记录上往左划，拉出设置抽屉
+    var onDrawerPan: (ChatDrawerPan) -> Void = { _ in }
     let onBackgroundTap: () -> Void
     let onScrollToLatestVisibilityChanged: (Bool) -> Void
 
@@ -266,6 +273,8 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable, Equatable {
             onAttachmentTap: onAttachmentTap,
             onRecall: onRecall,
             onSaveQuote: onSaveQuote,
+            onTogglePin: onTogglePin,
+            onDrawerPan: onDrawerPan,
             onBackgroundTap: onBackgroundTap,
             onScrollToLatestVisibilityChanged: onScrollToLatestVisibilityChanged
         )
@@ -286,6 +295,8 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable, Equatable {
             onAttachmentTap: onAttachmentTap,
             onRecall: onRecall,
             onSaveQuote: onSaveQuote,
+            onTogglePin: onTogglePin,
+            onDrawerPan: onDrawerPan,
             onBackgroundTap: onBackgroundTap,
             onScrollToLatestVisibilityChanged: onScrollToLatestVisibilityChanged
         )
@@ -353,6 +364,8 @@ final class ChatCollectionTimelineController: UIViewController,
     private var onAttachmentTap: (ChatAttachment) -> Void
     private var onRecall: (Message) -> Void
     private var onSaveQuote: (Message) -> Void
+    private var onTogglePin: (Message) -> Void
+    private var onDrawerPan: (ChatDrawerPan) -> Void
     private var onBackgroundTap: () -> Void
     private var onScrollToLatestVisibilityChanged: (Bool) -> Void
     private var scrollToLatestRequest: Int
@@ -373,6 +386,8 @@ final class ChatCollectionTimelineController: UIViewController,
         onAttachmentTap: @escaping (ChatAttachment) -> Void,
         onRecall: @escaping (Message) -> Void,
         onSaveQuote: @escaping (Message) -> Void = { _ in },
+        onTogglePin: @escaping (Message) -> Void = { _ in },
+        onDrawerPan: @escaping (ChatDrawerPan) -> Void = { _ in },
         onBackgroundTap: @escaping () -> Void,
         onScrollToLatestVisibilityChanged: @escaping (Bool) -> Void
     ) {
@@ -385,6 +400,8 @@ final class ChatCollectionTimelineController: UIViewController,
         self.onAttachmentTap = onAttachmentTap
         self.onRecall = onRecall
         self.onSaveQuote = onSaveQuote
+        self.onTogglePin = onTogglePin
+        self.onDrawerPan = onDrawerPan
         self.onBackgroundTap = onBackgroundTap
         self.onScrollToLatestVisibilityChanged = onScrollToLatestVisibilityChanged
         super.init(nibName: nil, bundle: nil)
@@ -435,6 +452,12 @@ final class ChatCollectionTimelineController: UIViewController,
         let tap = UITapGestureRecognizer(target: self, action: #selector(didTapTimeline))
         tap.cancelsTouchesInView = false
         collectionView.addGestureRecognizer(tap)
+
+        // 112：往左划拉出设置抽屉。只认明显的横向左划，和上下滚动、长按菜单同时存在。
+        let drawerPan = UIPanGestureRecognizer(target: self, action: #selector(didPanForDrawer(_:)))
+        drawerPan.cancelsTouchesInView = false
+        drawerPan.delegate = self
+        collectionView.addGestureRecognizer(drawerPan)
 
         NotificationCenter.default.addObserver(
             self,
@@ -488,6 +511,8 @@ final class ChatCollectionTimelineController: UIViewController,
         onAttachmentTap: @escaping (ChatAttachment) -> Void,
         onRecall: @escaping (Message) -> Void,
         onSaveQuote: @escaping (Message) -> Void = { _ in },
+        onTogglePin: @escaping (Message) -> Void = { _ in },
+        onDrawerPan: @escaping (ChatDrawerPan) -> Void = { _ in },
         onBackgroundTap: @escaping () -> Void,
         onScrollToLatestVisibilityChanged: @escaping (Bool) -> Void
     ) {
@@ -495,6 +520,8 @@ final class ChatCollectionTimelineController: UIViewController,
         self.onAttachmentTap = onAttachmentTap
         self.onRecall = onRecall
         self.onSaveQuote = onSaveQuote
+        self.onTogglePin = onTogglePin
+        self.onDrawerPan = onDrawerPan
         self.onBackgroundTap = onBackgroundTap
         self.onScrollToLatestVisibilityChanged = onScrollToLatestVisibilityChanged
 
@@ -743,6 +770,20 @@ final class ChatCollectionTimelineController: UIViewController,
         scrollToLatest(animated: false)
     }
 
+    @objc private func didPanForDrawer(_ pan: UIPanGestureRecognizer) {
+        let translation = pan.translation(in: view).x
+        switch pan.state {
+        case .changed:
+            onDrawerPan(.changed(translation))
+        case .ended:
+            onDrawerPan(.ended(translation, velocity: pan.velocity(in: view).x))
+        case .cancelled, .failed:
+            onDrawerPan(.cancelled)
+        default:
+            break
+        }
+    }
+
     @objc private func didTapTimeline() {
         onBackgroundTap()
     }
@@ -800,7 +841,9 @@ final class ChatCollectionTimelineController: UIViewController,
                     },
                     onRecall: { [weak self] message in self?.onRecall(message) },
                     onSaveQuote: { [weak self] message in self?.onSaveQuote(message) },
-                    isQuoted: item.isQuoted
+                    isQuoted: item.isQuoted,
+                    onTogglePin: { [weak self] message in self?.onTogglePin(message) },
+                    isPinned: item.isPinned
                 )
                 .environmentObject(Theme.shared)
 #if DEBUG
@@ -843,5 +886,30 @@ final class ChatCollectionTimelineController: UIViewController,
         case .message:
             return nil
         }
+    }
+}
+
+/// 112：聊天页往左划拉设置抽屉的过程。手指往左时 translation 为负。
+enum ChatDrawerPan: Equatable {
+    case changed(CGFloat)
+    case ended(CGFloat, velocity: CGFloat)
+    case cancelled
+}
+
+extension ChatCollectionTimelineController: UIGestureRecognizerDelegate {
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard let pan = gestureRecognizer as? UIPanGestureRecognizer,
+              pan.view === collectionView else { return true }
+        let velocity = pan.velocity(in: view)
+        let start = pan.location(in: view)
+        // 左边缘留给别处的「右划返回」；这里只要明显往左、横着走的划动。
+        return start.x > 24 && velocity.x < 0 && abs(velocity.x) > abs(velocity.y) * 1.3
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        true
     }
 }

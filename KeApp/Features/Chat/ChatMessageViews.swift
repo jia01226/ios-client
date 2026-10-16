@@ -310,10 +310,14 @@ struct MessageRow: View {
     var onRecall: (Message) -> Void = { _ in }
     var onSaveQuote: (Message) -> Void = { _ in }
     var isQuoted = false
+    /// 112：长按「下个窗带上 / 取消带上」，按整轮钉住
+    var onTogglePin: (Message) -> Void = { _ in }
+    var isPinned = false
     @State private var copied = false
     @State private var actionsPresented = false
     @State private var recallAfterDismiss = false
     @State private var quoteAfterDismiss = false
+    @State private var pinAfterDismiss = false
     @State private var notebookText: String?
 
     var body: some View {
@@ -333,6 +337,13 @@ struct MessageRow: View {
                     if isQuoted {
                         Image(systemName: "bookmark.fill").accessibilityLabel("已收进语录")
                             .accessibilityIdentifier("message-bookmark-\(message.serverID ?? 0)")
+                    }
+                    if isPinned {
+                        // 轻轻一枚小图钉：这一轮下个窗会带上
+                        Image(systemName: "pin")
+                            .font(.system(size: 9))
+                            .opacity(0.7)
+                            .accessibilityLabel("下个窗会带上")
                     }
 
                     if let label = message.deliveryState.label {
@@ -382,7 +393,7 @@ struct MessageRow: View {
             alignment: message.sender == .ke ? .leading : .trailing
         )
         .onLongPressGesture(minimumDuration: 0.45) {
-            guard !message.text.isEmpty || message.canRecall else { return }
+            guard !message.text.isEmpty || message.canRecall || message.serverID != nil else { return }
             actionsPresented = true
         }
         .popover(isPresented: $actionsPresented) {
@@ -419,6 +430,16 @@ struct MessageRow: View {
                             .frame(maxWidth: .infinity, alignment: .leading).padding(14)
                     }.accessibilityIdentifier("message-action-quote")
                 }
+                if message.serverID != nil && !message.isStreaming {
+                    Divider()
+                    Button {
+                        pinAfterDismiss = true
+                        actionsPresented = false
+                    } label: {
+                        Label(isPinned ? "取消带上" : "下个窗带上", systemImage: isPinned ? "pin.slash" : "pin")
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(14)
+                    }.accessibilityIdentifier("message-action-pin")
+                }
             }
             .font(theme.font.body)
             .buttonStyle(.plain)
@@ -429,6 +450,10 @@ struct MessageRow: View {
                 if quoteAfterDismiss {
                     quoteAfterDismiss = false
                     onSaveQuote(message)
+                }
+                if pinAfterDismiss {
+                    pinAfterDismiss = false
+                    onTogglePin(message)
                 }
                 guard recallAfterDismiss else { return }
                 recallAfterDismiss = false

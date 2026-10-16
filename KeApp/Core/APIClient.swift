@@ -1080,6 +1080,48 @@ actor APIClient {
         try await writeResource("/api/notebook/save", body: ["amount": yuan, "note": note])
     }
 
+    // MARK: 柯的长窗（来信设置、洗澡、换窗、钉住；2026-10-16）
+
+    func fetchKeSettings() async throws -> KeProactiveSettings { try await readResource("/api/ke/settings") }
+
+    /// 只传改动的那几项；后端回完整设置，不合法时回 400 {"error": "..."}。
+    func updateKeSettings(_ patch: [String: Any]) async throws -> KeProactiveSettings {
+        try await postNotebook("/api/ke/settings", body: patch)
+    }
+
+    func fetchKeWindow() async throws -> KeWindowState { try await readResource("/api/ke/window") }
+
+    /// 202 + job；柯正在忙别的时回 409。
+    func washKeWindow() async throws -> KeWindowJob? {
+        let response: KeJobResponse = try await postNotebook("/api/ke/window/wash", body: [:])
+        return response.job
+    }
+
+    func rotateKeWindow(picks: [Int]) async throws -> KeWindowJob? {
+        let response: KeJobResponse = try await postNotebook("/api/ke/window/rotate", body: ["picks": picks])
+        return response.job
+    }
+
+    /// 钉住按整轮算：传这一轮里任意一条消息的 id 都行。
+    func setKePin(messageID: Int, pinned: Bool) async throws {
+        var request = try makeRequest(path: "/api/ke/pins", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["message_id": messageID, "pinned": pinned])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, _) = try await perform(request)
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let error = object["error"] as? String, !error.isEmpty {
+            throw APIError.serverMessage(error)
+        }
+    }
+
+    func fetchKeRounds(limit: Int = 30, beforeID: Int? = nil) async throws -> KeRoundPage {
+        var items = [URLQueryItem(name: "limit", value: String(limit))]
+        if let beforeID { items.append(URLQueryItem(name: "before_id", value: String(beforeID))) }
+        let (data, _) = try await perform(try makeRequest(path: "/api/ke/rounds", queryItems: items))
+        do { return try decoder.decode(KeRoundPage.self, from: data) }
+        catch { throw APIError.decoding(error) }
+    }
+
     private func postNotebook<T: Decodable>(_ path: String, body: [String: Any]) async throws -> T {
         var request = try makeRequest(path: path, method: "POST")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)

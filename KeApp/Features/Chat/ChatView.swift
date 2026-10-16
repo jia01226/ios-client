@@ -52,6 +52,12 @@ struct ChatView: View {
     @State private var expandedModelGroups: Set<String> = []
     @State private var showsScrollToLatest = false
     @State private var scrollToLatestRequest = 0
+    // 112：月隐设置抽屉、换窗挑选、钉住的轮
+    @StateObject private var keWindow = KeWindowStore()
+    @State private var keDrawerOpen = false
+    @State private var keDrawerPull: CGFloat = 0
+    @State private var keDrawerPage: KeDrawerPage = .garden
+    @State private var keWindowPickerOpen = false
 
     init(line: ChatLine, selectedLine: Binding<ChatLine>, quoteOpenRequest: Binding<QuoteOpenRequest?> = .constant(nil), sendRequests: Binding<[ChatSendRequest]> = .constant([])) {
         self.line = line
@@ -205,6 +211,21 @@ struct ChatView: View {
                         .transition(.move(edge: .trailing))
                 }
 
+                KeDrawerOverlay(isOpen: $keDrawerOpen, pull: keDrawerPull) {
+                    KeSettingsDrawer(
+                        isOpen: keDrawerOpen,
+                        vm: vm,
+                        store: keWindow,
+                        page: $keDrawerPage,
+                        onClose: closeKeDrawer,
+                        onOpenTool: openDrawerTool,
+                        onStartPick: {
+                            keDrawerOpen = false
+                            keWindowPickerOpen = true
+                        }
+                    )
+                }
+
 #if DEBUG
                 if vm.replyStreamTriggerAvailable {
                     VStack {
@@ -231,9 +252,16 @@ struct ChatView: View {
             }
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: settingsOpen)
-        .onChange(of: settingsOpen) { _, value in
+        .onChange(of: settingsOpen || keDrawerOpen) { _, value in
             NotificationCenter.default.post(name: .chatSettingsVisibility, object: value)
         }
+        .task { await keWindow.loadWindow() }
+        .alert("没钉上", isPresented: Binding(
+            get: { keWindow.pinError != nil && !keDrawerOpen },
+            set: { if !$0 { keWindow.clearPinError() } }
+        )) {
+            Button("知道了", role: .cancel) { keWindow.clearPinError() }
+        } message: { Text(keWindow.pinError ?? "") }
         .onDisappear { NotificationCenter.default.post(name: .chatSettingsVisibility, object: false) }
         .alert("撤回这条消息？", isPresented: $recallConfirmation) {
             Button("撤回消息", role: .destructive) {
@@ -251,9 +279,23 @@ struct ChatView: View {
         .alert("未能撤回", isPresented: Binding(get: { recallError != nil }, set: { if !$0 { recallError = nil } })) {
             Button("知道了", role: .cancel) { recallError = nil }
         } message: { Text(recallError ?? "") }
-        .alert("语音通话", isPresented: $showingCallPlaceholder) {
-            Button("知道了", role: .cancel) {}
-        } message: { Text("通话功能即将接入。") }
+        .sheet(isPresented: $showingCallPlaceholder) {
+            KeCallPlaceholderCard()
+                .presentationDetents([.height(300)])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(24)
+        }
+        .fullScreenCover(isPresented: $keWindowPickerOpen) {
+            KeWindowPickerView(
+                store: keWindow,
+                onBack: returnFromWindowPicker,
+                onFinished: {
+                    keWindowPickerOpen = false
+                    Task { await keWindow.loadWindow() }
+                }
+            )
+            .swipeBackToClose(returnFromWindowPicker)
+        }
         .fileImporter(
             isPresented: $importingFile,
             allowedContentTypes: [.item],
@@ -326,58 +368,42 @@ struct ChatView: View {
         ZStack {
             // 佳佳 2026-10-06：「只留一个就可以了……就不需要叫什么」。只剩一个窗口时
             // 顶上只写「柯」，不再给切换菜单，也不显示窗口名。
-            if ChatLine.allCases.count > 1 {
-                Menu {
-                    ForEach(ChatLine.allCases) { option in
-                        Button {
-                            selectedLine = option
-                        } label: {
-                            Label(
-                                option.title,
-                                systemImage: selectedLine == option ? "checkmark.circle.fill" : "circle"
-                            )
+            Group {
+                if ChatLine.allCases.count > 1 {
+                    Menu {
+                        ForEach(ChatLine.allCases) { option in
+                            Button {
+                                selectedLine = option
+                            } label: {
+                                Label(
+                                    option.title,
+                                    systemImage: selectedLine == option ? "checkmark.circle.fill" : "circle"
+                                )
+                            }
                         }
+                    } label: {
+                        headerTitle(showsSwitcher: true)
                     }
-                } label: {
-                    headerTitle(showsSwitcher: true)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("切换柯的聊天窗口，当前\(line.title)")
+                    .accessibilityIdentifier("chat-line-switcher-\(line.rawValue)")
+                } else {
+                    headerTitle(showsSwitcher: false)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("chat-header-\(line.rawValue)")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("切换柯的聊天窗口，当前\(line.title)")
-                .accessibilityIdentifier("chat-line-switcher-\(line.rawValue)")
-            } else {
-                headerTitle(showsSwitcher: false)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityIdentifier("chat-header-\(line.rawValue)")
             }
+            // 112：设置都收进往左划出来的抽屉；读屏时在标题上也能打开。
+            .accessibilityAction(named: "打开设置") { openKeDrawer() }
 
-            HStack(spacing: 12) {
-                Image(systemName: "moon").font(.title3)
-                    .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
-                    .background(FloatingGlassSurface(cornerRadius: 22, lockscreen: theme.lockscreenGlass))
-                    .accessibilityHidden(true)
+            // 112：顶上只留标题和电话。原来「…」里的功能都在抽屉的话笺页「更多」里。
+            HStack {
                 Spacer()
-                // 105：塔罗在「柯的」那枝山茶里，聊天顶上不再放塔罗按钮，清爽一点
                 Button { showingCallPlaceholder = true } label: {
                     Image(systemName: "phone").font(.title3)
                         .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
                         .background(FloatingGlassSurface(cornerRadius: 22, lockscreen: theme.lockscreenGlass))
                 }.buttonStyle(.plain).accessibilityLabel("语音通话")
-                Button {
-                    settingsOpen = true
-                    settingsPage = .root
-                    attachmentsOpen = false
-                    inputFocused = false
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .symbolVariant(.none)
-                        .font(theme.font.menuIcon)
-                        .foregroundStyle(theme.chatTextPrimary)
-                        .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
-                        .contentShape(Rectangle())
-                        .background(FloatingGlassSurface(cornerRadius: 22, lockscreen: theme.lockscreenGlass))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("打开聊天设置")
             }
         }
         .padding(.horizontal, theme.metric.pagePadding)
@@ -388,18 +414,120 @@ struct ChatView: View {
         // Toolbar glyphs stay inside their touch targets; message text remains uncapped.
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .frame(minHeight: theme.metric.headerMinHeight)
+        .contentShape(Rectangle())
+        .simultaneousGesture(drawerSwipe)
+    }
+
+    // MARK: 112 月隐设置抽屉
+
+    /// 标题栏、空聊天页上的左划；聊天记录上的左划由 UIKit 那边转过来，走同一个入口。
+    private var drawerSwipe: some Gesture {
+        DragGesture(minimumDistance: 18, coordinateSpace: .global)
+            .onChanged { value in
+                let dx = value.translation.width, dy = value.translation.height
+                guard value.startLocation.x > 24, abs(dx) > abs(dy) * 1.3 else { return }
+                handleDrawerPan(.changed(dx))
+            }
+            .onEnded { value in
+                let dx = value.translation.width, dy = value.translation.height
+                guard value.startLocation.x > 24, abs(dx) > abs(dy) * 1.3 else {
+                    handleDrawerPan(.cancelled)
+                    return
+                }
+                let fling = value.predictedEndTranslation.width - dx
+                handleDrawerPan(.ended(dx, velocity: fling * 4))
+            }
+    }
+
+    private func handleDrawerPan(_ pan: ChatDrawerPan) {
+        guard !keDrawerOpen, !settingsOpen, !keWindowPickerOpen else {
+            if keDrawerPull != 0 { keDrawerPull = 0 }
+            return
+        }
+        switch pan {
+        case let .changed(dx):
+            keDrawerPull = max(0, -dx)
+        case let .ended(dx, velocity):
+            let shouldOpen = dx < -80 || (dx < -24 && velocity < -500)
+            withAnimation(KeDrawerMotion.animation(reduceMotion: reduceMotion)) {
+                keDrawerPull = 0
+                if shouldOpen { showKeDrawer(page: .garden) }
+            }
+        case .cancelled:
+            withAnimation(KeDrawerMotion.animation(reduceMotion: reduceMotion)) { keDrawerPull = 0 }
+        }
+    }
+
+    private func openKeDrawer() {
+        guard !settingsOpen else { return }
+        withAnimation(KeDrawerMotion.animation(reduceMotion: reduceMotion)) {
+            showKeDrawer(page: .garden)
+        }
+    }
+
+    private func showKeDrawer(page: KeDrawerPage) {
+        keDrawerPage = page
+        keDrawerOpen = true
+        attachmentsOpen = false
+        inputFocused = false
+    }
+
+    private func closeKeDrawer() {
+        withAnimation(KeDrawerMotion.animation(reduceMotion: reduceMotion)) {
+            keDrawerOpen = false
+        }
+    }
+
+    /// 挑选页点「返回」：回到抽屉的换窗页。
+    private func returnFromWindowPicker() {
+        keWindowPickerOpen = false
+        showKeDrawer(page: .window)
+    }
+
+    /// 话笺「更多」：打开原来的功能区页面，功能一个不少。
+    private func openDrawerTool(_ tool: KeDrawerTool) {
+        keDrawerOpen = false
+        attachmentsOpen = false
+        inputFocused = false
+        switch tool {
+        case .search:
+            settingsPage = .search
+            Task { await vm.prepareSearchCorpus() }
+        case .dates:
+            settingsPage = .dates
+            Task { await vm.prepareSearchCorpus() }
+        case .fonts:
+            settingsPage = .fonts
+        case .appearance:
+            settingsPage = .appearance
+        case .usage:
+            showingUsageDashboard = true
+            return
+        case .all:
+            settingsPage = .root
+        }
+        settingsOpen = true
+    }
+
+    private func togglePin(_ message: Message) {
+        guard let id = message.serverID else { return }
+        let pinned = keWindow.isPinned(messageID: id)
+        Task { await keWindow.setPin(messageID: id, pinned: !pinned) }
     }
 
     private var messageList: some View {
         Group {
             if vm.messages.isEmpty {
                 emptyTimeline
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(drawerSwipe)
             } else {
                 ChatCollectionTimeline(
                     items: ChatTimelineItem.make(
                         messages: vm.messages,
                         highlightedMessageID: highlightedMessageID,
                         quotedIDs: Set(quotesStore.quotes.map(\.message_id)),
+                        pinnedIDs: keWindow.pinnedMessageIDs,
                         visibleSegmentCount: { vm.visibleSegmentCount(for: $0) }
                     ),
                     streamRevision: vm.streamRevision,
@@ -430,6 +558,11 @@ struct ChatView: View {
                         if let quote = quotesStore.quote(messageID: message.serverID) { quoteToRemove = quote }
                         else { quoteToSave = message }
                     },
+                    onTogglePin: { message in
+                        inputFocused = false
+                        togglePin(message)
+                    },
+                    onDrawerPan: { pan in handleDrawerPan(pan) },
                     onBackgroundTap: {
                         inputFocused = false
                         if attachmentsOpen { attachmentsOpen = false }
