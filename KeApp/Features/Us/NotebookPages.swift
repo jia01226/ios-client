@@ -190,7 +190,7 @@ extension View {
     func notebookCard() -> some View {
         padding(.horizontal, 16).padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.white.opacity(0.92)))
+            .background { KeGlass(shape: RoundedRectangle(cornerRadius: 18, style: .continuous), minPaper: 0.75) }
             .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Ink.line.opacity(0.45), lineWidth: 0.7))
     }
 }

@@ -405,6 +405,7 @@ struct ChatView: View {
                 Button(action: openKeDrawer) {
                     Image(systemName: "ellipsis").font(.title3).rotationEffect(.degrees(90))
                         .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
+                        .background(FloatingGlassSurface(cornerRadius: 22, lockscreen: theme.lockscreenGlass))
                         .contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityLabel("打开设置").accessibilityIdentifier("ke-drawer-open")
                 Spacer()

@@ -164,8 +164,8 @@ struct RootTabView: View {
             }
         }
         .padding(.horizontal, 18).padding(.top, 6)
-        .background(selection == .ke ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(camelliaPalette.paper))
-        .overlay(alignment: .top) { Rectangle().fill(Ink.line.opacity(0.6)).frame(height: 0.5).padding(.horizontal, 18) }
+        // 117：三个页面的底栏都是同一块液态玻璃（素笺里能选纸感/轻玻璃/浮光）
+        .background { KeGlass(shape: Rectangle(), minPaper: 0.3).ignoresSafeArea(edges: .bottom) }
     }
 
     private var journalTabBar: some View {

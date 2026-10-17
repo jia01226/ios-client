@@ -140,14 +140,8 @@ struct KeDrawerOverlay<Content: View>: View {
 
     @ViewBuilder
     private var panelBackground: some View {
-        if reduceTransparency {
-            palette.paper
-        } else {
-            ZStack {
-                Rectangle().fill(.ultraThinMaterial)
-                palette.paper.opacity(0.86)
-            }
-        }
+        // 117：抽屉也是那块玻璃；上面字多，纸色垫厚一点
+        KeGlass(shape: Rectangle(), minPaper: 0.72)
     }
 
     /// 往右划收回。滑杆按着的时候不算。
@@ -475,6 +469,7 @@ struct KePaperPage: View {
                     .accessibilityAddTraits(selected ? .isSelected : [])
                 }
             }
+            KeGlassPicker()
             Text("把喜欢的纸色，铺进每一个角落。")
                 .font(Ink.song(15))
                 .foregroundStyle(Ink.primary)
