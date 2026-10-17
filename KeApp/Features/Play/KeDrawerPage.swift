@@ -13,10 +13,37 @@ struct KeDrawerPage: View {
     @State private var loading = KeDrawerPage.cache.isEmpty
     @State private var failed = false
     @State private var zoom: RemoteDrawer.Item?
+    @State private var shelf: Shelf = .all
     private var paper: Color { CamelliaPalette.resolve(savedPalette).paper }
 
     @MainActor static var cache: [RemoteDrawer.Item] = []
     @MainActor static var cacheSealed = false
+
+    /// 118：照网页那版加一排筛选——全部 / 便签 / 小画 / 锁着。只在手上已经拿到的东西里挑，不另外请求。
+    enum Shelf: String, CaseIterable, Identifiable {
+        case all, note, pixel, locked
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .all: return "全部"
+            case .note: return "便签"
+            case .pixel: return "小画"
+            case .locked: return "锁着"
+            }
+        }
+        func holds(_ item: RemoteDrawer.Item) -> Bool {
+            switch self {
+            case .all: return true
+            case .pixel: return KeDrawerPage.isPixel(item)
+            case .locked: return KeDrawerPage.isLocked(item)
+            // 便签：不是小画、也没锁着的（锁过后来放出来的那种也算）
+            case .note: return !KeDrawerPage.isPixel(item) && !KeDrawerPage.isLocked(item)
+            }
+        }
+    }
+    static func isLocked(_ item: RemoteDrawer.Item) -> Bool { item.visibility == "teaser" }
+    static func isPixel(_ item: RemoteDrawer.Item) -> Bool { item.kind == "pixel" && PixelArt(json: item.content) != nil }
+    private var shown: [RemoteDrawer.Item] { items.filter(shelf.holds) }
 
     var body: some View {
         ZStack {
@@ -29,14 +56,20 @@ struct KeDrawerPage: View {
                         Button("抽屉暂时没打开，点这里再试一次") { Task { await load() } }
                             .font(Ink.song(14)).frame(maxWidth: .infinity).padding(.top, 20)
                     }
-                    if sealed { sealedHint }
+                    if !items.isEmpty { shelfPicker }
+                    if sealed && (shelf == .all || shelf == .locked) { sealedHint }
                     if !loading && !failed && items.isEmpty {
                         Text("抽屉还空着。\n柯想到什么，会悄悄放进来。")
                             .font(Ink.song(15)).foregroundStyle(Ink.secondary).multilineTextAlignment(.center).lineSpacing(6)
                             .frame(maxWidth: .infinity).padding(.vertical, 40)
                     }
-                    ForEach(items) { item in card(item) }
-                    if !items.isEmpty {
+                    if !items.isEmpty && shown.isEmpty {
+                        Text(shelf == .locked ? "现在没有锁着的。" : "这一格还空着。")
+                            .font(Ink.song(14)).foregroundStyle(Ink.secondary)
+                            .frame(maxWidth: .infinity).padding(.vertical, 30)
+                    }
+                    ForEach(shown) { item in card(item) }
+                    if !shown.isEmpty {
                         Text("— 抽屉底了 —").font(Ink.song(11.5)).foregroundStyle(Ink.secondary)
                             .frame(maxWidth: .infinity).padding(.vertical, 22)
                     }
@@ -46,17 +79,21 @@ struct KeDrawerPage: View {
             .scrollIndicators(.hidden)
             .refreshable { await load() }
             if let zoom, let art = PixelArt(json: zoom.content) {
-                Color.black.opacity(0.35).ignoresSafeArea().onTapGesture { self.zoom = nil }
-                VStack(spacing: 14) {
-                    PixelArtView(art: art).frame(maxWidth: 320, maxHeight: 320)
-                    if !zoom.title.isEmpty { Text(zoom.title).font(Ink.song(17)) }
-                    Text(Self.dateLine(zoom)).font(Ink.latin(12)).foregroundStyle(Ink.secondary)
+                ZStack {
+                    Color.black.opacity(0.35).ignoresSafeArea().onTapGesture { self.zoom = nil }
+                    VStack(spacing: 14) {
+                        PixelArtView(art: art).frame(maxWidth: 320, maxHeight: 320)
+                        if !zoom.title.isEmpty { Text(zoom.title).font(Ink.song(17)) }
+                        Text(Self.dateLine(zoom)).font(Ink.latin(12)).foregroundStyle(Ink.secondary)
+                    }
+                    .padding(24)
+                    .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(paper))
+                    .padding(28)
+                    .onTapGesture { self.zoom = nil }
+                    .accessibilityAddTraits(.isModal)
                 }
-                .padding(24)
-                .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(paper))
-                .padding(28)
-                .onTapGesture { self.zoom = nil }
-                .accessibilityAddTraits(.isModal)
+                // 118：放大的小画开着时，右划先收小画，抽屉还在
+                .swipeBackLayer { self.zoom = nil }
             }
         }
         .foregroundStyle(Ink.primary)
@@ -76,6 +113,29 @@ struct KeDrawerPage: View {
             }
         }
         .padding(.top, 6).padding(.bottom, 6)
+    }
+
+    /// 一排小字：选中的那格浅浅垫一块底，和日记「锁着」那颗一个调子
+    private var shelfPicker: some View {
+        HStack(spacing: 6) {
+            ForEach(Shelf.allCases) { option in
+                let on = shelf == option
+                Button { shelf = option } label: {
+                    Text(option.label).font(Ink.song(14))
+                        .foregroundStyle(on ? Ink.primary : Ink.secondary)
+                        .padding(.horizontal, 12)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .background(Capsule().fill(on ? Ink.primary.opacity(0.06) : Color.clear).padding(.vertical, 6))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(on ? .isSelected : [])
+                .accessibilityIdentifier("drawer-shelf-\(option.rawValue)")
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("筛选抽屉")
     }
 
     private var sealedHint: some View {

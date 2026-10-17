@@ -100,6 +100,8 @@ struct KeDiaryListView: View {
                           paper: paper,
                           onBack: { reading = nil }, onOpen: { other in reading = other })
                     .id(entry.id)
+                    // 118：读一篇时从左边缘右划，先回目录（搜索词和翻到的位置都还在），再划一次才合上日记
+                    .swipeBackLayer { reading = nil }
                     .zIndex(1)
             }
         }

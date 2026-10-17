@@ -112,6 +112,8 @@ struct TarotView: View {
         .sheet(isPresented: $showBacks) { backPicker }
         .fullScreenCover(item: $inspectedCard) { card in
             TarotCardInspector(cards: cast?.cards ?? [card], initialCard: card, api: api).environmentObject(theme)
+                // 118：看大牌时从左边缘右划，先收这张牌，回到牌桌
+                .swipeBackToClose { inspectedCard = nil }
         }
         .onDisappear { operation?.cancel() }
     }
