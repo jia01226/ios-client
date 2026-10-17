@@ -91,6 +91,13 @@ final class ChatViewModel: ObservableObject {
     private var recoveringJobID: String?
     private var activeStreamClientID: String?
     private var recoveryProbeID: UUID?
+    /// 119：回前台/点推送起的那一轮接回。点一下推送会连着来两三次 resume，
+    /// 刚起的这一轮还健康就别打断重来（打断会把正在拉的记录作废，转圈更久）。
+    private var recoveryOwner: UUID?
+    private var recoveryStartedAt: Date?
+    /// 119：服务器已经写完的那几句（按 clientID）。合并记录时本机的半截气泡不再保留，
+    /// 不然半截和服务器那条完整的会同时出现（她说的「显示两遍」）。
+    private var settledReplyClientIDs: Set<String> = []
     private var segmentRevealTasks: [String: Task<Void, Never>] = [:]
     private var failedUpload: AttachmentUploadPayload?
     private var lastModelQuotaLoad: Date?
@@ -583,6 +590,12 @@ final class ChatViewModel: ObservableObject {
         enteredBackground = false
         inactiveSince = nil
         guard phase == .ready else { return }
+        // 119：点推送时 scenePhase、openRequest、.task 会各叫一次。头一次已经起了接回，
+        // 后面这几次只要那一轮还新鲜（没卡住）就不再打断重来。
+        if !wasSuspended, replyTask != nil, replyOwner != nil, replyOwner == recoveryOwner,
+           let started = recoveryStartedAt, date.timeIntervalSince(started) < 8 {
+            return
+        }
         if wasSuspended || forceReconnect {
 #if DEBUG
             ChatRecoveryUITestTiming.shared.begin()
@@ -1213,7 +1226,7 @@ final class ChatViewModel: ObservableObject {
         guard !deleted.isEmpty else { return deleted }
         messages.removeAll { $0.serverID.map(deleted.contains) == true }
         searchCorpus.removeAll { $0.serverID.map(deleted.contains) == true }
-        if let sessionID { await cache.save(messages, sessionID: sessionID) }
+        if let sessionID { await cache.save(Self.cacheable(messages), sessionID: sessionID) }
         return deleted
     }
 
@@ -1224,7 +1237,7 @@ final class ChatViewModel: ObservableObject {
         externalSessionReady = false
         if let snapshot = await cache.loadLatest() {
             prepareForSession(snapshot.sessionID)
-            messages = snapshot.messages
+            messages = Self.cacheable(snapshot.messages)
             isShowingCachedMessages = true
             phase = .ready
             statusText = "正在接回服务器…"
@@ -1254,8 +1267,15 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
+    /// 119：柯还没落到服务器的本机气泡（没有 serverID）不进缓存。重开 App 后没有对应的
+    /// pendingReply 能接回它，留着就会和服务器那条完整的一起显示，还一直像在写。
+    private static func cacheable(_ messages: [Message]) -> [Message] {
+        messages.filter { $0.sender == .me || $0.serverID != nil }
+    }
+
     private func loadCache(sessionID: Int) async {
-        let cached = await cache.load(sessionID: sessionID)
+        let stored = await cache.load(sessionID: sessionID)
+        let cached = Self.cacheable(stored)
         guard self.sessionID == sessionID, !cached.isEmpty else { return }
         // Cache I/O may finish after send() has created local bubbles. Always merge
         // so streaming, waiting and failed local bubbles remain addressable.
@@ -1288,7 +1308,7 @@ final class ChatViewModel: ObservableObject {
             searchCorpus = mergeMessages(searchCorpus, with: merged)
             isShowingCachedMessages = false
             statusText = nil
-            await cache.save(merged, sessionID: sessionID)
+            await cache.save(Self.cacheable(merged), sessionID: sessionID)
             guard isCurrent() else { return false }
             let throughID = merged.last(where: { $0.sender == .ke })?.serverID
             Task { try? await replyAPI.markSeen(sessionID: sessionID, throughID: throughID) }
@@ -1419,6 +1439,7 @@ final class ChatViewModel: ObservableObject {
                     completionRetryable = retryable
                     retryScheduled = scheduled
                     if assistantMessageID != nil {
+                        settledReplyClientIDs.insert(clientID)
                         updateMessage(id: assistantLocalID) {
                             $0.serverID = assistantMessageID ?? $0.serverID
                             $0.isStreaming = false
@@ -1495,11 +1516,13 @@ final class ChatViewModel: ObservableObject {
                 }
                 return
             }
-            activeJobID = nil
             statusText = nil
             replyFailure = nil
+            // 119：任务 id 留到记录拉完再清。拉记录途中被切到后台再回来，接回会去问这个任务，
+            // 而不是拿同一个 clientID 再发一遍（再发会把整段正文又追加一遍，然后被切成好几截）。
             await refreshHistory(showFailure: false, owner: owner)
             guard ownsReply(owner) else { return }
+            activeJobID = nil
             isSending = false
             replyCompleted()
 
@@ -1514,10 +1537,9 @@ final class ChatViewModel: ObservableObject {
             guard ownsReply(owner) else { return }
             flushBufferedEvents()
             if let activeJobID {
-                updateMessage(id: assistantLocalID) {
-                    $0.isStreaming = false
-                    $0.deliveryState = .waiting
-                }
+                // 119：半截正文不提前当成写完（isStreaming=false 会把半截按空行切开），
+                // 等服务器那条完整的拉回来一次换上。
+                updateMessage(id: assistantLocalID) { $0.deliveryState = .waiting }
                 statusText = "连接断了一下，柯的话还在服务器写，写完会自动接回来。"
                 await pollForCompletion(
                     jobID: activeJobID,
@@ -1579,6 +1601,7 @@ final class ChatViewModel: ObservableObject {
         activeStreamClientID = failure.clientMessageID
         let owner = UUID()
         replyOwner = owner
+        recoveringJobID = nil
         pendingReply = PendingReply(clientID: failure.clientMessageID, userLocalID: userLocalID,
                                     assistantLocalID: assistantLocalID, text: "", attachments: [], reduceMotion: reduceMotion)
         let task = Task { [self] in
@@ -1604,6 +1627,10 @@ final class ChatViewModel: ObservableObject {
         guard sessionID != nil, replyTask == nil, activeStreamClientID == nil else { return }
         let owner = UUID()
         replyOwner = owner
+        // 上一轮已经结束（replyTask 为空），它留下的轮询标记不能挡住这一轮，否则 isSending 没人清。
+        recoveringJobID = nil
+        recoveryOwner = owner
+        recoveryStartedAt = .now
         let task = Task { [self] in
             await recoverReply(owner: owner)
             guard ownsReply(owner) else { return }
@@ -1642,9 +1669,12 @@ final class ChatViewModel: ObservableObject {
                                         fallbackClientID: job.clientMessageID ?? "",
                                         fallbackUserMessageID: job.userMessageID,
                                         assistantLocalID: pendingReply?.assistantLocalID, owner: owner)
-            } else if let pending = pendingReply {
+            } else if let pending = pendingReply,
+                      messages.first(where: { $0.id == pending.userLocalID })?.serverID == nil {
                 // No receipt before suspension: reuse the existing idempotency key and
                 // original payload, never invent a new message or guess by matching text.
+                // 119：已经有回执的（她那条有 serverID）说明服务器收到了、任务也不在进行中，
+                // 只差拉记录；不能再发一遍。
                 activeStreamClientID = pending.clientID
                 await performSend(text: pending.text, sessionID: sessionID, clientID: pending.clientID,
                                   userLocalID: pending.userLocalID, assistantLocalID: pending.assistantLocalID,
@@ -1671,16 +1701,15 @@ final class ChatViewModel: ObservableObject {
                 messages[index].serverID = id
                 messages[index].deliveryState = .sent
             }
+            // 119：只认 serverID，不改 isStreaming/正文。半截正文要是先标成写完，会先被切成几截，
+            // 随后再被服务器那条完整的换掉——看起来就是「显示两遍又被切开」。
+            // 拉回记录时按 serverID 在原位换成完整那条（沿用本机 id，见 mergeRemoteHistory）。
             if messages[index].sender == .ke, let id = job.assistantMessageID {
                 messages[index].serverID = id
-                messages[index].isStreaming = false
-                messages[index].deliveryState = .sent
             }
         }
         if let assistantLocalID, let id = job.assistantMessageID {
-            updateMessage(id: assistantLocalID) {
-                $0.serverID = id; $0.isStreaming = false; $0.deliveryState = .sent
-            }
+            updateMessage(id: assistantLocalID) { $0.serverID = id }
         }
     }
 
@@ -1704,6 +1733,7 @@ final class ChatViewModel: ObservableObject {
                 reconcile(job, clientID: clientID, assistantLocalID: assistantLocalID)
                 switch job.status {
                 case "done", "merged":
+                    if !clientID.isEmpty { settledReplyClientIDs.insert(clientID) }
                     if job.status == "merged" {
                         messages.removeAll { $0.sender == .ke && $0.clientID == clientID && $0.serverID == nil }
                     }
@@ -1747,6 +1777,9 @@ final class ChatViewModel: ObservableObject {
         }
         guard ownsReply(owner) else { return }
         isSending = false
+        if let assistantLocalID {
+            updateMessage(id: assistantLocalID) { $0.isStreaming = false; $0.deliveryState = .waiting }
+        }
         statusText = "回复仍留在服务器，下次回到 App 会继续接回。"
     }
 
@@ -1806,6 +1839,9 @@ final class ChatViewModel: ObservableObject {
         activeJobID = nil
         recoveringJobID = nil
         recoveryProbeID = nil
+        recoveryOwner = nil
+        recoveryStartedAt = nil
+        settledReplyClientIDs.removeAll()
         activeStreamClientID = nil
         isSending = false
         sessionID = newSessionID
@@ -1858,6 +1894,12 @@ final class ChatViewModel: ObservableObject {
         }
         for local in messages {
             if let serverID = local.serverID, remoteServerIDs.contains(serverID) {
+                continue
+            }
+            // 119：这一句服务器已经写完，本机没对上 serverID 的柯的气泡（半截、重试留下的）一律不留，
+            // 只显示服务器那条。
+            if local.sender == .ke, local.serverID == nil, let clientID = local.clientID,
+               settledReplyClientIDs.contains(clientID) {
                 continue
             }
             let belongsToActiveStream = local.clientID != nil

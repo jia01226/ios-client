@@ -203,6 +203,21 @@ final class ChatForegroundRecoveryTests: XCTestCase {
         assertComplete(vm)
     }
 
+    /// 119：先回前台、再到点推送的 openRequest（forceReconnect），不能把刚起的接回打断重来。
+    func testActiveThenNotificationOpenKeepsTheFreshRecovery() async {
+        let server = ReplyServer(); let vm = await model(server)
+        let sending = await start(vm, server)
+        server.completeOnServer(); server.holdNextJob = true
+        vm.enteredBackgroundScene()
+        let resumed = Task { await vm.resumeFromForeground() }
+        await wait { server.heldJob != nil }
+        await vm.resumeFromForeground(forceReconnect: true)
+        XCTAssertEqual(server.jobReads, 1)
+        server.heldJob?.resume(returning: server.job(status: "done")); server.heldJob = nil
+        await resumed.value; await sending.value
+        assertComplete(vm)
+    }
+
     func testAbandonedPollCannotReportUnauthorizedOrClearNewStream() async {
         let server = ReplyServer(); let vm = await model(server)
         server.holdNextJob = true
