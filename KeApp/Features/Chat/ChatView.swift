@@ -213,21 +213,6 @@ struct ChatView: View {
                         .transition(.move(edge: .trailing))
                 }
 
-                // 115 她：「设置那个弹出来 还是不大容易出来」。右边中间一道很淡的小把手：点一下就开，也能从它往左拖
-                if !keDrawerOpen && !settingsOpen {
-                    Button(action: openKeDrawer) {
-                        Capsule()
-                            .fill(theme.chatTextSecondary.opacity(0.28))
-                            .frame(width: 4, height: 46)
-                            .frame(width: 26, height: 96)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .simultaneousGesture(drawerSwipe)
-                    .accessibilityLabel("打开设置")
-                    .accessibilityIdentifier("ke-drawer-handle")
-                }
-
                 KeDrawerOverlay(isOpen: $keDrawerOpen, pull: keDrawerPull) {
                     KeSettingsDrawer(
                         isOpen: keDrawerOpen,
@@ -416,6 +401,12 @@ struct ChatView: View {
 
             // 112：顶上只留标题和电话。原来「…」里的功能都在抽屉的话笺页「更多」里。
             HStack {
+                // 116 她：「放在左上吧 竖着3个点」。点一下打开设置；从右边往左划也照样能开
+                Button(action: openKeDrawer) {
+                    Image(systemName: "ellipsis").font(.title3).rotationEffect(.degrees(90))
+                        .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
+                        .contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityLabel("打开设置").accessibilityIdentifier("ke-drawer-open")
                 Spacer()
                 Button { showingCallPlaceholder = true } label: {
                     Image(systemName: "phone").font(.title3)
