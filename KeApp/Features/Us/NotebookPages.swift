@@ -468,12 +468,17 @@ struct MenuPage: View {
     var onClose: () -> Void
     @State private var draft: NotebookDraft?
     @State private var query = ""
+    /// 118：评价筛选，nil 是全部；其余对应服务器上的 rate（good / meh / bad）
+    @State private var rating: String?
+    private static let ratings: [(String?, String)] = [(nil, "全部"), ("good", "好吃"), ("meh", "一般"), ("bad", "踩雷")]
 
     private func hit(_ i: NotebookItem) -> Bool {
         let q = query.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return true }
         return [i.title, i.place ?? "", i.note ?? ""].contains { $0.localizedCaseInsensitiveContains(q) }
     }
+    /// 吃过的：搜索词 + 评价一起筛
+    private func shownMeal(_ i: NotebookItem) -> Bool { hit(i) && (rating == nil || i.rate == rating) }
 
     var body: some View {
         NotebookShell(title: "食单", script: "Menu", paper: paper, onClose: onClose) {
@@ -489,16 +494,18 @@ struct MenuPage: View {
             .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.92)))
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Ink.line.opacity(0.45), lineWidth: 0.7))
             .accessibilityIdentifier("menu-search")
+            ratingPicker
             if let m = store.snapshot?.menu {
                 NotebookSection(title: "吃过的", hint: "好不好吃，柯都记着") {
                     VStack(spacing: 0) {
-                        ForEach(m.meals.filter(hit)) { meal in
+                        ForEach(m.meals.filter(shownMeal)) { meal in
                             NotebookRow(title: meal.title, trailing: shortDay(meal.day), detail: meal.place ?? "",
                                         quote: meal.note, author: meal.author, editedBy: meal.edited_by,
                                         chip: meal.rate.map { StatusChip(text: rateText($0), tone: $0 == "good" ? .good : $0 == "bad" ? .wait : .plain) }) { draft = mealDraft(meal) }
                         }
-                        if !query.isEmpty && m.meals.filter(hit).isEmpty {
-                            Text("没搜到「\(query)」").font(Ink.song(14)).foregroundStyle(Ink.secondary).frame(maxWidth: .infinity).padding(.vertical, 18)
+                        if !m.meals.isEmpty && m.meals.filter(shownMeal).isEmpty {
+                            Text(query.isEmpty ? "没有记成「\(rateText(rating))」的" : "没搜到「\(query)」，换个词或评价试试")
+                                .font(Ink.song(14)).foregroundStyle(Ink.secondary).frame(maxWidth: .infinity).padding(.vertical, 18)
                         }
                         if m.meals.isEmpty { Text("还没有记过吃的").font(Ink.song(14)).foregroundStyle(Ink.secondary).frame(maxWidth: .infinity).padding(.vertical, 18) }
                     }
@@ -530,6 +537,29 @@ struct MenuPage: View {
                 } }
             }, onDelete: d.item.map { i in { Task { await store.run { try await store.api.deleteNotebookItem(id: i.id) } } } })
         }
+    }
+    /// 一排小字筛选：全部 / 好吃 / 一般 / 踩雷，选中的那个浅浅垫一块底
+    private var ratingPicker: some View {
+        HStack(spacing: 6) {
+            ForEach(Self.ratings, id: \.1) { value, label in
+                let on = rating == value
+                Button { rating = value } label: {
+                    Text(label).font(Ink.song(14))
+                        .foregroundStyle(on ? Ink.primary : Ink.secondary)
+                        .padding(.horizontal, 12)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .background(Capsule().fill(on ? Ink.primary.opacity(0.06) : Color.clear).padding(.vertical, 6))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(on ? .isSelected : [])
+                .accessibilityIdentifier("menu-rate-\(value ?? "all")")
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.top, -16)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("按评价筛选")
     }
     private func rateText(_ rate: String?) -> String { ["good": "好吃", "meh": "一般", "bad": "踩雷"][rate ?? ""] ?? "" }
     private func mealDraft(_ i: NotebookItem?) -> NotebookDraft {

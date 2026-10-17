@@ -27,6 +27,24 @@ struct MomentsView: View {
     @State private var sheet: MomentSheet?
     @State private var deletion: MomentDeletion?
     @StateObject private var drafts: MomentsDraftStore
+    /// 118：照网页那版加搜索和「谁发的」筛选，只在已经拉下来的动态里找
+    @State private var query = ""
+    @State private var authorFilter: String?
+    /// 118 间距（DESIGN.md）：上面一块到搜索框 22，搜索框到筛选行 18；筛选项间隔 14、最窄 64
+    private static let toolsTop: CGFloat = 22
+    private static let searchToFilters: CGFloat = 18
+    private static let filterSpacing: CGFloat = 14
+    private static let filterMinWidth: CGFloat = 64
+    private static let authors: [(String?, String)] = [(nil, "全部"), ("ke", "柯"), ("user", "佳佳")]
+
+    private var shown: [RemoteMoment] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return store.moments.filter { m in
+            (authorFilter == nil || (authorFilter == "user") == (m.author == "user")) &&
+            (q.isEmpty || m.content.localizedCaseInsensitiveContains(q)
+                || m.comments.contains { $0.content.localizedCaseInsensitiveContains(q) })
+        }
+    }
 
     init(store: MomentsStore, line: ChatLine) {
         self.store = store
@@ -38,7 +56,14 @@ struct MomentsView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: theme.metric.gapXL) {
-                    cover
+                    VStack(spacing: 0) {
+                        cover
+                        if !store.moments.isEmpty {
+                            tools
+                                .padding(.horizontal, theme.metric.pagePadding)
+                                .padding(.top, Self.toolsTop)
+                        }
+                    }
                     if let error = store.error {
                         MomentErrorBanner(message: error) { Task { await store.load() } }
                             .padding(.horizontal, theme.metric.pagePadding)
@@ -61,8 +86,14 @@ struct MomentsView: View {
                         .padding(theme.metric.gapXL)
                         .accessibilityIdentifier("moments-empty")
                     }
+                    if !store.moments.isEmpty && shown.isEmpty {
+                        Text(query.isEmpty ? "这里还没有这样的片刻。" : "没找到「\(query)」，换个词试试。")
+                            .font(WX.caption).foregroundStyle(WX.secondary)
+                            .frame(maxWidth: .infinity)
+                            .accessibilityIdentifier("moments-filter-empty")
+                    }
                     LazyVStack(spacing: theme.metric.gapXL) {
-                        ForEach(store.moments) { moment in
+                        ForEach(shown) { moment in
                             MomentRow(moment: moment, line: line, saving: store.saving,
                                       like: { Task { await store.like(moment) } },
                                       comment: { openTextSheet(.comment(moment)) },
@@ -182,6 +213,48 @@ struct MomentsView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("moments-cover")
+    }
+
+    /// 搜索框 + 「全部 / 柯 / 佳佳」
+    private var tools: some View {
+        VStack(alignment: .leading, spacing: Self.searchToFilters) {
+            HStack(spacing: theme.metric.gapS) {
+                Image(systemName: "magnifyingglass").foregroundStyle(WX.secondary)
+                TextField("搜日常里的片刻", text: $query)
+                    .font(.system(size: 15)).submitLabel(.search)
+                    .accessibilityIdentifier("moments-search")
+                if !query.isEmpty {
+                    Button { query = "" } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(WX.secondary)
+                            .frame(minWidth: theme.metric.touchTarget, minHeight: theme.metric.touchTarget)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("清空搜索")
+                }
+            }
+            .padding(.horizontal, theme.metric.gapM)
+            .frame(minHeight: theme.metric.touchTarget)
+            .background(WX.card, in: RoundedRectangle(cornerRadius: theme.metric.radiusChip))
+            HStack(spacing: Self.filterSpacing) {
+                ForEach(Self.authors, id: \.1) { value, label in
+                    let on = authorFilter == value
+                    Button { authorFilter = value } label: {
+                        Text(label).font(WX.caption)
+                            .foregroundStyle(on ? WX.text : WX.secondary)
+                            .padding(.horizontal, theme.metric.gapM)
+                            .frame(minWidth: Self.filterMinWidth, minHeight: theme.metric.touchTarget)
+                            .background(on ? WX.card : Color.clear, in: RoundedRectangle(cornerRadius: theme.metric.radiusChip))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(on ? .isSelected : [])
+                    .accessibilityIdentifier("moments-filter-\(value ?? "all")")
+                }
+                Spacer(minLength: 0)
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("按谁发的筛选")
+        }
     }
 
     private func openTextSheet(_ item: MomentSheet) {

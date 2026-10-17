@@ -264,9 +264,14 @@ private struct GalaxyCanvas: View {
         .contentShape(Rectangle())
         .gesture(
             SimultaneousGesture(
-                DragGesture(minimumDistance: 6)
-                    .onChanged { motion.holding = true; motion.drag($0.translation) }
+                DragGesture(minimumDistance: 6, coordinateSpace: .global)
+                    // 118：左边缘起手是「右划返回」，星河不跟着转
+                    .onChanged { v in
+                        guard v.startLocation.x >= SwipeBackToClose.edge else { return }
+                        motion.holding = true; motion.drag(v.translation)
+                    }
                     .onEnded { v in
+                        guard v.startLocation.x >= SwipeBackToClose.edge else { return }
                         motion.holding = false
                         motion.endGesture(fling: CGSize(width: v.predictedEndTranslation.width - v.translation.width,
                                                         height: v.predictedEndTranslation.height - v.translation.height))
