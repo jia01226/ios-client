@@ -53,7 +53,7 @@ struct ChatView: View {
     @State private var showsScrollToLatest = false
     @State private var scrollToLatestRequest = 0
     // 112：月隐设置抽屉、换窗挑选、钉住的轮
-    @StateObject private var keWindow = KeWindowStore()
+    @StateObject private var keWindow: KeWindowStore
     @State private var keDrawerOpen = false
     @State private var keDrawerPull: CGFloat = 0
     @State private var keDrawerPage: KeSettingsTab = .garden
@@ -63,6 +63,8 @@ struct ChatView: View {
         self.line = line
         _selectedLine = selectedLine
         _vm = StateObject(wrappedValue: ChatViewModel(line: line))
+        // 115：设置抽屉、换窗、钉住要打这条线自己的服务器（/ke-test1/…），不能用默认那个
+        _keWindow = StateObject(wrappedValue: KeWindowStore(api: APIClient(baseURL: line.apiBaseURL)))
         quotesStore = .shared(line: line)
         _quoteOpenRequest = quoteOpenRequest
         _sendRequests = sendRequests

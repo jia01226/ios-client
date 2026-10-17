@@ -329,6 +329,9 @@ private struct GalaxyCanvas: View {
         // 以前整理的：小而暗的星，每颗都点得开；拉近（≥1.8 倍）才写名字
         let glow = ctx.resolve(GalaxyArt.glow)
         let oldLabels = v.zoom >= 1.8
+        // 115 她：「一放大全是密密麻麻的字」。小星星的名字只挑离屏幕中心最近的几颗，跟亮星一起排、互不压
+        var oldCandidates: [(title: String, at: CGPoint, dist: CGFloat, selected: Bool)] = []
+        let center = CGPoint(x: size.width / 2, y: size.height * 0.5)
         for star in stars where !star.ke {
             let (p, depth) = pr.project(star.x, star.y, star.z)
             guard p.x > -20, p.x < size.width + 20, p.y > -20, p.y < size.height + 20 else { continue }
@@ -346,9 +349,8 @@ private struct GalaxyCanvas: View {
                 ctx.stroke(Path(ellipseIn: CGRect(x: p.x - 10, y: p.y - 10, width: 20, height: 20)),
                            with: .color(Color(red: 0.94, green: 0.88, blue: 0.73).opacity(0.85)), lineWidth: 1)
             }
-            if oldLabels && on {
-                ctx.draw(Text(star.title).font(.system(size: 10)).foregroundColor(Color(red: 0.85, green: 0.83, blue: 0.92).opacity(min(1, (v.zoom - 1.8) * 3) * 0.75)),
-                         at: CGPoint(x: p.x, y: p.y + 12))
+            if (oldLabels && on) || star.id == selectedID {
+                oldCandidates.append((star.title, p, hypot(p.x - center.x, p.y - center.y), star.id == selectedID))
             }
         }
         // 柯记的：亮星 + 名字
@@ -387,7 +389,9 @@ private struct GalaxyCanvas: View {
         }
         // 名字不打架：选中的、重要的先放；下面撞了就放上面；上下都撞，先不写（拉近了自然分开）。也不出屏幕边。
         var placed: [CGRect] = []
+        let maxLabels = 12
         for l in labels.sorted(by: { ($0.selected ? 1 : 0, $0.rank) > ($1.selected ? 1 : 0, $1.rank) }) {
+            guard placed.count < maxLabels || l.selected else { break }
             let w = CGFloat(l.title.count) * 12.5 + 6, hgt: CGFloat = 16
             let x = min(max(l.at.x, w / 2 + 4), size.width - w / 2 - 4)
             let below = CGRect(x: x - w / 2, y: l.at.y + l.r * 2 + 6, width: w, height: hgt)
@@ -395,6 +399,21 @@ private struct GalaxyCanvas: View {
             guard let spot = [below, above].first(where: { c in !placed.contains { $0.intersects(c) } }) else { continue }
             placed.append(spot)
             ctx.draw(Text(l.title).font(.system(size: 12)).foregroundColor(Color(red: 0.93, green: 0.9, blue: 0.97).opacity(l.alpha)),
+                     at: CGPoint(x: spot.midX, y: spot.midY))
+        }
+        // 小星星：选中的那颗一定写；其余只写离中心最近的 6 颗，撞了就不写，一屏总共不超过 maxLabels
+        let fade = min(1, max(0, (v.zoom - 1.8) * 3)) * 0.75
+        var oldShown = 0
+        for l in oldCandidates.sorted(by: { ($0.selected ? 0 : 1, $0.dist) < ($1.selected ? 0 : 1, $1.dist) }) {
+            if !l.selected && (oldShown >= 6 || placed.count >= maxLabels) { break }
+            let w = CGFloat(l.title.count) * 10.5 + 6, hgt: CGFloat = 14
+            let x = min(max(l.at.x, w / 2 + 4), size.width - w / 2 - 4)
+            let below = CGRect(x: x - w / 2, y: l.at.y + 6, width: w, height: hgt)
+            let above = CGRect(x: x - w / 2, y: l.at.y - 6 - hgt, width: w, height: hgt)
+            guard let spot = [below, above].first(where: { c in !placed.contains { $0.intersects(c) } }) else { continue }
+            placed.append(spot)
+            if !l.selected { oldShown += 1 }
+            ctx.draw(Text(l.title).font(.system(size: 10)).foregroundColor(Color(red: 0.85, green: 0.83, blue: 0.92).opacity(l.selected ? 0.9 : fade)),
                      at: CGPoint(x: spot.midX, y: spot.midY))
         }
 
