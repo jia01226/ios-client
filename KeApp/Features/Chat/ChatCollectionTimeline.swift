@@ -919,5 +919,5 @@ extension ChatCollectionTimelineController: UIGestureRecognizerDelegate {
 
 /// 112：拉设置抽屉只认屏幕最右边这一条（三个页面都一样）
 enum KeDrawerEdge {
-    static let width: CGFloat = 20
+    static let width: CGFloat = 32
 }

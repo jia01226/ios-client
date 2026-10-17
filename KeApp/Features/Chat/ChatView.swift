@@ -213,6 +213,21 @@ struct ChatView: View {
                         .transition(.move(edge: .trailing))
                 }
 
+                // 115 她：「设置那个弹出来 还是不大容易出来」。右边中间一道很淡的小把手：点一下就开，也能从它往左拖
+                if !keDrawerOpen && !settingsOpen {
+                    Button(action: openKeDrawer) {
+                        Capsule()
+                            .fill(theme.chatTextSecondary.opacity(0.28))
+                            .frame(width: 4, height: 46)
+                            .frame(width: 26, height: 96)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .simultaneousGesture(drawerSwipe)
+                    .accessibilityLabel("打开设置")
+                    .accessibilityIdentifier("ke-drawer-handle")
+                }
+
                 KeDrawerOverlay(isOpen: $keDrawerOpen, pull: keDrawerPull) {
                     KeSettingsDrawer(
                         isOpen: keDrawerOpen,
