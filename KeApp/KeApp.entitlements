@@ -4,9 +4,5 @@
 <dict>
     <key>aps-environment</key>
     <string>production</string>
-    <key>keychain-access-groups</key>
-    <array>
-        <string>$(AppIdentifierPrefix)love.jiagude.shared</string>
-    </array>
 </dict>
 </plist>

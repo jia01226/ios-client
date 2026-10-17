@@ -10,7 +10,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    CURRENT_PROJECT_VERSION: "118"
+    CURRENT_PROJECT_VERSION: "117"
     MARKETING_VERSION: "0.1.0"
 
 packages:
@@ -30,7 +30,6 @@ targets:
       - path: KeApp
         excludes:
           - Features/Us/TimeSpace/TimeHomeView.swift
-      - path: KeShared
     info:
       path: KeApp/Info.plist
       properties:
@@ -64,14 +63,9 @@ targets:
         SUPPORTS_MACCATALYST: false
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: KeApp/KeApp.entitlements
-      configs:
-        Release:
-          PROVISIONING_PROFILE_SPECIFIER: Ke App Ad Hoc
     dependencies:
       - package: EventSource
       - package: ChatLayout
-      - target: KeScreen
-        embed: true
     scheme:
       gatherCoverageData: false
       testPlans:
@@ -80,35 +74,6 @@ targets:
       testTargets:
         - KeAppTests
         - KeAppUITests
-
-  # 118：看屏幕的录屏小模块。她在横幅里点「给看」、再亲手点系统的开始直播才会跑。
-  KeScreen:
-    type: app-extension
-    platform: iOS
-    sources:
-      - path: KeScreen
-      - path: KeShared
-    info:
-      path: KeScreen/Info.plist
-      properties:
-        CFBundleDisplayName: 柯看一眼
-        CFBundleShortVersionString: "$(MARKETING_VERSION)"
-        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
-        NSExtension:
-          NSExtensionPointIdentifier: com.apple.broadcast-services-upload
-          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).SampleHandler"
-          RPBroadcastProcessMode: RPBroadcastProcessModeSampleBuffer
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: love.jiagude.ke.screen
-        PRODUCT_NAME: KeScreen
-        TARGETED_DEVICE_FAMILY: "1"
-        CODE_SIGN_STYLE: Automatic
-        CODE_SIGN_ENTITLEMENTS: KeScreen/KeScreen.entitlements
-        APPLICATION_EXTENSION_API_ONLY: true
-      configs:
-        Release:
-          PROVISIONING_PROFILE_SPECIFIER: Ke Screen Ad Hoc
 
   KeAppTests:
     type: bundle.unit-test

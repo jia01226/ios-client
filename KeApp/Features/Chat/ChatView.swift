@@ -54,7 +54,6 @@ struct ChatView: View {
     @State private var scrollToLatestRequest = 0
     // 112：月隐设置抽屉、换窗挑选、钉住的轮
     @StateObject private var keWindow: KeWindowStore
-    @StateObject private var keScreen: KeScreenStore
     @State private var keDrawerOpen = false
     @State private var keDrawerPull: CGFloat = 0
     @State private var keDrawerPage: KeSettingsTab = .garden
@@ -66,7 +65,6 @@ struct ChatView: View {
         _vm = StateObject(wrappedValue: ChatViewModel(line: line))
         // 115：设置抽屉、换窗、钉住要打这条线自己的服务器（/ke-test1/…），不能用默认那个
         _keWindow = StateObject(wrappedValue: KeWindowStore(api: APIClient(baseURL: line.apiBaseURL)))
-        _keScreen = StateObject(wrappedValue: KeScreenStore(base: line.apiBaseURL))
         quotesStore = .shared(line: line)
         _quoteOpenRequest = quoteOpenRequest
         _sendRequests = sendRequests
@@ -89,13 +87,6 @@ struct ChatView: View {
         .background {
             if case .ready = vm.phase { ChatWallpaperBackground(store: wallpaperStore) }
         }
-        .overlay(alignment: .top) {
-            KeScreenBanner(store: keScreen)
-                .padding(.top, 60)
-                .animation(.spring(duration: 0.35), value: keScreen.request)
-                .animation(.spring(duration: 0.35), value: keScreen.allowed)
-        }
-        .task { await keScreen.watch() }
 #if DEBUG
         .overlay(alignment: .topTrailing) { ChatRecoveryUITestTimingProbe() }
 #endif
@@ -164,9 +155,7 @@ struct ChatView: View {
             switch phase {
             case .inactive: vm.becameInactive()
             case .background: vm.enteredBackgroundScene()
-            case .active:
-                Task { await vm.resumeFromForeground() }
-                Task { await keScreen.refresh() }
+            case .active: Task { await vm.resumeFromForeground() }
             @unknown default: break
             }
         }

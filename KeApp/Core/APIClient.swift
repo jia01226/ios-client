@@ -1091,24 +1091,6 @@ actor APIClient {
 
     func fetchKeWindow() async throws -> KeWindowState { try await readResource("/api/ke/window") }
 
-    // MARK: 看屏幕（118）
-
-    /// 柯有一条申请没结（等她决定 / 她给了还没拍到）就回它，没有就 nil。
-    func fetchScreenPending() async throws -> KeScreenRequest? {
-        let (data, _) = try await perform(try makeRequest(path: "/api/screen/pending"))
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let row = object["request"] as? [String: Any],
-              let id = row["id"] as? Int else { return nil }
-        return KeScreenRequest(id: id, why: row["why"] as? String ?? "", state: row["state"] as? String ?? "pending")
-    }
-
-    func answerScreen(id: Int, allow: Bool) async throws {
-        var request = try makeRequest(path: "/api/screen/answer", method: "POST")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["id": id, "allow": allow])
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        _ = try await perform(request)
-    }
-
     /// 202 + job；柯正在忙别的时回 409。
     func washKeWindow() async throws -> KeWindowJob? {
         let response: KeJobResponse = try await postNotebook("/api/ke/window/wash", body: [:])
