@@ -63,6 +63,8 @@ struct ChatView: View {
     /// 120：点了「爸爸开锁了」那张卡，直接翻开的那一篇
     @State private var openedDiary: DiaryOpenRequest?
     private struct DiaryOpenRequest: Identifiable { let id: Int }
+    /// 121：输入框的动静——只报字数和删光/卡住/切走，不带字
+    @StateObject private var presence: ComposerPresenceReporter
 
     init(line: ChatLine, selectedLine: Binding<ChatLine>, quoteOpenRequest: Binding<QuoteOpenRequest?> = .constant(nil), sendRequests: Binding<[ChatSendRequest]> = .constant([])) {
         self.line = line
@@ -70,6 +72,7 @@ struct ChatView: View {
         _vm = StateObject(wrappedValue: ChatViewModel(line: line))
         // 115：设置抽屉、换窗、钉住要打这条线自己的服务器（/ke-test1/…），不能用默认那个
         _keWindow = StateObject(wrappedValue: KeWindowStore(api: APIClient(baseURL: line.apiBaseURL)))
+        _presence = StateObject(wrappedValue: ComposerPresenceReporter.live(api: APIClient(baseURL: line.apiBaseURL)))
         quotesStore = .shared(line: line)
         _quoteOpenRequest = quoteOpenRequest
         _sendRequests = sendRequests
@@ -159,8 +162,12 @@ struct ChatView: View {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .inactive: vm.becameInactive()
-            case .background: vm.enteredBackgroundScene()
-            case .active: Task { await vm.resumeFromForeground() }
+            case .background:
+                vm.enteredBackgroundScene()
+                presence.didEnterBackground()
+            case .active:
+                presence.didBecomeActive()
+                Task { await vm.resumeFromForeground() }
             @unknown default: break
             }
         }
@@ -741,6 +748,8 @@ struct ChatView: View {
                 .focused($inputFocused)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 11)
+                // 121：打字、删字、粘贴都算；只把字数交出去
+                .onChange(of: draft) { _, text in presence.textChanged(text) }
 
             Button { send() } label: {
                 // 佳佳 2026-10-06：「先回消息 不要等消息」——柯回着的时候也能接着发。
@@ -1907,6 +1916,8 @@ struct ChatView: View {
         sendBounce &+= 1
         let text = trimmedDraft
         guard canSend, !vm.isUploading, !vm.isRefreshingClaude else { return }
+        // 121：发出去这份草稿就结束了，什么都不报；随后清空输入框那一下在它看来是空→空
+        presence.didSend()
         draft = ""
         scrollToLatestRequest &+= 1
         Task { await vm.send(text, reduceMotion: reduceMotion) }

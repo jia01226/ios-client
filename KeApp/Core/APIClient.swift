@@ -99,6 +99,12 @@ struct LocationContextResponse: Decodable, Sendable {
     let weather: String?
 }
 
+/// 121：POST /api/ke/hesitate 的回执
+struct KeHesitationReceipt: Decodable, Sendable {
+    let ok: Bool
+    let noted: Bool?
+}
+
 struct ActiveChatSession: Decodable, Sendable {
     let id: Int
     let model: String?
@@ -1168,6 +1174,21 @@ actor APIClient {
         let (data, _) = try await perform(try makeRequest(path: "/api/ke/rounds", queryItems: items))
         do { return try decoder.decode(KeRoundPage.self, from: data) }
         catch { throw APIError.decoding(error) }
+    }
+
+    // MARK: 121 输入框的动静：只报字数和删光/卡住/切走，绝不带她写的字
+
+    /// 她在打字：只带现在框里几个字。回 {"ok": true}。
+    func reportComposerTyping(length: Int) async throws {
+        try await writeResource("/api/ke/typing", body: ["len": length])
+    }
+
+    /// kind 是 cleared / stuck / left；服务器不看 peak < 4，40 秒后自己决定要不要叫醒柯。
+    /// 回 {"ok": true, "noted": Bool}，noted 表示这次记下了。
+    @discardableResult
+    func reportComposerHesitation(kind: String, peak: Int) async throws -> Bool {
+        let receipt: KeHesitationReceipt = try await postNotebook("/api/ke/hesitate", body: ["kind": kind, "peak": peak])
+        return receipt.noted ?? false
     }
 
     private func postNotebook<T: Decodable>(_ path: String, body: [String: Any]) async throws -> T {
