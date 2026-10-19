@@ -201,8 +201,10 @@ final class KeWindowStore: ObservableObject {
             if pendingPatch.isEmpty { settings = saved }
             settingsError = nil
         } catch {
-            settingsError = Self.message(for: error)
+            let message = Self.message(for: error)
             if pendingPatch.isEmpty { await loadSettings() }
+            // 124：先退回服务器的值，再写原因——loadSettings 读成功会清掉 settingsError，「没存上」就一闪没了
+            settingsError = message
         }
     }
 

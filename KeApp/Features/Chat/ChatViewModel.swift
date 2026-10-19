@@ -1027,10 +1027,8 @@ final class ChatViewModel: ObservableObject {
         modelQuotaRequestRevision += 1
         let requestRevision = modelQuotaRequestRevision
         isLoadingModelQuotas = true
-        modelQuotaError = nil
-        if force {
-            modelQuotaCatalog = nil
-        }
+        // 124：刷新时不先清空。上次读到的额度一直留着，新的读到了才换；
+        // 没读到也不丢旧的（页面会说「这是上次读到的」），错误也等有了结果再改。
         defer {
             if requestRevision == modelQuotaRequestRevision {
                 isLoadingModelQuotas = false
@@ -1040,9 +1038,11 @@ final class ChatViewModel: ObservableObject {
             let catalog = try await api.fetchModelQuotas(sessionID: sessionID)
             guard requestRevision == modelQuotaRequestRevision else { return }
             modelQuotaCatalog = catalog
+            modelQuotaError = nil
             lastModelQuotaLoad = Date()
         } catch {
-            guard requestRevision == modelQuotaRequestRevision else { return }
+            // 124：页面关了把这次读取取消掉，不算没读到（不然下次打开先挂着一句「上次的」）
+            guard requestRevision == modelQuotaRequestRevision, !Task.isCancelled else { return }
             modelQuotaError = "额度暂时没读到，点刷新再试。"
         }
     }
@@ -1078,8 +1078,7 @@ final class ChatViewModel: ObservableObject {
         do {
             let active = try await api.selectModel(sessionID: sessionID, model: model)
             selectedModel = active.model ?? model
-            modelQuotaCatalog = nil
-            modelQuotaError = nil
+            // 124：换了模型也先留着各号的额度，重读回来再换，别让那几行字一闪没了
             await loadModelQuotas(force: true)
         } catch {
             modelError = error.localizedDescription

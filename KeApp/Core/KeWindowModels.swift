@@ -10,6 +10,9 @@ struct KeProactiveSettings: Codable, Equatable, Sendable {
     var quietWeekend: String
     var nightGap: Int
     var xhsPerDay: Int
+    /// 124：「柯想得多深」，只管 Claude 长窗。"" ＝ 跟服务器默认走（现在是 low）；
+    /// 读到不认识的值也原样留着，不替她乱改。
+    var effort: String
 
     enum CodingKeys: String, CodingKey {
         case proactiveOn = "proactive_on"
@@ -17,6 +20,7 @@ struct KeProactiveSettings: Codable, Equatable, Sendable {
         case quietWeekend = "quiet_weekend"
         case nightGap = "night_gap"
         case xhsPerDay = "xhs_per_day"
+        case effort
     }
 
     init(from decoder: Decoder) throws {
@@ -26,7 +30,39 @@ struct KeProactiveSettings: Codable, Equatable, Sendable {
         quietWeekend = (try? c.decode(String.self, forKey: .quietWeekend)) ?? "23:00-10:30"
         nightGap = c.lossyInt(.nightGap) ?? 40
         xhsPerDay = c.lossyInt(.xhsPerDay) ?? 2
+        // 124：老服务器没有这个字段、或者回 null，都当「跟默认走」
+        effort = ((try? c.decode(String.self, forKey: .effort)) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
     }
+
+    /// 124：页面上该亮哪一档。"" 亮服务器默认那档；不认识的值哪档都不亮。
+    var effortLevel: KeEffort? { effort.isEmpty ? .serverDefault : KeEffort(rawValue: effort) }
+    var effortIsDefault: Bool { effort.isEmpty }
+}
+
+/// 124 她：「我可以选择柯的用量，就像现在你是最高速度，柯app选不了」——
+/// 柯想得多深的五档，从左到右越来越深、越费额度。值和服务器 /api/ke/settings 的 effort 一样。
+enum KeEffort: String, CaseIterable, Identifiable, Sendable {
+    case low, medium, high, xhigh, max
+
+    /// 服务器 effort 为 "" 时用的那档
+    static let serverDefault: KeEffort = .low
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .low: return "省着想"
+        case .medium: return "平常"
+        case .high: return "认真"
+        case .xhigh: return "很认真"
+        case .max: return "最认真"
+        }
+    }
+
+    /// 第几档（1…5），页面上点几个小点
+    var depth: Int { (Self.allCases.firstIndex(of: self) ?? 0) + 1 }
 }
 
 /// 「23:00-08:30」这样的安静时段，拆成两头的时和分。

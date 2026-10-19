@@ -227,7 +227,7 @@ struct KeSettingsDrawer: View {
     private var pageContent: some View {
         switch page {
         case .garden: EmptyView()
-        case .words: KeWordsPage(vm: vm, onOpenTool: onOpenTool)
+        case .words: KeWordsPage(vm: vm, store: store, onOpenTool: onOpenTool)
         case .visits: KeVisitsPage(store: store)
         case .paper: KePaperPage()
         case .window: KeWindowPage(store: store, onStartPick: onStartPick)

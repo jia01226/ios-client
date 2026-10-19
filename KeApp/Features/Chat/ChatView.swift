@@ -1700,7 +1700,8 @@ struct ChatView: View {
             return nil
         }
 
-        let staleSuffix = quota.stale ? " · 上次结果" : ""
+        // 124：刷新没成时 vm 留着上次的额度，这里也标一声「上次结果」
+        let staleSuffix = quota.stale || vm.modelQuotaError != nil ? " · 上次结果" : ""
         switch quota.status {
         case "cooldown":
             if let reset = modelQuotaResetText(quota.resetAt) {

@@ -7,6 +7,8 @@ import SwiftUI
 struct KeWordsPage: View {
     @EnvironmentObject private var theme: Theme
     @ObservedObject var vm: ChatViewModel
+    /// 124：「柯想得多深」和来信设置存在同一份 /api/ke/settings 里，走同一条存的路
+    @ObservedObject var store: KeWindowStore
     let onOpenTool: (KeDrawerTool) -> Void
 
     var body: some View {
@@ -40,7 +42,8 @@ struct KeWordsPage: View {
             more
         }
         .task {
-            await vm.loadModels()
+            // 124：一打开就把各号额度也读上（30 秒内读过就用现成的），不用干等一分钟
+            await vm.loadModelSettings()
             // 123 她：额度要「实时」，跟 Claude 自己的用量页一样。这页开着就每分钟刷一次，关了就停。
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(60))
@@ -48,6 +51,7 @@ struct KeWordsPage: View {
                 await vm.loadModelQuotas(force: true)
             }
         }
+        .task { await store.loadSettings() }
     }
 
     // 拖滑杆时这两个气泡跟着变，和聊天里画法一致。
@@ -151,10 +155,12 @@ struct KeWordsPage: View {
                 }
                 .font(.system(size: 12))
                 .foregroundStyle(Ink.secondary)
+                effortPicker
             } else if let error = vm.modelError, vm.modelOptions.isEmpty {
                 KeDrawerHint(error)
                 Button("再试一次") { Task { await vm.loadModels(force: true) } }
                     .buttonStyle(KeDrawerButtonStyle())
+                effortPicker
             } else {
                 if let error = vm.modelError { KeDrawerHint("刚才没换成：\(error)") }
                 // 112 她：「之前不是两个号码吗 2个claude额度 没有了」——1 号、2 号分开列，各自带额度
@@ -162,9 +168,12 @@ struct KeWordsPage: View {
                     modelGroup(
                         section.title,
                         caption: claudeCaption(section.id),
-                        sections: [section]
+                        sections: [section],
+                        quotaID: section.id
                     )
                 }
+                // 124：想得多深只管 Claude 长窗，就放在两个 Claude 号下面
+                effortPicker
                 modelGroup(
                     "GPT",
                     caption: "不走长窗：能看到最近聊天和设定，但不是同一扇窗",
@@ -182,12 +191,18 @@ struct KeWordsPage: View {
     private func claudeCaption(_ id: String) -> String {
         let line = "柯的长窗：一直开着、记得刚才；这个号额度用完会自动换另一个，会推送告诉你"
         guard let quota = quotaSummary(id) else { return line }
-        return line + "\n" + quota
+        // 124：刷新没成时留着上次的数，但要说清楚是上次的
+        let stale = vm.modelQuotaError != nil && quotaGroup(id) != nil ? "\n刚才没刷新到，这是上次读到的" : ""
+        return line + "\n" + quota + stale
+    }
+
+    private func quotaGroup(_ id: String) -> ChatModelQuotaGroup? {
+        let normalized = ChatModelSection.normalizedGroup(id)
+        return vm.modelQuotaCatalog?.groups.first { ChatModelSection.normalizedGroup($0.id) == normalized }
     }
 
     private func quotaSummary(_ id: String) -> String? {
-        let normalized = ChatModelSection.normalizedGroup(id)
-        guard let quota = vm.modelQuotaCatalog?.groups.first(where: { ChatModelSection.normalizedGroup($0.id) == normalized }) else {
+        guard let quota = quotaGroup(id) else {
             if vm.isLoadingModelQuotas { return "正在读取…" }
             return vm.modelQuotaError != nil ? "暂时没读到" : nil
         }
@@ -231,8 +246,10 @@ struct KeWordsPage: View {
         }
     }
 
-    private func modelGroup(_ title: String, caption: String, sections: [ChatModelSection]) -> some View {
+    /// quotaID：这组是哪个 Claude 号，每一行尾巴上带这个号还剩多少（124）
+    private func modelGroup(_ title: String, caption: String, sections: [ChatModelSection], quotaID: String? = nil) -> some View {
         let options = sections.flatMap(\.options)
+        let quota = quotaID.flatMap(quotaGroup)
         return VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.system(size: 15, weight: .medium))
@@ -255,6 +272,16 @@ struct KeWordsPage: View {
                             .foregroundStyle(Ink.primary)
                         Spacer(minLength: 0)
                         if selected && vm.isSelectingModel { ProgressView().controlSize(.small) }
+                        // 124 她挑模型时就能看到这个号还剩多少：取 5 小时和这一周里紧的那个
+                        if let quota, let left = quota.compactRemainingText {
+                            Text(left)
+                                .font(.system(size: 12))
+                                .monospacedDigit()
+                                .foregroundStyle(quota.isRunningLow ? Ink.negative : Ink.secondary)
+                                .lineLimit(1)
+                                .fixedSize()
+                                .accessibilityLabel("额度\(left)")
+                        }
                     }
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .contentShape(Rectangle())
@@ -266,6 +293,118 @@ struct KeWordsPage: View {
                 .accessibilityIdentifier("drawer-model-\(option.id)")
             }
         }
+    }
+
+    // MARK: 柯想得多深（124）
+
+    /// 124 她：「我可以选择柯的用量，就像现在你是最高速度，柯app选不了」——五档，越往右越深。
+    /// 点了先在页面上变过去，停手半秒和来信设置一起存；存不上退回服务器的值并说原因。
+    @ViewBuilder
+    private var effortPicker: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("柯想得多深")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Ink.primary)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 0)
+                if let settings = store.settings {
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text(settings.effortLevel?.title ?? settings.effort)
+                            .font(.system(size: 13))
+                            .foregroundStyle(Ink.accent)
+                        if settings.effortIsDefault {
+                            Text("(默认)")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Ink.secondary)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("drawer-effort-current")
+                }
+            }
+            .padding(.top, 8)
+
+            if let settings = store.settings {
+                effortRow(settings)
+            } else if let error = store.settingsError {
+                KeDrawerHint(error)
+                Button("再试一次") { Task { await store.loadSettings() } }
+                    .buttonStyle(KeDrawerButtonStyle())
+            } else {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("正在读…")
+                }
+                .font(.system(size: 12))
+                .foregroundStyle(Ink.secondary)
+            }
+
+            KeDrawerHint("越往右想得越深、话越有心思，也越费额度、回得慢一点。只管 Claude 长窗。")
+
+            if store.isSavingSettings {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.mini)
+                    Text("正在存…")
+                }
+                .font(.system(size: 12))
+                .foregroundStyle(Ink.secondary)
+            } else if store.settings != nil, let error = store.settingsError {
+                Text("没存上：\(error)")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Ink.negative)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// 一排五格：字＋几个小点（第几档就几个点），选中的那格垫一层浅底。
+    private func effortRow(_ settings: KeProactiveSettings) -> some View {
+        let current = settings.effortLevel
+        return HStack(spacing: 0) {
+            ForEach(KeEffort.allCases) { level in
+                let on = current == level
+                Button {
+                    guard store.settings?.effort != level.rawValue else { return }
+                    store.change(\.effort, to: level.rawValue, key: "effort", wire: level.rawValue)
+                } label: {
+                    VStack(spacing: 5) {
+                        Text(level.title)
+                            .font(.system(size: 13, weight: on ? .medium : .regular))
+                            .foregroundStyle(on ? Ink.primary : Ink.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                        HStack(spacing: 2) {
+                            ForEach(0..<level.depth, id: \.self) { _ in
+                                Circle()
+                                    .fill(on ? Ink.accent : Ink.line)
+                                    .frame(width: 3, height: 3)
+                            }
+                        }
+                        .accessibilityHidden(true)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background {
+                        if on {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Ink.accent.opacity(0.1))
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(level.title + (on && settings.effortIsDefault ? "，默认" : ""))
+                .accessibilityAddTraits(on ? .isSelected : [])
+                .accessibilityIdentifier("drawer-effort-\(level.rawValue)")
+            }
+        }
+        .padding(3)
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Ink.line.opacity(0.5), lineWidth: 0.6)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("柯想得多深")
     }
 
     // MARK: 原来功能区里的东西

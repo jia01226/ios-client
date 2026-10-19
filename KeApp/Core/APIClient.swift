@@ -173,6 +173,35 @@ struct ChatModelQuotaCatalog: Decodable, Hashable, Sendable {
     let groups: [ChatModelQuotaGroup]
 }
 
+extension ChatModelQuotaGroup {
+    /// 124：几个窗口里最紧的那个还剩百分之几（这 5 小时、这一周取小的）。
+    /// 先按「已用」取整再减，和话笺上「已用 58%」那行对得上；一个数都没有就 nil。
+    var tightestRemainingPercent: Int? {
+        func left(used: Double?, remaining: Double?) -> Int? {
+            if let used { return 100 - Int(min(100, max(0, used)).rounded()) }
+            if let remaining { return Int(min(100, max(0, remaining)).rounded()) }
+            return nil
+        }
+        let perWindow = windows.compactMap { left(used: $0.usedPercent, remaining: $0.remainingPercent) }
+        return perWindow.min() ?? left(used: usedPercent, remaining: remainingPercent)
+    }
+
+    /// 124：选模型那一行尾巴上的小字。用完了、要登录直接说；平时只写最紧的那个窗口还剩多少。
+    var compactRemainingText: String? {
+        switch status {
+        case "cooldown": return "已用完"
+        case "auth_required": return "要重新登录"
+        case "not_configured", "unknown": return nil
+        default: return tightestRemainingPercent.map { "剩 \($0)%" }
+        }
+    }
+
+    /// 124：快见底了（用完或只剩一成），那行小字换成提醒色
+    var isRunningLow: Bool {
+        status == "cooldown" || (tightestRemainingPercent.map { $0 <= 10 } ?? false)
+    }
+}
+
 struct ChatModelSection: Identifiable, Hashable, Sendable {
     let id: String
     let title: String
