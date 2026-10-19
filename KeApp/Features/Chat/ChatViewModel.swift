@@ -99,6 +99,22 @@ final class ChatViewModel: ObservableObject {
     /// 不然半截和服务器那条完整的会同时出现（她说的「显示两遍」）。
     private var settledReplyClientIDs: Set<String> = []
     private var segmentRevealTasks: [String: Task<Void, Never>] = [:]
+    /// 125：一轮回复（发出去、重接、接回）整轮向系统攥着的后台时间。她发完就切走、锁屏时，
+    /// 服务器先等她说完（2.5 秒起，她还在打字最多 20 秒）再写，这段时间流一个字都没有；
+    /// 以前 App 这时被挂起，流就断在回执后面（nginx 里只有 116 字节），只能等她点推送回来再一问一拉。
+    /// 攥着它（约 30 秒），柯写完时这句已经收好、存进缓存。参数是系统到点要收回时的回调，返回「还回去」。
+    typealias ReplyKeepAlive = @MainActor (_ onExpire: @escaping @MainActor () -> Void) -> (@MainActor () -> Void)
+    private let replyKeepAlive: ReplyKeepAlive
+    private var releaseReplyKeepAlive: (@MainActor () -> Void)?
+    /// 125：系统收回过后台时间（App 随后被挂起，流可能已经断了）：回前台要重接
+    private var replyKeepAliveExpired = false
+    /// 125：轮询两问之间的那一下睡。回前台、点推送时叫醒它马上再问，而不是掐断重来
+    private var pollNap: Task<Void, Never>?
+    /// 125：轮询上一问发出去的时刻；超过 8 秒还没回算卡住
+    private var lastPollAt: Date?
+    /// 125：她从后台回来、或点了推送后的几秒：这时落下来的是她不在时写完的那句（横幅里已经读过），
+    /// 整条一次放上，不再一个个冒。过了这几秒才写完的，她是看着落下来的，照常一个个冒。
+    private var landWholeUntil: Date?
     private var failedUpload: AttachmentUploadPayload?
     private var lastModelQuotaLoad: Date?
     private var modelQuotaRequestRevision = 0
@@ -134,19 +150,27 @@ final class ChatViewModel: ObservableObject {
 
     init(line: ChatLine = .main, monitorConnectivity: Bool = true,
          replyTransport: (any ChatReplyTransport)? = nil, cacheFileName: String? = nil,
+         replyKeepAlive: ReplyKeepAlive? = nil,
          replyCompleted: @escaping @MainActor () -> Void = { CompanionPermissionCoordinator.shared.conversationDidComplete() }) {
         let client = APIClient(baseURL: line.apiBaseURL)
         api = client
+        let backgroundKeepAlive: ReplyKeepAlive = { onExpire in
+            let grant = BackgroundGrant(name: "ke-reply", onExpire: onExpire)
+            return { grant.end() }
+        }
 #if DEBUG
         let recoveryPreview = ProcessInfo.processInfo.arguments.contains("-ui-test-foreground-recovery")
         let tarotPreview = ProcessInfo.processInfo.arguments.contains("-ui-test-tarot-handoff")
         replyAPI = replyTransport ?? (tarotPreview ? TarotHandoffPreviewTransport() as any ChatReplyTransport : (recoveryPreview ? ChatRecoveryPreviewTransport() as any ChatReplyTransport : client))
         self.replyCompleted = (recoveryPreview || tarotPreview) ? {} : replyCompleted
         cache = ChatCache(fileName: cacheFileName ?? ((recoveryPreview || tarotPreview) ? "chat-preview-\(UUID()).json" : line.cacheFileName))
+        // 125：回前台那个 UI 测试的假服务器模拟「App 被挂起、流冻住」：当作后台时间没攥住，回来照常重接
+        self.replyKeepAlive = replyKeepAlive ?? (recoveryPreview ? { onExpire in onExpire(); return {} } : backgroundKeepAlive)
 #else
         replyAPI = replyTransport ?? client
         self.replyCompleted = replyCompleted
         cache = ChatCache(fileName: cacheFileName ?? line.cacheFileName)
+        self.replyKeepAlive = replyKeepAlive ?? backgroundKeepAlive
 #endif
 #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
@@ -593,11 +617,14 @@ final class ChatViewModel: ObservableObject {
     func becameInactive(at date: Date = .now) { inactiveSince = inactiveSince ?? date }
     func enteredBackgroundScene() { enteredBackground = true }
 
-    func resumeFromForeground(forceReconnect: Bool = false, at date: Date = .now) async {
+    /// userInitiated：她自己点的「重试」——不管这一轮看着多健康，都掐断重来。
+    func resumeFromForeground(forceReconnect: Bool = false, userInitiated: Bool = false, at date: Date = .now) async {
 #if DEBUG
         if uiTestFixture != nil { return }
 #endif
         let wasSuspended = enteredBackground || inactiveSince.map { date.timeIntervalSince($0) >= 2 } == true
+        // 125：从后台回来、点推送：接下来几秒里落下来的那句是她不在时写完的，整条放上
+        if enteredBackground || forceReconnect { landWholeUntil = date.addingTimeInterval(5) }
         enteredBackground = false
         inactiveSince = nil
         guard phase == .ready else { return }
@@ -608,6 +635,13 @@ final class ChatViewModel: ObservableObject {
             return
         }
         if wasSuspended || forceReconnect {
+            // 125：这一轮回复一直攥着后台时间、系统没收回去——App 没被挂起过，流和轮询都还连着。
+            // 掐断重来只会把快到手的那句作废、从头再问一遍（她说的「点进去消息还要等」）；
+            // 正在轮询就叫醒它马上再问一次。
+            if !userInitiated, replyIsLive(at: date) {
+                pollNap?.cancel()
+                return
+            }
 #if DEBUG
             ChatRecoveryUITestTiming.shared.begin()
 #endif
@@ -619,7 +653,37 @@ final class ChatViewModel: ObservableObject {
     }
 
     func retryHistory() async {
-        await resumeFromForeground(forceReconnect: true)
+        await resumeFromForeground(forceReconnect: true, userInitiated: true)
+    }
+
+    /// 125：这一轮回复还活着——攥着的后台时间没被系统收回（没被挂起过）。
+    /// 正在轮询、上一问 8 秒还没回的不算：卡住了，照旧掐断重来。
+    private func replyIsLive(at date: Date) -> Bool {
+        guard replyTask != nil, replyOwner != nil,
+              releaseReplyKeepAlive != nil, !replyKeepAliveExpired else { return false }
+        if recoveringJobID != nil, let lastPollAt, date.timeIntervalSince(lastPollAt) >= 8 { return false }
+        return true
+    }
+
+    /// 125：跑一轮回复（发出去、重接、接回），整轮攥着后台时间；跑完、后面也没接着跑的才还回去。
+    /// 被新的一轮顶掉时（replyTask 已经换成新的），后台时间留给新的那一轮接着用。
+    private func runReplyTask(_ task: Task<Void, Never>) async {
+        replyTask = task
+        if releaseReplyKeepAlive == nil {
+            replyKeepAliveExpired = false
+            let release = replyKeepAlive { [weak self] in
+                self?.replyKeepAliveExpired = true
+                self?.releaseReplyKeepAlive = nil
+            }
+            // 系统当场没给（expired 已经是 true）也照样记着，跑完一并还
+            releaseReplyKeepAlive = release
+        }
+        await task.value
+        if replyTask == nil {
+            let release = releaseReplyKeepAlive
+            releaseReplyKeepAlive = nil
+            release?()
+        }
     }
 
     private func ownsReply(_ owner: UUID) -> Bool {
@@ -684,6 +748,7 @@ final class ChatViewModel: ObservableObject {
         statusText = nil
         replyFailure = nil
         activeJobID = nil
+        landWholeUntil = nil
         // Invalidate any foreground recovery probe that is currently awaiting the network.
         recoveryProbeID = nil
         if includePendingAttachments { pendingAttachments = [] }
@@ -742,8 +807,7 @@ final class ChatViewModel: ObservableObject {
             await drainQueuedFollowUps(owner: owner)
             finishReplyTask(owner)
         }
-        replyTask = task
-        await task.value
+        await runReplyTask(task)
     }
 
     /// 柯还在回上一句时她接着发的那几条：已经送到服务器排队，等这一句回完再接着回。
@@ -1463,7 +1527,7 @@ final class ChatViewModel: ObservableObject {
                                 $0.deliveryState = .sent
                             }
                             if let completed = messages.first(where: { $0.id == assistantLocalID }) {
-                                stageSegments(for: completed, reduceMotion: reduceMotion)
+                                stageSegments(for: completed, reduceMotion: reduceMotion || landsWhole)
                             }
                             streamRevision += 1
                         }
@@ -1634,8 +1698,7 @@ final class ChatViewModel: ObservableObject {
             await drainQueuedFollowUps(owner: owner)
             finishReplyTask(owner)
         }
-        replyTask = task
-        await task.value
+        await runReplyTask(task)
     }
 
     func dismissReplyFailure() {
@@ -1659,8 +1722,7 @@ final class ChatViewModel: ObservableObject {
             await drainQueuedFollowUps(owner: owner)
             finishReplyTask(owner)
         }
-        replyTask = task
-        await task.value
+        await runReplyTask(task)
     }
 
     private func recoverReply(owner: UUID) async {
@@ -1749,6 +1811,7 @@ final class ChatViewModel: ObservableObject {
         for attempt in 0..<150 {
             guard ownsReply(owner) else { return }
             do {
+                lastPollAt = .now
                 let job = try await replyAPI.chatJob(id: jobID, sessionID: sessionID)
                 guard ownsReply(owner) else { return }
                 let clientID = job.clientMessageID ?? fallbackClientID
@@ -1795,7 +1858,13 @@ final class ChatViewModel: ObservableObject {
                 guard ownsReply(owner) else { return }
                 // Network failure leaves the current local reply and known job recoverable.
             }
-            do { try await Task.sleep(nanoseconds: 2_000_000_000) } catch { return }
+            // 125：头 20 问隔 1 秒（柯一般十几秒内写完，写完到落下来不再白等 2 秒），之后隔 2 秒。
+            // 这一下睡可以被叫醒（回前台、点推送）：马上再问，不把这一轮掐断重来。
+            let nap = Task<Void, Never> { try? await Task.sleep(nanoseconds: attempt < 20 ? 1_000_000_000 : 2_000_000_000) }
+            pollNap = nap
+            await withTaskCancellationHandler { await nap.value } onCancel: { nap.cancel() }
+            if pollNap == nap { pollNap = nil }
+            if Task.isCancelled { return }
         }
         guard ownsReply(owner) else { return }
         isSending = false
@@ -1829,16 +1898,23 @@ final class ChatViewModel: ObservableObject {
     private func revealLandedReplies(previouslyAwaiting awaitingIDs: Set<String>) {
         guard !awaitingIDs.isEmpty else { return }
         var landed = false
+        let whole = landsWhole
         for message in messages where awaitingIDs.contains(message.id) && !message.isAwaitingReply {
             landed = true
             guard segmentRevealTasks[message.bubbleRevealKey] == nil else { continue }
             stageSegments(
                 for: message,
-                reduceMotion: (pendingReply?.reduceMotion ?? false) || UIAccessibility.isReduceMotionEnabled
+                reduceMotion: whole || (pendingReply?.reduceMotion ?? false) || UIAccessibility.isReduceMotionEnabled
             )
         }
         // 占位那一行换成了气泡：让时间线把它当成新内容，跟着落到最底（她本来就在看最新时）。
         if landed { streamRevision += 1 }
+    }
+
+    /// 125：这句落下来时她没在看（App 在后台），或者她刚从后台回来、点了推送（横幅里已经读过）：
+    /// 整条一次放上，不再隔 0.4 秒一个个冒——那只像还在等。
+    private var landsWhole: Bool {
+        enteredBackground || landWholeUntil.map { Date.now < $0 } == true
     }
 
     private func stageSegments(for message: Message, reduceMotion: Bool) {

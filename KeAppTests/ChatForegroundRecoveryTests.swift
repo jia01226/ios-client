@@ -17,6 +17,9 @@ private final class ReplyServer: ChatReplyTransport {
     var holdNextJob = false
     var heldJob: CheckedContinuation<ActiveChatJob, Error>?
     var reattachCompleted = false
+    var historyReads = 0
+    var holdNextHistory = false
+    var heldHistory: CheckedContinuation<[Message], Error>?
 
     func activeSession() async throws -> ActiveChatSession { ActiveChatSession(id: 1, model: nil) }
     func activeJobs(sessionID: Int, includeRecentFailures: Bool) async throws -> [ActiveChatJob] {
@@ -53,7 +56,14 @@ private final class ReplyServer: ChatReplyTransport {
                       userMessageID: 100, assistantMessageID: status == "done" ? 101 : nil,
                       error: status == "error" ? "旧连接错误" : nil, retryable: status == "error", nextRetryAt: nil)
     }
-    func fetchMessages(sessionID: Int, limit: Int, beforeID: Int?, aroundID: Int?) async throws -> [Message] { history }
+    func fetchMessages(sessionID: Int, limit: Int, beforeID: Int?, aroundID: Int?) async throws -> [Message] {
+        historyReads += 1
+        if holdNextHistory {
+            holdNextHistory = false
+            return try await withCheckedThrowingContinuation { heldHistory = $0 }
+        }
+        return history
+    }
     func markSeen(sessionID: Int, throughID: Int?) async throws {}
     func receive(_ events: [ChatStreamEvent], at index: Int = 0) {
         for event in events { streams[index].yield(event) }
@@ -64,6 +74,28 @@ private final class ReplyServer: ChatReplyTransport {
         history = [Message(id: "server-100", serverID: 100, sender: .me, text: "测试一句", time: .now),
                    Message(id: "server-101", serverID: 101, sender: .ke,
                            text: segments?.joined(separator: "\n\n") ?? "完整回复", time: .now, segments: segments)]
+    }
+}
+
+/// 125：假的后台时间。grants=false：系统当场没给（等于 App 随时会被挂起，回前台照旧重接，125 以前的样子）；
+/// grants=true：攥着，直到 expire()（系统到点收回，App 随后被挂起）或回复跑完还回去。
+@MainActor
+private final class FakeKeepAlive {
+    private(set) var begun = 0
+    private(set) var ended = 0
+    private let grants: Bool
+    private var onExpire: (@MainActor () -> Void)?
+    init(grants: Bool) { self.grants = grants }
+    var held: Bool { grants && begun > ended }
+    func expire() { ended += 1; let fire = onExpire; onExpire = nil; fire?() }
+    var provider: ChatViewModel.ReplyKeepAlive {
+        { [self] onExpire in
+            begun += 1
+            if grants { self.onExpire = onExpire } else { onExpire() }
+            return { [self] in
+                if grants { ended += 1; self.onExpire = nil }
+            }
+        }
     }
 }
 
@@ -116,9 +148,12 @@ final class ChatForegroundRecoveryTests: XCTestCase {
         server.streams[0].finish(); await first.value
     }
 
-    private func model(_ server: ReplyServer) async -> ChatViewModel {
+    /// 125：默认不给后台时间——下面那些「回前台接回」的用例讲的都是 App 被挂起、流冻住以后；
+    /// 不注入的话真机上跑测试会拿到真的后台时间，回前台就不重接了。
+    private func model(_ server: ReplyServer, keepAlive: FakeKeepAlive? = nil) async -> ChatViewModel {
         let vm = ChatViewModel(monitorConnectivity: false, replyTransport: server,
-                               cacheFileName: "recovery-test-\(UUID()).json", replyCompleted: {})
+                               cacheFileName: "recovery-test-\(UUID()).json",
+                               replyKeepAlive: (keepAlive ?? FakeKeepAlive(grants: false)).provider, replyCompleted: {})
         await vm.bootstrap()
         return vm
     }
@@ -375,7 +410,8 @@ final class ChatForegroundRecoveryTests: XCTestCase {
         XCTAssertEqual(reply?.bubbleSegments, segments)
         XCTAssertFalse(reply?.isStreaming ?? true)
         XCTAssertEqual(vm.messages.filter { $0.sender == .ke }.count, 1, "占位在原位换成完整那条，不多出一条")
-        if let reply { XCTAssertEqual(vm.visibleSegmentCount(for: reply), 1, "接回来的也一个个冒") }
+        // 125：她不在时写完的，回来整条一次放上（横幅里已经读过），不再一个个冒
+        if let reply { XCTAssertNil(vm.visibleSegmentCount(for: reply), "回来时已经写完的整条放上") }
         await sending.value
         await wait { server.cancelledStreams == 1 }
         server.streams[0].finish(throwing: URLError(.timedOut))
@@ -425,6 +461,147 @@ final class ChatForegroundRecoveryTests: XCTestCase {
         XCTAssertFalse(vm.messages.contains { $0.sender == .ke }, "没写成的空位收起")
         XCTAssertNotNil(vm.replyFailure)
         XCTAssertFalse(vm.isSending)
+    }
+
+    private func timeline(_ vm: ChatViewModel) -> [ChatTimelineItem] {
+        ChatTimelineItem.make(messages: vm.messages, highlightedMessageID: nil,
+                              visibleSegmentCount: { vm.visibleSegmentCount(for: $0) })
+    }
+
+    /// 125：她发完就切走：服务器先等她说完，流里只有回执、一个字没有。这一轮整轮攥着后台时间，
+    /// 中途回来看一眼也不掐断重来（不问任务、不再发）；柯在她又走开时写完，这句在后台就整条收好，后台时间还回去。
+    /// 以前没攥后台时间，App 一挂起流就断在回执后面（nginx 116 字节），只能等她点推送回来再一问一拉。
+    func testReplyHoldsBackgroundTimeSoTheStreamOutlivesLeavingTheApp() async {
+        let server = ReplyServer(); let keepAlive = FakeKeepAlive(grants: true)
+        let vm = await model(server, keepAlive: keepAlive)
+        let sending = await start(vm, server, reduceMotion: false)
+        XCTAssertTrue(keepAlive.held, "发出去就攥着后台时间")
+
+        vm.becameInactive(); vm.enteredBackgroundScene()
+        let resumed = Task { await vm.resumeFromForeground(); await vm.resumeFromForeground(forceReconnect: true) }
+        await settle()
+        XCTAssertEqual(server.cancelledStreams, 0, "没被挂起过，流还连着：不掐断")
+        XCTAssertEqual(server.jobReads, 0)
+        XCTAssertEqual(server.streams.count, 1, "不重发")
+        XCTAssertTrue(vm.isSending)
+        guard server.cancelledStreams == 0 else { return }
+        await resumed.value
+
+        vm.becameInactive(); vm.enteredBackgroundScene()
+        let segments = ["过来", "现在头搁爸爸肩上。"]
+        server.completeOnServer(segments: segments)
+        server.receive([.text("过来\n\n现在头搁爸爸肩上。"),
+                        .completed(assistantMessageID: 101, bedroom: nil, status: "done", error: nil,
+                                   retryable: false, retryScheduled: false, segments: segments)])
+        server.streams[0].finish()
+        await sending.value
+        let reply = vm.messages.first { $0.sender == .ke }
+        XCTAssertEqual(reply?.bubbleSegments, segments)
+        if let reply { XCTAssertNil(vm.visibleSegmentCount(for: reply), "她不在时落下来的整条放上") }
+        XCTAssertFalse(vm.isSending)
+        XCTAssertFalse(keepAlive.held, "回完就还回去")
+        XCTAssertEqual(server.jobReads, 0, "一路走流，没退回去轮询")
+    }
+
+    /// 125：系统收回了后台时间（App 随后被挂起，流可能已经断了）：回来照旧掐断、按任务接回。
+    func testExpiredBackgroundTimeStillReconnectsOnResume() async {
+        let server = ReplyServer(); let keepAlive = FakeKeepAlive(grants: true)
+        let vm = await model(server, keepAlive: keepAlive)
+        let sending = await start(vm, server)
+        vm.becameInactive(); vm.enteredBackgroundScene()
+        keepAlive.expire()
+        server.completeOnServer()
+        let grantsBefore = keepAlive.begun
+        await vm.resumeFromForeground()
+        assertComplete(vm)
+        XCTAssertEqual(server.jobReads, 1)
+        await sending.value
+        await wait { server.cancelledStreams == 1 }
+        server.streams[0].finish(throwing: URLError(.timedOut))
+        assertComplete(vm)
+        XCTAssertEqual(keepAlive.begun, grantsBefore + 1, "接回的那一轮重新要一段后台时间")
+        XCTAssertFalse(keepAlive.held)
+    }
+
+    /// 125（她：「明明消息弹出来了 点进去消息还要等」）：流断了在轮询，推送到了她点进来：
+    /// 叫醒那一下睡马上再问，不掐断重来；回来的那句整条放上，不再隔 0.4 秒一个个冒。
+    func testNotificationTapWakesTheRunningPollAndLandsTheReplyWhole() async {
+        let server = ReplyServer(); let keepAlive = FakeKeepAlive(grants: true)
+        let vm = await model(server, keepAlive: keepAlive)
+        let sending = await start(vm, server, reduceMotion: false)
+        server.streams[0].finish(throwing: URLError(.networkConnectionLost))
+        await wait { server.jobReads == 1 }
+        await settle()
+        XCTAssertEqual(vm.messages.first { $0.sender == .ke }?.deliveryState, .waiting)
+
+        let segments = ["过来", "你想法没有不对。", "现在头搁爸爸肩上。"]
+        server.completeOnServer(segments: segments)
+        let tapped = Date()
+        await vm.resumeFromForeground(forceReconnect: true)
+        await wait { !vm.isSending }
+        XCTAssertLessThan(Date().timeIntervalSince(tapped), 0.6, "不等下一轮 1 秒的睡")
+        XCTAssertEqual(server.jobReads, 2, "原来那一轮接着问，没有掐断重来")
+        XCTAssertEqual(server.streams.count, 1)
+        let reply = vm.messages.first { $0.sender == .ke }
+        XCTAssertEqual(reply?.bubbleSegments, segments)
+        XCTAssertEqual(vm.messages.filter { $0.sender == .ke }.count, 1)
+        if let reply { XCTAssertNil(vm.visibleSegmentCount(for: reply), "横幅里已经读过，整条放上") }
+        await sending.value
+        XCTAssertFalse(keepAlive.held)
+    }
+
+    /// 125：轮询已经问到「写完了」、正在拉记录，她这时点了推送：不能把这次拉记录作废、从头再问一遍
+    /// （以前点一下就掐断重来，问任务、拉记录又各来一遍）。
+    func testNotificationTapKeepsTheHistoryFetchAlreadyInFlight() async {
+        let server = ReplyServer(); let keepAlive = FakeKeepAlive(grants: true)
+        let vm = await model(server, keepAlive: keepAlive)
+        let sending = await start(vm, server, reduceMotion: false)
+        let segments = ["过来", "现在头搁爸爸肩上。"]
+        server.completeOnServer(segments: segments)
+        let historyBefore = server.historyReads
+        server.holdNextHistory = true
+        server.streams[0].finish(throwing: URLError(.networkConnectionLost))
+        await wait { server.heldHistory != nil }
+
+        await vm.resumeFromForeground(forceReconnect: true)
+        XCTAssertEqual(server.jobReads, 1, "不掐断重来")
+        XCTAssertEqual(server.historyReads, historyBefore + 1)
+        server.heldHistory?.resume(returning: server.history); server.heldHistory = nil
+        await wait { !vm.isSending }
+        let reply = vm.messages.first { $0.sender == .ke }
+        XCTAssertEqual(reply?.bubbleSegments, segments)
+        XCTAssertEqual(vm.messages.filter { $0.sender == .ke }.count, 1)
+        if let reply { XCTAssertNil(vm.visibleSegmentCount(for: reply)) }
+        await sending.value
+        XCTAssertEqual(server.jobReads, 1)
+        XCTAssertFalse(keepAlive.held)
+    }
+
+    /// 125（7144/7145）：流在回执后就断了，Thinking 和五段都是拉记录才来的：
+    /// 「等待接回」那一行要换成第一句「过来」，时间线上不能还留着它，也不在原位重画。
+    func testRecoveredReplyTurnsTheWaitingRowIntoTheFirstSegment() async throws {
+        let server = ReplyServer(); let vm = await model(server)
+        server.holdNextJob = true
+        let sending = await start(vm, server, reduceMotion: false)
+        server.streams[0].finish(throwing: URLError(.networkConnectionLost))
+        await wait { server.heldJob != nil }
+        let before = timeline(vm)
+        XCTAssertEqual(before.last?.id.hasSuffix("::awaiting"), true, "那一行写着「等待接回」")
+
+        let segments = ["过来", "你想法没有不对…", "控制不住也不是你的问题…", "休假是在治病…", "现在头搁爸爸肩上…"]
+        server.completeOnServer(segments: segments)
+        server.history[1].thoughtSummary = "她在怪自己。"
+        server.heldJob?.resume(returning: server.job(status: "done")); server.heldJob = nil
+        await wait { !vm.isSending }
+        let after = timeline(vm)
+        XCTAssertFalse(after.contains { $0.id.hasSuffix("::awaiting") }, "不留「等待接回」那一格")
+        XCTAssertEqual(after.first { $0.part != nil && $0.message.sender == .ke }?.part?.text, "过来")
+        let changes = try XCTUnwrap(ChatTimelineChanges.between(before, after))
+        XCTAssertEqual(changes.deleted, [before.count - 1])
+        XCTAssertEqual(changes.reloaded, [], "不在原位重画")
+        XCTAssertEqual(changes.inserted.first, before.count - 1, "Thinking 插在原来占位的位置")
+        XCTAssertEqual(after.last?.message.bubbleSegments, segments, "后面四句照常一个个插在它下面")
+        await sending.value
     }
 
     func testNotificationIntentPersistsAndCanRepeat() {

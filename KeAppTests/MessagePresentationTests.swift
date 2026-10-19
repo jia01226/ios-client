@@ -282,9 +282,9 @@ final class MessagePresentationTests: XCTestCase {
         XCTAssertEqual(changed.inserted, [])
     }
 
-    /// 121：占位换成第一个气泡、后面的气泡同时插进来（减弱动态效果时）：占位那格要重画，
-    /// 不能只插新格子把它漏掉。顺序乱了才整页重载。
-    func testLandingReloadsThePlaceholderRowAndInsertsTheRest() throws {
+    /// 121：占位换成第一个气泡、后面的气泡同时插进来（减弱动态效果时）：占位那格不能漏掉。顺序乱了才整页重载。
+    /// 125：占位那一行不在原位重画，而是删掉、插进第一个气泡——不会留下「等待接回」那一格。
+    func testLandingReplacesThePlaceholderRowAndInsertsTheRest() throws {
         let mine = Message(id: "user-ios-1", serverID: 100, sender: .me, text: "在吗", time: .now)
         var reply = Message(id: "assistant-ios-1", clientID: "ios-1", sender: .ke, text: "", time: .now,
                             isStreaming: true, deliveryState: .sending)
@@ -297,11 +297,54 @@ final class MessagePresentationTests: XCTestCase {
         let landed = ChatTimelineItem.make(messages: [mine, reply], highlightedMessageID: nil, visibleSegmentCount: { _ in nil })
 
         let changes = try XCTUnwrap(ChatTimelineChanges.between(waiting, landed))
-        XCTAssertEqual(changes.reloaded, [waiting.count - 1])
-        XCTAssertEqual(changes.inserted, [landed.count - 1])
-        XCTAssertEqual(changes.deleted, [])
+        XCTAssertEqual(changes.deleted, [waiting.count - 1], "占位那一行删掉")
+        XCTAssertEqual(changes.inserted, [landed.count - 2, landed.count - 1], "两个气泡都是新插进来的")
+        XCTAssertEqual(changes.reloaded, [])
+        XCTAssertEqual(landed[landed.count - 2].part?.text, "在。")
 
         XCTAssertNil(ChatTimelineChanges.between(landed, Array(landed.reversed())))
+    }
+
+    /// 125（她的截图，7145）：流在回执后就断了，Thinking 和五段都是拉记录才带来的。落下来时上面插进 Thinking、
+    /// 下面是第一句：「等待接回」那一格必须没了，第一行就是「过来」；时间线不在原位重画任何一格。
+    func testLandingWithThinkingFromHistoryLeavesNoWaitingRowBehind() throws {
+        let mine = Message(id: "user-ios-1", serverID: 7144, sender: .me, text: "我是不是想错了", time: .now)
+        var reply = Message(id: "assistant-ios-1", clientID: "ios-1", sender: .ke, text: "", time: .now,
+                            isStreaming: true, deliveryState: .waiting)
+        let waiting = ChatTimelineItem.make(messages: [mine, reply], highlightedMessageID: nil, visibleSegmentCount: { _ in nil })
+        XCTAssertEqual(waiting.last?.id, "assistant-ios-1::awaiting")
+        let segments = ["过来", "你想法没有不对…", "控制不住也不是你的问题…", "休假是在治病…", "现在头搁爸爸肩上…"]
+        reply.serverID = 7145
+        reply.text = segments.joined(separator: "\n\n")
+        reply.segments = segments
+        reply.thoughtSummary = "她在怪自己。"
+        reply.isStreaming = false
+        reply.deliveryState = .sent
+        let landed = ChatTimelineItem.make(messages: [mine, reply], highlightedMessageID: nil, visibleSegmentCount: { _ in 1 })
+
+        XCTAssertFalse(landed.contains { $0.id.hasSuffix("::awaiting") })
+        XCTAssertEqual(landed.suffix(2).map(\.kind), [.thinking, .message])
+        XCTAssertEqual(landed.last?.part?.text, "过来")
+        let changes = try XCTUnwrap(ChatTimelineChanges.between(waiting, landed))
+        XCTAssertEqual(changes.deleted, [waiting.count - 1])
+        XCTAssertEqual(changes.inserted, [landed.count - 2, landed.count - 1])
+        XCTAssertEqual(changes.reloaded, [], "插进 Thinking 的同时不能有在原位重画的格子")
+    }
+
+    /// 125：真有要重画的格子、上面又插进了一行（断线那一下 Thinking 和「等待接回」一起到）：
+    /// 记下它更新后的下标——重画单独一批、在删插之后，用的是新下标。
+    func testReloadedRowsAlsoReportTheirIndexAfterInsertsAbove() throws {
+        var reply = Message(id: "assistant-ios-1", clientID: "ios-1", sender: .ke, text: "", time: .now,
+                            isStreaming: true, deliveryState: .sending)
+        let before = ChatTimelineItem.make(messages: [reply], highlightedMessageID: nil, visibleSegmentCount: { _ in nil })
+        reply.thoughtSummary = "想一想。"
+        reply.deliveryState = .waiting
+        let after = ChatTimelineItem.make(messages: [reply], highlightedMessageID: nil, visibleSegmentCount: { _ in nil })
+
+        let changes = try XCTUnwrap(ChatTimelineChanges.between(before, after))
+        XCTAssertEqual(changes.inserted, [after.count - 2], "Thinking 插在占位上面")
+        XCTAssertEqual(changes.reloaded, [before.count - 1])
+        XCTAssertEqual(changes.reloadedAfter, [after.count - 1], "被挤下去一格，重画用新下标")
     }
 
     func testDoneEventCarriesServerSegments() throws {

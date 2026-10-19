@@ -228,21 +228,3 @@ extension ComposerPresenceReporter {
         }
     }
 }
-
-/// 一小段后台时间：发完或系统到点都还回去，只还一次。
-@MainActor
-private final class BackgroundGrant {
-    private var identifier: UIBackgroundTaskIdentifier = .invalid
-
-    init(name: String) {
-        identifier = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
-            MainActor.assumeIsolated { self?.end() }
-        }
-    }
-
-    func end() {
-        guard identifier != .invalid else { return }
-        UIApplication.shared.endBackgroundTask(identifier)
-        identifier = .invalid
-    }
-}

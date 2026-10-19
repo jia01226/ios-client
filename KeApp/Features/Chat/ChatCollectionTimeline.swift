@@ -109,7 +109,10 @@ struct ChatTimelineItem: Identifiable, Equatable {
         case let .tool(toolRunID):
             return "\(message.id)::tool::\(toolRunID)"
         case .message:
-            return "\(message.id)::message"
+            // 125：还在等的那一行（「发送中」「等待接回」）和落下来的第一个气泡不算同一行：落下来时删掉占位、
+            // 插进第一个气泡，不在原位重画。原位重画又赶上上面同时插进 Thinking（记录里才带来的）时，
+            // 占位那格会留在屏上——她截图里「20:24 等待接回」底下直接是第二个气泡，第一句「过来」没出来。
+            return message.isAwaitingReply ? "\(message.id)::awaiting" : "\(message.id)::message"
         case let .segment(index):
             return "\(message.id)::message::\(index)"
         }
@@ -279,8 +282,8 @@ struct ChatTimelineItem: Identifiable, Equatable {
     }
 }
 
-/// 121：时间线从旧的一排变成新的一排要动哪几格。只要留下来的那些前后顺序没变，就在一次批量更新里
-/// 删掉走了的、插进新来的、重画内容变了的——已经在屏幕上又没变的格子一个都不碰。
+/// 121：时间线从旧的一排变成新的一排要动哪几格。只要留下来的那些前后顺序没变，就只删掉走了的、
+/// 插进新来的、重画内容变了的——已经在屏幕上又没变的格子一个都不碰（125 起重画另起一批，见 apply）。
 /// 以前一边插一边有格子变（占位换成第一个气泡、后面的气泡同时插进来）时，变了的那格会漏掉不重画。
 struct ChatTimelineChanges: Equatable {
     /// 旧下标
@@ -289,6 +292,8 @@ struct ChatTimelineChanges: Equatable {
     var inserted: [Int] = []
     /// 旧下标：还在，但画出来不一样了
     var reloaded: [Int] = []
+    /// 125：同样这几格的新下标（和 reloaded 一一对应）。重画单独一批、在删插之后做，用的是这个。
+    var reloadedAfter: [Int] = []
 
     var isEmpty: Bool { deleted.isEmpty && inserted.isEmpty && reloaded.isEmpty }
 
@@ -313,7 +318,10 @@ struct ChatTimelineChanges: Equatable {
                 continue
             }
             retainedInOldOrder.append(id)
-            if old[index] != new[newPosition] { changes.reloaded.append(index) }
+            if old[index] != new[newPosition] {
+                changes.reloaded.append(index)
+                changes.reloadedAfter.append(newPosition)
+            }
         }
         let retainedInNewOrder = newIDs.filter { oldIndex[$0] != nil }
         guard retainedInOldOrder == retainedInNewOrder else { return nil }
@@ -722,7 +730,7 @@ final class ChatCollectionTimelineController: UIViewController,
         return distanceFromLatest <= Theme.shared.metric.touchTarget
     }
 
-    /// 插新格子、删旧格子、重画变了的格子，一次批量更新做完；和来新消息走的是同一条路
+    /// 插新格子、删旧格子，再重画变了的格子（125：两批）；和来新消息走的是同一条路
     /// （不带动画，跟着最新时落到最底，翻旧记录时按顶部快照留在原处）。
     private func apply(_ changes: ChatTimelineChanges, followLatest: Bool) {
         guard !changes.isEmpty else {
@@ -733,15 +741,22 @@ final class ChatCollectionTimelineController: UIViewController,
         let positionSnapshot = followLatest
             ? nil
             : chatLayout.getContentOffsetSnapshot(from: .top)
-        // UIKit 约定：删除、重画用更新前的下标，插入用更新后的下标
+        // UIKit 约定：删除用更新前的下标，插入用更新后的下标
         let deleted = changes.deleted.map { IndexPath(item: $0, section: 0) }
         let inserted = changes.inserted.map { IndexPath(item: $0, section: 0) }
-        let reloaded = changes.reloaded.map { IndexPath(item: $0, section: 0) }
+        // 125：重画放在删插之后单独一批，用更新后的下标——这一批里什么都不挪，前后下标一样。
+        // 混在一批里、重画的那格又被上面插进来的挤下去一格时，ChatLayout 按新下标记「重画」、按旧下标藏旧格子，
+        // 两边对不上，旧格子就留在屏上（ChatLayout 自己的示例也是分两批：先删插，再重画）。
+        let reloaded = changes.reloadedAfter.map { IndexPath(item: $0, section: 0) }
 
         UIView.performWithoutAnimation {
+            if !deleted.isEmpty || !inserted.isEmpty {
+                collectionView.performBatchUpdates {
+                    if !deleted.isEmpty { collectionView.deleteItems(at: deleted) }
+                    if !inserted.isEmpty { collectionView.insertItems(at: inserted) }
+                }
+            }
             collectionView.performBatchUpdates {
-                if !deleted.isEmpty { collectionView.deleteItems(at: deleted) }
-                if !inserted.isEmpty { collectionView.insertItems(at: inserted) }
                 if !reloaded.isEmpty { collectionView.reloadItems(at: reloaded) }
             } completion: { [weak self] _ in
                 guard let self else { return }
@@ -971,7 +986,11 @@ final class ChatCollectionTimelineController: UIViewController,
         of kind: ItemKind,
         at indexPath: IndexPath,
         modifying originalAttributes: ChatLayoutAttributes
-    ) {}
+    ) {
+        // 125：删掉的格子（落下来的回复换走的占位）最后是透明的，万一这一下带了动画也不会留在屏上。
+        // 不接这个代理时 ChatLayout 默认就是这样；插进来的格子仍旧不淡入。
+        originalAttributes.alpha = 0
+    }
 
     func interItemSpacing(
         _ chatLayout: CollectionViewChatLayout,
