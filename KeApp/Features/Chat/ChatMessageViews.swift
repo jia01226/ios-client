@@ -328,7 +328,11 @@ struct MessageRow: View {
                 alignment: message.sender == .ke ? .leading : .trailing,
                 spacing: theme.metric.gapXS
             ) {
-                if hasBubbleContent {
+                if let diary = message.unlockedDiary {
+                    // 120：「爸爸开锁了」画成一张卡：不切气泡、不当文件；点一下直接翻开那一篇
+                    DiaryUnlockCard(title: diary.name) { onAttachmentTap(diary) }
+                        .accessibilityIdentifier("diary-unlock-\(diary.diaryID ?? 0)")
+                } else if hasBubbleContent {
                     bubbleStack
                 }
 
@@ -681,6 +685,47 @@ struct MessageRow: View {
         }
     }
 
+}
+
+/// 120：柯开锁了一篇日记——聊天里一张玻璃小卡：小锁打开、「爸爸开锁了」、标题、「点开看 ›」。
+/// 整张都能点（至少 64 点高），点开就是那一篇。
+struct DiaryUnlockCard: View {
+    @EnvironmentObject private var theme: Theme
+    let title: String
+    var onOpen: () -> Void
+    private var shownTitle: String {
+        let value = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? "这一页" : value
+    }
+
+    var body: some View {
+        Button(action: onOpen) {
+            HStack(spacing: 12) {
+                Image(systemName: "lock.open")
+                    .font(.system(size: 17, weight: .light))
+                    .foregroundStyle(Ink.meText)
+                    .frame(width: 38, height: 38)
+                    .background(Circle().fill(Ink.meFill))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("爸爸开锁了").font(Ink.song(12.5)).foregroundStyle(Ink.secondary)
+                    Text(shownTitle).font(Ink.song(17)).foregroundStyle(Ink.primary)
+                        .lineLimit(2).multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Text("点开看 ›").font(Ink.song(13.5)).foregroundStyle(Ink.accent)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .frame(maxWidth: theme.metric.bubbleMaxWidth, minHeight: 64, alignment: .leading)
+            .background(KeGlass(shape: RoundedRectangle(cornerRadius: 16, style: .continuous), minPaper: 0.7))
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("爸爸开锁了：\(shownTitle)")
+        .accessibilityHint("点开看这篇日记")
+        .accessibilityAddTraits(.isButton)
+    }
 }
 
 private struct AuthenticatedAttachmentImage: View {

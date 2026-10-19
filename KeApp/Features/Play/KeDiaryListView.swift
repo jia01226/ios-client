@@ -7,6 +7,12 @@ import SwiftUI
 struct KeDiaryListView: View {
     let line: ChatLine
     var onClose: () -> Void
+    /// 120：从聊天里「爸爸开锁了」那张卡点进来：一进来就翻开这一篇（「目录」照样回日记目录）
+    var openingID: Int? = nil
+    /// 拉过一遍了（转圈可以撤了）
+    @State private var openingDone = false
+    /// 那一篇已经翻开过（她退回目录后不再拽回去）
+    @State private var opened = false
     @AppStorage(CamelliaPalette.storageKey) private var savedPalette = CamelliaPalette.defaultPalette.rawValue
     @State private var entries: [RemoteDiary] = []
     @State private var loading = true
@@ -103,6 +109,26 @@ struct KeDiaryListView: View {
                     // 118：读一篇时从左边缘右划，先回目录（搜索词和翻到的位置都还在），再划一次才合上日记
                     .swipeBackLayer { reading = nil }
                     .zIndex(1)
+            } else if openingID != nil && !openingDone {
+                // 120：刚开的锁，等新的拉回来再翻开，不先闪一下目录
+                VStack(spacing: 10) {
+                    HStack {
+                        Button(action: onClose) {
+                            Image(systemName: "chevron.left").font(.system(size: 20, weight: .light))
+                                .frame(width: 44, height: 44, alignment: .leading)
+                        }
+                        .buttonStyle(.plain).accessibilityLabel("返回")
+                        Spacer()
+                    }
+                    .padding(.horizontal, 26).padding(.top, 6)
+                    Spacer()
+                    ProgressView().tint(Ink.secondary)
+                    Text("正在翻开这一篇…").font(Ink.song(14)).foregroundStyle(Ink.secondary)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(paper.ignoresSafeArea())
+                .zIndex(1)
             }
         }
         .foregroundStyle(Ink.primary)
@@ -219,14 +245,42 @@ struct KeDiaryListView: View {
     private func load() async {
         if !Self.cache.isEmpty { entries = Self.cache; loading = false }
         else { loading = true }
+        // 120：要翻开的那篇在记住的那份里已经能看，就先翻开；还锁着（多半是旧的）就等新的
+        if let id = openingID, !opened, let cached = entries.first(where: { $0.id == id }), !Self.isLocked(cached) {
+            reading = cached; opened = true; openingDone = true
+        }
         failed = false
         defer { loading = false }
         do {
-            let rows = try await APIClient(baseURL: line.apiBaseURL).fetchDiaries(query: "", offset: 0, limit: 500)
-            let ke: Set<String> = ["柯", "ke", "ai", "assistant"]
-            entries = rows.filter { $0.kind != "dream" && ke.contains($0.author ?? "柯") }.sorted { ($0.created_at, $0.id) > ($1.created_at, $1.id) }
-            Self.cache = entries
+            entries = try await Self.fetchKeEntries(line: line)
         } catch { if entries.isEmpty { failed = true } }
+        // 还没翻开就翻开；正翻着这一篇就换成新拉回来的；她已经退回目录就不再拽回去
+        if let id = openingID, let entry = entries.first(where: { $0.id == id }), !opened || reading?.id == id {
+            reading = entry; opened = true
+        }
+        openingDone = true
+    }
+    /// 120：聊天里「锁着的日记」也用这一份：只要柯写的、不要梦，新的在上面；拉到就记进 cache。
+    @MainActor static func fetchKeEntries(line: ChatLine) async throws -> [RemoteDiary] {
+        let rows = try await APIClient(baseURL: line.apiBaseURL).fetchDiaries(query: "", offset: 0, limit: 500)
+        let ke: Set<String> = ["柯", "ke", "ai", "assistant"]
+        let entries = rows.filter { $0.kind != "dream" && ke.contains($0.author ?? "柯") }.sorted { ($0.created_at, $0.id) > ($1.created_at, $1.id) }
+        cache = entries
+        return entries
+    }
+    /// 120：「去找柯要」替她说的那句。日记里的按钮和聊天里的「锁着的日记」用同一句；
+    /// 没有标题的那篇说日子，不说「」。
+    static func askMessage(for entry: RemoteDiary) -> String {
+        let title = entry.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if title.isEmpty { return "爸比，你\(shortDate(entry.created_at))那篇日记，能给我看看吗" }
+        return "爸比，你那篇「\(entry.title)」的日记，能给我看看吗"
+    }
+    /// 「10月12日」；不是今年的写上年份
+    static func shortDate(_ at: String) -> String {
+        let p = at.prefix(10).split(separator: "-")
+        guard p.count == 3, let m = Int(p[1]), let d = Int(p[2]) else { return String(at.prefix(10)) }
+        let thisYear = String(Calendar(identifier: .gregorian).component(.year, from: Date()))
+        return (p[0] == thisYear ? "" : "\(p[0])年") + "\(m)月\(d)日"
     }
 
     static func key(_ d: Date) -> String {
@@ -272,7 +326,7 @@ private struct DiaryPage: View {
                         Image(systemName: "lock").font(.system(size: 26, weight: .light)).foregroundStyle(Ink.secondary)
                         Text("这一页柯还锁着。").font(Ink.song(16))
                         Button {
-                            NotificationCenter.default.post(name: .tarotReadingRequest, object: "爸比，你那篇「\(entry.title)」的日记，能给我看看吗")
+                            NotificationCenter.default.post(name: .tarotReadingRequest, object: KeDiaryListView.askMessage(for: entry))
                         } label: {
                             Text("去找柯要").font(Ink.song(14)).padding(.horizontal, 16).frame(minHeight: 38)
                                 .overlay(Capsule().stroke(Ink.line, lineWidth: 0.8))

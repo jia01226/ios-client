@@ -29,6 +29,13 @@ struct TarotView: View {
     @State private var accessibleIndex = 39
     @State private var draggedIndex: Int?
     @State private var dragOffset = CGSize.zero
+    /// 120：手指在牌扇上这一下滑没滑过——只记不画，改它不会重画 78 张牌
+    @State private var fanTouch = FanTouch()
+    private final class FanTouch {
+        var movedAt = Date.distantPast
+        var start: CGPoint?
+        var scrubbing = false
+    }
     @AppStorage("tarot.tableBack.v91") private var backID = "butterfly"
     @FocusState private var questionFocused: Bool
     private enum Phase { case idle, shuffling, selecting, submitting, revealing, done }
@@ -184,28 +191,37 @@ struct TarotView: View {
                         .accessibilityHidden(true)
                 }
             }
-            ForEach(0..<78, id: \.self) { index in
+            ForEach(0..<TarotFan.count, id: \.self) { index in
                 deckCard(index, width: width, height: height)
             }
-            // Angular hit testing gives every one of the 78 overlapping cards a selectable sector.
-            // Sliding scans the fan; only a stationary second tap confirms the lifted card.
+            // 120：认牌照着画出来的样子找「手指下最上面那张」（TarotFan.card），不再按角度四舍五入。
+            // 点和滑分开认：点用系统的轻点，页面上下滚的时候不会被当成一下点；
+            // 左右滑才换抬起的那张；滑过的这一下抬手不算点，不会顺手把牌放上桌。
             Rectangle().fill(.clear).contentShape(Rectangle())
                 .frame(width: width, height: width * (TarotTableStyle.fanHitHeight))
                 // Attach gestures to the fan's own bounds, before position expands its layout.
+                .onTapGesture(coordinateSpace: .named("tarot-table")) { location in
+                    guard Date().timeIntervalSince(fanTouch.movedAt) > TarotTableStyle.tapAfterSlide,
+                          phase == .selecting, !selection.submitted,
+                          let index = fanCard(location, width: width, height: height, liftAware: true) else { return }
+                    tap(index)
+                }
                 // Simultaneous recognition lets a vertical drag scroll the ten-card table.
-                .simultaneousGesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("tarot-table"))
+                .simultaneousGesture(DragGesture(minimumDistance: TarotTableStyle.gap, coordinateSpace: .named("tarot-table"))
                     .onChanged { value in
-                        guard phase == .selecting, !selection.submitted,
-                              abs(value.translation.width) > TarotTableStyle.gap,
-                              abs(value.translation.width) > abs(value.translation.height),
-                              let index = fanIndex(value.location, width: width, height: height) else { return }
+                        fanTouch.movedAt = Date()
+                        // 这一下一开始往哪边走就定了：横着走是换牌，竖着走是在翻页面
+                        if fanTouch.start != value.startLocation {
+                            fanTouch.start = value.startLocation
+                            fanTouch.scrubbing = abs(value.translation.width) > abs(value.translation.height)
+                        }
+                        guard fanTouch.scrubbing, phase == .selecting, !selection.submitted,
+                              let index = fanCard(value.location, width: width, height: height, liftAware: false),
+                              index != selection.preview else { return }
                         withAnimation(reduceMotion ? nil : .easeInOut(duration: TarotTableStyle.liftDuration)) { selection.previewCard(index) }
                     }
-                    .onEnded { value in
-                        guard phase == .selecting,
-                              hypot(value.translation.width, value.translation.height) < TarotTableStyle.gap,
-                              let index = fanIndex(value.location, width: width, height: height) else { return }
-                        tap(index)
+                    .onEnded { _ in
+                        fanTouch.movedAt = Date(); fanTouch.start = nil; fanTouch.scrubbing = false
                     })
                 .accessibilityElement().accessibilityLabel("半圆牌扇，78 张牌")
                 .accessibilityValue("第 \(accessibleIndex + 1) 张，已选 \(selection.picks.count) 张")
@@ -220,16 +236,16 @@ struct TarotView: View {
                 .position(x: width / 2, y: height - width * TarotTableStyle.fanHitHeight / 2)
         }
         .frame(width: width, height: height).coordinateSpace(name: "tarot-table")
+        // 120：抬起的那张一换就轻轻震一下，左右滑的时候一张一张数得出来
+        .sensoryFeedback(.selection, trigger: selection.preview)
         .padding(.top, TarotTableStyle.gap)
     }
 
     private func deckCard(_ index: Int, width: CGFloat, height: CGFloat) -> some View {
         let slot = selection.picks.firstIndex(of: index)
-        let angle = Double.pi + Double(index) / 77 * Double.pi
         let lifted = selection.preview == index
-        let radius = width * (TarotTableStyle.fanRadius + (lifted ? TarotTableStyle.previewLift : 0))
-        let fanPoint = CGPoint(x: width / 2 + CGFloat(cos(angle)) * radius,
-                               y: height - width * TarotTableStyle.fanBottom + CGFloat(sin(angle)) * radius)
+        // 120：和认牌用同一套摆法（TarotFan），画在哪就认在哪
+        let (fanPoint, angle) = TarotFan.placement(index, width: width, height: height, lifted: lifted)
         let stackPoint = CGPoint(x: width / 2 + (shuffleOffset ? (index.isMultiple(of: 2) ? width * TarotTableStyle.shuffleSeparation : -width * TarotTableStyle.shuffleSeparation) : 0),
                                  y: height - width * TarotTableStyle.stackY + CGFloat(index % 4) * TarotTableStyle.hairline)
         let point = slot.map { slotPoint($0, width: width) } ?? (fanOpen ? fanPoint : stackPoint)
@@ -279,7 +295,7 @@ struct TarotView: View {
                 Button("第 \(preview + 1) 张 · 再点一下放上桌") { tap(preview) }
                     .accessibilityIdentifier("tarot-confirm-preview")
             } else {
-                Text(phase == .idle ? "先洗牌，再凭感觉选。" : phase == .shuffling ? "洗牌中…" : phase == .done ? "牌已翻开，交给柯来解。" : selection.submitted ? "牌已经选定，正在等它翻开。" : selection.isFull ? "拖回牌扇可以重选" : "点一下抬起，再点一下放上桌")
+                Text(phase == .idle ? "先洗牌，再凭感觉选。" : phase == .shuffling ? "洗牌中…" : phase == .done ? "牌已翻开，交给柯来解。" : selection.submitted ? "牌已经选定，正在等它翻开。" : selection.isFull ? "拖回牌扇可以重选" : "点一下抬起，再点它放上桌；左右滑可以换")
             }
         }.font(TarotTableStyle.caption).foregroundStyle(TarotTableStyle.muted)
             .frame(minHeight: TarotTableStyle.controlHeight)
@@ -330,16 +346,9 @@ struct TarotView: View {
         }
         return CGPoint(x: width * CGFloat(2 * slot + 1) / CGFloat(positions.count * 2), y: width * (spread == "one" ? TarotTableStyle.singleSlotY : TarotTableStyle.slotY))
     }
-    private func fanIndex(_ point: CGPoint, width: CGFloat, height: CGFloat) -> Int? {
-        let x = point.x - width / 2
-        let y = point.y - (height - width * TarotTableStyle.fanBottom)
-        let distance = hypot(x, y)
-        guard y <= width * TarotTableStyle.fanCardWidth,
-              distance > width * (TarotTableStyle.fanRadius - TarotTableStyle.fanCardWidth),
-              distance < width * (TarotTableStyle.fanHitHeight) else { return nil }
-        var angle = atan2(Double(y), Double(x))
-        if angle > 0 { angle = x < 0 ? -.pi : 0 }
-        return min(77, max(0, Int(((angle + .pi) / .pi * 77).rounded())))
+    private func fanCard(_ point: CGPoint, width: CGFloat, height: CGFloat, liftAware: Bool) -> Int? {
+        TarotFan.card(at: point, width: width, height: height,
+                      picks: selection.picks, preview: selection.preview, liftAware: liftAware)
     }
     private func tap(_ index: Int) {
         guard phase == .selecting else { return }

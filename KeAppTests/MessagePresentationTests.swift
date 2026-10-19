@@ -180,6 +180,23 @@ final class MessagePresentationTests: XCTestCase {
         XCTAssertEqual(message.bubbleSegments.count, 1)
     }
 
+    /// 120：柯开锁日记那条：认得出是哪一篇、整条不切；普通附件、她发的、老消息都照旧。
+    func testDiaryUnlockMessageIsOneCardPointingAtTheEntry() {
+        let key = ChatAttachment(url: "ke-diary://42", name: "下雨那天", kind: "diary")
+        let unlock = Message(id: "unlock", serverID: 9, sender: .ke, text: "爸爸开锁了：「下雨那天」\n\n多一段", time: .now, attachments: [key])
+        XCTAssertEqual(unlock.unlockedDiary?.diaryID, 42)
+        XCTAssertEqual(unlock.bubbleSegments.count, 1)
+
+        let photo = ChatAttachment(url: "/uploads/example.jpg", name: "照片.jpg", kind: "image")
+        XCTAssertNil(photo.diaryID)
+        XCTAssertNil(ChatAttachment(url: "ke-diary://42", name: "下雨那天", kind: "file").diaryID)
+        XCTAssertNil(ChatAttachment(url: "/uploads/42", name: "下雨那天", kind: "diary").diaryID)
+        let old = Message(id: "old", sender: .ke, text: "先过来。\n\n再慢慢说。", time: .now, attachments: [photo])
+        XCTAssertNil(old.unlockedDiary)
+        XCTAssertEqual(old.bubbleSegments, ["先过来。", "再慢慢说。"])
+        XCTAssertNil(Message(id: "mine", sender: .me, text: "", time: .now, attachments: [key]).unlockedDiary)
+    }
+
     func testHistoricalImageWithoutKindStillOpensAsImage() {
         let attachment = ChatAttachment(
             url: "/uploads/example.jpg",

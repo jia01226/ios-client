@@ -67,6 +67,59 @@ final class TarotSelectionTests: XCTestCase {
         }
     }
 
+    /// 120：第二下点在抬起那张身上任何地方都算点中它；同一处点两下就是抬起再放上桌。
+    func testFanTapOnLiftedCardConfirmsItAnywhereOnItsFace() {
+        for width in [295.0, 353.0, 400.0] as [CGFloat] {
+            let height = width * TarotTableStyle.stageHeight
+            let halfWidth = Double(width * TarotTableStyle.fanCardWidth / 2)
+            let halfLength = halfWidth / Double(TarotTableStyle.cardAspect)
+            for lifted in stride(from: 0, to: TarotFan.count, by: 7) {
+                let (center, angle) = TarotFan.placement(lifted, width: width, height: height, lifted: true)
+                for (u, v) in [(0.0, 0.0), (-0.9, 0.0), (0.9, 0.0), (0.0, 0.9), (0.0, -0.9), (0.9, -0.9), (-0.9, 0.9)] {
+                    let across = u * halfWidth, along = v * halfLength
+                    let point = CGPoint(x: center.x + CGFloat(along * cos(angle) - across * sin(angle)),
+                                        y: center.y + CGFloat(along * sin(angle) + across * cos(angle)))
+                    guard point.y >= height - width * TarotTableStyle.fanHitHeight else { continue }
+                    XCTAssertEqual(TarotFan.card(at: point, width: width, height: height, picks: [], preview: lifted), lifted)
+                }
+            }
+            for step in 0..<40 {
+                let angle = Double.pi + Double(step) / 39 * Double.pi
+                let radius = Double(width * TarotTableStyle.fanRadius)
+                let point = CGPoint(x: width / 2 + CGFloat(cos(angle) * radius),
+                                    y: height - width * TarotTableStyle.fanBottom + CGFloat(sin(angle) * radius))
+                let first = TarotFan.card(at: point, width: width, height: height, picks: [], preview: nil)
+                XCTAssertNotNil(first)
+                XCTAssertEqual(TarotFan.card(at: point, width: width, height: height, picks: [], preview: first), first)
+            }
+        }
+    }
+    /// 120：认的是看到的最上面那张：按在最后一张的正中就是它，不是它左边被盖住的那几张。
+    func testFanTapPicksTopVisibleCardAndSkipsPickedOnes() {
+        let width: CGFloat = 353, height = width * TarotTableStyle.stageHeight
+        let top = TarotFan.placement(77, width: width, height: height, lifted: false).center
+        XCTAssertEqual(TarotFan.card(at: top, width: width, height: height, picks: [], preview: nil), 77)
+        XCTAssertEqual(TarotFan.card(at: top, width: width, height: height, picks: [], preview: 10), 77)
+        XCTAssertNotEqual(TarotFan.card(at: top, width: width, height: height, picks: [77], preview: nil), 77)
+        XCTAssertNil(TarotFan.card(at: CGPoint(x: width / 2, y: 4), width: width, height: height, picks: [], preview: nil))
+    }
+    /// 120：左右滑一张一张往后换，抬起那张不挡路，一直能滑到最后一张。
+    func testFanSlidingMovesInOrderPastTheLiftedCard() {
+        let width: CGFloat = 353, height = width * TarotTableStyle.stageHeight
+        var last = -1
+        for step in 0..<1000 {
+            let angle = Double.pi + Double(step) / 999 * Double.pi
+            let radius = Double(width * TarotTableStyle.fanRadius)
+            let point = CGPoint(x: width / 2 + CGFloat(cos(angle) * radius),
+                                y: height - width * TarotTableStyle.fanBottom + CGFloat(sin(angle) * radius))
+            guard let index = TarotFan.card(at: point, width: width, height: height, picks: [], preview: 30, liftAware: false) else { continue }
+            XCTAssertGreaterThanOrEqual(index, last)
+            if last >= 0 { XCTAssertLessThanOrEqual(index - last, 1) }
+            last = index
+        }
+        XCTAssertEqual(last, 77)
+    }
+
     func testDealIDsRetainWireTypeAndDealValidation() throws {
         for id in [#""opaque-deal""#, "123"] {
             let json = "{\"deal_id\":\(id),\"deck_size\":78,\"spread\":\"one\",\"spread_name\":\"一张\",\"positions\":[\"现在\"]}"

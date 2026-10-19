@@ -596,10 +596,18 @@ enum TarotTableStyle {
     static let stackY: CGFloat = 0.30
     static let slotBorder = border.opacity(0.55)
     static let fanHitHeight: CGFloat = 0.60
-    static let fanCardWidth: CGFloat = 0.105
+    // 120：她说牌太小、老点到旁边那张。牌放大一点（0.105→0.115），抬起的那张多探出来一点（0.045→0.06），
+    // 一眼看得出是哪张、第二下也好点；半径不动，两头抬起的牌照样不出屏幕。
+    static let fanCardWidth: CGFloat = 0.115
     static let fanRadius: CGFloat = 0.32
     static let fanBottom: CGFloat = 0.105
-    static let previewLift: CGFloat = 0.045
+    static let previewLift: CGFloat = 0.06
+    /// 120：手指按在牌头外、牌尾外这么多点以内，也算按在这张上（只往长边方向放，不改变哪张在上面）
+    static let fanTouchSlop: CGFloat = 10
+    /// 120：抬起的那张四周再多给这么多点：第二下点在它边上也算点中它，不会换成旁边那张
+    static let liftedTouchSlop: CGFloat = 8
+    /// 120：手指滑过之后这么久以内报上来的「点」不算点（滑完抬手不顺手把牌放上桌）
+    static let tapAfterSlide = 0.2
     static let stageHeight: CGFloat = 1.13
     static let singleStageHeight: CGFloat = 1.24
     static let singleSlotY: CGFloat = 0.31

@@ -100,7 +100,8 @@ extension Message {
     /// 后端仍保存一条完整消息；这里只把柯的正文按空行切成显示气泡。
     /// 单换行保留在同一气泡里，连续空行不会产生空气泡。
     var bubbleSegments: [String] {
-        guard sender == .ke, !isStreaming else {
+        // 120：「爸爸开锁了」那条画成一张卡，整条不切
+        guard sender == .ke, !isStreaming, unlockedDiary == nil else {
             let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
             return value.isEmpty ? [] : [text]
         }
@@ -135,6 +136,13 @@ extension Message {
             return value.isEmpty ? [] : [value]
         }
         return segments
+    }
+
+    /// 120：柯开锁一篇日记时，服务器发一条「爸爸开锁了：「标题」」，带一个 kind 为 diary 的附件。
+    /// 聊天里画成一张卡（点开就是那一篇），不当普通气泡、也不当文件。
+    var unlockedDiary: ChatAttachment? {
+        guard sender == .ke else { return nil }
+        return attachments?.first { $0.diaryID != nil }
     }
 
     /// 本地流式气泡与历史记录会换 id，serverID 让分条进度能跨刷新延续。
@@ -174,6 +182,12 @@ struct ChatAttachment: Identifiable, Hashable, Codable, Sendable {
             .pathExtension
             .lowercased()
         return ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp"].contains(ext)
+    }
+    /// 120：日记的「附件」不是文件，是指向那一篇的 ke-diary://<日记 id>；别的附件都是 nil
+    var diaryID: Int? {
+        let scheme = "ke-diary://"
+        guard kind.lowercased() == "diary", url.lowercased().hasPrefix(scheme) else { return nil }
+        return Int(url.dropFirst(scheme.count).trimmingCharacters(in: CharacterSet(charactersIn: "/ ")))
     }
 }
 

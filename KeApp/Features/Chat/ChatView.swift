@@ -58,6 +58,11 @@ struct ChatView: View {
     @State private var keDrawerPull: CGFloat = 0
     @State private var keDrawerPage: KeSettingsTab = .garden
     @State private var keWindowPickerOpen = false
+    /// 120：「+」里的「锁着的日记」单子
+    @State private var lockedDiariesOpen = false
+    /// 120：点了「爸爸开锁了」那张卡，直接翻开的那一篇
+    @State private var openedDiary: DiaryOpenRequest?
+    private struct DiaryOpenRequest: Identifiable { let id: Int }
 
     init(line: ChatLine, selectedLine: Binding<ChatLine>, quoteOpenRequest: Binding<QuoteOpenRequest?> = .constant(nil), sendRequests: Binding<[ChatSendRequest]> = .constant([])) {
         self.line = line
@@ -288,6 +293,16 @@ struct ChatView: View {
                 .presentationDragIndicator(.visible)
                 .presentationCornerRadius(24)
         }
+        .sheet(isPresented: $lockedDiariesOpen) {
+            LockedDiarySheet(line: line) { entry in
+                lockedDiariesOpen = false
+                // 120：和日记里「去找柯要」走同一条路：根视图收到后排进待发，聊天接上就替她发出去
+                NotificationCenter.default.post(name: .tarotReadingRequest, object: KeDiaryListView.askMessage(for: entry))
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(24)
+        }
         .fullScreenCover(isPresented: $keWindowPickerOpen) {
             KeWindowPickerView(
                 store: keWindow,
@@ -338,6 +353,15 @@ struct ChatView: View {
                 previewedImage = nil
             }
         }
+        // 120：从聊天直接翻开柯刚开锁的那一篇；「目录」回日记目录，左上返回（或从左边缘右划）回聊天
+        .fullScreenCover(item: $openedDiary) { request in
+            KeDiaryListView(line: line, onClose: { openedDiary = nil }, openingID: request.id)
+                .environmentObject(theme)
+                .swipeBackToClose { openedDiary = nil }
+                .preferredColorScheme(theme.skin == .night ? .dark : .light)
+        }
+        // 日记里点「去找柯要」也是回聊天替她说一句：盖着的日记先收起来
+        .onReceive(NotificationCenter.default.publisher(for: .tarotReadingRequest)) { _ in openedDiary = nil }
     }
 
     private func headerTitle(showsSwitcher: Bool) -> some View {
@@ -560,7 +584,14 @@ struct ChatView: View {
 #endif
                     },
                     onAttachmentTap: { attachment in
-                        previewedImage = attachment
+                        // 120：日记卡的「附件」是那一篇日记，不是图片
+                        if let id = attachment.diaryID {
+                            inputFocused = false
+                            attachmentsOpen = false
+                            openedDiary = DiaryOpenRequest(id: id)
+                        } else {
+                            previewedImage = attachment
+                        }
                     },
                     onRecall: { message in
                         inputFocused = false
@@ -761,6 +792,14 @@ struct ChatView: View {
                 attachmentButton(title: "文件", systemImage: "folder") {
                     importingFile = true
                 }
+
+                // 120：在聊天里直接问柯要锁着的日记。放在「+」里：顶上她只要电话和三个点，
+                // 这里本来就是「给柯递东西」的地方，像微信的加号面板，点开就看得到。
+                attachmentButton(title: "锁着的日记", systemImage: "book.closed") {
+                    attachmentsOpen = false
+                    lockedDiariesOpen = true
+                }
+                .accessibilityIdentifier("attachment-locked-diary")
             }
 
             if recentPhotos.isLoading {
