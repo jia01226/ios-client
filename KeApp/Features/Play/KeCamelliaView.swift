@@ -180,6 +180,8 @@ struct KeSpaceView: View {
     @State private var butterfly: CamelliaButterfly
     @State private var shown: CamelliaEvent?
     @State private var open: CamelliaEntry?
+    /// 123：日记是从底下那张卡片点开的（卡片写的是一篇日记，就落在「日记」那一栏；点花照她上次停的那一栏）
+    @State private var diaryFromCard = false
     @State private var pressed: CamelliaEntry?
     @State private var visible = false
     @AppStorage("camellia.perch") private var savedPerch = CamelliaEntry.diary.rawValue
@@ -406,7 +408,7 @@ struct KeSpaceView: View {
         let center = CGPoint(x: 0.2366 * w, y: 0.825 * h)
         return Group {
             if let event = shown {
-                Button { go(event.entry) } label: {
+                Button { go(event.entry, fromCard: true) } label: {
                     HStack(alignment: .center, spacing: 0) {
                         ZStack {
                             Image(event.entry.flowerAsset).resizable().scaledToFill()
@@ -480,7 +482,8 @@ struct KeSpaceView: View {
         shown = event
     }
 
-    private func go(_ entry: CamelliaEntry) {
+    private func go(_ entry: CamelliaEntry, fromCard: Bool = false) {
+        diaryFromCard = fromCard && entry == .diary
         store.markSeen(entry)
         if let event = store.current { shown = event }
         open = entry
@@ -488,7 +491,7 @@ struct KeSpaceView: View {
 
     @ViewBuilder private func destination(_ entry: CamelliaEntry) -> some View {
         switch entry {
-        case .diary: KeDiaryListView(line: line) { open = nil }
+        case .diary: KeDiaryListView(line: line, onClose: { open = nil }, startOnDiary: diaryFromCard)
         case .drawer: KeDrawerPage(line: line) { open = nil }
         case .dream: KeDreamListView(line: line) { open = nil }
         case .moments:

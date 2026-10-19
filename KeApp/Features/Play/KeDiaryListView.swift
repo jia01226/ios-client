@@ -5,7 +5,7 @@ import SwiftUI
 // 月份标题跟着往下翻（翻到九月就显示九月）；每一篇一样高，同一天的几篇是一整块，篇与篇之间一条短线，两天之间一条通栏线。
 // 123：标题下面加「日记｜夜里」，样子和荷包的「花钱｜攒钱」一样（InkTabSwitch）；「夜里」那一栏在 KeNightDiary.swift。
 
-/// 123：日记页顶上的两栏。记住她上次看的是哪一栏；从「爸爸开锁了」那张卡点进来一定落在日记。
+/// 123：日记页顶上的两栏。记住她上次看的是哪一栏；从「爸爸开锁了」那张卡、「柯的」页写着日记的那张卡点进来，一定落在日记。
 enum DiaryTab: String, CaseIterable {
     case diary, night
     static let storageKey = "diary.page.tab"
@@ -21,6 +21,8 @@ struct KeDiaryListView: View {
     var onClose: () -> Void
     /// 120：从聊天里「爸爸开锁了」那张卡点进来：一进来就翻开这一篇（「目录」照样回日记目录）
     var openingID: Int? = nil
+    /// 123：从「柯的」页底下那张写着日记的卡片点进来：卡片说的是日记，就落在日记，不管她上次停在哪一栏（点花还是照上次的）
+    var startOnDiary = false
     /// 拉过一遍了（转圈可以撤了）
     @State private var openingDone = false
     /// 那一篇已经翻开过（她退回目录后不再拽回去）
@@ -36,12 +38,12 @@ struct KeDiaryListView: View {
     @State private var jumpDate = Date()
     /// 123：她上次看的是「日记」还是「夜里」
     @AppStorage(DiaryTab.storageKey) private var savedTab = DiaryTab.diary.rawValue
-    /// 123：带着 openingID 进来先钉在日记；她自己点了切换才放开（钉着的时候不改她记住的那一栏）
+    /// 123：带着 openingID 或 startOnDiary 进来先钉在日记；她自己点了切换才放开（钉着的时候不改她记住的那一栏）
     @State private var leftPin = false
-    /// 123：「夜里」那一栏的数据跟着日记页一起开着，切来切去不重新转圈
+    /// 123：「夜里」那一栏的数据和她手上的样子（筛选、点开的、没发的那句话）跟着日记页一起开着，切来切去都还在
     @StateObject private var night = NightStore()
     private var paper: Color { CamelliaPalette.resolve(savedPalette).paper }
-    private var tab: DiaryTab { DiaryTab.current(saved: savedTab, pinnedToDiary: openingID != nil && !leftPin) }
+    private var tab: DiaryTab { DiaryTab.current(saved: savedTab, pinnedToDiary: (openingID != nil || startOnDiary) && !leftPin) }
     private static let rowHeight: CGFloat = 66
 
     private var lockedCount: Int { entries.filter(Self.isLocked).count }

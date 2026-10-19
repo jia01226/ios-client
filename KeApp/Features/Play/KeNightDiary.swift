@@ -130,6 +130,16 @@ protocol NightDiaryService: Sendable {
 
 // MARK: - 拉、翻页、点评
 
+/// 一次点评存完是什么结果
+enum NightSaveOutcome: Equatable, Sendable {
+    /// 服务器收下了这一次
+    case saved
+    /// 后面她又点了一次，这次让给后面那次（还没轮到就不发了；发了没成也不算数），最后怎样看后面那次
+    case superseded
+    /// 这是最后一次，没存上：已经退回服务器最后确认过的那份
+    case failed
+}
+
 @MainActor final class NightStore: ObservableObject {
     static let pageSize = 100
     @Published private(set) var entries: [RemoteNight] = []
@@ -145,14 +155,32 @@ protocol NightDiaryService: Sendable {
     /// 没存上的那几条，各自下面一行中文
     @Published private(set) var errors: [Int: String] = [:]
 
+    // 她在这一栏手上的样子。放在这里、不放在 NightPane 里：日记页一直拿着这个 store，
+    // 切到「日记」再切回来，筛选、点开的、没发的那句话都还在；切走时还在路上的点评没存上，也能把她的字放回框里。
+    @Published var filter: NightKind?
+    @Published var expanded: Set<Int> = []
+    @Published var drafts: [Int: String] = [:]
+    /// 已经写过一句、她点了「改」的那几条
+    @Published var editing: Set<Int> = []
+
+    /// 最后没存上的时候念给读屏听（测试里换掉）
+    var announce: (String) -> Void = { AccessibilityNotification.Announcement($0).post() }
+
     private var service: (any NightDiaryService)?
     private var cacheKey = ""
     /// 107 的做法：看过一次就记住（只在内存里，按线路分开），再切过来先摆上次的，后台悄悄更新
     private static var cache: [String: [RemoteNight]] = [:]
-    /// 先改了再说：每条在路上的点评按顺序记号，只认最后一次；没存上就退回服务器最后确认过的那份
+    /// 先改了再说：每次点都有个号，每条只认最后一次；没存上就退回服务器最后确认过的那份
+    private var seq = 0
     private var latest: [Int: Int] = [:]
-    private var inFlight: [Int: Int] = [:]
+    /// 每条还没回来的 save() 有几个；归零之前 confirmed 一直是服务器最后确认过的那份
+    private var calls: [Int: Int] = [:]
     private var confirmed: [Int: RemoteNight] = [:]
+    /// 同一条一次只发一个请求（两个一起在路上，服务器按哪个后到存哪个，和屏幕上对不上）：正在发的、排着等的
+    private var sendingNow: Set<Int> = []
+    private var turn: [Int: [CheckedContinuation<Void, Never>]] = [:]
+    /// 拉第一页这段时间里本机动过的那几条（点了、存上了、退回了）：拉回来的那份可能是动之前的，不拿它盖
+    private var touched: Set<Int> = []
 
     init(service: (any NightDiaryService)? = nil) { self.service = service }
 
@@ -168,6 +196,7 @@ protocol NightDiaryService: Sendable {
     func load() async {
         guard let service, !loading else { return }
         loading = true; failed = false
+        touched = []
         defer { loading = false }
         do {
             let page = try await service.fetchNight(limit: Self.pageSize, beforeID: nil)
@@ -175,7 +204,9 @@ protocol NightDiaryService: Sendable {
             let complete = page.count < Self.pageSize
             let floor = page.map(\.id).min() ?? Int.max
             let hadOlder = !complete && entries.contains { $0.id < floor }
-            entries = Self.merge(firstPage: page, into: entries, keepingLocal: Set(inFlight.keys), keepOlder: !complete)
+            // 还在存的、拉的这段时间里存上或退回的：留本机这份（这一页可能是她点之前服务器读的）
+            let local = touched.union(calls.keys)
+            entries = Self.merge(firstPage: page, into: entries, keepingLocal: local, keepOlder: !complete)
             if complete { reachedEnd = true } else if !hadOlder { reachedEnd = false }
             loaded = true
             remember()
@@ -201,37 +232,101 @@ protocol NightDiaryService: Sendable {
     }
 
     /// 存她的点评（评价 + 那句话一起）。先在本机改好，不等服务器；没存上就退回去，下面写一行为什么。
-    /// 回 false 表示这次是最后一次、而且没存上（外面把她写的字放回框里）。
+    /// 同一条一次只发一个：前面那个回来了才发下一个；排着的时候她又点了，排着的那次就不发了，只发最后一次。
     @discardableResult
-    func save(id: Int, rating: NightRating?, comment: String) async -> Bool {
-        guard let service, let current = entries.first(where: { $0.id == id }) else { return false }
+    func save(id: Int, rating: NightRating?, comment: String) async -> NightSaveOutcome {
+        guard let service, let current = entries.first(where: { $0.id == id }) else { return .failed }
         let text = NightComment.clean(comment)
-        if inFlight[id, default: 0] == 0 { confirmed[id] = current }
-        inFlight[id, default: 0] += 1
-        let token = latest[id, default: 0] + 1
+        if calls[id, default: 0] == 0 { confirmed[id] = current }
+        calls[id, default: 0] += 1
+        seq += 1
+        let token = seq
         latest[id] = token
         var optimistic = current
         optimistic.rating = rating?.rawValue ?? ""
         optimistic.comment = text
         replace(optimistic)
+        touched.insert(id)
         errors[id] = nil
         saving.insert(id)
         defer {
-            inFlight[id, default: 1] -= 1
-            if inFlight[id] == 0 { inFlight[id] = nil; confirmed[id] = nil; saving.remove(id) }
+            calls[id, default: 1] -= 1
+            if calls[id] == 0 { calls[id] = nil; confirmed[id] = nil; saving.remove(id) }
         }
+        // 排着等的那几次让给这一次（它们醒来看到不是最后一次，就不发了）
+        wakeWaiting(id)
+        while true {
+            guard latest[id] == token else { return .superseded }
+            if !sendingNow.contains(id) { break }
+            await withCheckedContinuation { turn[id, default: []].append($0) }
+        }
+        sendingNow.insert(id)
+        defer { sendingNow.remove(id); wakeWaiting(id) }
         do {
             let saved = try await service.commentNight(id: id, rating: rating, comment: text)
             confirmed[id] = saved
+            touched.insert(id)
+            // 后面还排着一次：先摆后面那次的样子，等它回来；它没存上就退回到这一份
             if latest[id] == token { replace(saved); remember() }
-            return true
+            return .saved
         } catch {
-            // 后面又点了一次：这次的失败不算数，等后面那次
-            guard latest[id] == token else { return true }
-            if let back = confirmed[id] { replace(back) }
+            // 后面又点了一次：这次的失败不算数，后面那次会把现在的样子整个再发一遍
+            guard latest[id] == token else { return .superseded }
+            if let back = confirmed[id] { replace(back); remember() }
+            touched.insert(id)
             errors[id] = NightText.saveError(error)
-            return false
+            return .failed
         }
+    }
+
+    /// 点评价：点没选的换成它，点已经选的就是取消；那句话照现在摆着的一起发
+    @discardableResult
+    func rate(_ id: Int, _ r: NightRating) async -> NightSaveOutcome? {
+        guard let current = entries.first(where: { $0.id == id }) else { return nil }
+        let next: NightRating? = current.nightRating == r ? nil : r
+        let outcome = await save(id: id, rating: next, comment: current.comment)
+        if outcome == .failed { gaveBack(id, unsaved: current.comment) }
+        return outcome
+    }
+
+    /// 「好」：那句话和现在的评价一起发。没改就只是收起来；没存上就把她写的那句放回框里
+    @discardableResult
+    func send(_ id: Int) async -> NightSaveOutcome? {
+        guard let current = entries.first(where: { $0.id == id }) else { return nil }
+        let text = NightComment.clean(drafts[id] ?? "")
+        editing.remove(id)
+        guard text != current.comment else { drafts[id] = nil; return nil }
+        let outcome = await save(id: id, rating: current.nightRating, comment: text)
+        switch outcome {
+        case .saved:
+            // 她已经又点了「改」在写：框里的字是她新写的，不动
+            if !editing.contains(id) { drafts[id] = nil }
+        case .superseded:
+            // 后面那次（比如紧接着点的评价）带着这句话接着存；它也没存上的时候还要靠这里的字放回框里
+            break
+        case .failed:
+            gaveBack(id, unsaved: text)
+        }
+        return outcome
+    }
+
+    func startEditing(_ e: RemoteNight) {
+        drafts[e.id] = e.comment
+        editing.insert(e.id)
+    }
+
+    /// 最后一次没存上、退回去了：她写的那句要是跟着没了，就放回框里、框打开（她已经在框里写新的就不动）；
+    /// 再念给读屏听——「好」按下去框就收了，退回去的时候读屏不会自己发现
+    private func gaveBack(_ id: Int, unsaved text: String) {
+        if !text.isEmpty, !editing.contains(id), let now = entries.first(where: { $0.id == id }), now.comment != text {
+            drafts[id] = text
+            editing.insert(id)
+        }
+        if let message = errors[id] { announce(message) }
+    }
+
+    private func wakeWaiting(_ id: Int) {
+        for waiting in turn.removeValue(forKey: id) ?? [] { waiting.resume() }
     }
 
     private func replace(_ entry: RemoteNight) {
@@ -241,7 +336,7 @@ protocol NightDiaryService: Sendable {
 
     private func remember() { if !cacheKey.isEmpty { Self.cache[cacheKey] = entries } }
 
-    /// 新拉回来的第一页盖在手上这份上：第一页里有的照新的（正在存点评的那几条留本机的），
+    /// 新拉回来的第一页盖在手上这份上：第一页里有的照新的（正在存、或者拉的时候刚存过的那几条留本机的），
     /// 比第一页更早的（「再往前」翻出来的）留着；第一页范围里服务器没有了的就拿掉。
     static func merge(firstPage: [RemoteNight], into old: [RemoteNight], keepingLocal local: Set<Int>,
                       keepOlder: Bool = true) -> [RemoteNight] {
@@ -309,19 +404,15 @@ enum NightText {
 
 // MARK: - 「夜里」这一栏
 
-/// 直接摆进日记页的 LazyVStack 里（不另包一层 VStack），长了也只画看得见的那几天
+/// 直接摆进日记页的 LazyVStack 里（不另包一层 VStack），长了也只画看得见的那几天。
+/// 筛选、点开的、没发的那句话、正在改的都放在 store 里（切到「日记」这一块会整个拿掉，store 还在）
 struct NightPane: View {
     @ObservedObject var store: NightStore
-    @State private var filter: NightKind?
-    @State private var expanded: Set<Int> = []
-    @State private var drafts: [Int: String] = [:]
-    /// 已经写过一句、她点了「改」的那几条
-    @State private var editing: Set<Int> = []
     @FocusState private var focused: Int?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var shown: [RemoteNight] {
-        guard let filter else { return store.entries }
+        guard let filter = store.filter else { return store.entries }
         return store.entries.filter { $0.nightKind == filter }
     }
 
@@ -350,8 +441,8 @@ struct NightPane: View {
 
     private var chips: some View {
         HStack(spacing: 8) {
-            chip("全部", on: filter == nil) { filter = nil }
-            ForEach(NightKind.allCases) { k in chip(k.label, on: filter == k) { filter = k } }
+            chip("全部", on: store.filter == nil) { store.filter = nil }
+            ForEach(NightKind.allCases) { k in chip(k.label, on: store.filter == k) { store.filter = k } }
         }
     }
 
@@ -383,7 +474,7 @@ struct NightPane: View {
                     .font(Ink.song(14)).foregroundStyle(Ink.secondary).multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity).padding(.vertical, 30)
             }
-        } else if shown.isEmpty, let filter {
+        } else if shown.isEmpty, let filter = store.filter {
             Text("「\(filter.label)」的还没有。").font(Ink.song(14)).foregroundStyle(Ink.secondary)
                 .frame(maxWidth: .infinity).padding(.vertical, 30)
         }
@@ -434,14 +525,14 @@ struct NightPane: View {
     private func row(_ e: RemoteNight) -> some View {
         NightEntryRow(
             entry: e,
-            expanded: expanded.contains(e.id),
+            expanded: store.expanded.contains(e.id),
             saving: store.saving.contains(e.id),
             error: store.errors[e.id],
-            draft: Binding(get: { drafts[e.id] ?? "" }, set: { drafts[e.id] = $0 }),
-            editing: e.comment.isEmpty || editing.contains(e.id),
+            draft: Binding(get: { store.drafts[e.id] ?? "" }, set: { store.drafts[e.id] = $0 }),
+            editing: e.comment.isEmpty || store.editing.contains(e.id),
             focus: $focused,
             onToggle: { toggle(e.id) },
-            onRate: { rate(e.id, $0) },
+            onRate: { r in Task { await store.rate(e.id, r) } },
             onEdit: { startEditing(e) },
             onSend: { send(e.id) }
         )
@@ -451,43 +542,24 @@ struct NightPane: View {
 
     private func toggle(_ id: Int) {
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
-            if expanded.contains(id) {
-                expanded.remove(id)
+            if store.expanded.contains(id) {
+                store.expanded.remove(id)
                 if focused == id { focused = nil }
             } else {
-                expanded.insert(id)
+                store.expanded.insert(id)
             }
         }
-    }
-
-    /// 点评价：点没选的换成它，点已经选的就是取消；那句话照原样一起发
-    private func rate(_ id: Int, _ r: NightRating) {
-        guard let current = store.entries.first(where: { $0.id == id }) else { return }
-        let next: NightRating? = current.nightRating == r ? nil : r
-        Task { await store.save(id: id, rating: next, comment: current.comment) }
     }
 
     private func startEditing(_ e: RemoteNight) {
-        drafts[e.id] = e.comment
-        editing.insert(e.id)
+        store.startEditing(e)
         DispatchQueue.main.async { focused = e.id }
     }
 
-    /// 「好」：和现在的评价一起发。没改就只是收起来；没存上就把她写的那句放回框里
+    /// 「好」：收键盘，剩下的（发、没存上把字放回框里、念给读屏）在 store 里
     private func send(_ id: Int) {
-        guard let current = store.entries.first(where: { $0.id == id }) else { return }
-        let text = NightComment.clean(drafts[id] ?? "")
         focused = nil
-        editing.remove(id)
-        guard text != current.comment else { drafts[id] = nil; return }
-        Task {
-            if await store.save(id: id, rating: current.nightRating, comment: text) {
-                drafts[id] = nil
-            } else {
-                drafts[id] = text
-                editing.insert(id)
-            }
-        }
+        Task { await store.send(id) }
     }
 }
 
