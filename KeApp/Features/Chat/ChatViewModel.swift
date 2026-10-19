@@ -112,6 +112,14 @@ final class ChatViewModel: ObservableObject {
     private var pollNap: Task<Void, Never>?
     /// 125：轮询上一问发出去的时刻；超过 8 秒还没回算卡住
     private var lastPollAt: Date?
+    /// 125 修：流还没给 done 的这一轮（按 owner）最近一次收到东西的时刻——服务器每 5 秒一行 `: keepalive`
+    /// 也算。10 秒以上一点动静没有算断了（换网、锁屏时连接悄悄死掉），回前台照旧掐断重接，
+    /// 不再干等 EventSource 30 秒超时。收到 done、流结束、被掐断都清掉。
+    private var streamWatch: (owner: UUID, lastEventAt: Date)?
+    /// 125 修：点推送时流还没给 done，起的那一问（问任务写完没有）；同一轮只问一次
+    private var streamProbeOwner: UUID?
+    /// 125 修：在后台拉回来的记录先不告诉服务器「看过了」，她回到前台再说
+    private var deferredSeen: (sessionID: Int, throughID: Int?)?
     /// 125：她从后台回来、或点了推送后的几秒：这时落下来的是她不在时写完的那句（横幅里已经读过），
     /// 整条一次放上，不再一个个冒。过了这几秒才写完的，她是看着落下来的，照常一个个冒。
     private var landWholeUntil: Date?
@@ -627,6 +635,7 @@ final class ChatViewModel: ObservableObject {
         if enteredBackground || forceReconnect { landWholeUntil = date.addingTimeInterval(5) }
         enteredBackground = false
         inactiveSince = nil
+        flushDeferredSeen()
         guard phase == .ready else { return }
         // 119：点推送时 scenePhase、openRequest、.task 会各叫一次。头一次已经起了接回，
         // 后面这几次只要那一轮还新鲜（没卡住）就不再打断重来。
@@ -640,6 +649,11 @@ final class ChatViewModel: ObservableObject {
             // 正在轮询就叫醒它马上再问一次。
             if !userInitiated, replyIsLive(at: date) {
                 pollNap?.cancel()
+                // 点推送 = 服务器那边已经写完了；流健康的话 done 和推送同一刻发出，早该到了。
+                // 流还没给 done：不干等，问一下任务，写完了就掐断这条流、按任务接回。
+                if forceReconnect, let owner = replyOwner, streamWatch?.owner == owner {
+                    probeStreamOnNotificationTap(owner: owner)
+                }
                 return
             }
 #if DEBUG
@@ -662,7 +676,54 @@ final class ChatViewModel: ObservableObject {
         guard replyTask != nil, replyOwner != nil,
               releaseReplyKeepAlive != nil, !replyKeepAliveExpired else { return false }
         if recoveringJobID != nil, let lastPollAt, date.timeIntervalSince(lastPollAt) >= 8 { return false }
+        // 125 修：还在等流的 done，10 秒以上一点动静（连 keepalive 都）没有：连接已经悄悄断了
+        if let streamWatch, streamWatch.owner == replyOwner,
+           date.timeIntervalSince(streamWatch.lastEventAt) >= 10 { return false }
         return true
+    }
+
+    /// 125 修：点推送时流还没给 done。问一下任务：已经写完（或出错、要重试）而流还没送到，
+    /// 就是流卡住了——掐断它、按任务接回（拉记录 1～2 秒），不等 EventSource 30 秒超时。
+    /// 还在写就留着流（推送可能是别的消息的）。没有回执、问不到的，照 125 以前掐断重来。
+    private func probeStreamOnNotificationTap(owner: UUID) {
+        guard streamProbeOwner != owner, let sessionID else { return }
+        streamProbeOwner = owner
+        Task { [self] in
+            defer { if streamProbeOwner == owner { streamProbeOwner = nil } }
+            @MainActor func streamStillPending() -> Bool {
+                replyOwner == owner && streamWatch?.owner == owner && self.sessionID == sessionID
+            }
+            var stalled = true
+            if let jobID = activeJobID {
+                do {
+                    let job = try await replyAPI.chatJob(id: jobID, sessionID: sessionID)
+                    stalled = ["done", "merged", "error", "waiting_retry"].contains(job.status)
+                } catch {
+                    stalled = true
+                }
+            }
+            guard stalled, streamStillPending() else { return }
+            abandonReplyConnection()
+            guard replyTask == nil, activeStreamClientID == nil else { return }
+            await recoverActiveJobsIfNeeded()
+        }
+    }
+
+    /// 125 修：流这一轮收到了东西（包括 keepalive）
+    private func noteStreamActivity(_ owner: UUID) {
+        guard replyOwner == owner else { return }
+        streamWatch = (owner, .now)
+    }
+
+    private func endStreamWatch(_ owner: UUID) {
+        if streamWatch?.owner == owner { streamWatch = nil }
+    }
+
+    private func flushDeferredSeen() {
+        guard let deferred = deferredSeen else { return }
+        deferredSeen = nil
+        guard deferred.sessionID == sessionID else { return }
+        Task { try? await replyAPI.markSeen(sessionID: deferred.sessionID, throughID: deferred.throughID) }
     }
 
     /// 125：跑一轮回复（发出去、重接、接回），整轮攥着后台时间；跑完、后面也没接着跑的才还回去。
@@ -672,8 +733,12 @@ final class ChatViewModel: ObservableObject {
         if releaseReplyKeepAlive == nil {
             replyKeepAliveExpired = false
             let release = replyKeepAlive { [weak self] in
-                self?.replyKeepAliveExpired = true
-                self?.releaseReplyKeepAlive = nil
+                guard let self else { return }
+                self.replyKeepAliveExpired = true
+                // 125 修：收回时也照样还一次（还过的再还不算数），不靠 BackgroundGrant 自己那一下
+                let release = self.releaseReplyKeepAlive
+                self.releaseReplyKeepAlive = nil
+                release?()
             }
             // 系统当场没给（expired 已经是 true）也照样记着，跑完一并还
             releaseReplyKeepAlive = release
@@ -698,6 +763,7 @@ final class ChatViewModel: ObservableObject {
         recoveringJobID = nil
         recoveryProbeID = nil
         historyRequestID = nil
+        streamWatch = nil
         previous?.cancel()
         let receipts = receiptTasks.values.map(\.task)
         receiptTasks.removeAll()
@@ -1387,7 +1453,14 @@ final class ChatViewModel: ObservableObject {
             await cache.save(Self.cacheable(merged), sessionID: sessionID)
             guard isCurrent() else { return false }
             let throughID = merged.last(where: { $0.sender == .ke })?.serverID
-            Task { try? await replyAPI.markSeen(sessionID: sessionID, throughID: throughID) }
+            // 125 修：回话整轮攥着后台时间，她不在时也会写完、拉记录——这时还没看，不告诉服务器看过了；
+            // 回到前台（resumeFromForeground）再补上。
+            if enteredBackground || UIApplication.shared.applicationState == .background {
+                deferredSeen = (sessionID, throughID)
+            } else {
+                deferredSeen = nil
+                Task { try? await replyAPI.markSeen(sessionID: sessionID, throughID: throughID) }
+            }
             // Notification-service completion must never hold the reply in a sending state.
             Task { await ChatNotificationCoordinator.shared.clearBadgeIfActive() }
             return isCurrent()
@@ -1453,9 +1526,15 @@ final class ChatViewModel: ObservableObject {
             )
 
             guard ownsReply(owner) else { return }
+            noteStreamActivity(owner)
+            defer { endStreamWatch(owner) }
             for try await event in stream {
                 guard ownsReply(owner) else { return }
+                noteStreamActivity(owner)
                 switch event {
+                case .keepAlive:
+                    continue
+
                 case let .receipt(userMessageID, jobID, bedroom):
                     if let jobID {
                         activeJobID = jobID
@@ -1506,6 +1585,7 @@ final class ChatViewModel: ObservableObject {
                 ):
                     flushBufferedEvents()
                     didComplete = true
+                    endStreamWatch(owner)
                     completionStatus = status ?? (assistantMessageID == nil ? "error" : "done")
                     completionError = error ?? serverErrorMessage
                     completionRetryable = retryable

@@ -64,7 +64,8 @@ private final class ReplyServer: ChatReplyTransport {
         }
         return history
     }
-    func markSeen(sessionID: Int, throughID: Int?) async throws {}
+    var seenThrough: [Int?] = []
+    func markSeen(sessionID: Int, throughID: Int?) async throws { seenThrough.append(throughID) }
     func receive(_ events: [ChatStreamEvent], at index: Int = 0) {
         for event in events { streams[index].yield(event) }
     }
@@ -481,7 +482,7 @@ final class ChatForegroundRecoveryTests: XCTestCase {
         let resumed = Task { await vm.resumeFromForeground(); await vm.resumeFromForeground(forceReconnect: true) }
         await settle()
         XCTAssertEqual(server.cancelledStreams, 0, "没被挂起过，流还连着：不掐断")
-        XCTAssertEqual(server.jobReads, 0)
+        XCTAssertEqual(server.jobReads, 1, "点推送时流还没给 done：问一下任务，还在写就留着流")
         XCTAssertEqual(server.streams.count, 1, "不重发")
         XCTAssertTrue(vm.isSending)
         guard server.cancelledStreams == 0 else { return }
@@ -500,7 +501,7 @@ final class ChatForegroundRecoveryTests: XCTestCase {
         if let reply { XCTAssertNil(vm.visibleSegmentCount(for: reply), "她不在时落下来的整条放上") }
         XCTAssertFalse(vm.isSending)
         XCTAssertFalse(keepAlive.held, "回完就还回去")
-        XCTAssertEqual(server.jobReads, 0, "一路走流，没退回去轮询")
+        XCTAssertEqual(server.jobReads, 1, "一路走流，没退回去轮询")
     }
 
     /// 125：系统收回了后台时间（App 随后被挂起，流可能已经断了）：回来照旧掐断、按任务接回。
@@ -602,6 +603,165 @@ final class ChatForegroundRecoveryTests: XCTestCase {
         XCTAssertEqual(changes.inserted.first, before.count - 1, "Thinking 插在原来占位的位置")
         XCTAssertEqual(after.last?.message.bubbleSegments, segments, "后面四句照常一个个插在它下面")
         await sending.value
+    }
+
+    /// 125 修：系统到点收回后台时间时，真的 BackgroundGrant 要把它还回去（endBackgroundTask）。
+    /// 以前到点回调放掉了最后一个引用，这一份当场被释放，后面那句 end() 落空——系统没收到还，直接杀 App。
+    func testExpiringGrantEndsTheTaskEvenWhenTheCallbackDropsTheLastReference() {
+        var expiration: (@MainActor @Sendable () -> Void)?
+        var ended: [UIBackgroundTaskIdentifier] = []
+        var release: (@MainActor () -> Void)?
+        var expired = 0
+        do {
+            let grant = BackgroundGrant(name: "test", onExpire: { expired += 1; release = nil },
+                                        begin: { _, handler in expiration = handler; return UIBackgroundTaskIdentifier(rawValue: 7) },
+                                        end: { ended.append($0) })
+            release = { grant.end() }
+        }
+        XCTAssertNotNil(release)
+        expiration?()
+        XCTAssertEqual(ended, [UIBackgroundTaskIdentifier(rawValue: 7)], "到点也要还，只还一次")
+        XCTAssertEqual(expired, 1)
+        XCTAssertNil(release)
+        expiration = nil
+    }
+
+    /// 125 修：回话那一轮用真的 BackgroundGrant：到点收回时任务被还掉，回来照旧重接，接回那一轮再要一份、跑完还。
+    func testReplyGrantIsEndedWhenTheSystemExpiresIt() async {
+        let server = ReplyServer()
+        var expirations: [@MainActor @Sendable () -> Void] = []
+        var begun = 0
+        var ended: [UIBackgroundTaskIdentifier] = []
+        let provider: ChatViewModel.ReplyKeepAlive = { onExpire in
+            let grant = BackgroundGrant(name: "ke-reply", onExpire: onExpire,
+                                        begin: { _, handler in
+                                            begun += 1; expirations.append(handler)
+                                            return UIBackgroundTaskIdentifier(rawValue: begun)
+                                        },
+                                        end: { ended.append($0) })
+            return { grant.end() }
+        }
+        let vm = ChatViewModel(monitorConnectivity: false, replyTransport: server,
+                               cacheFileName: "recovery-test-\(UUID()).json",
+                               replyKeepAlive: provider, replyCompleted: {})
+        await vm.bootstrap()
+        let sending = await start(vm, server)
+        let replyGrant = UIBackgroundTaskIdentifier(rawValue: begun)
+        XCTAssertFalse(ended.contains(replyGrant), "回话这一轮攥着")
+        vm.becameInactive(); vm.enteredBackgroundScene()
+        let endedBefore = ended.count
+        expirations.last?()
+        XCTAssertEqual(ended.count, endedBefore + 1)
+        XCTAssertEqual(ended.last, replyGrant, "到点就还")
+        let begunBefore = begun
+        server.completeOnServer()
+        await vm.resumeFromForeground()
+        assertComplete(vm)
+        XCTAssertEqual(server.jobReads, 1, "收回过（App 被挂起过）：照旧按任务接回")
+        await sending.value
+        await wait { server.cancelledStreams == 1 }
+        server.streams[0].finish(throwing: URLError(.timedOut))
+        XCTAssertEqual(begun, begunBefore + 1, "接回那一轮再要一份")
+        XCTAssertEqual(ended.count, endedBefore + 2, "接回那一轮跑完也还了")
+        XCTAssertEqual(ended.last, UIBackgroundTaskIdentifier(rawValue: begun))
+        expirations.removeAll()
+    }
+
+    /// 125 修（她：「明明消息弹出来了 点进去消息还要等」）：攥着后台时间、流还连着，可点推送时流还没给 done——
+    /// 服务器已经写完了，流是卡住了。问一下任务、写完了就掐断这条流按任务接回，不等 EventSource 30 秒超时。
+    func testNotificationTapCutsAStalledStreamWhenTheJobIsAlreadyDone() async {
+        let server = ReplyServer(); let keepAlive = FakeKeepAlive(grants: true)
+        let vm = await model(server, keepAlive: keepAlive)
+        let sending = await start(vm, server, reduceMotion: false)
+        vm.becameInactive(); vm.enteredBackgroundScene()
+        server.completeOnServer(segments: ["过来", "现在头搁爸爸肩上。"])
+        let tapped = Date()
+        await vm.resumeFromForeground(forceReconnect: true)
+        await wait { !vm.isSending }
+        XCTAssertLessThan(Date().timeIntervalSince(tapped), 1, "不等流超时")
+        XCTAssertEqual(server.streams.count, 1, "不重发")
+        await wait { server.cancelledStreams == 1 }
+        let reply = vm.messages.first { $0.sender == .ke }
+        XCTAssertEqual(reply?.bubbleSegments, ["过来", "现在头搁爸爸肩上。"])
+        XCTAssertEqual(vm.messages.filter { $0.sender == .ke }.count, 1)
+        if let reply { XCTAssertNil(vm.visibleSegmentCount(for: reply), "横幅里已经读过，整条放上") }
+        await sending.value
+        server.streams[0].finish(throwing: URLError(.cancelled))
+        await settle()
+        XCTAssertFalse(keepAlive.held)
+    }
+
+    /// 125 修：攥着后台时间回来，可流 10 秒以上一点动静（连 keepalive 都）没有：连接悄悄断了，照旧掐断重接。
+    func testQuietStreamOnResumeIsTreatedAsStalled() async {
+        let server = ReplyServer(); let keepAlive = FakeKeepAlive(grants: true)
+        let vm = await model(server, keepAlive: keepAlive)
+        let sending = await start(vm, server)
+        vm.becameInactive(); vm.enteredBackgroundScene()
+        server.completeOnServer()
+        await vm.resumeFromForeground(at: Date().addingTimeInterval(11))
+        assertComplete(vm)
+        XCTAssertEqual(server.jobReads, 1)
+        await sending.value
+        await wait { server.cancelledStreams == 1 }
+        server.streams[0].finish(throwing: URLError(.timedOut))
+        await settle()
+        XCTAssertFalse(keepAlive.held)
+    }
+
+    /// 125 修：keepalive 算动静——收到了就还是活的，回来不掐断。
+    func testKeepAliveKeepsAQuietStreamLive() async {
+        let server = ReplyServer(); let keepAlive = FakeKeepAlive(grants: true)
+        let vm = await model(server, keepAlive: keepAlive)
+        let sending = await start(vm, server)
+        vm.becameInactive(); vm.enteredBackgroundScene()
+        server.receive([.keepAlive]); await settle()
+        await vm.resumeFromForeground()
+        XCTAssertEqual(server.jobReads, 0)
+        XCTAssertEqual(server.cancelledStreams, 0)
+        server.completeOnServer()
+        server.receive([.text("完整回复"), .completed(assistantMessageID: 101, bedroom: nil, status: "done", error: nil,
+                                                  retryable: false, retryScheduled: false)])
+        server.streams[0].finish()
+        await sending.value
+        assertComplete(vm)
+    }
+
+    /// 125 修：她不在时柯写完、在后台拉了记录——还没看，不能告诉服务器「看过了」；回到前台再补上。
+    func testRepliesLandingInTheBackgroundAreMarkedSeenOnlyAfterReturning() async {
+        let server = ReplyServer(); let keepAlive = FakeKeepAlive(grants: true)
+        let vm = await model(server, keepAlive: keepAlive)
+        let sending = await start(vm, server)
+        vm.becameInactive(); vm.enteredBackgroundScene()
+        let seenBefore = server.seenThrough.count
+        server.completeOnServer()
+        server.receive([.text("完整回复"), .completed(assistantMessageID: 101, bedroom: nil, status: "done", error: nil,
+                                                  retryable: false, retryScheduled: false)])
+        server.streams[0].finish()
+        await sending.value
+        assertComplete(vm)
+        await settle()
+        XCTAssertEqual(server.seenThrough.count, seenBefore, "在后台时不报已读")
+        await vm.resumeFromForeground()
+        await wait { server.seenThrough.count > seenBefore }
+        XCTAssertEqual(server.seenThrough.last, 101)
+    }
+
+    /// 125 修：keepalive 注释块要报出来，正常的 data 块照旧，切在哪儿都一样；CRLF 也认。
+    func testSSEParserReportsKeepAliveCommentsAndSplitsAcrossChunks() {
+        // 不在测试里点名 EventSource 的类型：只看切出来的是 keepalive 还是哪段 data
+        func payloads(_ parser: inout ChatSSEParser, _ data: Data) -> [String] {
+            parser.parse(data).map { $0 is ChatSSEKeepAlive ? "<keepalive>" : ($0.data ?? "<nil>") }
+        }
+        let raw = Array(": keepalive\n\ndata: {\"t\":\"过来\"}\r\n\r\n: keepalive\n\ndata: {\"done\":true}\n\n".utf8)
+        let expected = ["<keepalive>", "{\"t\":\"过来\"}", "<keepalive>", "{\"done\":true}"]
+        var byByte = ChatSSEParser()
+        var split: [String] = []
+        for byte in raw { split += payloads(&byByte, Data([byte])) }
+        XCTAssertEqual(split, expected, "一个字节一个字节来也一样切")
+        var whole = ChatSSEParser()
+        XCTAssertEqual(payloads(&whole, Data(raw)), expected)
+        XCTAssertEqual(payloads(&whole, Data("data: {\"t\":\"a\"}\n".utf8)), [], "没切完的块留着")
+        XCTAssertEqual(payloads(&whole, Data("\n".utf8)), ["{\"t\":\"a\"}"])
     }
 
     func testNotificationIntentPersistsAndCanRepeat() {

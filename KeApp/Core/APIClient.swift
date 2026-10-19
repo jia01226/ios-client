@@ -80,6 +80,8 @@ enum ChatStreamEvent: Sendable {
         segments: [String]? = nil
     )
     case serverError(String)
+    /// 125 修：连接还活着（连上了，或服务器每 5 秒那行 `: keepalive`）。不带内容，只给「流还有动静」计时用
+    case keepAlive
 }
 
 private struct LoginResponse: Decodable {
@@ -718,6 +720,7 @@ actor APIClient {
         return AsyncThrowingStream { continuation in
             let worker = Task {
                 let eventSource = EventSource(
+                    eventParser: ChatSSEParser(),
                     timeoutIntervalForRequest: 30,
                     timeoutIntervalForResource: 600
                 )
@@ -727,9 +730,13 @@ actor APIClient {
                     if Task.isCancelled { break }
                     switch event {
                     case .open:
-                        continue
+                        continuation.yield(.keepAlive)
                     case let .event(serverEvent):
-                        guard let data = serverEvent.data else { continue }
+                        guard let data = serverEvent.data else {
+                            // 只有注释行的那一块（`: keepalive`）：报一声「还连着」
+                            if serverEvent is ChatSSEKeepAlive { continuation.yield(.keepAlive) }
+                            continue
+                        }
                         do {
                             for parsed in try Self.parseStreamPayload(data) {
                                 continuation.yield(parsed)
