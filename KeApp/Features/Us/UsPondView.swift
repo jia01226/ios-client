@@ -24,6 +24,8 @@ struct UsPondView: View {
     @State private var choosingAnniversary = false
     @State private var managingDates = false
     @AppStorage("us.hero.anniversary") private var heroID = "together"
+    /// 126：底栏浮在页面上，滚到最底时让出它那一截
+    @Environment(\.floatingDockInset) private var dockInset
     private var palette: CamelliaPalette { .resolve(savedPalette) }
 
     init(line: ChatLine) {
@@ -39,7 +41,8 @@ struct UsPondView: View {
         GeometryReader { geo in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    verse.padding(.horizontal, 28).padding(.top, 10)
+                    // 126：顶上不放标题，右上那枚月牙（RootTabView 画的）下面再起寄语
+                    verse.padding(.horizontal, 28).padding(.top, 46)
                     calendar.padding(.horizontal, 28).padding(.top, 18)
                     Text("往下滑，去池子边 ⌄").font(Ink.song(11.5)).tracking(2).foregroundStyle(Ink.secondary)
                         .frame(maxWidth: .infinity).padding(.top, 14).padding(.bottom, 4)
@@ -47,7 +50,7 @@ struct UsPondView: View {
                     sectionTitle("也去看看", "ALSO HERE").padding(.horizontal, 28).padding(.top, 10)
                     pond(width: geo.size.width, height: max(geo.size.width * 1.25, geo.size.height - 60))
                 }
-                .padding(.bottom, 12)
+                .padding(.bottom, 12 + dockInset)
             }
             .scrollIndicators(.hidden)
         }

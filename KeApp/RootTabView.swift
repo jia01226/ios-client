@@ -16,6 +16,10 @@ struct RootTabView: View {
     @State private var chatSendRequests: [ChatSendRequest] = []
     @AppStorage(CamelliaPalette.storageKey) private var camelliaPaletteValue = CamelliaPalette.defaultPalette.rawValue
     private var camelliaPalette: CamelliaPalette { .resolve(camelliaPaletteValue) }
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    /// 126：底栏实际多高（大字号时会长高）、Home 条那截多高
+    @State private var dockHeight: CGFloat = 58
+    @State private var safeBottom: CGFloat = 0
 
     enum Tab: Hashable {
         // 佳佳 2026-10-06：原来「佳佳」那一格换成柯的抽屉——他自己的地方。
@@ -30,49 +34,48 @@ struct RootTabView: View {
     var body: some View {
         ZStack {
             AppAtmosphere()
-
-            VStack(spacing: 0) {
-                // 不使用系统 TabView，避免 iOS 17 留下透明、可命中的系统栏。
-                // 聊天页始终留在层级内以保留当前窗口状态；其它页面按需加载，
-                // 风铃和月球动画不会在后台继续运行。
-                ZStack {
-                    selectedNonChatPage
-                    ChatView(line: chatLine, selectedLine: $chatLine, quoteOpenRequest: $quoteOpenRequest, sendRequests: $chatSendRequests)
-                        .id(chatLine)
-                        .opacity(selection == .ke ? 1 : 0)
-                        .allowsHitTesting(selection == .ke)
-                        .accessibilityHidden(selection != .ke)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay(alignment: .trailing) {
-                    if selection != .ke && !chatSettingsOpen {
-                        Color.clear
-                            .frame(width: KeDrawerEdge.width)
-                            .contentShape(Rectangle())
-                            .gesture(
-                                DragGesture(minimumDistance: 12)
-                                    .onEnded { value in
-                                        guard value.translation.width < -40,
-                                              abs(value.translation.width) > abs(value.translation.height) else { return }
-                                        settingsReturnTab = selection
-                                        selection = .ke
-                                        DispatchQueue.main.async {
-                                            NotificationCenter.default.post(name: .openKeSettings, object: nil)
-                                        }
-                                    }
-                            )
-                            .accessibilityHidden(true)
-                    }
+                // 126：量一下底下 Home 条那一截有多高（不算键盘），底栏照设计稿离底边 max(10, 安全区)
+                .background {
+                    Color.clear.ignoresSafeArea(.keyboard)
+                        .onGeometryChange(for: CGFloat.self, of: { $0.safeAreaInsets.bottom }) { safeBottom = $0 }
                 }
 
-                if !keyboardIsVisible && !chatSettingsOpen {
-                    Group {
-                        // 记忆页永远是夜：底栏跟着用夜里的玻璃
-                        // 101：底栏先做最简单的三个字，正式样子等 GPT 设计
-                        simpleTabBar
-                    }
-                        .accessibilityElement(children: .contain)
-                        .accessibilityIdentifier("root-tab-bar")
+            // 126：页面铺满到屏幕底；底栏、月牙都浮在上面，不再占一截矩形。
+            // 不使用系统 TabView，避免 iOS 17 留下透明、可命中的系统栏。
+            // 聊天页始终留在层级内以保留当前窗口状态；其它页面按需加载，
+            // 风铃和月球动画不会在后台继续运行。
+            ZStack {
+                selectedNonChatPage
+                ChatView(line: chatLine, selectedLine: $chatLine, quoteOpenRequest: $quoteOpenRequest, sendRequests: $chatSendRequests)
+                    .id(chatLine)
+                    .opacity(selection == .ke ? 1 : 0)
+                    .allowsHitTesting(selection == .ke)
+                    .accessibilityHidden(selection != .ke)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .environment(\.floatingDockInset, showsDock ? dockInset : 0)
+            .overlay(alignment: .trailing) {
+                if selection != .ke && !chatSettingsOpen {
+                    Color.clear
+                        .frame(width: KeDrawerEdge.width)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 12)
+                                .onEnded { value in
+                                    guard value.translation.width < -40,
+                                          abs(value.translation.width) > abs(value.translation.height) else { return }
+                                    openSettingsFromHome()
+                                }
+                        )
+                        .accessibilityHidden(true)
+                }
+            }
+            // 126：「我们」「柯的」顶上不要大标题，只留右上一枚小月牙——点了和从右边划、聊天里点三个点是同一个设置抽屉
+            .overlay(alignment: .topTrailing) {
+                if (selection == .us || selection == .drawer) && !chatSettingsOpen {
+                    HomeSettingsMoon(action: openSettingsFromHome)
+                        .padding(.trailing, theme.metric.chromeHeaderInset - 4)
+                        .padding(.top, 2)
                 }
             }
             .background {
@@ -81,6 +84,17 @@ struct RootTabView: View {
                 } else if selection != .ke {
                     theme.pageBackground.ignoresSafeArea()
                 }
+            }
+
+            if showsDock {
+                // 记忆页永远是夜：底栏跟着用夜里的玻璃
+                // 101：底栏先做最简单的三个字；126：浮起来的圆角玻璃胶囊
+                simpleTabBar
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("root-tab-bar")
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                    // 键盘收起的那一下底栏就回到底边，不骑在正在往下走的键盘上
+                    .ignoresSafeArea(.keyboard)
             }
         }
         .preferredColorScheme(selection == .drawer || selection == .us || theme.skin != .night ? .light : .dark)
@@ -146,26 +160,52 @@ struct RootTabView: View {
         }
     }
 
-    /// 柯 · 我们 · 柯的：三个字，当前那页下面一个小圆点。
+    // MARK: 126 浮起来的底栏
+
+    private var showsDock: Bool { !keyboardIsVisible && !chatSettingsOpen }
+    /// 底栏离安全区底边还要多垫多少：有 Home 条的机器贴着安全区，没有的离屏幕底 10
+    private var dockBottomPadding: CGFloat { max(0, theme.metric.chromeDockMinBottom - safeBottom) }
+    /// 页面底下要让出来的高度（从安全区底边算起）：底栏 + 和内容之间的一点空
+    private var dockInset: CGFloat { dockBottomPadding + dockHeight + theme.metric.chromeGap }
+
+    private func openSettingsFromHome() {
+        settingsReturnTab = selection
+        selection = .ke
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .openKeSettings, object: nil)
+        }
+    }
+
+    /// 柯 · 我们 · 柯的：三个字（宋体 14、字距 2.4），当前那页垫一层亮。整条是一块圆角玻璃，浮在页面上。
     private var simpleTabBar: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 3) {
             ForEach([(Tab.ke, "柯"), (Tab.us, "我们"), (Tab.drawer, "柯的")], id: \.1) { tab, label in
+                let selected = selection == tab
                 Button { withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { selection = tab } } label: {
-                    VStack(spacing: 5) {
-                        Text(label).font(.custom("NotoSerifSC-Light", size: 14)).tracking(2.4)
-                        Circle().fill(selection == tab ? Ink.accent : Color.clear).frame(width: 4.5, height: 4.5)
-                    }
-                    .foregroundStyle(selection == tab ? Ink.primary : Ink.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 48).contentShape(Rectangle())
+                    Text(label).font(theme.font.dockLabel).tracking(theme.font.dockTracking)
+                        .foregroundStyle(selected ? Ink.primary : Ink.secondary)
+                        .frame(maxWidth: .infinity, minHeight: theme.metric.chromeDockHeight - 2 * theme.metric.chromeDockPadding)
+                        .background {
+                            if selected {
+                                RoundedRectangle(cornerRadius: theme.metric.chromeDockItemRadius, style: .continuous)
+                                    .fill(reduceTransparency ? Ink.accent.opacity(0.08) : Ink.dockSelection)
+                            }
+                        }
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityAddTraits(selection == tab ? .isSelected : [])
+                .accessibilityAddTraits(selected ? .isSelected : [])
                 .accessibilityIdentifier("tab-\(tab)")
             }
         }
-        .padding(.horizontal, 18).padding(.top, 6)
-        // 117：三个页面的底栏都是同一块液态玻璃（素笺里能选纸感/轻玻璃/浮光）
-        .background { KeGlass(shape: Rectangle(), minPaper: 0.3).ignoresSafeArea(edges: .bottom) }
+        .padding(theme.metric.chromeDockPadding)
+        // 117：三个页面的底栏都是同一块液态玻璃（素笺里能选纸感/轻玻璃/浮光）；126：只画在圆角里，外面不铺底
+        .background {
+            KeGlass(shape: RoundedRectangle(cornerRadius: theme.metric.chromeDockRadius, style: .continuous), minPaper: 0.2)
+        }
+        .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { dockHeight = $0 }
+        .padding(.horizontal, theme.metric.chromeDockInset)
+        .padding(.bottom, dockBottomPadding)
     }
 
     private var journalTabBar: some View {
@@ -247,6 +287,33 @@ struct RootTabView: View {
     RootTabView().environmentObject(Theme.shared)
 }
 
+
+/// 126：「我们」「柯的」右上角那枚小月牙，打开设置抽屉
+struct HomeSettingsMoon: View {
+    @EnvironmentObject private var theme: Theme
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "moon")
+                .font(.system(size: theme.metric.homeMoonSize, weight: .light))
+                .foregroundStyle(Ink.primary)
+                .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("打开设置")
+        .accessibilityIdentifier("home-settings-moon")
+    }
+}
+
+/// 126：页面底下被浮着的底栏盖住的那一截（从安全区底边算起）。键盘起来、设置打开时底栏收起，就是 0。
+private struct FloatingDockInsetKey: EnvironmentKey { static let defaultValue: CGFloat = 0 }
+extension EnvironmentValues {
+    var floatingDockInset: CGFloat {
+        get { self[FloatingDockInsetKey.self] }
+        set { self[FloatingDockInsetKey.self] = newValue }
+    }
+}
 
 extension Notification.Name {
     static let chatSettingsVisibility = Notification.Name("love.chatSettingsVisibility")

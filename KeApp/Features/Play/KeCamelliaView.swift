@@ -188,8 +188,11 @@ struct KeSpaceView: View {
     @AppStorage(CamelliaPalette.storageKey) private var savedPalette = CamelliaPalette.defaultPalette.rawValue
     private var palette: CamelliaPalette { .resolve(savedPalette) }
 
-    private static let ink = Color(red: 0.24, green: 0.33, blue: 0.47)
-    private static let muted = Color(red: 0.45, green: 0.52, blue: 0.62)
+    /// 126：挂签上的字、卡片标题跟着纸色走（粉白 = #564653 / #7A6572；别的纸色还是原来的蓝墨）
+    private var ink: Color { palette.inks.camelliaInk }
+    private var muted: Color { palette.inks.camelliaMuted }
+    /// 126：底栏浮在画上，画布按让出底栏后的高度缩放，卡片不被底栏挡住
+    @Environment(\.floatingDockInset) private var dockInset
 
     init(line: ChatLine, onOpenQuote: @escaping (AppQuote) -> Void) {
         self.line = line; self.onOpenQuote = onOpenQuote
@@ -203,22 +206,31 @@ struct KeSpaceView: View {
     var body: some View {
         GeometryReader { geo in
             // 画布等比缩放：宽度铺满；太高就按高度缩（底部原本的导航那一截不用，只到卡片下沿）
-            let s = min(geo.size.width / 390, geo.size.height / (844 * 0.9))
+            let s = min(geo.size.width / 390, max(1, geo.size.height - dockInset) / (844 * 0.9))
             let w = 390 * s, h = 844 * s
             ZStack(alignment: .topLeading) {
-                palette.paper
-                Image("KeCamelliaBackground").resizable().scaledToFill()
-                    .frame(width: geo.size.width, height: geo.size.height).clipped()
-                    .saturation(palette.mistSaturation).opacity(palette.mistOpacity)
-                    .blendMode(.multiply)
-                    .accessibilityHidden(true)
                 TimelineView(.animation(minimumInterval: nil, paused: !visible || reduceMotion || scenePhase != .active)) { timeline in
                     artboard(w: w, h: h, s: s, now: timeline.date)
                 }
                 .frame(width: w, height: h)
                 .offset(x: (geo.size.width - w) / 2)
-                title(s: s).padding(.leading, 26).padding(.top, 14)
+                // 126：设计稿里「柯的」不再有顶上的大标题和配色菜单，只剩右上的月牙（RootTabView 画）。
+                // 纸色照样在设置抽屉「素笺」页里选。
             }
+        }
+        // 126：纸和雾一直铺到屏幕底（底栏浮在上面，外面不留一截别的底色）
+        .background {
+            ZStack {
+                palette.paper
+                GeometryReader { bg in
+                    Image("KeCamelliaBackground").resizable().scaledToFill()
+                        .frame(width: bg.size.width, height: bg.size.height).clipped()
+                        .saturation(palette.mistSaturation).opacity(palette.mistOpacity)
+                        .blendMode(.multiply)
+                }
+            }
+            .ignoresSafeArea()
+            .accessibilityHidden(true)
         }
         .ignoresSafeArea(edges: .top)
         .task { await refresh() }
@@ -234,44 +246,6 @@ struct KeSpaceView: View {
                 // 朋友圈跟着手机系统（像微信），别的页面跟 App 的昼夜
                 .preferredColorScheme(entry == .moments ? (UIScreen.main.traitCollection.userInterfaceStyle == .dark ? .dark : .light) : (theme.skin == .night ? .dark : .light))
         }
-    }
-
-    // MARK: 标题
-
-    private func title(s: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("柯的").font(.custom("NotoSerifSC-Regular", size: 30, relativeTo: .title)).tracking(4)
-                .foregroundStyle(Self.ink)
-            Text("蝴蝶停的地方，\n有我留给你的东西")
-                .font(.custom("NotoSerifSC-Regular", size: 11.5, relativeTo: .caption)).tracking(1.5).lineSpacing(5)
-                .foregroundStyle(Self.muted)
-            Menu {
-                ForEach(CamelliaPalette.allCases) { option in
-                    Button {
-                        savedPalette = option.rawValue
-                    } label: {
-                        if palette == option {
-                            Label(option.label, systemImage: "checkmark")
-                        } else {
-                            Text(option.label)
-                        }
-                    }
-                    .accessibilityIdentifier("camellia-palette-\(option.rawValue)")
-                }
-            } label: {
-                Label(palette.label, systemImage: "paintpalette")
-                    .font(.caption)
-                    .foregroundStyle(CamelliaPalette.secondaryInk)
-                    .frame(minWidth: 44, minHeight: 44, alignment: .leading)
-                    .contentShape(Rectangle())
-            }
-            .accessibilityLabel("山茶配色")
-            .accessibilityValue(palette.label)
-            .accessibilityHint("选择浅雾蓝、冷白、暖白或浅米色，仅在本机保存")
-            .accessibilityIdentifier("camellia-palette-picker")
-        }
-        .padding(.top, 50)
-        .accessibilityElement(children: .contain)
     }
 
     // MARK: 画布
@@ -331,7 +305,7 @@ struct KeSpaceView: View {
                         Text(String(ch)).font(.custom("NotoSerifSC-Regular", fixedSize: 13.5 * s))
                     }
                 }
-                .foregroundStyle(Self.ink)
+                .foregroundStyle(ink)
                 .padding(.top, 12 * s)
             }
             .overlay(alignment: .topTrailing) {
@@ -420,13 +394,13 @@ struct KeSpaceView: View {
                         .frame(width: fs.width, height: fs.height)
                         VStack(alignment: .leading, spacing: 8 * s) {
                             Text(headline(event)).font(.custom("NotoSerifSC-Regular", size: 14 * s)).tracking(2)
-                                .foregroundStyle(Self.ink)
-                            Rectangle().fill(Self.ink.opacity(0.5)).frame(height: 0.8)
+                                .foregroundStyle(ink)
+                            Rectangle().fill(ink.opacity(0.5)).frame(height: 0.8)
                             Text(event.excerpt.isEmpty ? event.title : event.excerpt)
                                 .font(.custom("NotoSerifSC-Regular", size: 13.5 * s)).lineLimit(2)
-                                .foregroundStyle(Self.ink)
+                                .foregroundStyle(ink)
                             Text(Self.relative(event.at)).font(.custom("NotoSerifSC-Regular", size: 10.5 * s))
-                                .foregroundStyle(Self.muted)
+                                .foregroundStyle(muted)
                         }
                         .multilineTextAlignment(.leading)
                         .padding(.trailing, 0.06 * w)
