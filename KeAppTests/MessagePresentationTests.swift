@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import KeApp
 
 final class MessagePresentationTests: XCTestCase {
@@ -10,6 +11,21 @@ final class MessagePresentationTests: XCTestCase {
         XCTAssertEqual(palette.ink, Morandi.ink)
         XCTAssertEqual(palette.accent, Morandi.rose)
         XCTAssertEqual(palette.reply, Morandi.reply)
+    }
+
+    // 126：时间线铺满整屏，上下留白 = 让过顶上浮栏、让过输入胶囊（含底栏和 Home 条）
+    func testTimelineInsetsClearFloatingChrome() {
+        let full = CGRect(x: 0, y: 0, width: 390, height: 844)
+        let insets = ChatCollectionTimelineController.chromeInsets(timelineFrame: full, chromeTop: 127, chromeBottom: 690)
+        XCTAssertEqual(insets.top, 127)
+        XCTAssertEqual(insets.bottom, 154)
+        // 键盘起来：时间线只到键盘上沿，输入胶囊贴着键盘，底下只让输入胶囊那一截
+        let shrunk = CGRect(x: 0, y: 0, width: 390, height: 508)
+        let keyboard = ChatCollectionTimelineController.chromeInsets(timelineFrame: shrunk, chromeTop: 127, chromeBottom: 446)
+        XCTAssertEqual(keyboard.bottom, 62)
+        // 浮栏量出来比时间线还靠外（还没量好）时不给负的
+        let none = ChatCollectionTimelineController.chromeInsets(timelineFrame: full, chromeTop: -10, chromeBottom: 900)
+        XCTAssertEqual(none, .zero)
     }
 
     func testPinkPaletteUsesJReplyColorWithoutChangingMyBubbleColor() {

@@ -67,7 +67,6 @@ struct ChatView: View {
     @StateObject private var presence: ComposerPresenceReporter
     /// 126：顶栏、输入栏、底栏浮在聊天记录上；记录一直铺到屏幕底，靠上下留白让第一条、最后一条露出来
     @Environment(\.floatingDockInset) private var dockInset
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     /// 聊天这块（安全区以内）顶边、顶上浮栏下沿、输入胶囊上沿，都是全局坐标
     @State private var contentTopEdge: CGFloat = 0
     @State private var chromeTopEdge: CGFloat = 0
