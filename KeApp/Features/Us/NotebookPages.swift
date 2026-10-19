@@ -3,6 +3,7 @@ import SwiftUI
 // 101：「我们」页锦鲤池里的四本小本子：荷包、食单、药盒、纸条。
 // 柯在聊天里顺手记（服务器 ke_notebook，暗号 spend/meal/rx…），她在这里记、改、删；谁记的都写着「柯记的 / 我记的」，
 // 改了别人记的再加一个「柯改过 / 我改过」，不冒充原作者。颜色、字号照 GPT 的 Design/KeUs/spec/tokens.json。
+// 121：荷包分成「花钱｜攒钱」两页；攒钱的罐子在 NotebookJars.swift。
 
 // MARK: - 数据
 
@@ -106,6 +107,8 @@ enum Ink {
     static let meText = Color(hex: 0x795363), meFill = Color(hex: 0xF5E8ED)
     static let positive = Color(hex: 0x466859), neutral = Color(hex: 0x626C76), negative = Color(hex: 0x905664)
     static let track = Color(hex: 0xE4E9EE), saving = Color(hex: 0xB8788B)
+    /// 121：额度条快见底时的两档：剩 10–30% 暖一点的琥珀，不到 10% 或花超了是软软的红（都不刺眼）
+    static let amber = Color(hex: 0xC99A5E), softRed = Color(hex: 0xC27D80)
     /// 108：她喜欢以前那种瘦瘦的字——思源宋体的极细款。大字用极细，小字用细一档，免得看不清。聊天不跟这套。
     static func song(_ size: CGFloat) -> Font { .custom(size >= 17 ? "NotoSerifSC-ExtraLight" : "NotoSerifSC-Light", size: size) }
     /// 数字、日期也用同一款细字，和中文配套
@@ -130,12 +133,13 @@ struct AuthorTag: View {
     }
 }
 
-private func yuan(_ cents: Int?) -> String {
+/// 121：攒钱那页（NotebookJars.swift）也用这两个，不再是 private
+func yuan(_ cents: Int?) -> String {
     guard let cents else { return "" }
     let f = NumberFormatter(); f.numberStyle = .decimal; f.maximumFractionDigits = cents % 100 == 0 ? 0 : 2
     return "¥" + (f.string(from: NSNumber(value: Double(cents) / 100)) ?? "\(cents / 100)")
 }
-private func shortDay(_ day: String?) -> String {
+func shortDay(_ day: String?) -> String {
     guard let day, day.count >= 10 else { return day ?? "" }
     let parts = day.prefix(10).split(separator: "-")
     guard parts.count == 3, let m = Int(parts[1]), let d = Int(parts[2]) else { return day }
@@ -348,95 +352,221 @@ struct NotebookEditor: View {
 
 // MARK: - 荷包
 
+/// 121：荷包里的两页：花钱｜攒钱
+enum PurseTab: String, CaseIterable, Identifiable {
+    case spend, save
+    var id: String { rawValue }
+    var label: String { self == .spend ? "花钱" : "攒钱" }
+}
+
+/// 121：花钱页顶上那张额度卡要的数：还剩多少、剩百分之几、条子什么颜色、哪天重置
+struct PurseQuota: Equatable {
+    enum Tone: Equatable { case plenty, low, almostOut, over }
+    let cap: Int
+    let spent: Int
+    let left: Int
+    init(cap: Int, spent: Int, left: Int?) {
+        self.cap = cap; self.spent = spent; self.left = left ?? (cap - spent)
+    }
+    var over: Bool { left < 0 }
+    /// 剩下的比例（0…1），花超了算 0
+    var leftRatio: Double { cap > 0 ? min(1, max(0, Double(left) / Double(cap))) : 0 }
+    /// 往下取整，和条子颜色用同一个数，免得字写 30% 颜色却已经变了
+    var leftPercent: Int { Int((leftRatio * 100).rounded(.down)) }
+    /// 剩 30% 以上墨色；10–30% 琥珀；不到 10% 软红；花超了整条软红
+    var tone: Tone {
+        if over { return .over }
+        if leftPercent > 30 { return .plenty }
+        if leftPercent >= 10 { return .low }
+        return .almostOut
+    }
+    var color: Color {
+        switch tone {
+        case .plenty: Ink.accent
+        case .low: Ink.amber
+        case .almostOut, .over: Ink.softRed
+        }
+    }
+    /// "2026-10" → 下个月 1 号：「11月1日」；看不懂就按今天算
+    static func resetDay(month: String, now: Date = Date()) -> String {
+        let parts = month.split(separator: "-")
+        var m: Int
+        if parts.count >= 2, let parsed = Int(parts[1]), (1...12).contains(parsed) { m = parsed }
+        else { m = Calendar.current.component(.month, from: now) }
+        m = m % 12 + 1
+        return "\(m)月1日"
+    }
+}
+
 struct PursePage: View {
     @ObservedObject var store: NotebookStore
     let paper: Color
     var onClose: () -> Void
+    /// 121：攒钱那页的罐子，跟着荷包一起开着，切来切去不重新转圈
+    @StateObject private var jars: JarStore
+    /// 121：记住她上次看的是花钱还是攒钱
+    @AppStorage("notebook.purse.tab") private var tab = PurseTab.spend.rawValue
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var tabSpace
     @State private var draft: NotebookDraft?
     @State private var editingCap = false
     @State private var capText = ""
-    @State private var savingMoney = false
-    @State private var saveText = ""
+    /// 121：点开的那个罐子（盖在荷包上面一层，左边缘右划先收它）
+    @State private var openJar: Int?
+
+    init(store: NotebookStore, paper: Color, onClose: @escaping () -> Void) {
+        _store = ObservedObject(wrappedValue: store)
+        self.paper = paper
+        self.onClose = onClose
+        _jars = StateObject(wrappedValue: JarStore(api: store.api))
+    }
+
+    private var current: PurseTab { PurseTab(rawValue: tab) ?? .spend }
 
     var body: some View {
-        NotebookShell(title: "荷包", script: "Bourse", paper: paper, onClose: onClose) {
-            if let p = store.snapshot?.purse {
-                summary(p).notebookCard()
-                NotebookSection(title: "问过柯的", hint: "几百块以上，先问再买") {
-                    VStack(spacing: 0) {
-                        ForEach(p.asks) { a in
-                            NotebookRow(title: a.title, trailing: yuan(a.amount_cents),
-                                        quote: a.note, author: a.author, editedBy: a.edited_by,
-                                        chip: StatusChip(text: a.status == "nod" ? "柯点头了" : a.status == "wait" ? "先等等" : "没问就买了",
-                                                         tone: a.status == "nod" ? .good : a.status == "wait" ? .wait : .plain)) { draft = askDraft(a) }
-                        }
-                        if p.asks.isEmpty { empty("还没有问过的大件") }
-                    }
-                    AddLine(title: "问柯一件") { draft = askDraft(nil) }
+        ZStack {
+            NotebookShell(title: "荷包", script: "Bourse", paper: paper, onClose: onClose) {
+                tabSwitch
+                if current == .save {
+                    JarListPane(store: jars, paper: paper) { jar in openJar = jar.id }
+                } else {
+                    spendPane
                 }
-                NotebookSection(title: "这个月的流水", hint: "点一条可以改") {
-                    VStack(spacing: 0) {
-                        ForEach(p.spends) { s in
-                            NotebookRow(title: s.title, trailing: yuan(s.amount_cents), detail: shortDay(s.day),
-                                        quote: s.note, author: s.author, editedBy: s.edited_by) { draft = spendDraft(s) }
-                        }
-                        if p.spends.isEmpty { empty("这个月还没有记账") }
-                    }
-                    AddLine(title: "我记一笔") { draft = spendDraft(nil) }
-                }
-            } else { loading }
+            }
+            // 罐子盖着的时候，读屏只读上面那层
+            .accessibilityHidden(openJar != nil)
+            if let id = openJar {
+                // 和日记点开一篇一样：直接盖上来，不放翻页动画
+                JarDetailPage(store: jars, jarID: id, paper: paper) { openJar = nil }
+                    .swipeBackLayer { openJar = nil }
+                    .zIndex(1)
+            }
         }
+        // 删掉以后的「撤销」浮在最上面，罐子里外都看得到
+        .overlay(alignment: .bottom) { JarUndoBar(store: jars) }
         .sheet(item: $draft) { d in editor(d) }
         .alert("每月上限", isPresented: $editingCap) {
             TextField("比如 3000", text: $capText).keyboardType(.decimalPad)
             Button("取消", role: .cancel) {}
             Button("保存") { if let v = Double(capText) { Task { await store.run { try await store.api.setNotebookCap(yuan: v) } } } }
         } message: { Text("这个月最多花多少，柯也会照这个数提醒你。") }
-        .alert("存进去一笔", isPresented: $savingMoney) {
-            TextField("金额", text: $saveText).keyboardType(.decimalPad)
-            Button("取消", role: .cancel) {}
-            Button("存") { if let v = Double(saveText), v > 0 { Task { await store.run { try await store.api.saveNotebookMoney(yuan: v, note: "") } } } }
-        }
+        .alert("没有成功", isPresented: Binding(get: { jars.notice != nil }, set: { if !$0 { jars.notice = nil } })) {
+            Button("知道了", role: .cancel) { jars.notice = nil }
+        } message: { Text(jars.notice ?? "") }
     }
 
-    private func summary(_ p: NotebookSnapshot.Purse) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(p.cap_cents > 0 ? ((p.left_cents ?? 0) >= 0 ? "这个月还能花" : "这个月超出了") : "这个月已经花了")
-                .font(.system(size: 12)).tracking(2).foregroundStyle(Ink.secondary)
-            Text(p.cap_cents > 0 ? yuan(abs(p.left_cents ?? 0)) : yuan(p.spent_cents))
-                .font(Ink.latin(40)).monospacedDigit()
-                .foregroundStyle((p.left_cents ?? 0) < 0 ? Ink.negative : Ink.primary)
-            if p.cap_cents > 0 {
-                bar(Double(max(0, p.left_cents ?? 0)) / Double(p.cap_cents), color: Ink.accent)
+    /// 121：标题下面一行「花钱｜攒钱」：选中的字深一点、底下一道细墨线，跟着滑过去
+    private var tabSwitch: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(PurseTab.allCases.enumerated()), id: \.offset) { index, option in
+                if index > 0 {
+                    Text("｜").font(Ink.song(15)).foregroundStyle(Ink.line).accessibilityHidden(true)
+                }
+                let on = current == option
+                Button {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.22)) { tab = option.rawValue }
+                } label: {
+                    Text(option.label).font(Ink.song(17)).tracking(3)
+                        .foregroundStyle(on ? Ink.primary : Ink.secondary)
+                        .padding(.horizontal, 14)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .overlay(alignment: .bottom) {
+                            if on {
+                                Capsule().fill(Ink.accent).frame(height: 1.2)
+                                    .padding(.horizontal, 14).padding(.bottom, 5)
+                                    .matchedGeometryEffect(id: "purse-tab-line", in: tabSpace)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(on ? .isSelected : [])
+                .accessibilityIdentifier("purse-tab-\(option.rawValue)")
             }
-            Button { capText = p.cap_cents > 0 ? String(p.cap_cents / 100) : ""; editingCap = true } label: {
-                HStack {
-                    Text("已花 " + yuan(p.spent_cents))
-                    Spacer()
-                    Text(p.cap_cents > 0 ? "每月上限 " + yuan(p.cap_cents) + " ›" : "定个每月上限 ›")
-                }.font(.system(size: 12.5)).foregroundStyle(Ink.secondary)
-            }.buttonStyle(.plain)
-            if let goal = p.savings.first {
-                Button { saveText = ""; savingMoney = true } label: {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text("一起存 · \(goal.title)")
-                            Spacer()
-                            Text("\(yuan(goal.saved_cents)) / \(yuan(goal.target_cents)) ›").monospacedDigit()
-                        }.font(.system(size: 12.5)).foregroundStyle(Ink.secondary)
-                        bar(goal.target_cents > 0 ? Double(goal.saved_cents) / Double(goal.target_cents) : 0, color: Ink.saving)
+            Spacer(minLength: 0)
+        }
+        // 第一个字和「荷包」两个字左边对齐；离标题近一点
+        .padding(.leading, -14)
+        .padding(.top, -14)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("花钱或攒钱")
+    }
+
+    @ViewBuilder private var spendPane: some View {
+        if let p = store.snapshot?.purse {
+            summary(p).notebookCard()
+            NotebookSection(title: "问过柯的", hint: "几百块以上，先问再买") {
+                VStack(spacing: 0) {
+                    ForEach(p.asks) { a in
+                        NotebookRow(title: a.title, trailing: yuan(a.amount_cents),
+                                    quote: a.note, author: a.author, editedBy: a.edited_by,
+                                    chip: StatusChip(text: a.status == "nod" ? "柯点头了" : a.status == "wait" ? "先等等" : "没问就买了",
+                                                     tone: a.status == "nod" ? .good : a.status == "wait" ? .wait : .plain)) { draft = askDraft(a) }
                     }
-                }.buttonStyle(.plain).padding(.top, 8)
+                    if p.asks.isEmpty { empty("还没有问过的大件") }
+                }
+                AddLine(title: "问柯一件") { draft = askDraft(nil) }
+            }
+            NotebookSection(title: "这个月的流水", hint: "点一条可以改") {
+                VStack(spacing: 0) {
+                    ForEach(p.spends) { s in
+                        NotebookRow(title: s.title, trailing: yuan(s.amount_cents), detail: shortDay(s.day),
+                                    quote: s.note, author: s.author, editedBy: s.edited_by) { draft = spendDraft(s) }
+                    }
+                    if p.spends.isEmpty { empty("这个月还没有记过一笔") }
+                }
+                AddLine(title: "我记一笔") { draft = spendDraft(nil) }
+            }
+        } else { loading }
+    }
+
+    /// 121：照她认可的那张图：这个月还能花 → 大数字 → 一根条 → 已花 / 每月上限 → 剩几成、哪天重置。
+    /// 这张总览卡上不放「我记的 / 柯记的」（那是每一笔自己的事）；「一起存」挪去攒钱页了。
+    @ViewBuilder private func summary(_ p: NotebookSnapshot.Purse) -> some View {
+        if p.cap_cents > 0 {
+            let q = PurseQuota(cap: p.cap_cents, spent: p.spent_cents, left: p.left_cents)
+            let reset = PurseQuota.resetDay(month: p.month)
+            VStack(alignment: .leading, spacing: 10) {
+                Text(q.over ? "这个月多花了一点" : "这个月还能花")
+                    .font(Ink.song(14)).tracking(1).foregroundStyle(Ink.secondary)
+                if q.over {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("超出").font(Ink.song(20))
+                        Text(yuan(-q.left)).font(Ink.latin(40)).monospacedDigit()
+                    }
+                    // 字用深一点的玫瑰色（细字体上软红太浅看不清），条子才用软红
+                    .foregroundStyle(Ink.negative)
+                } else {
+                    Text(yuan(q.left)).font(Ink.latin(40)).monospacedDigit()
+                }
+                NotebookBar(value: q.over ? 1 : q.leftRatio, color: q.color)
+                    .padding(.top, 4)
+                Button { capText = String(p.cap_cents / 100); editingCap = true } label: {
+                    HStack {
+                        Text("已花 " + yuan(p.spent_cents))
+                        Spacer(minLength: 8)
+                        Text("每月上限 " + yuan(p.cap_cents))
+                    }
+                    .font(Ink.song(13)).monospacedDigit().foregroundStyle(Ink.secondary)
+                    .frame(minHeight: 44).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("点一下改每月上限")
+                .accessibilityIdentifier("purse-cap")
+                Text(q.over ? "\(reset)重置" : "剩 \(q.leftPercent)% · \(reset)重置")
+                    .font(Ink.song(12)).monospacedDigit().foregroundStyle(Ink.secondary)
+                    .padding(.top, -8)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("还没设这个月的额度").font(Ink.song(17))
+                Text("这个月已花 " + yuan(p.spent_cents)).font(Ink.song(13)).monospacedDigit().foregroundStyle(Ink.secondary)
+                Button("设一个") { capText = ""; editingCap = true }
+                    .buttonStyle(InkPillStyle(filled: true))
+                    .frame(maxWidth: 160)
+                    .accessibilityIdentifier("purse-cap-set")
             }
         }
-    }
-    private func bar(_ value: Double, color: Color) -> some View {
-        GeometryReader { g in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Ink.track)
-                Capsule().fill(color).frame(width: g.size.width * min(1, max(0, value)))
-            }
-        }.frame(height: 6)
     }
     private func spendDraft(_ i: NotebookItem?) -> NotebookDraft {
         NotebookDraft(kind: "spend", item: i, heading: i == nil ? "记一笔" : "改一笔",

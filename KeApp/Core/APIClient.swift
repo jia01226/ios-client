@@ -1076,8 +1076,56 @@ actor APIClient {
         try await writeResource("/api/notebook/settings", body: ["cap": yuan])
     }
 
-    func saveNotebookMoney(yuan: Double, note: String) async throws {
-        try await writeResource("/api/notebook/save", body: ["amount": yuan, "note": note])
+    // MARK: 121 攒钱罐（荷包里的「攒钱」页）。回来的金额都是分；发出去的 amount / target 是元，可以带小数。
+    // 不对的时候服务器回 400/404 {"error": "中文原因"}，perform 里会变成 APIError.badStatus，原话照给她看。
+    // 原来荷包里那条「一起存」（/api/notebook/save）挪到这里了，旧的那个入口不再用。
+
+    func fetchJars() async throws -> JarOverview { try await readResource("/api/notebook/jars") }
+
+    func fetchJar(id: Int) async throws -> JarDetail { try await readResource("/api/notebook/jars/\(id)") }
+
+    /// deadline 是 "YYYY-MM-DD"，不定日期传 ""
+    func createJar(title: String, target: Double, deadline: String) async throws -> JarReply {
+        try await postNotebook("/api/notebook/jars", body: ["title": title, "target": Self.yuanValue(target), "deadline": deadline])
+    }
+
+    /// 改名字 / 目标（元）/ 日期（"" 是不定日期）
+    func updateJar(id: Int, title: String, target: Double, deadline: String) async throws -> JarReply {
+        try await postNotebook("/api/notebook/jars/\(id)", body: ["title": title, "target": Self.yuanValue(target), "deadline": deadline])
+    }
+
+    /// undo: true 是把刚删掉的罐子放回来
+    func deleteJar(id: Int, undo: Bool = false) async throws -> JarReply {
+        let body: [String: Any] = undo ? ["undo": true] : [:]
+        return try await postNotebook("/api/notebook/jars/\(id)/delete", body: body)
+    }
+
+    /// 存一笔 / 取出来：amount 总是正数，take 决定方向；operation_id 让重试不会存成两笔
+    func addJarEntry(jarID: Int, amount: Double, take: Bool, note: String, operationID: String) async throws -> JarReply {
+        try await postNotebook("/api/notebook/jars/\(jarID)/entries",
+                               body: ["amount": Self.yuanValue(amount), "take": take, "note": note, "operation_id": operationID])
+    }
+
+    /// 改一笔：amount（元，正数）/ take（是不是取出来）/ note
+    func updateJarEntry(id: Int, amount: Double, take: Bool, note: String) async throws -> JarReply {
+        try await postNotebook("/api/notebook/jar-entries/\(id)", body: ["amount": Self.yuanValue(amount), "take": take, "note": note])
+    }
+
+    func deleteJarEntry(id: Int, undo: Bool = false) async throws -> JarReply {
+        let body: [String: Any] = undo ? ["undo": true] : [:]
+        return try await postNotebook("/api/notebook/jar-entries/\(id)/delete", body: body)
+    }
+
+    /// 上个月省下的钱：放进哪个罐子（jar_id 不传就是服务器默认的随手攒），或者这次不放
+    func answerJarMonthTip(accept: Bool, jarID: Int?) async throws -> JarReply {
+        var body: [String: Any] = ["accept": accept]
+        if let jarID { body["jar_id"] = jarID }
+        return try await postNotebook("/api/notebook/jars/month-tip", body: body)
+    }
+
+    /// 元按两位小数原样发出去：12.3 就是 12.3，不会被写成 12.300000000000001
+    static func yuanValue(_ yuan: Double) -> NSDecimalNumber {
+        NSDecimalNumber(string: String(format: "%.2f", yuan))
     }
 
     // MARK: 柯的长窗（来信设置、洗澡、换窗、钉住；2026-10-16）

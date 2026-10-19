@@ -424,20 +424,21 @@ struct ChatView: View {
             .accessibilityAction(named: "打开设置") { openKeDrawer() }
 
             // 112：顶上只留标题和电话。原来「…」里的功能都在抽屉的话笺页「更多」里。
+            // 121 她：电话放左边、竖着的三个点放右边——抽屉本来就从右边出来，点的和划的在同一边。
             HStack {
-                // 116 她：「放在左上吧 竖着3个点」。点一下打开设置；从右边往左划也照样能开
+                Button { showingCallPlaceholder = true } label: {
+                    Image(systemName: "phone").font(.title3)
+                        .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
+                        .background(FloatingGlassSurface(cornerRadius: 22, lockscreen: theme.lockscreenGlass))
+                }.buttonStyle(.plain).accessibilityLabel("语音通话")
+                Spacer()
+                // 116 竖着 3 个点（原来在左上）。点一下打开设置；从右边缘往左划也照样能开
                 Button(action: openKeDrawer) {
                     Image(systemName: "ellipsis").font(.title3).rotationEffect(.degrees(90))
                         .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
                         .background(FloatingGlassSurface(cornerRadius: 22, lockscreen: theme.lockscreenGlass))
                         .contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityLabel("打开设置").accessibilityIdentifier("ke-drawer-open")
-                Spacer()
-                Button { showingCallPlaceholder = true } label: {
-                    Image(systemName: "phone").font(.title3)
-                        .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
-                        .background(FloatingGlassSurface(cornerRadius: 22, lockscreen: theme.lockscreenGlass))
-                }.buttonStyle(.plain).accessibilityLabel("语音通话")
             }
         }
         .padding(.horizontal, theme.metric.pagePadding)
