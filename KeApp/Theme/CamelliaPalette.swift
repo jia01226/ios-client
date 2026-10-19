@@ -23,7 +23,8 @@ enum CamelliaPalette: String, CaseIterable, Identifiable {
         switch self {
         case .mist: (243 / 255, 248 / 255, 252 / 255)
         case .white: (250 / 255, 252 / 255, 253 / 255)
-        case .ivory: (252 / 255, 250 / 255, 245 / 255)
+        // 121 她：「就 app 那个图标的背景色？暖色的白色」——取图标山茶底下那层米白
+        case .ivory: (253 / 255, 252 / 255, 245 / 255)
         case .cream: (244 / 255, 239 / 255, 229 / 255)
         }
     }
@@ -40,6 +41,17 @@ enum CamelliaPalette: String, CaseIterable, Identifiable {
         }
     }
     var mistSaturation: Double { self == .mist ? 0.3 : 0 }
+    /// 121：水纹去了色是一层灰，盖在暖白上就显冷（她说「我们」页冷了一点）。
+    /// 暖的两款给水纹染一点米色，看起来是纸上的水痕，不是灰雾。
+    var mistTint: Color {
+        switch self {
+        case .ivory: Color(red: 1, green: 0.965, blue: 0.9)
+        case .cream: Color(red: 1, green: 0.95, blue: 0.88)
+        case .mist, .white: .white
+        }
+    }
+    /// 「我们」页的水纹在暖的两款上再淡一点，只动这一页，「柯的」那枝山茶不变
+    var pondWash: Double { self == .ivory || self == .cream ? 0.7 : 0.9 }
     static let ink = Color(red: 0.24, green: 0.33, blue: 0.47)
     static let secondaryInk = Color(red: 0.36, green: 0.42, blue: 0.49)
 }

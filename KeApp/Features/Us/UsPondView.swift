@@ -53,7 +53,7 @@ struct UsPondView: View {
         }
         .background(ZStack {
             palette.paper
-            Image("KeUsWater").resizable().scaledToFill().saturation(palette.mistSaturation).opacity(palette.mistOpacity * 0.9)
+            Image("KeUsWater").resizable().scaledToFill().saturation(palette.mistSaturation).colorMultiply(palette.mistTint).opacity(palette.mistOpacity * palette.pondWash)
         }.ignoresSafeArea())
         .foregroundStyle(Ink.primary)
         .task { await load() }
