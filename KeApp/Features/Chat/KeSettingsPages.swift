@@ -39,7 +39,15 @@ struct KeWordsPage: View {
 
             more
         }
-        .task { await vm.loadModels() }
+        .task {
+            await vm.loadModels()
+            // 123 她：额度要「实时」，跟 Claude 自己的用量页一样。这页开着就每分钟刷一次，关了就停。
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                guard !Task.isCancelled else { return }
+                await vm.loadModelQuotas(force: true)
+            }
+        }
     }
 
     // 拖滑杆时这两个气泡跟着变，和聊天里画法一致。
@@ -174,7 +182,7 @@ struct KeWordsPage: View {
     private func claudeCaption(_ id: String) -> String {
         let line = "柯的长窗：一直开着、记得刚才；这个号额度用完会自动换另一个，会推送告诉你"
         guard let quota = quotaSummary(id) else { return line }
-        return line + "\n额度：" + quota
+        return line + "\n" + quota
     }
 
     private func quotaSummary(_ id: String) -> String? {
@@ -201,6 +209,21 @@ struct KeWordsPage: View {
         case "unknown":
             return "暂时没读到"
         default:
+            // 123：照 Claude 自己的用量页，5 小时和这一周分开写：用了多少、几点恢复
+            let lines = quota.windows.compactMap { w -> String? in
+                guard let used = w.usedPercent else { return nil }
+                let name = w.kind == "session" ? "这 5 小时" : w.kind == "week" ? "这一周" : (w.windowMinutes.map { $0 >= 1440 ? "这一周" : "这 5 小时" } ?? "")
+                let back = w.resetAt.flatMap { epoch -> String? in
+                    guard epoch > 0 else { return nil }
+                    let date = Date(timeIntervalSince1970: epoch)
+                    let f = DateFormatter()
+                    f.locale = Locale(identifier: "zh_CN")
+                    f.dateFormat = Calendar.current.isDateInToday(date) ? "HH:mm" : "M月d日 HH:mm"
+                    return f.string(from: date) + " 恢复"
+                }
+                return "\(name) 已用 \(Int(min(100, max(0, used)).rounded()))%" + (back.map { " · " + $0 } ?? "")
+            }
+            if !lines.isEmpty { return lines.joined(separator: "\n") }
             if let remaining = quota.remainingPercent {
                 return "剩余 \(Int(min(100, max(0, remaining)).rounded()))%" + (reset.map { " · " + $0 } ?? "")
             }

@@ -10,7 +10,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    CURRENT_PROJECT_VERSION: "122"
+    CURRENT_PROJECT_VERSION: "123"
     MARKETING_VERSION: "0.1.0"
 
 packages:
@@ -34,6 +34,9 @@ targets:
       path: KeApp/Info.plist
       properties:
         CFBundleDisplayName: 柯
+        CFBundleDevelopmentRegion: zh-Hans
+        CFBundleLocalizations:
+          - zh-Hans
         APIBaseURL: https://jiagude.love
         CompactAPIBaseURL: https://jiagude.love/ke-test
         CFBundleShortVersionString: "$(MARKETING_VERSION)"

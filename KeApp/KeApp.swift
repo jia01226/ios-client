@@ -12,6 +12,8 @@ struct KeApp: App {
     var body: some Scene {
         WindowGroup {
             appRoot
+                // 123 她：日期选择是英文的。整个 App 的日期、系统按钮都按中文来
+                .environment(\.locale, Locale(identifier: "zh_CN"))
                 .environmentObject(theme)
                 .tint(theme.effectiveAccent)
         }
