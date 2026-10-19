@@ -879,6 +879,25 @@ actor APIClient {
         return try decoder.decode([RemoteDiary].self, from: data)
     }
 
+    // MARK: 123 夜里（日记页的第二栏；只在那里出现，聊天和「柯的」卡片都不拉）
+
+    /// GET /api/night?limit=&before_id= → {"entries": [...]}，新的在上面；before_id 往前翻
+    func fetchNight(limit: Int = 100, beforeID: Int? = nil) async throws -> [RemoteNight] {
+        var items = [URLQueryItem(name: "limit", value: String(limit))]
+        if let beforeID { items.append(URLQueryItem(name: "before_id", value: String(beforeID))) }
+        let (data, _) = try await perform(try makeRequest(path: "/api/night", queryItems: items))
+        do { return try decoder.decode(NightPage.self, from: data).entries }
+        catch { throw APIError.decoding(error) }
+    }
+
+    /// POST /api/night/<id>/comment：评价和那句话每次一起发（"" 就是清掉），回改好的那一篇；找不到是 404
+    func commentNight(id: Int, rating: NightRating?, comment: String) async throws -> RemoteNight {
+        let reply: NightCommentReply = try await postNotebook("/api/night/\(id)/comment",
+                                                              body: NightComment.body(rating: rating, comment: comment))
+        guard let entry = reply.entry else { throw APIError.serverMessage(reply.error ?? "") }
+        return entry
+    }
+
     func fetchArchivedMessages(query: String = "", beforeID: Int? = nil, limit: Int = 50) async throws -> [ArchivedChatMessage] {
         var queryItems = [
             URLQueryItem(name: "query", value: query),
@@ -1398,3 +1417,4 @@ private extension String {
 }
 
 extension APIClient: MemoryReviewService {}
+extension APIClient: NightDiaryService {}

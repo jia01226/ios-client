@@ -352,6 +352,51 @@ struct NotebookEditor: View {
 
 // MARK: - 荷包
 
+/// 121：标题下面一行「花钱｜攒钱」：选中的字深一点、底下一道细墨线，跟着滑过去
+/// 123：从荷包里拿出来，日记页的「日记｜夜里」用同一个；左对齐还是居中由外面摆
+struct InkTabSwitch<Option: Hashable>: View {
+    let options: [Option]
+    @Binding var selection: Option
+    let label: (Option) -> String
+    var identifier: (Option) -> String = { _ in "" }
+    /// 读屏念的这一组是什么（「花钱或攒钱」）
+    let accessibilityName: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var tabSpace
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(options.enumerated()), id: \.offset) { index, option in
+                if index > 0 {
+                    Text("｜").font(Ink.song(15)).foregroundStyle(Ink.line).accessibilityHidden(true)
+                }
+                let on = selection == option
+                Button {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.22)) { selection = option }
+                } label: {
+                    Text(label(option)).font(Ink.song(17)).tracking(3)
+                        .foregroundStyle(on ? Ink.primary : Ink.secondary)
+                        .padding(.horizontal, 14)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .overlay(alignment: .bottom) {
+                            if on {
+                                Capsule().fill(Ink.accent).frame(height: 1.2)
+                                    .padding(.horizontal, 14).padding(.bottom, 5)
+                                    .matchedGeometryEffect(id: "ink-tab-line", in: tabSpace)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(on ? .isSelected : [])
+                .accessibilityIdentifier(identifier(option))
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(accessibilityName)
+    }
+}
+
 /// 121：荷包里的两页：花钱｜攒钱
 enum PurseTab: String, CaseIterable, Identifiable {
     case spend, save
@@ -406,8 +451,6 @@ struct PursePage: View {
     @StateObject private var jars: JarStore
     /// 121：记住她上次看的是花钱还是攒钱
     @AppStorage("notebook.purse.tab") private var tab = PurseTab.spend.rawValue
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Namespace private var tabSpace
     @State private var draft: NotebookDraft?
     @State private var editingCap = false
     @State private var capText = ""
@@ -456,40 +499,16 @@ struct PursePage: View {
     }
 
     /// 121：标题下面一行「花钱｜攒钱」：选中的字深一点、底下一道细墨线，跟着滑过去
+    /// 123：样子挪进 InkTabSwitch，日记页的「日记｜夜里」也用它
     private var tabSwitch: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(PurseTab.allCases.enumerated()), id: \.offset) { index, option in
-                if index > 0 {
-                    Text("｜").font(Ink.song(15)).foregroundStyle(Ink.line).accessibilityHidden(true)
-                }
-                let on = current == option
-                Button {
-                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.22)) { tab = option.rawValue }
-                } label: {
-                    Text(option.label).font(Ink.song(17)).tracking(3)
-                        .foregroundStyle(on ? Ink.primary : Ink.secondary)
-                        .padding(.horizontal, 14)
-                        .frame(minWidth: 44, minHeight: 44)
-                        .overlay(alignment: .bottom) {
-                            if on {
-                                Capsule().fill(Ink.accent).frame(height: 1.2)
-                                    .padding(.horizontal, 14).padding(.bottom, 5)
-                                    .matchedGeometryEffect(id: "purse-tab-line", in: tabSpace)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(on ? .isSelected : [])
-                .accessibilityIdentifier("purse-tab-\(option.rawValue)")
-            }
-            Spacer(minLength: 0)
-        }
-        // 第一个字和「荷包」两个字左边对齐；离标题近一点
-        .padding(.leading, -14)
-        .padding(.top, -14)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("花钱或攒钱")
+        InkTabSwitch(options: PurseTab.allCases,
+                     selection: Binding(get: { current }, set: { tab = $0.rawValue }),
+                     label: \.label, identifier: { "purse-tab-\($0.rawValue)" },
+                     accessibilityName: "花钱或攒钱")
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // 第一个字和「荷包」两个字左边对齐；离标题近一点
+            .padding(.leading, -14)
+            .padding(.top, -14)
     }
 
     @ViewBuilder private var spendPane: some View {

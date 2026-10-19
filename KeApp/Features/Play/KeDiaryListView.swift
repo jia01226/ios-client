@@ -3,6 +3,18 @@ import SwiftUI
 // 105：日记照 GPT 的「日记目录 / 点开一篇」做。只放柯写的（她一般不写）。
 // 108：她的意见——锁着的和没锁的一眼分清（锁过后来打开的也标出来）；点开不要翻页动画；
 // 月份标题跟着往下翻（翻到九月就显示九月）；每一篇一样高，同一天的几篇是一整块，篇与篇之间一条短线，两天之间一条通栏线。
+// 123：标题下面加「日记｜夜里」，样子和荷包的「花钱｜攒钱」一样（InkTabSwitch）；「夜里」那一栏在 KeNightDiary.swift。
+
+/// 123：日记页顶上的两栏。记住她上次看的是哪一栏；从「爸爸开锁了」那张卡点进来一定落在日记。
+enum DiaryTab: String, CaseIterable {
+    case diary, night
+    static let storageKey = "diary.page.tab"
+    var label: String { self == .diary ? "日记" : "夜里" }
+    /// 带着要翻开的那一篇进来（pinnedToDiary）就是日记；不然照她上次选的，认不出来的当日记
+    static func current(saved: String, pinnedToDiary: Bool) -> DiaryTab {
+        pinnedToDiary ? .diary : (DiaryTab(rawValue: saved) ?? .diary)
+    }
+}
 
 struct KeDiaryListView: View {
     let line: ChatLine
@@ -22,7 +34,14 @@ struct KeDiaryListView: View {
     @State private var reading: RemoteDiary?
     @State private var pickingDate = false
     @State private var jumpDate = Date()
+    /// 123：她上次看的是「日记」还是「夜里」
+    @AppStorage(DiaryTab.storageKey) private var savedTab = DiaryTab.diary.rawValue
+    /// 123：带着 openingID 进来先钉在日记；她自己点了切换才放开（钉着的时候不改她记住的那一栏）
+    @State private var leftPin = false
+    /// 123：「夜里」那一栏的数据跟着日记页一起开着，切来切去不重新转圈
+    @StateObject private var night = NightStore()
     private var paper: Color { CamelliaPalette.resolve(savedPalette).paper }
+    private var tab: DiaryTab { DiaryTab.current(saved: savedTab, pinnedToDiary: openingID != nil && !leftPin) }
     private static let rowHeight: CGFloat = 66
 
     private var lockedCount: Int { entries.filter(Self.isLocked).count }
@@ -54,28 +73,33 @@ struct KeDiaryListView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                         header
-                        controls(proxy)
-                        if loading && entries.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(40) }
-                        if failed { Button("日记暂时没接上，点这里再试一次") { Task { await load() } }.font(Ink.song(14)).padding(.top, 20) }
-                        if !loading && !failed && shown.isEmpty {
-                            Text(onlyLocked ? "没有锁着的了。" : (query.isEmpty ? "柯还没有写日记。" : "没搜到「\(query)」"))
-                                .font(Ink.song(14)).foregroundStyle(Ink.secondary).frame(maxWidth: .infinity).padding(.vertical, 30)
-                        }
-                        ForEach(months, id: \.0) { month, days in
-                            Section {
-                                ForEach(days, id: \.0) { day, list in dayBlock(day, list).id(day) }
-                            } header: {
-                                // 往下翻的时候这一行贴在顶上：翻到九月就显示九月
-                                Text(Self.monthTitle(month)).font(Ink.latin(17)).tracking(1)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.vertical, 10)
-                                    .background(paper.opacity(0.97))
-                                    .id(month)
+                        tabSwitch
+                        if tab == .night {
+                            NightPane(store: night)
+                        } else {
+                            controls(proxy)
+                            if loading && entries.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(40) }
+                            if failed { Button("日记暂时没接上，点这里再试一次") { Task { await load() } }.font(Ink.song(14)).padding(.top, 20) }
+                            if !loading && !failed && shown.isEmpty {
+                                Text(onlyLocked ? "没有锁着的了。" : (query.isEmpty ? "柯还没有写日记。" : "没搜到「\(query)」"))
+                                    .font(Ink.song(14)).foregroundStyle(Ink.secondary).frame(maxWidth: .infinity).padding(.vertical, 30)
                             }
-                        }
-                        if !entries.isEmpty {
-                            Text("— 继续往下，翻看更早的日子 —").font(Ink.song(11.5)).foregroundStyle(Ink.secondary)
-                                .frame(maxWidth: .infinity).padding(.vertical, 26)
+                            ForEach(months, id: \.0) { month, days in
+                                Section {
+                                    ForEach(days, id: \.0) { day, list in dayBlock(day, list).id(day) }
+                                } header: {
+                                    // 往下翻的时候这一行贴在顶上：翻到九月就显示九月
+                                    Text(Self.monthTitle(month)).font(Ink.latin(17)).tracking(1)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.vertical, 10)
+                                        .background(paper.opacity(0.97))
+                                        .id(month)
+                                }
+                            }
+                            if !entries.isEmpty {
+                                Text("— 继续往下，翻看更早的日子 —").font(Ink.song(11.5)).foregroundStyle(Ink.secondary)
+                                    .frame(maxWidth: .infinity).padding(.vertical, 26)
+                            }
                         }
                     }
                     .padding(.horizontal, 26)
@@ -133,6 +157,23 @@ struct KeDiaryListView: View {
         }
         .foregroundStyle(Ink.primary)
         .task { await load() }
+        // 123：切到「夜里」（或者一进来就是夜里）悄悄拉一遍。不用 .task(id:)：切走时会把拉到一半的取消掉
+        .onAppear { if tab == .night { refreshNight() } }
+        .onChange(of: tab) { _, now in if now == .night { refreshNight() } }
+    }
+
+    /// 123：标题下面一行「日记｜夜里」，居中
+    private var tabSwitch: some View {
+        InkTabSwitch(options: DiaryTab.allCases,
+                     selection: Binding(get: { tab }, set: { leftPin = true; savedTab = $0.rawValue }),
+                     label: \.label, identifier: { "diary-tab-\($0.rawValue)" },
+                     accessibilityName: "日记或夜里")
+            .frame(maxWidth: .infinity)
+            .padding(.top, 4)
+    }
+
+    private func refreshNight() {
+        Task { await night.start(APIClient(baseURL: line.apiBaseURL), key: line.apiBaseURL.absoluteString) }
     }
 
     private var header: some View {
