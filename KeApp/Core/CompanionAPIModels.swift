@@ -30,7 +30,7 @@ struct RemoteShift: Decodable, Identifiable, Sendable {
     var id: String { date }
 }
 
-struct RemotePeriod: Decodable, Identifiable, Sendable {
+struct RemotePeriod: Codable, Identifiable, Sendable {  // 126：Codable——本机留一份上次拉到的，重载时月历不闪
     let id: Int
     let start_date: String
     let end_date: String?

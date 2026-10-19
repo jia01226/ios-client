@@ -273,6 +273,11 @@ struct UsPondView: View {
                 PeriodCalendarControls(store: periods)
             }
             .padding(.horizontal, 24).padding(.top, 18)
+            // 126：上次哪天来、哪天走；今天点了「走了」就写「今天走了 · 正在告诉柯 / 已告诉柯」
+            Text(periods.summary).font(Ink.song(12)).foregroundStyle(Ink.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 24).padding(.top, 2)
+                .accessibilityIdentifier("period-summary")
             ScheduleEditorSheet(model: vm, date: date, currentShift: vm.shift(on: date), currentNote: vm.shiftNote(on: date)) { shift, note in
                 vm.setShift(shift, note: note, on: date); editDay = nil
             }

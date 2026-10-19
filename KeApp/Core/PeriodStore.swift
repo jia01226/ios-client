@@ -13,7 +13,11 @@ extension APIClient: PeriodAPI {}
 /// server accepts the explicit end operation; never delete a start to mark an end.
 @MainActor
 final class PeriodStore: ObservableObject {
-    @Published private(set) var records: [RemotePeriod] = []
+    /// 126：月历上的粉色经期就看这个。重新拉的时候不先清空——拉成功才换；
+    /// 每次换完在本机留一份，「我们」页重新出现（换页回来、回前台）时先拿上次的画上，不会白一下再变粉。
+    @Published private(set) var records: [RemotePeriod] = [] {
+        didSet { persistRecords() }
+    }
     @Published private(set) var loading = false
     @Published private(set) var saving = false
     @Published private(set) var loaded = false
@@ -24,13 +28,16 @@ final class PeriodStore: ObservableObject {
     private let defaults: UserDefaults
     private let pendingKey: String
     private let startedKey: String
+    private let recordsKey: String
     private var revision = 0
 
     init(api: any PeriodAPI, defaults: UserDefaults = .standard, scope: String = "test1") {
         self.api = api; self.defaults = defaults
         pendingKey = "period.pending-ends." + scope
         startedKey = "period.started-day." + scope
+        recordsKey = "period.records." + scope
         pendingEnds = defaults.data(forKey: pendingKey).flatMap { try? JSONDecoder().decode([Int: String].self, from: $0) } ?? [:]
+        records = defaults.data(forKey: recordsKey).flatMap { try? JSONDecoder().decode([RemotePeriod].self, from: $0) } ?? []
     }
     var today: String { HomeReminderCoordinator.dayKey(.now) }
     var latest: RemotePeriod? { records.sorted { ($0.start_date, $0.id) > ($1.start_date, $1.id) }.first }
@@ -60,8 +67,11 @@ final class PeriodStore: ObservableObject {
     var summary: String {
         guard loaded else { return error == nil ? "正在看经期记录…" : "经期记录暂未加载" }
         guard let latest else { return "来的那天，记一下就好。" }
-        if let end = pendingEnds[latest.id] { return "\(end) 走了 · 已记本机，待同步给柯" }
-        if let end = latest.end_date { return "上次 \(latest.start_date) — \(end)" }
+        // 126：今天点了「走了」——还在往服务器送就说「正在告诉柯」，服务器记上了就说「已告诉柯」
+        if let end = pendingEnds[latest.id] {
+            return end == today ? "今天走了 · 正在告诉柯" : "\(end) 走了 · 已记本机，待同步给柯"
+        }
+        if let end = latest.end_date { return end == today ? "今天走了 · 已告诉柯" : "上次 \(latest.start_date) — \(end)" }
         if ongoing == nil { return "上次 \(latest.start_date) 来的，没记哪天走" }
         return "\(latest.start_date) 来了"
     }
@@ -126,4 +136,5 @@ final class PeriodStore: ObservableObject {
         } catch { status = "这条记录还没删掉，请重试。" }
     }
     private func persistEnds() { defaults.set(try? JSONEncoder().encode(pendingEnds), forKey: pendingKey) }
+    private func persistRecords() { defaults.set(try? JSONEncoder().encode(records), forKey: recordsKey) }
 }
