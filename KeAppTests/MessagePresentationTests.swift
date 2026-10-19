@@ -3,8 +3,9 @@ import XCTest
 
 final class MessagePresentationTests: XCTestCase {
     func testDefaultChatAndAllPagesShareOneMorandiPalette() throws {
-        let palette = try XCTUnwrap(ChatPalette.all.first)
-        XCTAssertEqual(palette.id, "moonlight-pink")
+        // 126：默认换成「粉白」排第一；月光浅粉还在，取值不变
+        XCTAssertEqual(ChatPalette.all.first?.id, ChatPalette.blushID)
+        let palette = try XCTUnwrap(ChatPalette.all.first { $0.id == "moonlight-pink" })
         XCTAssertEqual(palette.base, Morandi.background)
         XCTAssertEqual(palette.ink, Morandi.ink)
         XCTAssertEqual(palette.accent, Morandi.rose)
