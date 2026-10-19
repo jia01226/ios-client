@@ -193,6 +193,7 @@ struct KeSpaceView: View {
     private var muted: Color { palette.inks.camelliaMuted }
     /// 126：底栏浮在画上，画布按让出底栏后的高度缩放，卡片不被底栏挡住
     @Environment(\.floatingDockInset) private var dockInset
+    private static let moonRoom: CGFloat = 26
 
     init(line: ChatLine, onOpenQuote: @escaping (AppQuote) -> Void) {
         self.line = line; self.onOpenQuote = onOpenQuote
@@ -206,14 +207,16 @@ struct KeSpaceView: View {
     var body: some View {
         GeometryReader { geo in
             // 画布等比缩放：宽度铺满；太高就按高度缩（底部原本的导航那一截不用，只到卡片下沿）
-            let s = min(geo.size.width / 390, max(1, geo.size.height - dockInset) / (844 * 0.9))
+            // 126：顶上让出一点给右上的月牙（设计稿里月牙那一行在花枝上面），底下让出浮着的底栏
+            let moonRoom = Self.moonRoom
+            let s = min(geo.size.width / 390, max(1, geo.size.height - dockInset - moonRoom) / (844 * 0.9))
             let w = 390 * s, h = 844 * s
             ZStack(alignment: .topLeading) {
                 TimelineView(.animation(minimumInterval: nil, paused: !visible || reduceMotion || scenePhase != .active)) { timeline in
                     artboard(w: w, h: h, s: s, now: timeline.date)
                 }
                 .frame(width: w, height: h)
-                .offset(x: (geo.size.width - w) / 2)
+                .offset(x: (geo.size.width - w) / 2, y: moonRoom)
                 // 126：设计稿里「柯的」不再有顶上的大标题和配色菜单，只剩右上的月牙（RootTabView 画）。
                 // 纸色照样在设置抽屉「素笺」页里选。
             }

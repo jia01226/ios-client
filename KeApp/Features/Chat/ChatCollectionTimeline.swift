@@ -561,6 +561,11 @@ final class ChatCollectionTimelineController: UIViewController,
         // 126：时间线铺到状态栏和屏幕底下面；上下留白全由 SwiftUI 量好的浮栏位置给（applyChromeInsets），
         // 系统不再按安全区另加一份。
         collectionView.contentInsetAdjustmentBehavior = .never
+        if #available(iOS 26.0, *) {
+            // 126：浮栏自己是圆角玻璃；系统在状态栏/底边加的那层渐隐（一整条横着的白雾）不要
+            collectionView.topEdgeEffect.isHidden = true
+            collectionView.bottomEdgeEffect.isHidden = true
+        }
         collectionView.alwaysBounceVertical = true
         collectionView.keyboardDismissMode = .interactive
         collectionView.selfSizingInvalidation = .enabled
