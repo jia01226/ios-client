@@ -65,6 +65,13 @@ struct ChatView: View {
     private struct DiaryOpenRequest: Identifiable { let id: Int }
     /// 121：输入框的动静——只报字数和删光/卡住/切走，不带字
     @StateObject private var presence: ComposerPresenceReporter
+    /// 126：顶栏、输入栏、底栏浮在聊天记录上；记录一直铺到屏幕底，靠上下留白让第一条、最后一条露出来
+    @Environment(\.floatingDockInset) private var dockInset
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    /// 聊天这块（安全区以内）顶边、顶上浮栏下沿、输入胶囊上沿，都是全局坐标
+    @State private var contentTopEdge: CGFloat = 0
+    @State private var chromeTopEdge: CGFloat = 0
+    @State private var composerTopEdge: CGFloat = 0
 
     init(line: ChatLine, selectedLine: Binding<ChatLine>, quoteOpenRequest: Binding<QuoteOpenRequest?> = .constant(nil), sendRequests: Binding<[ChatSendRequest]> = .constant([])) {
         self.line = line
@@ -184,41 +191,11 @@ struct ChatView: View {
     private var chatContent: some View {
         GeometryReader { _ in
             ZStack(alignment: .trailing) {
-                VStack(spacing: 0) {
-                    header
-                    if let error = quotesStore.error {
-                        HStack {
-                            Text(error).font(.caption)
-                            Button("重试") { Task { await quotesStore.load() } }
-                        }.padding(.horizontal, theme.metric.pagePadding)
-                    }
-                    if let status = vm.statusText {
-                        StatusBanner(text: status)
-                            .padding(.horizontal, theme.metric.pagePadding)
-                            .padding(.bottom, theme.metric.gapS)
-                    }
-                    if let failure = vm.replyFailure {
-                        ReplyFailureBanner(
-                            failure: failure,
-                            retry: {
-                                Task {
-                                    await vm.retryFailedReply(reduceMotion: reduceMotion)
-                                }
-                            },
-                            dismiss: vm.dismissReplyFailure
-                        )
-                        .padding(.horizontal, theme.metric.pagePadding)
-                        .padding(.bottom, theme.metric.gapS)
-                    }
-                    messageList
-                        .overlay(alignment: .bottom) {
-                            if attachmentsOpen { attachmentTray }
-                        }
-                    if vm.isUploading || !vm.pendingAttachments.isEmpty || vm.uploadError != nil {
-                        pendingAttachmentBar
-                    }
-                    inputBar
-                }
+                // 126：记录铺满整屏（上到状态栏、下到屏幕底），浮栏盖在上面；
+                // 键盘起来时记录只到键盘上沿（和以前一样，由时间线自己保持在最新）
+                messageList
+
+                floatingChrome
 
                 if settingsOpen {
                     settingsDrawer
@@ -265,6 +242,7 @@ struct ChatView: View {
 #endif
             }
         }
+        .onGeometryChange(for: CGFloat.self, of: { $0.frame(in: .global).minY }) { contentTopEdge = $0 }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: settingsOpen)
         .onChange(of: settingsOpen || keDrawerOpen) { _, value in
             NotificationCenter.default.post(name: .chatSettingsVisibility, object: value)
@@ -371,6 +349,119 @@ struct ChatView: View {
         .onReceive(NotificationCenter.default.publisher(for: .tarotReadingRequest)) { _ in openedDiary = nil }
     }
 
+    // MARK: 126 浮栏
+
+    /// 顶上：标题胶囊 + 提示条；底下：附件面板、待发附件、输入胶囊。中间空着，点和划都落到记录上。
+    private var floatingChrome: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: theme.metric.gapS) {
+                header
+                if let error = quotesStore.error {
+                    HStack {
+                        Text(error).font(.caption).foregroundStyle(theme.chatTextSecondary)
+                        Button("重试") { Task { await quotesStore.load() } }
+                            .font(.caption).foregroundStyle(theme.chatAccent)
+                    }
+                    .padding(.horizontal, theme.metric.gapM)
+                    .padding(.vertical, theme.metric.gapXS)
+                    .background { chromeSurface(radius: theme.metric.radiusChip) }
+                    .padding(.horizontal, theme.metric.pagePadding)
+                }
+                if let status = vm.statusText {
+                    StatusBanner(text: status)
+                        .padding(.horizontal, theme.metric.pagePadding)
+                }
+                if let failure = vm.replyFailure {
+                    ReplyFailureBanner(
+                        failure: failure,
+                        retry: {
+                            Task {
+                                await vm.retryFailedReply(reduceMotion: reduceMotion)
+                            }
+                        },
+                        dismiss: vm.dismissReplyFailure
+                    )
+                    .padding(.horizontal, theme.metric.pagePadding)
+                }
+            }
+            .onGeometryChange(for: CGFloat.self, of: { $0.frame(in: .global).maxY }) { chromeTopEdge = $0 }
+
+            Spacer(minLength: 0)
+
+            if showsScrollToLatest && !attachmentsOpen {
+                scrollToLatestButton
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.bottom, theme.metric.gapS)
+            }
+            if attachmentsOpen {
+                attachmentTray
+                    .padding(.bottom, theme.metric.gapS)
+            }
+            inputBar
+                .onGeometryChange(for: CGFloat.self, of: { $0.frame(in: .global).minY }) { composerTopEdge = $0 }
+        }
+        // 底栏在的时候站在底栏上面；键盘起来底栏收起，就贴着键盘上沿
+        .padding(.bottom, dockInset > 0 ? dockInset : theme.metric.chromeGap)
+        .animation(
+            reduceMotion
+                ? .easeOut(duration: 0.12)
+                : .spring(
+                    response: theme.motion.scrollControlResponse,
+                    dampingFraction: theme.motion.scrollControlDampingFraction
+                ),
+            value: showsScrollToLatest && !attachmentsOpen
+        )
+    }
+
+    /// 空聊天页（还没有记录、正在接回）的字从顶栏下面开始
+    private var emptyTimelineTop: CGFloat {
+        max(0, chromeTopEdge - contentTopEdge) + theme.metric.chromeGap
+    }
+
+    /// 浮栏的玻璃：只画在圆角里，外面不铺底板、不扩散白雾。
+    /// 照片壁纸（锁屏玻璃）、夜里、卧室还用原来的玻璃；系统开了「降低透明度」，KeGlass 自己换成实心纸。
+    @ViewBuilder
+    private func chromeSurface(radius: CGFloat) -> some View {
+        if theme.lockscreenGlass || theme.skin == .night || theme.isBedroom {
+            FloatingGlassSurface(cornerRadius: radius, lockscreen: theme.lockscreenGlass)
+        } else {
+            KeGlass(shape: RoundedRectangle(cornerRadius: radius, style: .continuous), minPaper: 0.2)
+        }
+    }
+
+    private var scrollToLatestButton: some View {
+        Button {
+            scrollToLatestRequest &+= 1
+        } label: {
+            Image(systemName: "arrow.down")
+                .font(theme.font.scrollToLatestIcon)
+                .foregroundStyle(theme.color.textPrimary)
+                .frame(
+                    width: theme.metric.touchTarget,
+                    height: theme.metric.touchTarget
+                )
+                .background(
+                    CrystalSurface(
+                        cornerRadius: theme.metric.touchTarget / 2,
+                        strength: 1.08,
+                        usesChatControls: true
+                    )
+                )
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("回到最新消息")
+        .accessibilityIdentifier("scroll-to-latest")
+        .padding(.trailing, theme.metric.pagePadding)
+        .transition(
+            reduceMotion
+                ? .opacity
+                : .scale(scale: 0.88, anchor: .bottomTrailing)
+                    .combined(with: .opacity)
+        )
+        .zIndex(2)
+    }
+
     private func headerTitle(showsSwitcher: Bool) -> some View {
         VStack(spacing: 3) {
             HStack(spacing: 4) {
@@ -389,7 +480,7 @@ struct ChatView: View {
             } else {
                 let status = vm.isShowingCachedMessages ? "离线记录" : "在线"
                 Text(showsSwitcher ? "\(line.title) · \(status)" : status)
-                    .font(.caption2)
+                    .font(theme.font.chatStatus)
                     .foregroundStyle(theme.chatTextSecondary)
                     .transition(.opacity)
             }
@@ -432,32 +523,33 @@ struct ChatView: View {
 
             // 112：顶上只留标题和电话。原来「…」里的功能都在抽屉的话笺页「更多」里。
             // 121 她：电话放左边、竖着的三个点放右边——抽屉本来就从右边出来，点的和划的在同一边。
+            // 126：电话、三个点不再各垫一个玻璃圆，整条顶栏就是一块圆角玻璃
             HStack {
                 Button { showingCallPlaceholder = true } label: {
                     Image(systemName: "phone").font(.title3)
                         .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
-                        .background(FloatingGlassSurface(cornerRadius: 22, lockscreen: theme.lockscreenGlass))
+                        .contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityLabel("语音通话")
                 Spacer()
                 // 116 竖着 3 个点（原来在左上）。点一下打开设置；从右边缘往左划也照样能开
                 Button(action: openKeDrawer) {
                     Image(systemName: "ellipsis").font(.title3).rotationEffect(.degrees(90))
                         .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
-                        .background(FloatingGlassSurface(cornerRadius: 22, lockscreen: theme.lockscreenGlass))
                         .contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityLabel("打开设置").accessibilityIdentifier("ke-drawer-open")
             }
         }
-        .padding(.horizontal, theme.metric.pagePadding)
-        .padding(.top, theme.metric.headerTopPadding)
-        .padding(.bottom, theme.metric.headerBottomPadding)
+        .padding(.horizontal, theme.metric.gapS)
+        .frame(minHeight: theme.metric.chromeHeaderHeight)
         .foregroundStyle(theme.chatTextPrimary)
         .modifier(ChatLegibility())
         // Toolbar glyphs stay inside their touch targets; message text remains uncapped.
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-        .frame(minHeight: theme.metric.headerMinHeight)
-        .contentShape(Rectangle())
+        .background { chromeSurface(radius: theme.metric.chromeHeaderRadius) }
+        .contentShape(RoundedRectangle(cornerRadius: theme.metric.chromeHeaderRadius, style: .continuous))
         .simultaneousGesture(drawerSwipe)
+        .padding(.horizontal, theme.metric.chromeHeaderInset)
+        .padding(.top, theme.metric.chromeHeaderTop)
     }
 
     // MARK: 112 月隐设置抽屉
@@ -624,55 +716,16 @@ struct ChatView: View {
                     onScrollToLatestVisibilityChanged: { shouldShow in
                         guard showsScrollToLatest != shouldShow else { return }
                         showsScrollToLatest = shouldShow
-                    }
+                    },
+                    chromeTopEdge: chromeTopEdge + theme.metric.chromeGap,
+                    chromeBottomEdge: composerTopEdge
                 )
                 .equatable()
+                // 126：时间线铺满整屏（上到状态栏、下到屏幕底），浮栏盖在上面；
+                // 上下留白由时间线按自己在窗口里的位置和这两条边算（键盘起来时它只到键盘上沿，和以前一样）
+                .ignoresSafeArea(.container, edges: [.top, .bottom])
             }
         }
-        .overlay(alignment: .bottomTrailing) {
-            if showsScrollToLatest && !attachmentsOpen {
-                Button {
-                    scrollToLatestRequest &+= 1
-                } label: {
-                    Image(systemName: "arrow.down")
-                        .font(theme.font.scrollToLatestIcon)
-                        .foregroundStyle(theme.color.textPrimary)
-                        .frame(
-                            width: theme.metric.touchTarget,
-                            height: theme.metric.touchTarget
-                        )
-                        .background(
-                            CrystalSurface(
-                                cornerRadius: theme.metric.touchTarget / 2,
-                                strength: 1.08,
-                                usesChatControls: true
-                            )
-                        )
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("回到最新消息")
-                .accessibilityIdentifier("scroll-to-latest")
-                .padding(.trailing, theme.metric.pagePadding)
-                .padding(.bottom, theme.metric.gapM)
-                .transition(
-                    reduceMotion
-                        ? .opacity
-                        : .scale(scale: 0.88, anchor: .bottomTrailing)
-                            .combined(with: .opacity)
-                )
-                .zIndex(2)
-            }
-        }
-        .animation(
-            reduceMotion
-                ? .easeOut(duration: 0.12)
-                : .spring(
-                    response: theme.motion.scrollControlResponse,
-                    dampingFraction: theme.motion.scrollControlDampingFraction
-                ),
-            value: showsScrollToLatest && !attachmentsOpen
-        )
         .onChange(of: inputFocused) { _, focused in
             if focused {
                 attachmentsOpen = false
@@ -691,7 +744,7 @@ struct ChatView: View {
                     .foregroundStyle(theme.chatTextSecondary)
             }
             .frame(maxWidth: .infinity)
-            .padding(.top, theme.metric.gapXL)
+            .padding(.top, emptyTimelineTop + theme.metric.gapXL)
             .frame(maxHeight: .infinity, alignment: .top)
         } else if vm.historyLoadFailed {
             VStack(spacing: theme.metric.gapM) {
@@ -705,7 +758,7 @@ struct ChatView: View {
                 .tint(theme.effectiveAccent)
             }
             .frame(maxWidth: .infinity)
-            .padding(.top, theme.metric.gapXL)
+            .padding(.top, emptyTimelineTop + theme.metric.gapXL)
             .frame(maxHeight: .infinity, alignment: .top)
         } else {
             Text("这里还没有聊天记录。\n想说什么，就从下面开始。")
@@ -713,12 +766,27 @@ struct ChatView: View {
                 .foregroundStyle(theme.chatTextSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
-                .padding(.top, theme.metric.gapXL)
+                .padding(.top, emptyTimelineTop + theme.metric.gapXL)
                 .frame(maxHeight: .infinity, alignment: .top)
         }
     }
 
+    /// 126：待发的附件收进输入胶囊里（在打字那一行上面），整块是一枚圆角玻璃
     private var inputBar: some View {
+        VStack(alignment: .leading, spacing: theme.metric.gapXS) {
+            if vm.isUploading || !vm.pendingAttachments.isEmpty || vm.uploadError != nil {
+                pendingAttachmentBar
+                    .padding(.top, theme.metric.gapXS)
+            }
+            composerRow
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 5)
+        .background { chromeSurface(radius: theme.metric.chromeComposerRadius) }
+        .padding(.horizontal, theme.metric.chromeComposerInset)
+    }
+
+    private var composerRow: some View {
         HStack(spacing: theme.metric.gapS) {
             Button {
                 inputFocused = false
@@ -771,11 +839,6 @@ struct ChatView: View {
             .accessibilityLabel("发送消息")
             .accessibilityIdentifier("send-message")
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(FloatingGlassSurface(cornerRadius: theme.metric.radiusComposer, lockscreen: theme.lockscreenGlass))
-        .padding(.horizontal, theme.metric.pagePadding)
-        .padding(.vertical, theme.metric.gapS)
     }
 
     private var attachmentTray: some View {
@@ -856,7 +919,8 @@ struct ChatView: View {
         }
         .padding(theme.metric.gapM)
         .background(
-            FloatingGlassSurface(cornerRadius: theme.metric.radiusAttachmentTray)
+            // 126：和输入胶囊同一种玻璃（压一层纸色，盖在记录上也看得清）
+            chromeSurface(radius: theme.metric.radiusAttachmentTray)
                 .accessibilityElement()
                 .accessibilityIdentifier("attachment-tray")
         )
@@ -977,7 +1041,7 @@ struct ChatView: View {
                     }
                 }
             }
-            .padding(.horizontal, theme.metric.pagePadding)
+            .padding(.horizontal, theme.metric.gapS)
         }
     }
 

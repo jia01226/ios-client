@@ -368,6 +368,10 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable, Equatable {
     var onDrawerPan: (ChatDrawerPan) -> Void = { _ in }
     let onBackgroundTap: () -> Void
     let onScrollToLatestVisibilityChanged: (Bool) -> Void
+    /// 126：时间线铺到整屏，顶栏和输入栏浮在上面。这两条是浮栏的边（全局坐标 = 窗口坐标）：
+    /// 顶上浮栏的下沿、输入胶囊的上沿。上下留白在 UIKit 那边按时间线自己在窗口里的位置算。
+    var chromeTopEdge: CGFloat = 0
+    var chromeBottomEdge: CGFloat = 0
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         // ChatViewModel 还承载模型选择、上传和设置状态。那些发布会让父视图
@@ -380,6 +384,8 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable, Equatable {
             && lhs.inputFocused == rhs.inputFocused
             && lhs.highlightedMessageID == rhs.highlightedMessageID
             && lhs.scrollToLatestRequest == rhs.scrollToLatestRequest
+            && lhs.chromeTopEdge == rhs.chromeTopEdge
+            && lhs.chromeBottomEdge == rhs.chromeBottomEdge
     }
 
     func makeUIViewController(context: Context) -> ChatCollectionTimelineController {
@@ -420,6 +426,7 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable, Equatable {
             onBackgroundTap: onBackgroundTap,
             onScrollToLatestVisibilityChanged: onScrollToLatestVisibilityChanged
         )
+        controller.setChromeEdges(top: chromeTopEdge, bottom: chromeBottomEdge)
     }
 }
 
@@ -495,6 +502,8 @@ final class ChatCollectionTimelineController: UIViewController,
     private var followsLatestByIntent = true
     private var isScrollingToLatest = false
     private var lastPublishedScrollControlVisibility: Bool?
+    private var chromeInsets: UIEdgeInsets = .zero
+    private var chromeEdges: (top: CGFloat, bottom: CGFloat) = (0, 0)
 
     init(
         items: [ChatTimelineItem],
@@ -549,6 +558,9 @@ final class ChatCollectionTimelineController: UIViewController,
         chatLayout.supportSelfSizingInvalidation = true
 
         collectionView.backgroundColor = .clear
+        // 126：时间线铺到状态栏和屏幕底下面；上下留白全由 SwiftUI 量好的浮栏位置给（applyChromeInsets），
+        // 系统不再按安全区另加一份。
+        collectionView.contentInsetAdjustmentBehavior = .never
         collectionView.alwaysBounceVertical = true
         collectionView.keyboardDismissMode = .interactive
         collectionView.selfSizingInvalidation = .enabled
@@ -599,6 +611,8 @@ final class ChatCollectionTimelineController: UIViewController,
         super.viewDidLayoutSubviews()
         let currentHeight = collectionView.bounds.height
         lastTimelineHeight = currentHeight
+        // 126：键盘起落时时间线自己的高度变了，浮栏的边也跟着动，留白重算（下面照旧会落回最新）
+        applyChromeInsets(chromeInsetsForCurrentFrame(), scrollIfFollowing: false)
 
         if pendingFollowLatestAfterLayout, !items.isEmpty {
             pendingFollowLatestAfterLayout = false
@@ -707,6 +721,44 @@ final class ChatCollectionTimelineController: UIViewController,
             DispatchQueue.main.async { [weak self] in
                 self?.scrollToLatest(animated: !UIAccessibility.isReduceMotionEnabled)
             }
+        } else {
+            publishScrollControlVisibility()
+        }
+    }
+
+    /// 126：浮栏的边（窗口坐标）换成这条时间线上下要留的白
+    func setChromeEdges(top: CGFloat, bottom: CGFloat) {
+        chromeEdges = (top, bottom)
+        guard isViewLoaded else { return }
+        applyChromeInsets(chromeInsetsForCurrentFrame(), scrollIfFollowing: true)
+    }
+
+    private func chromeInsetsForCurrentFrame() -> UIEdgeInsets {
+        guard view.window != nil, chromeEdges.bottom > 0 else { return chromeInsets }
+        let frame = view.convert(view.bounds, to: nil)
+        return Self.chromeInsets(timelineFrame: frame, chromeTop: chromeEdges.top, chromeBottom: chromeEdges.bottom)
+    }
+
+    /// 顶上让过标题胶囊（和提示条），底下让过输入胶囊（和它下面的底栏、Home 条）
+    nonisolated static func chromeInsets(timelineFrame: CGRect, chromeTop: CGFloat, chromeBottom: CGFloat) -> UIEdgeInsets {
+        let top = max(0, chromeTop - timelineFrame.minY)
+        let bottom = max(0, timelineFrame.maxY - chromeBottom)
+        return UIEdgeInsets(top: top.rounded(), left: 0, bottom: bottom.rounded(), right: 0)
+    }
+
+    /// 浮栏位置一变（键盘起落、提示条出现、输入框长高、底栏收起），上下留白跟着变；
+    /// 本来停在最新的，换完还停在最新，第一条、最后一条都能完整滚出来。
+    private func applyChromeInsets(_ insets: UIEdgeInsets, scrollIfFollowing: Bool) {
+        guard abs(insets.top - chromeInsets.top) > 0.5 || abs(insets.bottom - chromeInsets.bottom) > 0.5 else { return }
+        let wasFollowingLatest = followsLatestByIntent || isNearLatest
+        chromeInsets = insets
+        collectionView.contentInset = insets
+        collectionView.verticalScrollIndicatorInsets = insets
+        if scrollIfFollowing && wasFollowingLatest && !items.isEmpty && !collectionView.isDragging {
+            scrollToLatest(animated: false)
+        } else if wasFollowingLatest && !items.isEmpty {
+            // 布局里改的：等这一轮布局完再落回最新，不在 layoutSubviews 里再套一层布局
+            requestFollowLatestAfterLayout()
         } else {
             publishScrollControlVisibility()
         }
