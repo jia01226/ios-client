@@ -58,16 +58,18 @@ final class ThinkingInteractionTests: XCTestCase {
         attachScreenshot(named: "05-thinking-streaming-finished")
     }
 
-    func testAssistantReplyStreamsIntoTheSameBubble() throws {
+    /// 121 她：「应该后台切好，我这边看到是一条条的气泡，要么就是一整段」。
+    /// 写的过程中一个字都不露，只有顶上「正在输入中」；写完整条一次出现。
+    func testAssistantReplyWaitsThenArrivesWhole() throws {
         let app = launch(arguments: ["-ui-test-reply-streaming"])
-        let firstChunk = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "第一句先来到屏幕上，")
+        let typing = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "正在输入中")
         ).firstMatch
-        XCTAssertTrue(firstChunk.waitForExistence(timeout: 3))
+        XCTAssertTrue(typing.waitForExistence(timeout: 3))
         XCTAssertFalse(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "最后一句再慢慢说完。")
-        ).firstMatch.exists, "正文第一段出现时，末段不应已经一次性显示")
-        attachScreenshot(named: "06-reply-streaming-start")
+            NSPredicate(format: "label CONTAINS %@", "第一句先来到屏幕上，")
+        ).firstMatch.exists, "柯写完之前不露半截")
+        attachScreenshot(named: "06-reply-waiting")
 
         let continueStream = app.buttons["继续测试流式回复"]
         XCTAssertTrue(continueStream.waitForExistence(timeout: 2))
@@ -81,7 +83,7 @@ final class ThinkingInteractionTests: XCTestCase {
             )
         ).firstMatch
         XCTAssertTrue(completedReply.waitForExistence(timeout: 10))
-        attachScreenshot(named: "07-reply-streaming-finished")
+        attachScreenshot(named: "07-reply-arrived-whole")
     }
 
     func testAssistantReplyAppearsAsSeparateBubbles() throws {

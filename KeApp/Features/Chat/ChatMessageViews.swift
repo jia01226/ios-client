@@ -313,6 +313,9 @@ struct MessageRow: View {
     /// 112：长按「下个窗带上 / 取消带上」，按整轮钉住
     var onTogglePin: (Message) -> Void = { _ in }
     var isPinned = false
+    /// 121：时间线里柯的每个气泡各占一格，这里说这一格画第几个；时间那一行只跟在最后一个下面。
+    /// nil = 整条画在一起（截图测试、预览用）。
+    var part: ChatBubblePart? = nil
     @State private var copied = false
     @State private var actionsPresented = false
     @State private var recallAfterDismiss = false
@@ -328,7 +331,7 @@ struct MessageRow: View {
                 alignment: message.sender == .ke ? .leading : .trailing,
                 spacing: theme.metric.gapXS
             ) {
-                if let diary = message.unlockedDiary {
+                if showsFirstBubble, let diary = message.unlockedDiary {
                     // 120：「爸爸开锁了」画成一张卡：不切气泡、不当文件；点一下直接翻开那一篇
                     DiaryUnlockCard(title: diary.name) { onAttachmentTap(diary) }
                         .accessibilityIdentifier("diary-unlock-\(diary.diaryID ?? 0)")
@@ -336,56 +339,9 @@ struct MessageRow: View {
                     bubbleStack
                 }
 
-                HStack(spacing: theme.metric.gapS) {
-                    Text(message.time.formatted(date: .omitted, time: .shortened))
-                    if isQuoted {
-                        Image(systemName: "bookmark.fill").accessibilityLabel("已收进语录")
-                            .accessibilityIdentifier("message-bookmark-\(message.serverID ?? 0)")
-                    }
-                    if isPinned {
-                        // 轻轻一枚小图钉：这一轮下个窗会带上
-                        Image(systemName: "pin")
-                            .font(.system(size: 9))
-                            .opacity(0.7)
-                            .accessibilityLabel("下个窗会带上")
-                    }
-
-                    if let label = message.deliveryState.label {
-                        Text(label)
-                    }
-
-                    if !message.text.isEmpty {
-                        Button {
-                            UIPasteboard.general.string = message.text
-                            copied = true
-                            Task {
-                                try? await Task.sleep(nanoseconds: 1_200_000_000)
-                                copied = false
-                            }
-                        } label: {
-                            Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                                .font(theme.font.copyIcon)
-                                .frame(width: 24, height: 24)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(copied ? "已复制" : "复制消息")
-                        .foregroundStyle(copied ? theme.chatAccent : theme.chatTextSecondary)
-                    }
-
-                    if message.sender == .me && message.deliveryState == .sent {
-                        HStack(spacing: -4) {
-                            Image(systemName: "checkmark")
-                            Image(systemName: "checkmark")
-                        }
-                        .font(theme.font.receiptIcon)
-                        .foregroundStyle(theme.chatAccent)
-                    }
+                if showsFooter {
+                    footer
                 }
-                .font(theme.font.caption)
-                .foregroundStyle(theme.chatTextSecondary)
-                .modifier(ChatLegibility())
-                .padding(.horizontal, theme.metric.gapXS)
             }
             .frame(
                 maxWidth: message.sender == .ke ? .infinity : nil,
@@ -401,68 +357,7 @@ struct MessageRow: View {
             actionsPresented = true
         }
         .popover(isPresented: $actionsPresented) {
-            VStack(spacing: 0) {
-                if !message.text.isEmpty {
-                    Button {
-                        UIPasteboard.general.string = message.text
-                        actionsPresented = false
-                    } label: {
-                        Label("复制", systemImage: "doc.on.doc")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(14)
-                    }
-                    .accessibilityIdentifier("message-action-copy")
-                }
-                if message.canRecall {
-                    if !message.text.isEmpty { Divider() }
-                    Button(role: .destructive) {
-                        recallAfterDismiss = true
-                        actionsPresented = false
-                    } label: {
-                        Label("撤回", systemImage: "arrow.uturn.backward")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(14)
-                    }
-                }
-                if message.canSaveQuote {
-                    Divider()
-                    Button {
-                        quoteAfterDismiss = true
-                        actionsPresented = false
-                    } label: {
-                        Label(isQuoted ? "从语录拿掉" : "收进语录", systemImage: isQuoted ? "bookmark.slash" : "bookmark")
-                            .frame(maxWidth: .infinity, alignment: .leading).padding(14)
-                    }.accessibilityIdentifier("message-action-quote")
-                }
-                if message.serverID != nil && !message.isStreaming {
-                    Divider()
-                    Button {
-                        pinAfterDismiss = true
-                        actionsPresented = false
-                    } label: {
-                        Label(isPinned ? "取消带上" : "下个窗带上", systemImage: isPinned ? "pin.slash" : "pin")
-                            .frame(maxWidth: .infinity, alignment: .leading).padding(14)
-                    }.accessibilityIdentifier("message-action-pin")
-                }
-            }
-            .font(theme.font.body)
-            .buttonStyle(.plain)
-            .frame(width: 180)
-            .presentationCompactAdaptation(.popover)
-            .onDisappear {
-                notebookText = nil
-                if quoteAfterDismiss {
-                    quoteAfterDismiss = false
-                    onSaveQuote(message)
-                }
-                if pinAfterDismiss {
-                    pinAfterDismiss = false
-                    onTogglePin(message)
-                }
-                guard recallAfterDismiss else { return }
-                recallAfterDismiss = false
-                onRecall(message)
-            }
+            actionsMenu
         }
         .overlay {
             if isHighlighted {
@@ -474,8 +369,132 @@ struct MessageRow: View {
         }
     }
 
+    /// 时间、送达、复制那一行
+    private var footer: some View {
+        HStack(spacing: theme.metric.gapS) {
+            Text(message.time.formatted(date: .omitted, time: .shortened))
+            if isQuoted {
+                Image(systemName: "bookmark.fill").accessibilityLabel("已收进语录")
+                    .accessibilityIdentifier("message-bookmark-\(message.serverID ?? 0)")
+            }
+            if isPinned {
+                // 轻轻一枚小图钉：这一轮下个窗会带上
+                Image(systemName: "pin")
+                    .font(.system(size: 9))
+                    .opacity(0.7)
+                    .accessibilityLabel("下个窗会带上")
+            }
+
+            if let label = message.deliveryState.label {
+                Text(label)
+            }
+
+            if !message.text.isEmpty {
+                Button {
+                    UIPasteboard.general.string = message.text
+                    copied = true
+                    Task {
+                        try? await Task.sleep(nanoseconds: 1_200_000_000)
+                        copied = false
+                    }
+                } label: {
+                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                        .font(theme.font.copyIcon)
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(copied ? "已复制" : "复制消息")
+                .foregroundStyle(copied ? theme.chatAccent : theme.chatTextSecondary)
+            }
+
+            if message.sender == .me && message.deliveryState == .sent {
+                HStack(spacing: -4) {
+                    Image(systemName: "checkmark")
+                    Image(systemName: "checkmark")
+                }
+                .font(theme.font.receiptIcon)
+                .foregroundStyle(theme.chatAccent)
+            }
+        }
+        .font(theme.font.caption)
+        .foregroundStyle(theme.chatTextSecondary)
+        .modifier(ChatLegibility())
+        .padding(.horizontal, theme.metric.gapXS)
+    }
+
+    private var actionsMenu: some View {
+        VStack(spacing: 0) {
+            if !message.text.isEmpty {
+                Button {
+                    UIPasteboard.general.string = message.text
+                    actionsPresented = false
+                } label: {
+                    Label("复制", systemImage: "doc.on.doc")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                }
+                .accessibilityIdentifier("message-action-copy")
+            }
+            if message.canRecall {
+                if !message.text.isEmpty { Divider() }
+                Button(role: .destructive) {
+                    recallAfterDismiss = true
+                    actionsPresented = false
+                } label: {
+                    Label("撤回", systemImage: "arrow.uturn.backward")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                }
+            }
+            if message.canSaveQuote {
+                Divider()
+                Button {
+                    quoteAfterDismiss = true
+                    actionsPresented = false
+                } label: {
+                    Label(isQuoted ? "从语录拿掉" : "收进语录", systemImage: isQuoted ? "bookmark.slash" : "bookmark")
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(14)
+                }.accessibilityIdentifier("message-action-quote")
+            }
+            if message.serverID != nil && !message.isStreaming {
+                Divider()
+                Button {
+                    pinAfterDismiss = true
+                    actionsPresented = false
+                } label: {
+                    Label(isPinned ? "取消带上" : "下个窗带上", systemImage: isPinned ? "pin.slash" : "pin")
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(14)
+                }.accessibilityIdentifier("message-action-pin")
+            }
+        }
+        .font(theme.font.body)
+        .buttonStyle(.plain)
+        .frame(width: 180)
+        .presentationCompactAdaptation(.popover)
+        .onDisappear {
+            notebookText = nil
+            if quoteAfterDismiss {
+                quoteAfterDismiss = false
+                onSaveQuote(message)
+            }
+            if pinAfterDismiss {
+                pinAfterDismiss = false
+                onTogglePin(message)
+            }
+            guard recallAfterDismiss else { return }
+            recallAfterDismiss = false
+            onRecall(message)
+        }
+    }
+
+    /// 121：第一个气泡（带附件、日记卡）只画在第一格；时间那一行只画在最后一格
+    private var showsFirstBubble: Bool { part?.isFirst ?? true }
+    private var showsFooter: Bool { part?.isLast ?? true }
+    private var showsAttachments: Bool { showsFirstBubble && !(message.attachments ?? []).isEmpty }
+
     private var hasBubbleContent: Bool {
-        !message.text.isEmpty || !(message.attachments ?? []).isEmpty
+        !visibleSegments.isEmpty || showsAttachments
     }
 
 
@@ -484,15 +503,15 @@ struct MessageRow: View {
             alignment: message.sender == .ke ? .leading : .trailing,
             spacing: theme.metric.splitBubbleGap
         ) {
-            if visibleSegments.isEmpty, !(message.attachments ?? []).isEmpty {
+            if visibleSegments.isEmpty, showsAttachments {
                 bubbleSurface(text: nil, includesAttachments: true)
             } else {
-                ForEach(Array(visibleSegments.enumerated()), id: \.offset) { index, segment in
-                    bubbleSurface(text: segment, includesAttachments: index == 0)
+                ForEach(visibleSegments) { segment in
+                    bubbleSurface(text: segment.text, includesAttachments: segment.id == 0 && showsAttachments)
                         .accessibilityElement(children: .contain)
-                        .accessibilityIdentifier("message-bubble-\(message.id)-\(index)")
+                        .accessibilityIdentifier("message-bubble-\(message.id)-\(segment.id)")
                         .highPriorityGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in
-                            notebookText = segment
+                            notebookText = segment.text
                             actionsPresented = true
                         })
                 }
@@ -612,13 +631,25 @@ struct MessageRow: View {
         }
     }
 
-    private var visibleSegments: [String] {
+    /// id 是这个气泡在整句里的序号（无障碍标识、附件都按它认）
+    private struct ShownSegment: Identifiable {
+        let id: Int
+        let text: String
+    }
+
+    private var visibleSegments: [ShownSegment] {
+        if let part {
+            // 121：这一格只画自己那一个气泡，字是时间线切好时就定下的那一份
+            return part.text.map { [ShownSegment(id: part.index, text: $0)] } ?? []
+        }
         let segments = message.bubbleSegments
-        guard message.sender == .ke,
-              !message.isStreaming,
-              !reduceMotion,
-              let visibleSegmentCount else { return segments }
-        return Array(segments.prefix(max(1, visibleSegmentCount)))
+        let shown: [String]
+        if message.sender == .ke, !message.isStreaming, !reduceMotion, let visibleSegmentCount {
+            shown = Array(segments.prefix(max(1, visibleSegmentCount)))
+        } else {
+            shown = segments
+        }
+        return shown.enumerated().map { ShownSegment(id: $0.offset, text: $0.element) }
     }
 
     /// 柯自己抽的牌：三张以内、都是图、名字带正逆位。整张显示，不裁切，逆位倒着。

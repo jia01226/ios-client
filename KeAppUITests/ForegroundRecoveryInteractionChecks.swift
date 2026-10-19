@@ -20,7 +20,12 @@ enum ForegroundRecoveryInteractionChecks {
         composer.tap()
         composer.typeText("切回来看看")
         app.buttons["send-message"].tap()
-        XCTAssertTrue(app.staticTexts["正在写这一句…"].waitForExistence(timeout: 5))
+        // 121：写的过程中不露半截，只有顶上「正在输入中」
+        let typing = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "正在输入中")
+        ).firstMatch
+        XCTAssertTrue(typing.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["正在写这一句…"].exists)
         capture("foreground-01-stream-before-background", in: testCase)
         XCUIDevice.shared.press(.home)
         Thread.sleep(forTimeInterval: 3) // server fixture is done after 2s, SSE remains frozen

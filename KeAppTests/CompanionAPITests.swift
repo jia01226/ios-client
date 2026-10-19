@@ -184,6 +184,32 @@ final class CompanionAPITests: XCTestCase {
         try await api().sendHutLetter(text: "这里想改一句")
     }
 
+    /// 121：聊天记录里柯的消息带着服务器切好的气泡；她的消息不带。
+    /// 这一项格式不对时当它没有，整页记录照样解析出来。
+    func testChatHistoryCarriesServerBubbleSegments() async throws {
+        CompanionStub.handler = { request in
+            XCTAssertEqual(request.url?.path, "/ke-test2/api/messages")
+            XCTAssertEqual(request.httpMethod, "GET")
+            return (200, #"""
+            [
+              {"id":1,"author":"user","content":"在吗","created_at":"2026-10-19 21:00:00"},
+              {"id":2,"author":"assistant","content":"在。\n\n一直在。","created_at":"2026-10-19 21:00:05",
+               "segments":["在。","一直在。"]},
+              {"id":3,"author":"assistant","content":"旧的一条","created_at":"2026-10-19 21:01:00"},
+              {"id":4,"author":"assistant","content":"坏掉的切法","created_at":"2026-10-19 21:02:00","segments":"oops"}
+            ]
+            """#)
+        }
+        let messages = try await api().fetchMessages(sessionID: 1)
+        XCTAssertEqual(messages.map(\.serverID), [1, 2, 3, 4])
+        XCTAssertNil(messages[0].segments)
+        XCTAssertEqual(messages[1].segments, ["在。", "一直在。"])
+        XCTAssertEqual(messages[1].bubbleSegments, ["在。", "一直在。"])
+        XCTAssertNil(messages[2].segments)
+        XCTAssertNil(messages[3].segments)
+        XCTAssertEqual(messages[3].bubbleSegments, ["坏掉的切法"])
+    }
+
     func testMissingPeriodEndEndpointFailsWithoutDeletingOrAddingAStart() async {
         CompanionStub.handler = { request in
             XCTAssertEqual(request.url?.path, "/ke-test2/api/periods/end")

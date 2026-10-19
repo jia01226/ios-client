@@ -75,7 +75,9 @@ enum ChatStreamEvent: Sendable {
         status: String?,
         error: String?,
         retryable: Bool,
-        retryScheduled: Bool
+        retryScheduled: Bool,
+        /// 121：写完落库时服务器一并给出切好的气泡；没落库（出错、合并）时没有
+        segments: [String]? = nil
     )
     case serverError(String)
 }
@@ -271,9 +273,11 @@ private struct RemoteMessage: Decodable {
     let sceneMode: String?
     let attachments: [ChatAttachment]?
     let toolRuns: [ChatToolRun]?
+    /// 121：柯的消息由服务器切好的气泡；她的消息没有这一项
+    let segments: RemoteSegments?
 
     enum CodingKeys: String, CodingKey {
-        case id, author, content
+        case id, author, content, segments
         case createdAt = "created_at"
         case thinkSummary = "think_summary"
         case thoughtNote = "thought_note"
@@ -298,9 +302,20 @@ private struct RemoteMessage: Decodable {
             sceneMode: sceneMode?.nilIfBlank,
             attachments: attachments,
             toolRuns: toolRuns,
+            segments: author == "user" ? nil : segments?.values,
             isStreaming: false,
             deliveryState: .sent
         )
+    }
+}
+
+/// 121：气泡切分只是锦上添花——这一项格式不对时当它没有（退回本机切法），
+/// 绝不能因为它把整页聊天记录解析失败。
+private struct RemoteSegments: Decodable {
+    let values: [String]?
+
+    init(from decoder: Decoder) throws {
+        values = try? decoder.singleValueContainer().decode([String].self)
     }
 }
 
@@ -1333,7 +1348,8 @@ actor APIClient {
                 status: object["status"] as? String,
                 error: object["error"] as? String,
                 retryable: object["retryable"] as? Bool ?? false,
-                retryScheduled: object["retry_scheduled"] as? Bool ?? false
+                retryScheduled: object["retry_scheduled"] as? Bool ?? false,
+                segments: (object["segments"] as? [Any])?.compactMap { $0 as? String }
             ))
         }
         return events

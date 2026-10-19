@@ -10,6 +10,21 @@ enum ChatTimelineItemKind: Equatable {
     case thinking
     case tool(String)
     case message
+    /// 121：柯的一句按段切成几个气泡时，第 2 个起每个气泡自己占一行（第 1 个仍是 .message）。
+    /// 一个个冒出来就是一行行插进来，和来了新消息一样；已经在屏幕上的气泡不重排、不变大小。
+    case segment(Int)
+}
+
+/// 121：这一行画柯那句话的第几个气泡。时间、复制那一行只跟在最后一个气泡下面，
+/// 所以前面的气泡从冒出来到最后都是同一个样子，后面的冒出来时不用改前面的。
+struct ChatBubblePart: Equatable {
+    let index: Int
+    let count: Int
+    /// 这个气泡里的字；日记卡、只有附件、还在写的那一行没有
+    let text: String?
+
+    var isFirst: Bool { index == 0 }
+    var isLast: Bool { index >= count - 1 }
 }
 
 enum ChatTimelineDate {
@@ -77,7 +92,8 @@ struct ChatTimelineItem: Identifiable, Equatable {
     let kind: ChatTimelineItemKind
     let message: Message
     let isHighlighted: Bool
-    let visibleSegmentCount: Int?
+    /// 121：消息那几行各画哪个气泡；日期、空白、Thinking、工具卡没有
+    var part: ChatBubblePart? = nil
     var isQuoted = false
     /// 112：这一轮已钉住，下个窗会带上
     var isPinned = false
@@ -94,7 +110,49 @@ struct ChatTimelineItem: Identifiable, Equatable {
             return "\(message.id)::tool::\(toolRunID)"
         case .message:
             return "\(message.id)::message"
+        case let .segment(index):
+            return "\(message.id)::message::\(index)"
         }
+    }
+
+    /// 121：只比这一行真正画出来的东西。拉回记录时本机那条会换成服务器那条（沿用本机 id，
+    /// 时间差几秒、多了 Thinking 原文之类），气泡一样就不重画——已经冒出来的气泡原样不动，
+    /// 不闪、不跳，也不会重新一个个冒。
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        guard lhs.kind == rhs.kind,
+              lhs.message.id == rhs.message.id,
+              lhs.isHighlighted == rhs.isHighlighted,
+              lhs.isQuoted == rhs.isQuoted,
+              lhs.isPinned == rhs.isPinned,
+              lhs.part == rhs.part else { return false }
+        switch lhs.kind {
+        case .date, .gap, .thinking:
+            // 日期按天、空白按分钟都在 kind 里；Thinking 这一行只是个入口，内容在弹窗里现读
+            return true
+        case .tool:
+            return lhs.toolRun == rhs.toolRun
+        case .message, .segment:
+            return drawsSameRow(lhs.message, rhs.message, part: lhs.part)
+        }
+    }
+
+    private static func drawsSameRow(_ a: Message, _ b: Message, part: ChatBubblePart?) -> Bool {
+        guard a.serverID == b.serverID,
+              a.sender == b.sender,
+              a.isStreaming == b.isStreaming,
+              a.deliveryState == b.deliveryState,
+              a.text.isEmpty == b.text.isEmpty else { return false }
+        // 她的话整条就是一个气泡（柯的字已经在 part.text 里比过了）
+        if a.sender == .me, a.text != b.text { return false }
+        // 附件（照片、塔罗牌、日记卡）画在第一个气泡里
+        if part?.isFirst ?? true, (a.attachments ?? []) != (b.attachments ?? []) { return false }
+        // 时间只写在最后一个气泡下面，按分钟比——和屏幕上显示的一样
+        if part?.isLast ?? true, minute(of: a.time) != minute(of: b.time) { return false }
+        return true
+    }
+
+    private static func minute(of date: Date) -> Int {
+        Int((date.timeIntervalSinceReferenceDate / 60).rounded(.down))
     }
 
     var messageID: String { message.id }
@@ -123,8 +181,7 @@ struct ChatTimelineItem: Identifiable, Equatable {
                     result.append(Self(
                         kind: .date(dayKey),
                         message: message,
-                        isHighlighted: false,
-                        visibleSegmentCount: nil
+                        isHighlighted: false
                     ))
                 }
                 previousDayKey = dayKey
@@ -132,7 +189,7 @@ struct ChatTimelineItem: Identifiable, Equatable {
             if message.sender == .me, !newDay, let previousTime {
                 let minutes = Int(message.time.timeIntervalSince(previousTime) / 60)
                 if minutes >= 60 {
-                    result.append(Self(kind: .gap(minutes), message: message, isHighlighted: false, visibleSegmentCount: nil))
+                    result.append(Self(kind: .gap(minutes), message: message, isHighlighted: false))
                 }
             }
             previousTime = message.time
@@ -160,12 +217,11 @@ struct ChatTimelineItem: Identifiable, Equatable {
             result.append(Self(
                 kind: .thinking,
                 message: message,
-                isHighlighted: false,
-                visibleSegmentCount: nil
+                isHighlighted: false
             ))
         }
         if message.sender == .me {
-            result.append(messageItem(
+            result.append(contentsOf: messageItems(
                 message: message,
                 isHighlighted: isHighlighted,
                 visibleSegmentCount: visibleSegmentCount
@@ -175,12 +231,11 @@ struct ChatTimelineItem: Identifiable, Equatable {
             result.append(Self(
                 kind: .tool(toolRun.id),
                 message: message,
-                isHighlighted: false,
-                visibleSegmentCount: nil
+                isHighlighted: false
             ))
         }
         if message.sender == .ke {
-            result.append(messageItem(
+            result.append(contentsOf: messageItems(
                 message: message,
                 isHighlighted: isHighlighted,
                 visibleSegmentCount: visibleSegmentCount
@@ -189,17 +244,31 @@ struct ChatTimelineItem: Identifiable, Equatable {
         return result
     }
 
-    private static func messageItem(
+    /// 121：柯的一句切成几个气泡就出几行，一个个冒出来时只出已经冒出来的那几行。
+    /// 她的话、日记卡、只有附件的、还在写的那一行（只有时间和「发送中」）都只占一行。
+    private static func messageItems(
         message: Message,
         isHighlighted: Bool,
         visibleSegmentCount: Int?
-    ) -> Self {
-        Self(
-            kind: .message,
-            message: message,
-            isHighlighted: isHighlighted,
-            visibleSegmentCount: visibleSegmentCount
-        )
+    ) -> [Self] {
+        let segments = message.bubbleSegments
+        guard message.sender == .ke, message.unlockedDiary == nil, segments.count > 1 else {
+            return [Self(
+                kind: .message,
+                message: message,
+                isHighlighted: isHighlighted,
+                part: ChatBubblePart(index: 0, count: 1, text: segments.first)
+            )]
+        }
+        let shown = min(segments.count, max(1, visibleSegmentCount ?? segments.count))
+        return (0..<shown).map { index in
+            Self(
+                kind: index == 0 ? .message : .segment(index),
+                message: message,
+                isHighlighted: isHighlighted,
+                part: ChatBubblePart(index: index, count: segments.count, text: segments[index])
+            )
+        }
     }
 
     private static func hasThinking(_ message: Message) -> Bool {
@@ -207,6 +276,49 @@ struct ChatTimelineItem: Identifiable, Equatable {
             guard let value else { return false }
             return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
+    }
+}
+
+/// 121：时间线从旧的一排变成新的一排要动哪几格。只要留下来的那些前后顺序没变，就在一次批量更新里
+/// 删掉走了的、插进新来的、重画内容变了的——已经在屏幕上又没变的格子一个都不碰。
+/// 以前一边插一边有格子变（占位换成第一个气泡、后面的气泡同时插进来）时，变了的那格会漏掉不重画。
+struct ChatTimelineChanges: Equatable {
+    /// 旧下标
+    var deleted: [Int] = []
+    /// 新下标
+    var inserted: [Int] = []
+    /// 旧下标：还在，但画出来不一样了
+    var reloaded: [Int] = []
+
+    var isEmpty: Bool { deleted.isEmpty && inserted.isEmpty && reloaded.isEmpty }
+
+    /// nil：有重复的 id，或者留下来的前后顺序变了——只能整页重载。
+    static func between(_ old: [ChatTimelineItem], _ new: [ChatTimelineItem]) -> ChatTimelineChanges? {
+        let oldIDs = old.map(\.id)
+        let newIDs = new.map(\.id)
+        var oldIndex: [String: Int] = [:]
+        for (index, id) in oldIDs.enumerated() {
+            if oldIndex.updateValue(index, forKey: id) != nil { return nil }
+        }
+        var newIndex: [String: Int] = [:]
+        for (index, id) in newIDs.enumerated() {
+            if newIndex.updateValue(index, forKey: id) != nil { return nil }
+        }
+
+        var changes = ChatTimelineChanges()
+        var retainedInOldOrder: [String] = []
+        for (index, id) in oldIDs.enumerated() {
+            guard let newPosition = newIndex[id] else {
+                changes.deleted.append(index)
+                continue
+            }
+            retainedInOldOrder.append(id)
+            if old[index] != new[newPosition] { changes.reloaded.append(index) }
+        }
+        let retainedInNewOrder = newIDs.filter { oldIndex[$0] != nil }
+        guard retainedInOldOrder == retainedInNewOrder else { return nil }
+        changes.inserted = newIDs.indices.filter { oldIndex[newIDs[$0]] == nil }
+        return changes
     }
 }
 
@@ -542,10 +654,6 @@ final class ChatCollectionTimelineController: UIViewController,
         let appendedItems = newIDs.starts(with: oldIDs)
             ? Array(newItems.dropFirst(oldItems.count))
             : []
-        let oldIDSet = Set(oldIDs)
-        let retainedNewIDs = newIDs.filter { oldIDSet.contains($0) }
-        let insertedIndexes = newIDs.indices.filter { !oldIDSet.contains(newIDs[$0]) }
-        let isInsertionOnly = retainedNewIDs == oldIDs && !insertedIndexes.isEmpty
         let appendedOwnMessage = appendedItems.contains { $0.message.sender == .me }
         let timelineChanged = oldIDs != newIDs || oldStreamRevision != newStreamRevision
         let shouldFollowLatest = ChatTimelineFollowPolicy.shouldFollowLatest(
@@ -558,14 +666,9 @@ final class ChatCollectionTimelineController: UIViewController,
             followsLatestByIntent = true
         }
 
-        let hasStableIdentity = oldIDs == newIDs
-        if hasStableIdentity {
-            reloadChangedItems(from: oldItems, followLatest: shouldFollowLatest)
-        } else if isInsertionOnly {
-            insertItems(
-                at: insertedIndexes,
-                followLatest: shouldFollowLatest
-            )
+        // 121：一个个冒出来的气泡是插进来的新格子；拉回记录换成服务器那条时，没变的格子不碰。
+        if let changes = ChatTimelineChanges.between(oldItems, newItems) {
+            apply(changes, followLatest: shouldFollowLatest)
         } else {
             let snapshot = shouldFollowLatest
                 ? nil
@@ -619,30 +722,10 @@ final class ChatCollectionTimelineController: UIViewController,
         return distanceFromLatest <= Theme.shared.metric.touchTarget
     }
 
-    private func insertItems(at indexes: [Int], followLatest: Bool) {
-        let positionSnapshot = followLatest
-            ? nil
-            : chatLayout.getContentOffsetSnapshot(from: .top)
-        let paths = indexes.map { IndexPath(item: $0, section: 0) }
-
-        UIView.performWithoutAnimation {
-            collectionView.performBatchUpdates {
-                collectionView.insertItems(at: paths)
-            } completion: { [weak self] _ in
-                guard let self else { return }
-                self.collectionView.layoutIfNeeded()
-                if let positionSnapshot {
-                    self.chatLayout.restoreContentOffset(with: positionSnapshot)
-                } else if followLatest {
-                    self.scrollToLatest(animated: false)
-                }
-            }
-        }
-    }
-
-    private func reloadChangedItems(from oldItems: [ChatTimelineItem], followLatest: Bool) {
-        let changedIndexes = items.indices.filter { oldItems[$0] != items[$0] }
-        guard !changedIndexes.isEmpty else {
+    /// 插新格子、删旧格子、重画变了的格子，一次批量更新做完；和来新消息走的是同一条路
+    /// （不带动画，跟着最新时落到最底，翻旧记录时按顶部快照留在原处）。
+    private func apply(_ changes: ChatTimelineChanges, followLatest: Bool) {
+        guard !changes.isEmpty else {
             if followLatest { scrollToLatest(animated: false) }
             return
         }
@@ -650,12 +733,16 @@ final class ChatCollectionTimelineController: UIViewController,
         let positionSnapshot = followLatest
             ? nil
             : chatLayout.getContentOffsetSnapshot(from: .top)
+        // UIKit 约定：删除、重画用更新前的下标，插入用更新后的下标
+        let deleted = changes.deleted.map { IndexPath(item: $0, section: 0) }
+        let inserted = changes.inserted.map { IndexPath(item: $0, section: 0) }
+        let reloaded = changes.reloaded.map { IndexPath(item: $0, section: 0) }
 
         UIView.performWithoutAnimation {
             collectionView.performBatchUpdates {
-                collectionView.reloadItems(
-                    at: changedIndexes.map { IndexPath(item: $0, section: 0) }
-                )
+                if !deleted.isEmpty { collectionView.deleteItems(at: deleted) }
+                if !inserted.isEmpty { collectionView.insertItems(at: inserted) }
+                if !reloaded.isEmpty { collectionView.reloadItems(at: reloaded) }
             } completion: { [weak self] _ in
                 guard let self else { return }
                 self.collectionView.layoutIfNeeded()
@@ -831,19 +918,31 @@ final class ChatCollectionTimelineController: UIViewController,
                         .environmentObject(Theme.shared)
                         .accessibilityIdentifier("chat-tool-run-\(toolRun.id)")
                 }
-            case .message:
+            case .message, .segment:
+                // 121：每个气泡一格。格子没重画时手里那份消息可能是本机旧的一版，
+                // 撤回、收语录、钉住都按 id 取时间线里最新的那条。
                 MessageRow(
                     message: item.message,
                     isHighlighted: item.isHighlighted,
-                    visibleSegmentCount: item.visibleSegmentCount,
+                    visibleSegmentCount: nil,
                     onAttachmentTap: { [weak self] attachment in
                         self?.onAttachmentTap(attachment)
                     },
-                    onRecall: { [weak self] message in self?.onRecall(message) },
-                    onSaveQuote: { [weak self] message in self?.onSaveQuote(message) },
+                    onRecall: { [weak self] message in
+                        guard let self else { return }
+                        self.onRecall(self.latest(message))
+                    },
+                    onSaveQuote: { [weak self] message in
+                        guard let self else { return }
+                        self.onSaveQuote(self.latest(message))
+                    },
                     isQuoted: item.isQuoted,
-                    onTogglePin: { [weak self] message in self?.onTogglePin(message) },
-                    isPinned: item.isPinned
+                    onTogglePin: { [weak self] message in
+                        guard let self else { return }
+                        self.onTogglePin(self.latest(message))
+                    },
+                    isPinned: item.isPinned,
+                    part: item.part
                 )
                 .environmentObject(Theme.shared)
 #if DEBUG
@@ -853,6 +952,10 @@ final class ChatCollectionTimelineController: UIViewController,
         }
         .margins(.all, 0)
         return cell
+    }
+
+    private func latest(_ message: Message) -> Message {
+        items.first { $0.messageID == message.id && $0.part != nil }?.message ?? message
     }
 
     func initialLayoutAttributesForInsertedItem(
@@ -883,7 +986,12 @@ final class ChatCollectionTimelineController: UIViewController,
             return Theme.shared.metric.thinkingBubbleGap
         case .tool:
             return Theme.shared.metric.gapS
-        case .message:
+        case .message, .segment:
+            // 121：同一句的几个气泡之间还是原来那条小缝。只看自己是不是最后一个，不看后面是谁，
+            // 后面的气泡插进来时前面这格的间距不用变。
+            if let part = items[indexPath.item].part, !part.isLast {
+                return Theme.shared.metric.splitBubbleGap
+            }
             return nil
         }
     }

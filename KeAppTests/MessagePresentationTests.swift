@@ -197,6 +197,142 @@ final class MessagePresentationTests: XCTestCase {
         XCTAssertNil(Message(id: "mine", sender: .me, text: "", time: .now, attachments: [key]).unlockedDiary)
     }
 
+    // MARK: 121 后台切好的气泡
+
+    /// 121：服务器切好的为准；本机切法只给没带 segments 的旧缓存
+    func testServerSegmentsArePreferredOverLocalSplit() {
+        let server = Message(id: "server", serverID: 1, sender: .ke, text: "先过来。\n\n让我抱一下。\n\n再慢慢说。",
+                             time: .now, segments: ["先过来。\n\n让我抱一下。", "再慢慢说。"])
+        XCTAssertEqual(server.bubbleSegments, ["先过来。\n\n让我抱一下。", "再慢慢说。"])
+
+        // 卧室里本机会整段不切；服务器说切就切（规则只在服务器一处定）
+        let bedroom = Message(id: "bedroom", serverID: 2, sender: .ke, text: "一。\n\n二。", time: .now,
+                              sceneMode: "bedroom", segments: ["一。", "二。"])
+        XCTAssertEqual(bedroom.bubbleSegments, ["一。", "二。"])
+
+        // 空的、全是空白的服务器切法当没有，退回本机切法
+        let blank = Message(id: "blank", serverID: 3, sender: .ke, text: "先过来。\n\n再慢慢说。", time: .now,
+                            segments: ["  ", ""])
+        XCTAssertEqual(blank.bubbleSegments, ["先过来。", "再慢慢说。"])
+        let oldCache = Message(id: "old", serverID: 4, sender: .ke, text: "先过来。\n\n再慢慢说。", time: .now)
+        XCTAssertEqual(oldCache.bubbleSegments, ["先过来。", "再慢慢说。"])
+
+        // 她的话不按柯的切法走
+        let mine = Message(id: "mine", sender: .me, text: "一。\n\n二。", time: .now, segments: ["一。", "二。"])
+        XCTAssertEqual(mine.bubbleSegments, ["一。\n\n二。"])
+    }
+
+    /// 121：还在写的那条一个气泡都不出，时间线里只剩一行（时间和「发送中」）
+    func testStreamingReplyRendersNoTextSegments() {
+        let streaming = Message(id: "streaming", sender: .ke, text: "半截的正文\n\n还在长", time: .now,
+                                thoughtSummary: "先想一想。", segments: ["半截的正文", "还在长"],
+                                isStreaming: true, deliveryState: .sending)
+        XCTAssertEqual(streaming.bubbleSegments, [])
+        XCTAssertTrue(Message(id: "placeholder", sender: .ke, text: "", time: .now,
+                              isStreaming: true, deliveryState: .sending).isAwaitingReply)
+
+        let items = ChatTimelineItem.make(message: streaming, isHighlighted: false, visibleSegmentCount: nil)
+        XCTAssertEqual(items.map(\.kind), [.thinking, .message], "Thinking 照常在，正文那一行没有字")
+        XCTAssertEqual(items.last?.part, ChatBubblePart(index: 0, count: 1, text: nil))
+    }
+
+    /// 121：一个个冒出来就是一行行插进来；已经冒出来的那几行不重画、不变
+    func testRevealInsertsBubbleRowsWithoutTouchingVisibleOnes() throws {
+        let reply = Message(id: "reply", serverID: 7, sender: .ke, text: "一。\n\n二。\n\n三。", time: .now,
+                            thoughtSummary: "想好了。", segments: ["一。", "二。", "三。"])
+        let first = ChatTimelineItem.make(messages: [reply], highlightedMessageID: nil, visibleSegmentCount: { _ in 1 })
+        let second = ChatTimelineItem.make(messages: [reply], highlightedMessageID: nil, visibleSegmentCount: { _ in 2 })
+        let all = ChatTimelineItem.make(messages: [reply], highlightedMessageID: nil, visibleSegmentCount: { _ in nil })
+
+        XCTAssertEqual(first.filter { $0.part != nil }.map(\.kind), [.message])
+        XCTAssertEqual(all.filter { $0.part != nil }.map(\.kind), [.message, .segment(1), .segment(2)])
+        XCTAssertEqual(all.compactMap(\.part?.text), ["一。", "二。", "三。"])
+        XCTAssertEqual(all.compactMap(\.part).map(\.isLast), [false, false, true], "时间只跟在最后一个气泡下面")
+        XCTAssertEqual(Set(all.map(\.id)).count, all.count)
+
+        let step = try XCTUnwrap(ChatTimelineChanges.between(first, second))
+        XCTAssertEqual(step.inserted, [first.count])
+        XCTAssertEqual(step.reloaded, [], "第一个气泡原样不动")
+        XCTAssertEqual(step.deleted, [])
+        let rest = try XCTUnwrap(ChatTimelineChanges.between(second, all))
+        XCTAssertEqual(rest, ChatTimelineChanges(inserted: [second.count]))
+    }
+
+    /// 121：本机那条换成服务器那条（沿用本机 id）时，气泡一样就一格都不重画、不重新冒
+    func testHistoryHandoverWithIdenticalSegmentsReloadsNothing() throws {
+        let sentAt = beijingDate(year: 2026, month: 10, day: 19, hour: 21)
+        let local = Message(id: "assistant-ios-1", serverID: 101, clientID: "ios-1", sender: .ke,
+                            text: "先过来。\n\n再慢慢说。", time: sentAt, thoughtSummary: "想好了。",
+                            segments: ["先过来。", "再慢慢说。"])
+        var remote = Message(id: "assistant-ios-1", serverID: 101, sender: .ke,
+                             text: "先过来。\n\n再慢慢说。\n", time: sentAt.addingTimeInterval(4),
+                             serverTimeIsValid: true, thoughtSummary: "想好了。",
+                             thoughtSummaryRaw: "Ready.", sceneMode: "daily", attachments: [],
+                             segments: ["先过来。", "再慢慢说。"])
+        let before = ChatTimelineItem.make(messages: [local], highlightedMessageID: nil, visibleSegmentCount: { _ in nil })
+        var after = ChatTimelineItem.make(messages: [remote], highlightedMessageID: nil, visibleSegmentCount: { _ in nil })
+        XCTAssertEqual(before, after)
+        XCTAssertEqual(ChatTimelineChanges.between(before, after), ChatTimelineChanges())
+
+        // 服务器切法真的不一样了，才重画那一格
+        remote.segments = ["先过来。", "再慢慢说吧。"]
+        after = ChatTimelineItem.make(messages: [remote], highlightedMessageID: nil, visibleSegmentCount: { _ in nil })
+        let changed = try XCTUnwrap(ChatTimelineChanges.between(before, after))
+        XCTAssertEqual(changed.reloaded, [after.count - 1])
+        XCTAssertEqual(changed.inserted, [])
+    }
+
+    /// 121：占位换成第一个气泡、后面的气泡同时插进来（减弱动态效果时）：占位那格要重画，
+    /// 不能只插新格子把它漏掉。顺序乱了才整页重载。
+    func testLandingReloadsThePlaceholderRowAndInsertsTheRest() throws {
+        let mine = Message(id: "user-ios-1", serverID: 100, sender: .me, text: "在吗", time: .now)
+        var reply = Message(id: "assistant-ios-1", clientID: "ios-1", sender: .ke, text: "", time: .now,
+                            isStreaming: true, deliveryState: .sending)
+        let waiting = ChatTimelineItem.make(messages: [mine, reply], highlightedMessageID: nil, visibleSegmentCount: { _ in nil })
+        reply.serverID = 101
+        reply.text = "在。\n\n一直在。"
+        reply.segments = ["在。", "一直在。"]
+        reply.isStreaming = false
+        reply.deliveryState = .sent
+        let landed = ChatTimelineItem.make(messages: [mine, reply], highlightedMessageID: nil, visibleSegmentCount: { _ in nil })
+
+        let changes = try XCTUnwrap(ChatTimelineChanges.between(waiting, landed))
+        XCTAssertEqual(changes.reloaded, [waiting.count - 1])
+        XCTAssertEqual(changes.inserted, [landed.count - 1])
+        XCTAssertEqual(changes.deleted, [])
+
+        XCTAssertNil(ChatTimelineChanges.between(landed, Array(landed.reversed())))
+    }
+
+    func testDoneEventCarriesServerSegments() throws {
+        let events = try APIClient.parseStreamPayload(
+            #"{"done":true,"assistant_message_id":7,"status":"done","segments":["先过来。","再慢慢说。"]}"#
+        )
+        guard case let .completed(id, _, status, _, _, _, segments) = events.last else {
+            return XCTFail("应该解析出完成事件")
+        }
+        XCTAssertEqual(id, 7)
+        XCTAssertEqual(status, "done")
+        XCTAssertEqual(segments, ["先过来。", "再慢慢说。"])
+
+        let old = try APIClient.parseStreamPayload(#"{"done":true,"assistant_message_id":8,"status":"done"}"#)
+        guard case let .completed(_, _, _, _, _, _, none) = old.last else { return XCTFail("应该解析出完成事件") }
+        XCTAssertNil(none)
+    }
+
+    @MainActor
+    func testLandedReplyPrefersServerSegments() {
+        let landed = ChatViewModel.landedReply(text: "先过来。\n\n再慢慢说。", segments: ["先过来。", "再慢慢说。", " "])
+        XCTAssertEqual(landed.text, "先过来。\n\n再慢慢说。")
+        XCTAssertEqual(landed.segments, ["先过来。", "再慢慢说。"])
+        // 重接时只补了一个 done：用切好的气泡拼回正文
+        XCTAssertEqual(ChatViewModel.landedReply(text: "", segments: ["一。", "二。"]).text, "一。\n\n二。")
+        // 旧服务器没给切法：原文照收，交给本机切
+        let old = ChatViewModel.landedReply(text: "一。\n\n二。", segments: nil)
+        XCTAssertEqual(old.text, "一。\n\n二。")
+        XCTAssertNil(old.segments)
+    }
+
     func testHistoricalImageWithoutKindStillOpensAsImage() {
         let attachment = ChatAttachment(
             url: "/uploads/example.jpg",

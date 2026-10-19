@@ -307,10 +307,11 @@ final class ChatViewModel: ObservableObject {
                     text: "一句一句说给我听。",
                     time: .now
                 ),
+                // 121：写的过程中不再露半截，正文等写完整条放上去
                 Message(
                     id: "ui-test-reply-streaming-assistant",
                     sender: .ke,
-                    text: "第一句先来到屏幕上，",
+                    text: "",
                     time: .now,
                     isStreaming: true,
                     deliveryState: .sending
@@ -346,7 +347,7 @@ final class ChatViewModel: ObservableObject {
                 Message(
                     id: "ui-test-very-long-assistant",
                     sender: .ke,
-                    text: "长文正在接回来。",
+                    text: "",
                     time: .now.addingTimeInterval(-120),
                     isStreaming: true,
                     deliveryState: .sending
@@ -486,17 +487,20 @@ final class ChatViewModel: ObservableObject {
     private func runUITestReplyStream() async {
         let messageID = "ui-test-reply-streaming-assistant"
         let chunks = [
+            "第一句先来到屏幕上，",
             "第二句接着流进同一个气泡，",
             "最后一句再慢慢说完。"
         ]
 
+        // 121：和真的回复流一样，只收不显示，写完整条放上去
+        var replyText = ""
         for chunk in chunks {
             try? await Task.sleep(nanoseconds: 420_000_000)
-            updateMessage(id: messageID) { $0.text += chunk }
-            streamRevision += 1
+            replyText += chunk
         }
 
         updateMessage(id: messageID) {
+            $0.text = replyText
             $0.isStreaming = false
             $0.deliveryState = .sent
         }
@@ -530,18 +534,25 @@ final class ChatViewModel: ObservableObject {
             .joined(separator: "\n\n")
             + "\n\n\(continuous)"
             + "\n\n这是长文最后一行，下面的消息不能盖住它。"
-        updateMessage(id: "ui-test-very-long-assistant") { $0.text = longText }
+        // 121：写完整条放上去（长文整段一个气泡）
+        updateMessage(id: "ui-test-very-long-assistant") {
+            $0.text = longText
+            $0.isStreaming = false
+            $0.deliveryState = .sent
+        }
         streamRevision += 1
     }
 
     private func runUITestSendStream(messageID: String) async {
         let chunks = ["爸爸收到了。", "这次屏幕不会再乱跳。"]
+        // 121：只收不显示，写完整条放上去
+        var replyText = ""
         for chunk in chunks {
             try? await Task.sleep(nanoseconds: 360_000_000)
-            updateMessage(id: messageID) { $0.text += chunk }
-            streamRevision += 1
+            replyText += chunk
         }
         updateMessage(id: messageID) {
+            $0.text = replyText
             $0.isStreaming = false
             $0.deliveryState = .sent
         }
@@ -1304,7 +1315,9 @@ final class ChatViewModel: ObservableObject {
             guard isCurrent() else { return false }
             let withThinking = preserveLocalThinking(in: remote)
             let merged = mergeRemoteHistory(withThinking)
+            let awaitingIDs = Set(messages.filter(\.isAwaitingReply).map(\.id))
             messages = merged
+            revealLandedReplies(previouslyAwaiting: awaitingIDs)
             searchCorpus = mergeMessages(searchCorpus, with: merged)
             isShowingCachedMessages = false
             statusText = nil
@@ -1349,22 +1362,19 @@ final class ChatViewModel: ObservableObject {
         var completionRetryable = false
         var retryScheduled = false
         var serverErrorMessage: String?
-        var pendingText = ""
+        /// 121：柯的正文一路收着，不往气泡里写——写完（done）那一刻才整条放上去。
+        /// 断线重接是新的一轮 performSend，从头再收，不会把前一轮的半截接在后面。
+        var replyText = ""
         var pendingThinking = ""
         var lastPublish = Date.distantPast
 
         func flushBufferedEvents() {
             guard ownsReply(owner) else { return }
-            guard !pendingText.isEmpty || !pendingThinking.isEmpty else { return }
-            let textDelta = pendingText
+            guard !pendingThinking.isEmpty else { return }
             let thinkingDelta = pendingThinking
-            pendingText = ""
             pendingThinking = ""
             updateMessage(id: assistantLocalID) {
-                $0.text += textDelta
-                if !thinkingDelta.isEmpty {
-                    $0.thoughtSummary = ($0.thoughtSummary ?? "") + thinkingDelta
-                }
+                $0.thoughtSummary = ($0.thoughtSummary ?? "") + thinkingDelta
             }
             streamRevision += 1
             lastPublish = .now
@@ -1395,10 +1405,8 @@ final class ChatViewModel: ObservableObject {
                     applyBedroom(bedroom)
 
                 case let .text(delta):
-                    pendingText += delta
-                    if Date.now.timeIntervalSince(lastPublish) >= 0.05 {
-                        flushBufferedEvents()
-                    }
+                    // 121：只收不显示。气泡不再跟着字数一点点长、写完再被切开（她说的「抖动」）。
+                    replyText += delta
 
                 case let .thinkingDelta(delta):
                     pendingThinking += delta
@@ -1430,7 +1438,8 @@ final class ChatViewModel: ObservableObject {
                     status,
                     error,
                     retryable,
-                    scheduled
+                    scheduled,
+                    segments
                 ):
                     flushBufferedEvents()
                     didComplete = true
@@ -1440,13 +1449,24 @@ final class ChatViewModel: ObservableObject {
                     retryScheduled = scheduled
                     if assistantMessageID != nil {
                         settledReplyClientIDs.insert(clientID)
-                        updateMessage(id: assistantLocalID) {
-                            $0.serverID = assistantMessageID ?? $0.serverID
-                            $0.isStreaming = false
-                            $0.deliveryState = .sent
-                        }
-                        if let completed = messages.first(where: { $0.id == assistantLocalID }) {
-                            stageSegments(for: completed, reduceMotion: reduceMotion)
+                        // 121：整条一次放上去，气泡照服务器切好的分；服务器没给（旧服务器）才用本机切法。
+                        let landed = Self.landedReply(text: replyText, segments: segments)
+                        if landed.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            // 这一轮流里一个字都没收到（重接时只补了一个 done）：不放一条空的上去，
+                            // 记住 serverID 接着等，紧跟着拉回来的记录会在原位整条换上、照样一个个冒出来。
+                            updateMessage(id: assistantLocalID) { $0.serverID = assistantMessageID ?? $0.serverID }
+                        } else {
+                            updateMessage(id: assistantLocalID) {
+                                $0.serverID = assistantMessageID ?? $0.serverID
+                                $0.text = landed.text
+                                $0.segments = landed.segments
+                                $0.isStreaming = false
+                                $0.deliveryState = .sent
+                            }
+                            if let completed = messages.first(where: { $0.id == assistantLocalID }) {
+                                stageSegments(for: completed, reduceMotion: reduceMotion)
+                            }
+                            streamRevision += 1
                         }
                     } else if status == "merged" {
                         // 这一条已经并进她后面补发的那条，由那条一起回；空位直接收起，不算失败。
@@ -1681,6 +1701,9 @@ final class ChatViewModel: ObservableObject {
                                   attachments: pending.attachments, reduceMotion: pending.reduceMotion,
                                   retryCount: 0, owner: owner)
             } else {
+                // 121：她那条服务器收到了、任务也不在进行中——这一句已经写完（或并进了后面那条）。
+                // 本机那个「发送中」的空位不再留着等，拉回来的记录里有完整的那条。
+                if let pending = pendingReply { settledReplyClientIDs.insert(pending.clientID) }
                 await refreshHistory(showFailure: false, owner: owner)
                 guard ownsReply(owner) else { return }
                 isSending = false
@@ -1792,9 +1815,37 @@ final class ChatViewModel: ObservableObject {
         visibleSegmentCounts[message.bubbleRevealKey]
     }
 
+    /// 121：写完那一刻放上去的正文。气泡以服务器切好的为准；服务器没给才退回本机切法（segments 为 nil）。
+    /// 一路收来的原文为空（重接时服务器只补了一个 done）就用切好的气泡拼回正文，复制出来也是整条。
+    static func landedReply(text: String, segments: [String]?) -> (text: String, segments: [String]?) {
+        let server = (segments ?? []).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard !server.isEmpty else { return (text, nil) }
+        let streamed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (streamed.isEmpty ? server.joined(separator: "\n\n") : text, server)
+    }
+
+    /// 121：回前台、点推送、轮询接回——原来在等的那句换成了服务器那条完整的，也照样一个个冒出来，
+    /// 和流里直接写完的一个样子。已经冒过（或正在冒）的那几条不重来：SSE 写完后紧跟着的那次拉记录，
+    /// 本机那条早就不是「在等」了，这里不会碰它。
+    private func revealLandedReplies(previouslyAwaiting awaitingIDs: Set<String>) {
+        guard !awaitingIDs.isEmpty else { return }
+        var landed = false
+        for message in messages where awaitingIDs.contains(message.id) && !message.isAwaitingReply {
+            landed = true
+            guard segmentRevealTasks[message.bubbleRevealKey] == nil else { continue }
+            stageSegments(
+                for: message,
+                reduceMotion: (pendingReply?.reduceMotion ?? false) || UIAccessibility.isReduceMotionEnabled
+            )
+        }
+        // 占位那一行换成了气泡：让时间线把它当成新内容，跟着落到最底（她本来就在看最新时）。
+        if landed { streamRevision += 1 }
+    }
+
     private func stageSegments(for message: Message, reduceMotion: Bool) {
         let key = message.bubbleRevealKey
         segmentRevealTasks[key]?.cancel()
+        segmentRevealTasks[key] = nil
         guard !reduceMotion, message.bubbleSegments.count > 1 else {
             visibleSegmentCounts.removeValue(forKey: key)
             return

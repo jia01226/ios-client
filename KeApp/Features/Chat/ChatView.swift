@@ -574,7 +574,8 @@ struct ChatView: View {
                         highlightedMessageID: highlightedMessageID,
                         quotedIDs: Set(quotesStore.quotes.map(\.message_id)),
                         pinnedIDs: keWindow.pinnedMessageIDs,
-                        visibleSegmentCount: { vm.visibleSegmentCount(for: $0) }
+                        // 121：减弱动态效果时柯的几个气泡一起出来，不一个个冒
+                        visibleSegmentCount: { reduceMotion ? nil : vm.visibleSegmentCount(for: $0) }
                     ),
                     streamRevision: vm.streamRevision,
                     suppressAutoScrollUntil: presentedThinkingMessageID == nil

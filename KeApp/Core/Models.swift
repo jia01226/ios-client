@@ -74,7 +74,11 @@ struct Message: Identifiable, Hashable, Codable, Sendable {
     /// 服务器脱敏后的工具轨迹。卡片单独显示，不混进柯的正文。
     var toolRuns: [ChatToolRun]? = nil
 
-    /// 流式回复时，这条还没写完
+    /// 121：服务器切好的气泡（/api/messages 和回复流最后一条 done 都会带）。有它就照它分，
+    /// 本机不再自己切；旧版本缓存里没有这一项，才退回本机的切法。
+    var segments: [String]? = nil
+
+    /// 流式回复时，这条还没写完。121 起写完之前一个字都不显示，只亮「正在输入中」。
     var isStreaming: Bool = false
 
     var deliveryState: DeliveryState = .sent
@@ -100,8 +104,16 @@ extension Message {
     /// 后端仍保存一条完整消息；这里只把柯的正文按空行切成显示气泡。
     /// 单换行保留在同一气泡里，连续空行不会产生空气泡。
     var bubbleSegments: [String] {
+        // 121 她：「应该后台切好，我这边看到是一条条的气泡，要么就是一整段」。
+        // 柯还在写的那条一个气泡都不出（不再一个字一个字地长），写完才整条换上。
+        if sender == .ke, isStreaming { return [] }
+        // 121：服务器切好的就照它的分；本机的切法只留给旧缓存里没带 segments 的那几条
+        if sender == .ke, let segments {
+            let server = segments.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            if !server.isEmpty { return server }
+        }
         // 120：「爸爸开锁了」那条画成一张卡，整条不切
-        guard sender == .ke, !isStreaming, unlockedDiary == nil else {
+        guard sender == .ke, unlockedDiary == nil else {
             let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
             return value.isEmpty ? [] : [text]
         }
@@ -148,6 +160,12 @@ extension Message {
     /// 本地流式气泡与历史记录会换 id，serverID 让分条进度能跨刷新延续。
     var bubbleRevealKey: String {
         serverID.map { "server-\($0)" } ?? id
+    }
+
+    /// 121：柯这一句还没落定——正在写、等接回、或者没写成，正文一个字都还没放上来。
+    /// 服务器那条完整的到了以后，从这种状态换过去的才需要一个个冒出来。
+    var isAwaitingReply: Bool {
+        sender == .ke && text.isEmpty && (isStreaming || deliveryState != .sent)
     }
 
     private func keepsLongFormTogether(_ segments: [String]) -> Bool {
