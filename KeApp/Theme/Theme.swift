@@ -213,6 +213,22 @@ struct Metrics {
     let recentPhotoSize: CGFloat = 68
     let messageImageHeight: CGFloat = 180
     let scrollToLatestRevealDistance: CGFloat = 96
+
+    // 126：浮在内容上的三块圆角玻璃（顶栏 / 输入栏 / 底栏），数值照 blush.css 最后一层
+    let chromeHeaderInset: CGFloat = 12      // 顶栏离屏幕左右
+    let chromeHeaderTop: CGFloat = 8
+    let chromeHeaderHeight: CGFloat = 64
+    let chromeHeaderRadius: CGFloat = 30
+    let chromeComposerInset: CGFloat = 14    // 输入栏离屏幕左右
+    let chromeComposerRadius: CGFloat = 30
+    let chromeDockInset: CGFloat = 14        // 底栏离屏幕左右
+    let chromeDockHeight: CGFloat = 58
+    let chromeDockPadding: CGFloat = 5
+    let chromeDockRadius: CGFloat = 32
+    let chromeDockItemRadius: CGFloat = 25
+    let chromeDockMinBottom: CGFloat = 10    // 没有 Home 条的机器，底栏离底边至少这么多
+    let chromeGap: CGFloat = 8               // 输入栏和底栏之间、内容和浮栏之间
+    let homeMoonSize: CGFloat = 21
 }
 
 // MARK: - 字号
@@ -238,7 +254,12 @@ struct Typo {
     let caption     = Font.system(size: 13, weight: .regular)
     let quote       = Font.system(size: 20, weight: .regular)   // "柯先开的口"那张卡
     let numberBig   = Font.system(size: 44, weight: .light)     // 428 天
-    let chatHeader  = Font.system(size: 20, weight: .medium)
+    // 126：顶栏「柯」跟设计稿一样用宋体（思源宋体 Regular），不再是粗系统字
+    let chatHeader  = Font.custom("NotoSerifSC-Regular", size: 21, relativeTo: .title3)
+    let chatStatus  = Font.system(size: 10.5, weight: .regular)
+    /// 底栏三个字：设计稿 Songti SC 14 / 字距 2.4；App 里没有系统宋体，用自带的思源宋体细体
+    let dockLabel   = Font.custom("NotoSerifSC-Light", size: 14, relativeTo: .footnote)
+    let dockTracking: CGFloat = 2.4
     let menuIcon    = Font.system(size: 20, weight: .semibold)
     let composerIcon = Font.system(size: 18, weight: .regular)
     let sendIcon    = Font.system(size: 17, weight: .semibold)
@@ -303,7 +324,7 @@ final class Theme: ObservableObject {
         set { storedSkin = newValue.rawValue; objectWillChange.send() }
     }
 
-    @AppStorage("app.chatPalette") private var storedPalette = "moonlight-pink"
+    @AppStorage("app.chatPalette") private var storedPalette = ChatPalette.blushID
     @AppStorage("app.chatTypeface") private var storedTypeface = "regular"
 
     var chatPalette: ChatPalette {
@@ -367,6 +388,7 @@ final class Theme: ObservableObject {
             defaults.set("moonlight-pink", forKey: "app.chatPalette")
             defaults.set(true, forKey: "app.moonlight-pink.migrated.v76")
         }
+        Self.migrateChatPaletteToBlush(defaults)
         let savedFont = defaults.object(forKey: "app.chatFontSize") as? Double
         let savedOpacity = defaults.object(forKey: "app.bubbleOpacity") as? Double
         let savedBlur = defaults.object(forKey: "app.glassBlur") as? Double
@@ -386,6 +408,18 @@ final class Theme: ObservableObject {
     }
 
     var font: Typo { Typo(chatSize: CGFloat(chatFontSize), chatTypeface: chatTypeface) }
+
+    /// 126：三页同一张粉白纸。聊天原来的「月光浅粉」是 76 版替所有人写进去的默认值，分不出是不是她挑的；
+    /// 只有她也没自己挑过「我们/柯的」纸色时（= 一直用默认），才把聊天一起换成粉白。只换一次。
+    /// 她挑过别的聊天配色（香槟、奶咖……）或挑过纸色的，一概不动。
+    nonisolated static let blushMigrationKey = "app.blush.migrated.v126"
+    nonisolated static func migrateChatPaletteToBlush(_ defaults: UserDefaults) {
+        guard !defaults.bool(forKey: blushMigrationKey) else { return }
+        defaults.set(true, forKey: blushMigrationKey)
+        let stored = defaults.string(forKey: "app.chatPalette") ?? "moonlight-pink"
+        guard stored == "moonlight-pink", !CamelliaPalette.hasExplicitChoice(in: defaults) else { return }
+        defaults.set(ChatPalette.blushID, forKey: "app.chatPalette")
+    }
 
     // MARK: 卧室模式
     //

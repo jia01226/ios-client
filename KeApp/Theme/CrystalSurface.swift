@@ -16,16 +16,18 @@ struct AppAtmosphere: View {
             if !theme.isBedroom {
                 let night = theme.skin == .night
                 let d: CGFloat = drift ? 1 : 0
+                // 126：粉白纸几乎是白的，光晕只留一点影子（设计稿底图只有 10% 的淡）
+                let glow = night ? 1 : theme.chatPalette.glow
                 RadialGradient(
                     colors: [Color.white.opacity(night ? 0.14 : 0.70), .clear],
                     center: UnitPoint(x: 0.80 - 0.10 * d, y: 0.10 + 0.05 * d), startRadius: 0, endRadius: 280
                 )
                 RadialGradient(
-                    colors: [theme.color.accentSoft.opacity(night ? 0.38 : 0.66), .clear],
+                    colors: [theme.color.accentSoft.opacity((night ? 0.38 : 0.66) * glow), .clear],
                     center: UnitPoint(x: 0.10 + 0.14 * d, y: 0.68 - 0.08 * d), startRadius: 0, endRadius: 440
                 )
                 RadialGradient(
-                    colors: [theme.sendColor.opacity(night ? 0.24 : 0.34), .clear],
+                    colors: [theme.sendColor.opacity((night ? 0.24 : 0.34) * glow), .clear],
                     center: UnitPoint(x: 0.94 - 0.12 * d, y: 0.92 - 0.06 * d), startRadius: 0, endRadius: 400
                 )
             }

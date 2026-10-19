@@ -8,8 +8,14 @@ struct ChatPalette: Identifiable {
     let accent: UInt32
     let tint: UInt32
     let send: UInt32
+    /// 126：粉白那款的次要字色、发送键上的字色（白）、底下几团光晕有多浓、气泡要不要近透明
+    var secondary: UInt32? = nil
+    var onAccent: UInt32? = nil
+    var glow: Double = 1
+    var clearBubbles = false
     var reply: UInt32 {
         switch id {
+        case "blush": return 0xFFFFFF
         case "moonlight-pink": return Morandi.reply
         case "champagne": return 0xF1E9DE
         case "oat": return 0xEDE7DE
@@ -18,7 +24,11 @@ struct ChatPalette: Identifiable {
         default: return 0xF0E4E2
         }
     }
+    static let blushID = "blush"
     static let all: [ChatPalette] = [
+        // 126：跟「我们」「柯的」同一张粉白纸（设计稿 blush.css）：纸 #FFFEFE、字 #564653 / #7A6572、强调 #8C617A
+        .init(id: blushID, name: "粉白", base: 0xFFFEFE, ink: 0x564653, accent: 0x8C617A, tint: 0xF2DCE5, send: 0x8C617A,
+              secondary: 0x7A6572, onAccent: 0xFFFFFF, glow: 0.22, clearBubbles: true),
         .init(id: "moonlight-pink", name: "月光浅粉", base: Morandi.background, ink: Morandi.ink, accent: Morandi.rose, tint: Morandi.own, send: Morandi.send),
         .init(id: "champagne", name: "奶油香槟", base: 0xFFFCF7, ink: 0x40382E, accent: 0xA58E63, tint: 0xE8D6B5, send: 0xE1CFA8),
         .init(id: "rose", name: "焦糖玫瑰", base: 0xFCF7F3, ink: 0x493A35, accent: 0xA0796E, tint: 0xDDBEB0, send: 0xD9B4A5),
@@ -45,7 +55,9 @@ extension Palette {
         return Palette(
             bg: Color(hex: choice.base), card: card, cardElevated: card,
             separator: ink.opacity(0.08), textPrimary: ink,
-            textSecondary: choice.id == "moonlight-pink" ? Color(hex: Morandi.muted) : ink.opacity(0.66), textOnAccent: ink,
+            textSecondary: choice.secondary.map { Color(hex: $0) }
+                ?? (choice.id == "moonlight-pink" ? Color(hex: Morandi.muted) : ink.opacity(0.66)),
+            textOnAccent: choice.onAccent.map { Color(hex: $0) } ?? ink,
             accent: Color(hex: choice.accent), accentSoft: tint,
             bubbleKe: Color(hex: choice.reply), bubbleKeText: ink, bubbleMe: tint, bubbleMeText: ink,
             glassTint: glass, glassTintStrong: glass.opacity(0.12),

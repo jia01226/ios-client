@@ -98,15 +98,20 @@ struct NotebookSnapshot: Decodable, Equatable, Sendable {
 // MARK: - 样式（tokens.json · day）
 
 enum Ink {
-    static let primary = Color(hex: 0x3D5478)
-    static let secondary = Color(hex: 0x5C6B7D)
-    static let line = Color(hex: 0xA8B6BE)
-    static let accent = Color(hex: 0x526D88)
-    static let periodFill = Color(hex: 0xF5D7DF)
+    // 126：字色、线、强调色跟着「纸色」走（默认粉白 = 设计稿 #564653 / #7A6572 / #8C617A），
+    // 她自己挑过别的纸色的照旧是原来的蓝墨。值都在 Theme/CamelliaPalette.swift 的 CamelliaInks 里。
+    private static var inks: CamelliaInks { CamelliaPalette.stored().inks }
+    static var primary: Color { inks.primary }
+    static var secondary: Color { inks.secondary }
+    static var line: Color { inks.line }
+    static var accent: Color { inks.accent }
+    static var periodFill: Color { inks.periodFill }
     static let keText = Color(hex: 0x3D5E73), keFill = Color(hex: 0xE8F0F4)
     static let meText = Color(hex: 0x795363), meFill = Color(hex: 0xF5E8ED)
     static let positive = Color(hex: 0x466859), neutral = Color(hex: 0x626C76), negative = Color(hex: 0x905664)
-    static let track = Color(hex: 0xE4E9EE), saving = Color(hex: 0xB8788B)
+    static var track: Color { inks.track }
+    static var saving: Color { inks.saving }
+    static var dockSelection: Color { inks.dockSelection }
     /// 121：额度条快见底时的两档：剩 10–30% 暖一点的琥珀，不到 10% 或花超了是软软的红（都不刺眼）
     static let amber = Color(hex: 0xC99A5E), softRed = Color(hex: 0xC27D80)
     /// 108：她喜欢以前那种瘦瘦的字——思源宋体的极细款。大字用极细，小字用细一档，免得看不清。聊天不跟这套。
