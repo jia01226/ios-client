@@ -577,6 +577,8 @@ enum TarotTableStyle {
     static let border = pearl.opacity(0.55)
     static let muted = ink.opacity(0.76)
     static let nightShade = Color.black.opacity(0.10)
+    /// 122：选了「夜里」牌阵，桌布再暗一层——灯关小一点，不换布、不换牌背
+    static let nightSpreadShade = Color.black.opacity(0.22)
     static let gap: CGFloat = 12
     static let smallGap: CGFloat = 6
     static let padding: CGFloat = 20

@@ -16,6 +16,29 @@ enum TarotDealID: Codable, Equatable, Sendable {
     }
 }
 
+/// 122：牌阵。原来「一张/三张/凯尔特十字」和 78 张散在各处写死，加「夜里」后收到这一处。
+/// 夜里是两个人今晚的角色扮演：只用 22 张大牌、三个位置（身份/关系/玩法），不问问题。
+enum TarotSpread {
+    static let night = "night"
+    static let all = ["one", "three", "celtic", night]
+    static func title(_ key: String) -> String {
+        ["one": "一张", "three": "三张", "celtic": "凯尔特十字", night: "夜里"][key] ?? key
+    }
+    static func cardCount(_ key: String) -> Int? { ["one": 1, "three": 3, "celtic": 10, night: 3][key] }
+    static func deckSize(_ key: String) -> Int { key == night ? 22 : TarotFan.count }
+    /// 洗牌前桌上先摆的位置名；洗完以服务器给的为准
+    static func positions(_ key: String) -> [String] {
+        switch key {
+        case "one": return ["此刻"]
+        case "celtic": return (1...10).map { "\($0)" }
+        case night: return ["过去·身份", "现在·关系", "未来·玩法"]
+        default: return ["过去", "现在", "未来"]
+        }
+    }
+    /// 夜里不是算命，不填问题
+    static func asksQuestion(_ key: String) -> Bool { key != night }
+}
+
 struct TarotDeal: Decodable, Sendable {
     let deal_id: TarotDealID
     let deck_size: Int
@@ -23,7 +46,8 @@ struct TarotDeal: Decodable, Sendable {
     let spread_name: String
     let positions: [String]
     var isValid: Bool {
-        deck_size == 78 && positions.count == ["one": 1, "three": 3, "celtic": 10][spread]
+        // 122：夜里那副只有 22 张，别的照旧 78 张
+        deck_size == TarotSpread.deckSize(spread) && positions.count == TarotSpread.cardCount(spread)
             && positions.allSatisfy { !$0.isEmpty }
     }
 }
@@ -69,11 +93,14 @@ struct TarotSelection: Equatable {
 /// 抬起来的就不是她按的那张；第二下点在抬起那张身上，也只有一两成能点中，别的都换成了旁边的牌。
 /// 现在画牌和认牌用同一套摆法：从最上面那张往下找，第一张盖住手指的就是她按的。
 enum TarotFan {
+    /// 整副 78 张。122：「夜里」那副只有 22 张大牌——摆法和认牌都按这一副实际几张摊满半圆，
+    /// 张数少了每张就露得宽一些（22 张时每张露出约 17 点，78 张时约 5 点），认牌规矩不变。
     static let count = 78
 
     /// 第 index 张在牌扇里的中心点，和从扇心朝外的角度（弧度：π 最左，3π/2 正上，2π 最右）。
-    static func placement(_ index: Int, width: CGFloat, height: CGFloat, lifted: Bool) -> (center: CGPoint, angle: Double) {
-        let angle = Double.pi + Double(index) / Double(count - 1) * Double.pi
+    static func placement(_ index: Int, width: CGFloat, height: CGFloat, lifted: Bool,
+                          deckSize: Int = count) -> (center: CGPoint, angle: Double) {
+        let angle = Double.pi + Double(index) / Double(max(deckSize - 1, 1)) * Double.pi
         let radius = Double(width * (TarotTableStyle.fanRadius + (lifted ? TarotTableStyle.previewLift : 0)))
         let center = CGPoint(x: width / 2 + CGFloat(cos(angle) * radius),
                              y: height - width * TarotTableStyle.fanBottom + CGFloat(sin(angle) * radius))
@@ -84,16 +111,17 @@ enum TarotFan {
     /// 叠的次序和画的一样：抬起的那张最上面，其余后面的盖住前面的；已经放上桌的不算。
     /// liftAware 为 false（左右滑着换牌）时当作都没抬起：抬起那张就挡不住手指往旁边换。
     static func card(at point: CGPoint, width: CGFloat, height: CGFloat,
-                     picks: [Int], preview: Int?, liftAware: Bool = true) -> Int? {
+                     picks: [Int], preview: Int?, liftAware: Bool = true, deckSize: Int = count) -> Int? {
         let halfWidth = Double(width * TarotTableStyle.fanCardWidth / 2)
         let halfLength = halfWidth / Double(TarotTableStyle.cardAspect)
         let slop = Double(TarotTableStyle.fanTouchSlop)
-        let lifted = liftAware ? preview.flatMap { picks.contains($0) ? nil : $0 } : nil
-        var order = Array((0..<count).reversed())
+        let deck = 0..<max(deckSize, 0)
+        let lifted = liftAware ? preview.flatMap { picks.contains($0) || !deck.contains($0) ? nil : $0 } : nil
+        var order = Array(deck.reversed())
         if let lifted { order.removeAll { $0 == lifted }; order.insert(lifted, at: 0) }
         for index in order where !picks.contains(index) {
             let isLifted = index == lifted
-            let (center, angle) = placement(index, width: width, height: height, lifted: isLifted)
+            let (center, angle) = placement(index, width: width, height: height, lifted: isLifted, deckSize: deckSize)
             let dx = Double(point.x - center.x), dy = Double(point.y - center.y)
             // 牌的长边顺着扇心往外：沿 angle 是长，横过来是宽
             let along = dx * cos(angle) + dy * sin(angle)

@@ -40,6 +40,11 @@ struct TarotCardInspector: View {
                     Text(card.cn + " · " + (card.reversed ? "逆位" : "正位"))
                         .font(Moonlight.serif(22)).accessibilityIdentifier("tarot-inspector-title")
                     Text(card.position).font(Moonlight.serif(13)).foregroundStyle(theme.pageColor.textSecondary)
+                    // 122：「夜里」的牌翻着看大图时，也带上那一句场景（长解读留在牌桌上展开）
+                    if let night = card.night, !night.summary.isEmpty {
+                        Text(night.summary).font(Moonlight.serif(13)).foregroundStyle(theme.pageColor.textSecondary)
+                            .lineLimit(3).accessibilityIdentifier("tarot-inspector-night")
+                    }
                 }
                 Spacer()
                 Button { dismiss() } label: {

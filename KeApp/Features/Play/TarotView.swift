@@ -29,6 +29,8 @@ struct TarotView: View {
     @State private var accessibleIndex = 39
     @State private var draggedIndex: Int?
     @State private var dragOffset = CGSize.zero
+    /// 122：「夜里」哪几格的长解读展开着（按牌位）
+    @State private var openedNight: Set<Int> = []
     /// 120：手指在牌扇上这一下滑没滑过——只记不画，改它不会重画 78 张牌
     @State private var fanTouch = FanTouch()
     private final class FanTouch {
@@ -41,8 +43,9 @@ struct TarotView: View {
     private enum Phase { case idle, shuffling, selecting, submitting, revealing, done }
     private var busy: Bool { phase == .shuffling || phase == .submitting || phase == .revealing }
     private var positions: [String] {
-        deal?.positions ?? (spread == "one" ? ["此刻"] : spread == "three" ? ["过去", "现在", "未来"] : (1...10).map { "\($0)" })
+        deal?.positions ?? TarotSpread.positions(spread)
     }
+    private var isNight: Bool { spread == TarotSpread.night }
     private var reduceMotion: Bool {
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-ui-test-reduce-motion") { return true }
@@ -57,28 +60,38 @@ struct TarotView: View {
                 VStack(spacing: TarotTableStyle.gap) {
                     header
                     spreadPicker
-                    HStack(alignment: .top, spacing: TarotTableStyle.smallGap) {
-                        TextField("想问的问题（可不填）", text: $question, axis: .vertical)
-                            .font(TarotTableStyle.body).lineLimit(1...3)
-                            .padding(TarotTableStyle.gap).background(TarotTableStyle.panel, in: RoundedRectangle(cornerRadius: TarotTableStyle.radius))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: TarotTableStyle.radius)
-                                    .stroke(TarotTableStyle.border, lineWidth: TarotTableStyle.hairline)
-                                    .allowsHitTesting(false)
+                    if !TarotSpread.asksQuestion(spread) {
+                        // 122：「夜里」不是算命，不放问题框；留一行轻轻的字，页面不跳
+                        Text("不用问问题，凭感觉抽三张：身份 · 关系 · 玩法")
+                            .font(TarotTableStyle.caption).foregroundStyle(TarotTableStyle.muted)
+                            .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, minHeight: TarotTableStyle.controlHeight)
+                            .accessibilityIdentifier("tarot-night-hint")
+                    } else {
+                        HStack(alignment: .top, spacing: TarotTableStyle.smallGap) {
+                            TextField("想问的问题（可不填）", text: $question, axis: .vertical)
+                                .font(TarotTableStyle.body).lineLimit(1...3)
+                                .padding(TarotTableStyle.gap).background(TarotTableStyle.panel, in: RoundedRectangle(cornerRadius: TarotTableStyle.radius))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: TarotTableStyle.radius)
+                                        .stroke(TarotTableStyle.border, lineWidth: TarotTableStyle.hairline)
+                                        .allowsHitTesting(false)
+                                }
+                                .contentShape(Rectangle())
+                                .simultaneousGesture(TapGesture().onEnded { questionFocused = true })
+                                .focused($questionFocused).disabled(busy || selection.submitted)
+                                .submitLabel(.done).onSubmit { questionFocused = false }
+                                .accessibilityIdentifier("tarot-question")
+                            if questionFocused {
+                                Button("完成") { questionFocused = false }
+                                    .font(TarotTableStyle.caption)
+                                    .frame(minHeight: TarotTableStyle.controlHeight)
+                                    .accessibilityIdentifier("tarot-question-done")
                             }
-                            .contentShape(Rectangle())
-                            .simultaneousGesture(TapGesture().onEnded { questionFocused = true })
-                            .focused($questionFocused).disabled(busy || selection.submitted)
-                            .submitLabel(.done).onSubmit { questionFocused = false }
-                            .accessibilityIdentifier("tarot-question")
-                        if questionFocused {
-                            Button("完成") { questionFocused = false }
-                                .font(TarotTableStyle.caption)
-                                .frame(minHeight: TarotTableStyle.controlHeight)
-                                .accessibilityIdentifier("tarot-question-done")
                         }
                     }
                     table(width: geometry.size.width - TarotTableStyle.padding * 2)
+                    if isNight, let cast, revealed > 0 { nightReadings(cast) }
                     status
                     if let error {
                         Text(error).font(TarotTableStyle.caption).fixedSize(horizontal: false, vertical: true)
@@ -90,7 +103,8 @@ struct TarotView: View {
                             .font(TarotTableStyle.caption).frame(minHeight: TarotTableStyle.controlHeight)
                             .accessibilityIdentifier("tarot-restart")
                     }
-                    if (spread == "celtic" || typeSize.isAccessibilitySize), deal != nil {
+                    // 122：「夜里」翻开后上面那几格已经写了牌名正逆，这张清单就不重复了
+                    if (spread == "celtic" || typeSize.isAccessibilitySize), deal != nil, !(isNight && revealed > 0) {
                         VStack(alignment: .leading, spacing: TarotTableStyle.smallGap) {
                             ForEach(Array(positions.enumerated()), id: \.offset) { index, position in
                                 Text("\(index + 1) · \(position)\(cardDescription(index))")
@@ -108,6 +122,9 @@ struct TarotView: View {
                 Image("TarotLavenderCloth").resizable().scaledToFill()
                     .frame(width: geometry.size.width, height: geometry.size.height).clipped()
                     .overlay(theme.skin == .night ? TarotTableStyle.nightShade : .clear)
+                    // 122：「夜里」桌布暗一层
+                    .overlay(isNight ? TarotTableStyle.nightSpreadShade : .clear)
+                    .animation(motion, value: isNight)
             }.ignoresSafeArea()
         }
         .background(TarotTableStyle.cloth.ignoresSafeArea())
@@ -139,23 +156,31 @@ struct TarotView: View {
         }
     }
     private var spreadPicker: some View {
-        HStack(spacing: TarotTableStyle.padding) {
-            ForEach(["one", "three", "celtic"], id: \.self) { key in
-                Button {
-                    guard spread != key else { return }
-                    spread = key
-                    // Choosing another spread starts a fresh round with the same question.
-                    reset()
-                } label: {
-                    Text(key == "one" ? "一张" : key == "three" ? "三张" : "凯尔特十字")
-                        .font(TarotTableStyle.body).padding(.vertical, TarotTableStyle.smallGap)
-                        .overlay(alignment: .bottom) {
-                            if spread == key { Rectangle().fill(TarotTableStyle.ink).frame(height: TarotTableStyle.hairline) }
-                        }
-                }.disabled(busy).accessibilityIdentifier("tarot-spread-\(key)")
-                    .accessibilityAddTraits(spread == key ? .isSelected : [])
-            }
+        // 122：多了「夜里」，四个一行；字放得很大挤不下时改成能左右划
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: TarotTableStyle.padding) { spreadButtons }
+            ScrollView(.horizontal) {
+                HStack(spacing: TarotTableStyle.padding) { spreadButtons }
+            }.scrollIndicators(.hidden)
         }.frame(minHeight: TarotTableStyle.controlHeight)
+    }
+    private var spreadButtons: some View {
+        ForEach(TarotSpread.all, id: \.self) { key in
+            Button {
+                guard spread != key else { return }
+                spread = key
+                if !TarotSpread.asksQuestion(key) { questionFocused = false }
+                // Choosing another spread starts a fresh round with the same question.
+                reset()
+            } label: {
+                Text(TarotSpread.title(key))
+                    .font(TarotTableStyle.body).padding(.vertical, TarotTableStyle.smallGap)
+                    .overlay(alignment: .bottom) {
+                        if spread == key { Rectangle().fill(TarotTableStyle.ink).frame(height: TarotTableStyle.hairline) }
+                    }
+            }.disabled(busy).accessibilityIdentifier("tarot-spread-\(key)")
+                .accessibilityAddTraits(spread == key ? .isSelected : [])
+        }
     }
 
     private func table(width: CGFloat) -> some View {
@@ -191,7 +216,8 @@ struct TarotView: View {
                         .accessibilityHidden(true)
                 }
             }
-            ForEach(0..<TarotFan.count, id: \.self) { index in
+            // 122：这一副几张就摆几张（夜里 22 张大牌）
+            ForEach(0..<selection.deckSize, id: \.self) { index in
                 deckCard(index, width: width, height: height)
             }
             // 120：认牌照着画出来的样子找「手指下最上面那张」（TarotFan.card），不再按角度四舍五入。
@@ -223,12 +249,12 @@ struct TarotView: View {
                     .onEnded { _ in
                         fanTouch.movedAt = Date(); fanTouch.start = nil; fanTouch.scrubbing = false
                     })
-                .accessibilityElement().accessibilityLabel("半圆牌扇，78 张牌")
+                .accessibilityElement().accessibilityLabel("半圆牌扇，\(selection.deckSize) 张牌")
                 .accessibilityValue("第 \(accessibleIndex + 1) 张，已选 \(selection.picks.count) 张")
                 .accessibilityHint("上下轻扫换牌，轻点两次抬起，再轻点两次放到桌上")
                 .accessibilityAdjustableAction { direction in
                     let step = direction == .increment ? 1 : -1
-                    accessibleIndex = min(77, max(0, accessibleIndex + step))
+                    accessibleIndex = min(selection.deckSize - 1, max(0, accessibleIndex + step))
                 }
                 .accessibilityAction { tap(accessibleIndex) }
                 .accessibilityIdentifier("tarot-fan")
@@ -245,7 +271,7 @@ struct TarotView: View {
         let slot = selection.picks.firstIndex(of: index)
         let lifted = selection.preview == index
         // 120：和认牌用同一套摆法（TarotFan），画在哪就认在哪
-        let (fanPoint, angle) = TarotFan.placement(index, width: width, height: height, lifted: lifted)
+        let (fanPoint, angle) = TarotFan.placement(index, width: width, height: height, lifted: lifted, deckSize: selection.deckSize)
         let stackPoint = CGPoint(x: width / 2 + (shuffleOffset ? (index.isMultiple(of: 2) ? width * TarotTableStyle.shuffleSeparation : -width * TarotTableStyle.shuffleSeparation) : 0),
                                  y: height - width * TarotTableStyle.stackY + CGFloat(index % 4) * TarotTableStyle.hairline)
         let point = slot.map { slotPoint($0, width: width) } ?? (fanOpen ? fanPoint : stackPoint)
@@ -285,6 +311,63 @@ struct TarotView: View {
             .position(x: point.x + (draggedIndex == index ? dragOffset.width : 0),
                       y: point.y + (draggedIndex == index ? dragOffset.height : 0))
             .zIndex(slot.map { Double(100 + $0) } ?? (lifted ? 90 : Double(index)))
+    }
+
+    /// 122：「夜里」翻开一张，桌子底下就多一格：栏目（身份/关系/玩法）+ 牌名正逆 + 那一句场景（正文字号，最显眼）；
+    /// 长的解读收在「展开」后面，三格都摊开也不会一下子满屏是字。点格子上的牌名能看大牌。
+    private func nightReadings(_ cast: TarotCast) -> some View {
+        VStack(spacing: TarotTableStyle.gap) {
+            ForEach(Array(cast.cards.prefix(revealed).enumerated()), id: \.offset) { slot, card in
+                if let night = card.night, !night.summary.isEmpty {
+                    nightReading(slot: slot, card: card, night: night)
+                }
+            }
+        }
+    }
+    private func nightReading(slot: Int, card: TarotCard, night: TarotNight) -> some View {
+        let open = openedNight.contains(slot)
+        return VStack(alignment: .leading, spacing: TarotTableStyle.smallGap) {
+            HStack(spacing: TarotTableStyle.smallGap) {
+                if !night.displayLabel.isEmpty {
+                    Text(night.displayLabel).font(TarotTableStyle.caption)
+                        .padding(.horizontal, TarotTableStyle.smallGap)
+                        .overlay(Capsule().stroke(TarotTableStyle.border, lineWidth: TarotTableStyle.hairline))
+                }
+                Button { inspectedCard = card } label: {
+                    Text("\(card.cn) · \(card.reversed ? "逆位" : "正位")").font(TarotTableStyle.caption)
+                        .foregroundStyle(TarotTableStyle.muted)
+                        .frame(minHeight: TarotTableStyle.controlHeight)
+                }.accessibilityHint("点开大图")
+                Spacer(minLength: 0)
+                if !night.more.isEmpty {
+                    Button {
+                        withAnimation(motion) {
+                            if open { openedNight.remove(slot) } else { openedNight.insert(slot) }
+                        }
+                    } label: {
+                        Text(open ? "收起" : "展开").font(TarotTableStyle.caption).foregroundStyle(TarotTableStyle.muted)
+                            .frame(minWidth: TarotTableStyle.controlHeight, minHeight: TarotTableStyle.controlHeight, alignment: .trailing)
+                    }.accessibilityIdentifier("tarot-night-more-\(slot)")
+                }
+            }
+            Text(night.summary).font(TarotTableStyle.body).fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("tarot-night-desc-\(slot)")
+            if open && !night.more.isEmpty {
+                Text(night.more).font(TarotTableStyle.caption).foregroundStyle(TarotTableStyle.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("tarot-night-interpret-\(slot)")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, TarotTableStyle.gap).padding(.bottom, TarotTableStyle.gap)
+        .background(TarotTableStyle.panel, in: RoundedRectangle(cornerRadius: TarotTableStyle.radius))
+        .overlay {
+            RoundedRectangle(cornerRadius: TarotTableStyle.radius)
+                .stroke(TarotTableStyle.border, lineWidth: TarotTableStyle.hairline)
+                .allowsHitTesting(false)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("tarot-night-\(slot)")
     }
 
     private var status: some View {
@@ -348,7 +431,7 @@ struct TarotView: View {
     }
     private func fanCard(_ point: CGPoint, width: CGFloat, height: CGFloat, liftAware: Bool) -> Int? {
         TarotFan.card(at: point, width: width, height: height,
-                      picks: selection.picks, preview: selection.preview, liftAware: liftAware)
+                      picks: selection.picks, preview: selection.preview, liftAware: liftAware, deckSize: selection.deckSize)
     }
     private func tap(_ index: Int) {
         guard phase == .selecting else { return }
@@ -369,7 +452,9 @@ struct TarotView: View {
         questionFocused = false; phase = .shuffling; error = nil
         do {
             // A single network shuffle locks the deck. Animation never reshuffles server state.
-            async let response = api.shuffleTarot(question: question.trimmingCharacters(in: .whitespacesAndNewlines), spread: spread)
+            // 122：「夜里」不带问题（问题框藏着，之前别的牌阵填的也不发）
+            let asked = TarotSpread.asksQuestion(spread) ? question.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+            async let response = api.shuffleTarot(question: asked, spread: spread)
             for _ in 0..<4 {
                 withAnimation(reduceMotion ? nil : .easeInOut(duration: TarotTableStyle.shuffleDuration)) { shuffleOffset.toggle() }
                 try await pause(TarotTableStyle.shuffleDuration)
@@ -378,6 +463,7 @@ struct TarotView: View {
             try Task.checkCancellation()
             deal = newDeal
             selection = TarotSelection(deckSize: newDeal.deck_size, requiredCount: newDeal.positions.count)
+            accessibleIndex = newDeal.deck_size / 2
             withAnimation(reduceMotion ? nil : .easeInOut(duration: TarotTableStyle.unfoldDuration)) { fanOpen = true; shuffleOffset = false }
             try await pause(TarotTableStyle.unfoldDuration)
             phase = .selecting
@@ -410,7 +496,11 @@ struct TarotView: View {
     }
     private func reset() {
         operation?.cancel(); deal = nil; cast = nil; revealed = 0; error = nil; phase = .idle; didHandOff = false
-        withAnimation(motion) { selection = TarotSelection(deckSize: 78, requiredCount: spread == "one" ? 1 : spread == "three" ? 3 : 10); fanOpen = false }
+        openedNight = []; accessibleIndex = TarotSpread.deckSize(spread) / 2
+        withAnimation(motion) {
+            selection = TarotSelection(deckSize: TarotSpread.deckSize(spread), requiredCount: TarotSpread.cardCount(spread) ?? 3)
+            fanOpen = false
+        }
     }
     private func askKe(_ cast: TarotCast) {
         guard !didHandOff else { return }

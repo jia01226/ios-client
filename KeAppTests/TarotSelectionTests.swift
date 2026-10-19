@@ -132,4 +132,153 @@ final class TarotSelectionTests: XCTestCase {
             else { XCTAssertEqual(body["deal_id"] as? String, "opaque-deal") }
         }
     }
+
+    // MARK: - 122：「夜里」
+
+    /// 122：夜里交给柯的那句一字不差，不带问题；[塔罗#id] 照旧
+    func testNightHandoffMessageIsExactAndIgnoresQuestion() {
+        let cast = TarotCast(id: 4321, question: "", spread: "night", spread_name: "夜里", cards: [], objective: nil)
+        XCTAssertEqual(cast.readingMessage(question: ""), "爸比，今晚抽了「夜里」。 [塔罗#4321]")
+        XCTAssertEqual(cast.readingMessage(question: "  别的牌阵留下的问题 "), "爸比，今晚抽了「夜里」。 [塔罗#4321]")
+        // 别的牌阵不受影响
+        let three = TarotCast(id: 5, question: "", spread: "three", spread_name: "三张", cards: [], objective: nil)
+        XCTAssertEqual(three.readingMessage(question: ""), "爸比，我抽了三张，帮我断断。 [塔罗#5]")
+    }
+
+    /// 122：夜里的牌面带 night 一段；旧牌阵没有这段照样解得出来，night 是 nil
+    func testNightCastDecodesNightFieldsAndOlderCastsStayNil() throws {
+        let json = #"""
+        {"id": 88, "question": "", "spread": "night", "spread_name": "夜里", "cards": [
+          {"position": "过去·身份", "name": "The Fool", "cn": "愚者", "type": "major", "reversed": false, "image": "tarot/cards/major00.webp",
+           "night": {"column": "relationship", "label": "身份", "desc": " 第一次的新手情侣 ", "interpret": "一个全新的开始。"}},
+          {"position": "现在·关系", "name": "The Moon", "cn": "月亮", "type": "major", "reversed": true, "image": "tarot/cards/major18.webp",
+           "night": {"column": "emotion", "label": "关系", "desc": "若即若离", "interpret": "看不清的那一段。", "extra": 1}},
+          {"position": "未来·玩法", "name": "The Sun", "cn": "太阳", "type": "major", "reversed": false, "image": "tarot/cards/major19.webp",
+           "night": {"column": "play", "label": "玩法", "desc": "白天的游戏", "interpret": "放开玩。"}}
+        ]}
+        """#
+        let cast = try JSONDecoder().decode(TarotCast.self, from: Data(json.utf8))
+        XCTAssertEqual(cast.spread, "night"); XCTAssertNil(cast.objective)
+        XCTAssertEqual(cast.cards.map { $0.night?.label }, ["身份", "关系", "玩法"])
+        XCTAssertEqual(cast.cards.map { $0.night?.column }, ["relationship", "emotion", "play"])
+        XCTAssertEqual(cast.cards[0].night?.desc, "第一次的新手情侣")
+        XCTAssertEqual(cast.cards[0].night?.summary, "第一次的新手情侣")
+        XCTAssertEqual(cast.cards[0].night?.more, "一个全新的开始。")
+        XCTAssertTrue(cast.cards[1].reversed)
+        XCTAssertEqual(cast.readingMessage(question: ""), "爸比，今晚抽了「夜里」。 [塔罗#88]")
+
+        let old = #"""
+        {"id": 9, "question": "q", "spread": "three", "spread_name": "三张", "objective": "x", "cards": [
+          {"position": "过去", "name": "card", "cn": "牌", "type": "Major", "reversed": false, "image": "a.png"}]}
+        """#
+        let oldCast = try JSONDecoder().decode(TarotCast.self, from: Data(old.utf8))
+        XCTAssertNil(oldCast.cards[0].night)
+        XCTAssertEqual(oldCast.readingMessage(question: "q"), "爸比，我抽了三张，帮我断断。问的是：q。 [塔罗#9]")
+    }
+
+    /// 122：night 缺字段、类型不对、是 null、整段不是对象，都不让整副牌解不出来
+    func testNightDecodingIsTolerant() throws {
+        func card(_ night: String) throws -> TarotCard {
+            let json = #"{"position": "过去·身份", "name": "n", "cn": "愚者", "type": "major", "reversed": false, "image": "a.png""#
+                + (night.isEmpty ? "" : ", \"night\": \(night)") + "}"
+            return try JSONDecoder().decode(TarotCard.self, from: Data(json.utf8))
+        }
+        XCTAssertNil(try card("").night)
+        XCTAssertNil(try card("null").night)
+        let onlyColumn = try XCTUnwrap(try card(#"{"column": "play"}"#).night)
+        XCTAssertEqual(onlyColumn.displayLabel, "玩法"); XCTAssertEqual(onlyColumn.summary, "")
+        let wrongTypes = try XCTUnwrap(try card(#"{"column": 3, "label": null, "desc": ["x"], "interpret": "只有解读"}"#).night)
+        XCTAssertEqual(wrongTypes.displayLabel, ""); XCTAssertEqual(wrongTypes.summary, "只有解读"); XCTAssertEqual(wrongTypes.more, "")
+        XCTAssertEqual(try card(#"{"column": "emotion", "label": "", "desc": "d"}"#).night?.displayLabel, "关系")
+        XCTAssertEqual(try card(#""不是对象""#).night?.summary, "")
+        XCTAssertEqual(try card("[1, 2]").night?.summary, "")
+    }
+
+    /// 122：夜里那副是 22 张；张数或位置数不对都不收，别的牌阵还是 78 张
+    func testNightDealValidationUses22CardDeck() throws {
+        func deal(_ spread: String, _ size: Int, _ positions: [String]) throws -> TarotDeal {
+            let body: [String: Any] = ["deal_id": "d", "deck_size": size, "spread": spread, "spread_name": "夜里", "positions": positions]
+            return try JSONDecoder().decode(TarotDeal.self, from: JSONSerialization.data(withJSONObject: body))
+        }
+        let night = ["过去·身份", "现在·关系", "未来·玩法"]
+        XCTAssertTrue(try deal("night", 22, night).isValid)
+        XCTAssertFalse(try deal("night", 78, night).isValid)
+        XCTAssertFalse(try deal("night", 22, ["过去·身份", "现在·关系"]).isValid)
+        XCTAssertFalse(try deal("three", 22, ["过去", "现在", "未来"]).isValid)
+        XCTAssertTrue(try deal("three", 78, ["过去", "现在", "未来"]).isValid)
+        XCTAssertFalse(try deal("tower", 78, ["x"]).isValid)
+        XCTAssertEqual(TarotSpread.all, ["one", "three", "celtic", "night"])
+        XCTAssertEqual(TarotSpread.title("night"), "夜里")
+        XCTAssertEqual(TarotSpread.deckSize("night"), 22); XCTAssertEqual(TarotSpread.deckSize("celtic"), 78)
+        XCTAssertEqual(TarotSpread.positions("night"), night)
+        XCTAssertFalse(TarotSpread.asksQuestion("night")); XCTAssertTrue(TarotSpread.asksQuestion("three"))
+    }
+
+    /// 122：22 张的那副，第 22 张以后不能选
+    func testNightSelectionRejectsIndicesBeyond22() {
+        var selection = TarotSelection(deckSize: 22, requiredCount: 3)
+        for i in [22, 40, 77, -1] { selection.tap(i); selection.tap(i) }
+        XCTAssertEqual(selection.picks, []); XCTAssertNil(selection.preview)
+        for i in [0, 21, 10] { selection.tap(i); selection.tap(i) }
+        XCTAssertEqual(selection.picks, [0, 21, 10]); XCTAssertTrue(selection.freeze())
+    }
+
+    /// 122：22 张的牌扇照样摊满半圆、不出屏幕，点在哪张认哪张：最上面那张、抬起那张、滑着一张张换都对
+    func testNightFanOf22MatchesVisibleTopCard() {
+        let deck = 22
+        for width in [295.0, 353.0, 400.0] as [CGFloat] {
+            let height = width * TarotTableStyle.stageHeight
+            let halfWidth = Double(width * TarotTableStyle.fanCardWidth / 2)
+            let halfLength = halfWidth / Double(TarotTableStyle.cardAspect)
+            // 两头不出屏幕，最右一张就是半圆的尽头
+            XCTAssertEqual(TarotFan.placement(deck - 1, width: width, height: height, lifted: false, deckSize: deck).angle, 2 * Double.pi, accuracy: 1e-9)
+            for index in 0..<deck {
+                for lifted in [false, true] {
+                    let (center, angle) = TarotFan.placement(index, width: width, height: height, lifted: lifted, deckSize: deck)
+                    let rotation = angle + Double.pi / 2
+                    let extentX = abs(cos(rotation)) * halfWidth + abs(sin(rotation)) * halfLength
+                    XCTAssertGreaterThanOrEqual(Double(center.x) - extentX, -1e-9)
+                    XCTAssertLessThanOrEqual(Double(center.x) + extentX, Double(width) + 1e-9)
+                }
+                // 按在每张露出来那一条的中间（往右半张牌宽之内只有它自己），认出来就是它
+                let (center, angle) = TarotFan.placement(index, width: width, height: height, lifted: false, deckSize: deck)
+                let point = index == deck - 1 ? center
+                    : CGPoint(x: center.x - CGFloat(sin(angle) * -halfWidth * 0.6), y: center.y + CGFloat(cos(angle) * -halfWidth * 0.6))
+                XCTAssertEqual(TarotFan.card(at: point, width: width, height: height, picks: [], preview: nil, deckSize: deck), index,
+                               "width \(width) index \(index)")
+            }
+            // 抬起的那张，第二下点在它身上哪儿都算它
+            for lifted in 0..<deck {
+                let (center, angle) = TarotFan.placement(lifted, width: width, height: height, lifted: true, deckSize: deck)
+                for (u, v) in [(0.0, 0.0), (-0.9, 0.0), (0.9, 0.0), (0.0, 0.9), (0.0, -0.9), (0.9, -0.9), (-0.9, 0.9)] {
+                    let across = u * halfWidth, along = v * halfLength
+                    let point = CGPoint(x: center.x + CGFloat(along * cos(angle) - across * sin(angle)),
+                                        y: center.y + CGFloat(along * sin(angle) + across * cos(angle)))
+                    guard point.y >= height - width * TarotTableStyle.fanHitHeight else { continue }
+                    XCTAssertEqual(TarotFan.card(at: point, width: width, height: height, picks: [], preview: lifted, deckSize: deck), lifted)
+                }
+            }
+            // 左右滑一张一张往后换，滑得到最后一张（第 22 张），不会跳到 22 以外
+            var last = -1
+            for step in 0..<1000 {
+                let angle = Double.pi + Double(step) / 999 * Double.pi
+                let radius = Double(width * TarotTableStyle.fanRadius)
+                let point = CGPoint(x: width / 2 + CGFloat(cos(angle) * radius),
+                                    y: height - width * TarotTableStyle.fanBottom + CGFloat(sin(angle) * radius))
+                guard let index = TarotFan.card(at: point, width: width, height: height, picks: [], preview: 8, liftAware: false, deckSize: deck) else { continue }
+                XCTAssertGreaterThanOrEqual(index, last)
+                if last >= 0 { XCTAssertLessThanOrEqual(index - last, 1) }
+                last = index
+            }
+            XCTAssertEqual(last, deck - 1)
+            // 放上桌的不算；按在空处是 nil；预览号超出这副牌也不当抬起
+            let top = TarotFan.placement(deck - 1, width: width, height: height, lifted: false, deckSize: deck).center
+            XCTAssertNotEqual(TarotFan.card(at: top, width: width, height: height, picks: [deck - 1], preview: nil, deckSize: deck), deck - 1)
+            XCTAssertNil(TarotFan.card(at: CGPoint(x: width / 2, y: 4), width: width, height: height, picks: [], preview: nil, deckSize: deck))
+            XCTAssertEqual(TarotFan.card(at: top, width: width, height: height, picks: [], preview: 60, deckSize: deck), deck - 1)
+        }
+        // 不传 deckSize 还是 78 张那套
+        let width: CGFloat = 353, height = width * TarotTableStyle.stageHeight
+        XCTAssertEqual(TarotFan.placement(77, width: width, height: height, lifted: false).angle, 2 * Double.pi, accuracy: 1e-9)
+    }
 }

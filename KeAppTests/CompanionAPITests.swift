@@ -72,6 +72,45 @@ final class CompanionAPITests: XCTestCase {
                        try JSONSerialization.jsonObject(with: requests[1]) as? NSDictionary)
     }
 
+    /// 122：「夜里」洗牌不带问题、22 张；选的序号只能在 0..<22；翻出来的牌带 night 三段
+    func testTarotNightShufflePickContract() async throws {
+        CompanionStub.handler = { request in
+            XCTAssertEqual(request.url?.path, "/ke-test2/api/tarot/shuffle")
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: requestBody(request)!) as? [String: String])
+            XCTAssertEqual(body, ["spread": "night", "question": ""])
+            return (200, #"{"deal_id":"night-1","deck_size":22,"spread":"night","spread_name":"夜里","positions":["过去·身份","现在·关系","未来·玩法"]}"#)
+        }
+        let client = api()
+        let deal = try await client.shuffleTarot(question: "", spread: "night")
+        XCTAssertEqual(deal.deck_size, 22)
+        var pickCount = 0
+        CompanionStub.handler = { request in
+            pickCount += 1
+            XCTAssertEqual(request.url?.path, "/ke-test2/api/tarot/pick")
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: requestBody(request)!) as? [String: Any])
+            XCTAssertEqual(body["picks"] as? [Int], [0, 21, 7])
+            let columns = [("relationship", "身份"), ("emotion", "关系"), ("play", "玩法")]
+            let cards = ["过去·身份", "现在·关系", "未来·玩法"].enumerated().map { index, position in
+                ["position": position, "name": "card", "cn": "牌", "type": "major", "reversed": index == 2, "image": "card.png",
+                 "night": ["column": columns[index].0, "label": columns[index].1, "desc": "场景\(index)", "interpret": "解读\(index)"]] as [String: Any]
+            }
+            let result: [String: Any] = ["id": 31, "question": "", "spread": "night", "spread_name": "夜里", "cards": cards]
+            return (200, String(data: try JSONSerialization.data(withJSONObject: result), encoding: .utf8)!)
+        }
+        do { _ = try await client.pickTarot(deal: deal, picks: [0, 22, 7]); XCTFail("22 is outside the night deck") } catch { }
+        XCTAssertEqual(pickCount, 0)
+        let cast = try await client.pickTarot(deal: deal, picks: [0, 21, 7])
+        XCTAssertEqual(cast.cards.map { $0.night?.label }, ["身份", "关系", "玩法"])
+        XCTAssertEqual(cast.cards[2].night?.desc, "场景2"); XCTAssertTrue(cast.cards[2].reversed)
+        XCTAssertEqual(cast.readingMessage(question: "不该带上"), "爸比，今晚抽了「夜里」。 [塔罗#31]")
+
+        // 服务器若给夜里回了 78 张的牌堆，就当没准备好
+        CompanionStub.handler = { _ in
+            (200, #"{"deal_id":"night-2","deck_size":78,"spread":"night","spread_name":"夜里","positions":["过去·身份","现在·关系","未来·玩法"]}"#)
+        }
+        do { _ = try await client.shuffleTarot(question: "", spread: "night"); XCTFail("Expected invalid night deal") } catch { }
+    }
+
     func testTarotExpiredDealDoesNotAutomaticallyReshuffle() async throws {
         let deal = TarotDeal(deal_id: .text("expired"), deck_size: 78, spread: "one", spread_name: "一张", positions: ["此刻"])
         var count = 0

@@ -100,7 +100,38 @@ struct TarotCard: Decodable, Identifiable, Sendable {
     let type: String
     let reversed: Bool
     let image: String
+    /// 122：只有「夜里」牌阵带；旧牌阵、旧记录没有这段
+    var night: TarotNight?
     var id: String { position + name }
+}
+
+/// 122：「夜里」每张牌多带的一段：哪一栏（身份/关系/玩法）、一句场景（desc）、一段长解读（interpret）。
+/// 宽着解：少字段、字段类型不对、整段不是对象，都当没写，不让整副牌解不出来。
+struct TarotNight: Decodable, Equatable, Sendable {
+    let column: String
+    let label: String
+    let desc: String
+    let interpret: String
+    init(column: String = "", label: String = "", desc: String = "", interpret: String = "") {
+        self.column = column; self.label = label; self.desc = desc; self.interpret = interpret
+    }
+    private enum CodingKeys: String, CodingKey { case column, label, desc, interpret }
+    init(from decoder: Decoder) throws {
+        let container = try? decoder.container(keyedBy: CodingKeys.self)
+        func text(_ key: CodingKeys) -> String {
+            guard let container, let value = try? container.decodeIfPresent(String.self, forKey: key) else { return "" }
+            return value.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        self.init(column: text(.column), label: text(.label), desc: text(.desc), interpret: text(.interpret))
+    }
+    /// 服务器没给 label 时照栏目补上
+    var displayLabel: String {
+        label.isEmpty ? (["relationship": "身份", "emotion": "关系", "play": "玩法"][column] ?? "") : label
+    }
+    /// 显眼的那句：一般是场景；场景空着就拿解读顶上
+    var summary: String { desc.isEmpty ? interpret : desc }
+    /// 收在「展开」后面的那段；场景空着时解读已经顶上去了，这里就没有了
+    var more: String { desc.isEmpty ? "" : interpret }
 }
 
 struct TarotCast: Decodable, Identifiable, Sendable {
@@ -113,6 +144,8 @@ struct TarotCast: Decodable, Identifiable, Sendable {
     let objective: String?
 
     func readingMessage(question latestQuestion: String) -> String {
+        // 122：「夜里」不是问事，不带问题。[塔罗#id] 一字不改——服务器照它把三张牌的三段话展开给柯
+        if spread == TarotSpread.night { return "爸比，今晚抽了「夜里」。 [塔罗#\(id)]" }
         let latest = latestQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
         let prompt = latest.isEmpty ? "" : "问的是：\(latest)。"
         return "爸比，我抽了\(spread_name)，帮我断断。\(prompt) [塔罗#\(id)]"
