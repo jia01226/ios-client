@@ -15,7 +15,7 @@ struct PeriodQuickActions: View {
                 Button("走了") { Task { await store.finish() } }.disabled(!store.canEnd)
                     .accessibilityIdentifier("period-end")
             }
-            .buttonStyle(.bordered).tint(theme.pageAccent)
+            .buttonStyle(.bordered).controlSize(.large).tint(theme.pageAccent)
             Text(store.summary).font(theme.font.journalCaption).foregroundStyle(theme.pageColor.textSecondary)
             if let error = store.error {
                 Button(error) { Task { await store.load() } }.font(theme.font.journalCaption)
@@ -44,9 +44,10 @@ struct PeriodCalendarControls: View {
             .sheet(isPresented: $history) { PeriodHistoryView(store: store) }
     }
     private func actionLabel(_ title: String, available: Bool) -> some View {
-        Text(title).font(Moonlight.serif(12)).frame(width: 42, height: 25)
+        // 127 她：「那个入口有点小」
+        Text(title).font(Moonlight.serif(15)).frame(width: 60, height: 34)
             .overlay(Capsule().stroke(theme.pageAccent.opacity(available ? 0.6 : 0.25), lineWidth: 0.6))
-            .opacity(available ? 1 : 0.45).frame(width: 44, height: 44).contentShape(Rectangle())
+            .opacity(available ? 1 : 0.45).frame(width: 64, height: 48).contentShape(Rectangle())
     }
 }
 

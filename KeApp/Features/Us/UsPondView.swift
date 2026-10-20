@@ -255,7 +255,12 @@ struct UsPondView: View {
 
     private func isPeriod(_ date: Date) -> Bool {
         let key = HomeReminderCoordinator.dayKey(date)
-        return periods.records.contains { $0.start_date <= key && key <= periods.shownEnd(of: $0) }
+        // 127 她：「昨天还是粉色的显示来了，我不舒服」——她点了「走了」的那天就不染粉了
+        return periods.records.contains { record in
+            let end = periods.shownEnd(of: record)
+            let marked = periods.pendingEnds[record.id] != nil || record.end_date != nil
+            return record.start_date <= key && (marked ? key < end || key == record.start_date : key <= end)
+        }
     }
     private func isAnniversary(_ date: Date) -> Bool {
         let c = Calendar.current

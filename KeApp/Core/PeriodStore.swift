@@ -55,6 +55,12 @@ final class PeriodStore: ObservableObject {
               let stale = Self.dayKey(latest.start_date, plus: 14), today <= stale else { return nil }
         return latest
     }
+    /// "2026-10-19" → "10月19日"
+    nonisolated static func monthDay(_ key: String) -> String {
+        let parts = key.split(separator: "-")
+        guard parts.count == 3, let m = Int(parts[1]), let d = Int(parts[2]) else { return key }
+        return "\(m)月\(d)日"
+    }
     nonisolated static func dayKey(_ key: String, plus days: Int) -> String? {
         let f = DateFormatter(); f.calendar = Calendar(identifier: .gregorian); f.locale = Locale(identifier: "en_US_POSIX")
         f.timeZone = TimeZone(identifier: "Asia/Shanghai"); f.dateFormat = "yyyy-MM-dd"
@@ -71,7 +77,14 @@ final class PeriodStore: ObservableObject {
         if let end = pendingEnds[latest.id] {
             return end == today ? "今天走了 · 正在告诉柯" : "\(end) 走了 · 已记本机，待同步给柯"
         }
-        if let end = latest.end_date { return end == today ? "今天走了 · 已告诉柯" : "上次 \(latest.start_date) — \(end)" }
+        if let end = latest.end_date {
+            if end == today { return "今天走了 · 已告诉柯" }
+            // 127 她：「昨天就走了，想点点不了」——走了以后三天里直接写哪天走的，免得以为没记上
+            if let recent = Self.dayKey(end, plus: 3), today <= recent {
+                return "\(Self.monthDay(end)) 走了 · 柯知道了"
+            }
+            return "上次 \(latest.start_date) — \(end)"
+        }
         if ongoing == nil { return "上次 \(latest.start_date) 来的，没记哪天走" }
         return "\(latest.start_date) 来了"
     }
