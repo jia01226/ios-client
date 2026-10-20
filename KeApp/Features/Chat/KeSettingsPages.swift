@@ -23,19 +23,15 @@ struct KeWordsPage: View {
                 valueText: "\(Int(theme.chatFontSize))"
             )
             KeDrawerSlider(
-                title: "气泡透明度",
-                value: $theme.bubbleOpacity,
-                range: 0...0.06,
-                valueText: String(format: "%.1f%%", theme.bubbleOpacity * 100)
-            )
-            KeDrawerSlider(
                 title: "气泡圆角",
                 value: $theme.bubbleCornerRadius,
                 range: 12...34,
                 step: 1,
                 valueText: "\(Int(theme.bubbleCornerRadius))"
             )
-            bubbleColors
+            // 127：我的、柯的各挑颜色和浓度（原来的「气泡透明度」和整套配色合在一起的那排拿掉了）
+            BubbleSideControls(side: .me)
+            BubbleSideControls(side: .ke)
 
             models
 
@@ -67,7 +63,16 @@ struct KeWordsPage: View {
             }
         }
         .padding(14)
-        .background(theme.color.bg, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background {
+            // 127：预览底下垫和聊天页一样的纸（粉白那款带设计稿的淡粉底图），浓度看着才准
+            ZStack {
+                theme.color.bg
+                if theme.chatPalette.atmosphereImage && theme.skin == .day {
+                    Color.clear.overlay { Image("ChatAtmosphere").resizable().scaledToFill() }
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Ink.line.opacity(0.4), lineWidth: 0.6)
@@ -77,10 +82,7 @@ struct KeWordsPage: View {
     }
 
     private func previewBubble(_ text: String, mine: Bool) -> some View {
-        let scale: Double = mine ? (theme.skin == .day && !theme.isBedroom ? 80 : 13) : 36
-        let tint = (mine ? theme.color.bubbleMe : theme.color.bubbleKe)
-            .opacity(min(1, theme.bubbleOpacity * scale))
-        let shape = RoundedRectangle(cornerRadius: CGFloat(theme.bubbleCornerRadius), style: .continuous)
+        let side: BubbleSide = mine ? .me : .ke
         return Text(text)
             .font(theme.font.bubble)
             .foregroundStyle(mine ? theme.color.bubbleMeText : theme.color.bubbleKeText)
@@ -88,45 +90,15 @@ struct KeWordsPage: View {
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(tint, in: shape)
-            .overlay { shape.strokeBorder(theme.color.bubbleKeText.opacity(mine ? 0.06 : 0.10), lineWidth: 0.75) }
-    }
-
-    /// 气泡颜色就是原来的「聊天配色」：她那边的气泡、整页底色一起换。
-    private var bubbleColors: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("气泡颜色")
-                .font(.system(size: 13))
-                .foregroundStyle(Ink.secondary)
-            HStack(spacing: 0) {
-                ForEach(ChatPalette.all) { choice in
-                    let selected = theme.chatPalette.id == choice.id
-                    Button { theme.chatPalette = choice } label: {
-                        VStack(spacing: 5) {
-                            Circle()
-                                .fill(Color(hex: choice.tint))
-                                .frame(width: 26, height: 26)
-                                .overlay {
-                                    Circle()
-                                        .strokeBorder(selected ? Ink.accent : Ink.line.opacity(0.5), lineWidth: selected ? 1.6 : 0.6)
-                                        .padding(selected ? -3 : 0)
-                                }
-                            Text(choice.name)
-                                .font(.system(size: 10))
-                                .foregroundStyle(selected ? Ink.primary : Ink.secondary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(choice.name)
-                    .accessibilityAddTraits(selected ? .isSelected : [])
-                }
+            .background {
+                // 127：和聊天里同一块（BubbleFill），拨颜色、拖浓度这里马上跟着变
+                BubbleFill(
+                    color: Color(hex: theme.bubbleHex(side)),
+                    density: theme.bubbleDensity(side),
+                    ink: theme.color.bubbleKeText,
+                    cornerRadius: CGFloat(theme.bubbleCornerRadius)
+                )
             }
-            KeDrawerHint("我这边气泡的底色，聊天页的纸色跟着一起换。")
-        }
     }
 
     // MARK: 模型
@@ -758,5 +730,101 @@ struct KeWindowPage: View {
                 }
             }
         }
+    }
+}
+
+
+// MARK: - 127 我的气泡 / 柯的气泡：颜色一排 + 浓度一条
+
+struct BubbleSideControls: View {
+    @EnvironmentObject private var theme: Theme
+    let side: BubbleSide
+
+    private var hex: UInt32 { theme.bubbleHex(side) }
+    private var isCustom: Bool { BubbleSwatch.matching(hex, side: side) == nil }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(side.title)
+                .font(.system(size: 13))
+                .foregroundStyle(Ink.secondary)
+            HStack(spacing: 0) {
+                ForEach(BubbleSwatch.all) { swatch in
+                    let value = swatch.hex(for: side)
+                    chip(name: swatch.name, selected: hex == value) {
+                        Circle().fill(Color(hex: value))
+                    } action: {
+                        theme.setBubbleHex(value, for: side)
+                    }
+                }
+                customChip
+            }
+            KeDrawerSlider(
+                title: "浓度",
+                value: Binding(get: { theme.bubbleDensity(side) }, set: { theme.setBubbleDensity($0, for: side) }),
+                range: 0...1,
+                valueText: "\(Int((theme.bubbleDensity(side) * 100).rounded()))%"
+            )
+            .accessibilityIdentifier("bubble-density-\(side.rawValue)")
+        }
+    }
+
+    /// 系统取色盘：选出来的颜色只要 RGB（不要透明度，透明交给「浓度」）
+    private var customChip: some View {
+        VStack(spacing: 5) {
+            ColorPicker(
+                selection: Binding(
+                    get: { Color(hex: hex) },
+                    set: { color in
+                        if let value = color.rgbHex { theme.setBubbleHex(value, for: side) }
+                    }
+                ),
+                supportsOpacity: false
+            ) { EmptyView() }
+            .labelsHidden()
+            .frame(width: 26, height: 26)
+            .overlay {
+                if isCustom {
+                    Circle().strokeBorder(Ink.accent, lineWidth: 1.6).padding(-3).allowsHitTesting(false)
+                }
+            }
+            Text("自定")
+                .font(.system(size: 10))
+                .foregroundStyle(isCustom ? Ink.primary : Ink.secondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, minHeight: 52)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(side.title)：自定颜色")
+        .accessibilityAddTraits(isCustom ? .isSelected : [])
+    }
+
+    private func chip<Swatch: View>(
+        name: String,
+        selected: Bool,
+        @ViewBuilder swatch: () -> Swatch,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                swatch()
+                    .frame(width: 26, height: 26)
+                    .overlay {
+                        Circle()
+                            .strokeBorder(selected ? Ink.accent : Ink.line.opacity(0.5), lineWidth: selected ? 1.6 : 0.6)
+                            .padding(selected ? -3 : 0)
+                    }
+                Text(name)
+                    .font(.system(size: 10))
+                    .foregroundStyle(selected ? Ink.primary : Ink.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(side.title)：\(name)")
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

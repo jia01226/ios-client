@@ -88,6 +88,52 @@ enum ChatTimelineDate {
     }
 }
 
+/// 127：ChatView 每重画一次（键盘、回到最新按钮出现、抽屉开关……）都会把整段记录重新切成时间线：
+/// 每条算一次日期、柯的每条再切一次气泡。记录长了一次好几毫秒，正好掉在滑动或抽屉动画的那一帧上。
+/// 这里记住上一次的输入和结果，输入没变就原样返回。数组/字典没改过时比较只看是不是同一块存储，几乎不花时间。
+@MainActor
+final class ChatTimelineItemsCache {
+    private struct Key: Equatable {
+        let messages: [Message]
+        let highlightedMessageID: String?
+        let quotedIDs: [Int]
+        let pinnedIDs: Set<Int>
+        let revealCounts: [String: Int]?
+    }
+
+    private var key: Key?
+    private var cached: [ChatTimelineItem] = []
+    private(set) var rebuildCount = 0
+
+    func items(
+        messages: [Message],
+        highlightedMessageID: String?,
+        quotedIDs: [Int],
+        pinnedIDs: Set<Int>,
+        revealCounts: [String: Int]?,
+        visibleSegmentCount: (Message) -> Int?
+    ) -> [ChatTimelineItem] {
+        let next = Key(
+            messages: messages,
+            highlightedMessageID: highlightedMessageID,
+            quotedIDs: quotedIDs,
+            pinnedIDs: pinnedIDs,
+            revealCounts: revealCounts
+        )
+        if let key, key == next { return cached }
+        key = next
+        rebuildCount += 1
+        cached = ChatTimelineItem.make(
+            messages: messages,
+            highlightedMessageID: highlightedMessageID,
+            quotedIDs: Set(quotedIDs),
+            pinnedIDs: pinnedIDs,
+            visibleSegmentCount: visibleSegmentCount
+        )
+        return cached
+    }
+}
+
 struct ChatTimelineItem: Identifiable, Equatable {
     let kind: ChatTimelineItemKind
     let message: Message

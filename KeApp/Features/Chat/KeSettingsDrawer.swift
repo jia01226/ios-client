@@ -80,10 +80,27 @@ enum KeDrawerMotion {
 
 // MARK: - 外框：暗条 + 从右边滑进来的纸
 
+/// 127：从聊天页往左拉出抽屉时手指每动一下的距离。单独放一个对象里，只有抽屉外框看着它：
+/// 以前放在 ChatView 的 @State 里，拉一下整个聊天页（连同把整段记录重新切成时间线）就重画一遍。
+@MainActor
+final class KeDrawerPullState: ObservableObject {
+    @Published var pull: CGFloat = 0
+}
+
+/// 127：抽屉里面那一大块只在开关、换页时才需要重算；外框跟着手动的时候不碰它。
+private struct KeDrawerContentHost<Content: View>: View, Equatable {
+    let key: AnyHashable
+    let content: Content
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.key == rhs.key }
+    var body: some View { content }
+}
+
 struct KeDrawerOverlay<Content: View>: View {
     @Binding var isOpen: Bool
     /// 从聊天页往左拉出来的距离（手还没松开时跟着手走）
-    let pull: CGFloat
+    @ObservedObject var pullState: KeDrawerPullState
+    /// 127：里面的内容什么时候需要重算（开关、换页）；其余时候拖动只挪外框
+    let contentKey: AnyHashable
     @ViewBuilder let content: () -> Content
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -91,12 +108,15 @@ struct KeDrawerOverlay<Content: View>: View {
     @AppStorage(CamelliaPalette.storageKey) private var savedPalette = CamelliaPalette.defaultPalette.rawValue
     @State private var closingDrag: CGFloat = 0
     @State private var controlActive = false
+    /// 127：抽屉停稳了才换成玻璃；拉出来、滑进滑出的路上是一张实心纸（不让模糊跟着每帧重采样底下的聊天）
+    @State private var settled = false
 
     private var palette: CamelliaPalette { .resolve(savedPalette) }
 
     var body: some View {
         GeometryReader { geo in
             let width = (geo.size.width * 0.75).rounded()
+            let pull = pullState.pull
             let shown = isOpen ? max(0, width - closingDrag) : min(width, max(0, pull))
             let progress = width > 0 ? shown / width : 0
             ZStack(alignment: .trailing) {
@@ -112,18 +132,28 @@ struct KeDrawerOverlay<Content: View>: View {
                     .accessibilityHidden(!isOpen)
 
                 // 一直留在层级里，只是推到屏幕外：这样收回时也有滑出去的动画。
-                content()
+                KeDrawerContentHost(key: contentKey, content: content())
+                    .equatable()
                     .environment(\.keDrawerControlActive, $controlActive)
                     .frame(width: width)
                     .frame(maxHeight: .infinity)
-                    .background { panelBackground.ignoresSafeArea() }
+                    .background { panelBackground(glass: settled && isOpen && closingDrag == 0).ignoresSafeArea() }
                     .overlay(alignment: .leading) {
                         Rectangle()
                             .fill(Ink.line.opacity(0.35))
                             .frame(width: 0.7)
                             .ignoresSafeArea()
                     }
-                    .shadow(color: Ink.primary.opacity(0.10 * progress), radius: 18, x: -6)
+                    // 127：原来整块抽屉挂一个半径 18 的 .shadow（要按里面所有字和图的轮廓每帧离屏算），
+                    // 换成贴在左边的一条渐变，样子差不多，是静止的
+                    .background(alignment: .leading) {
+                        LinearGradient(colors: [.clear, Ink.primary.opacity(0.08)], startPoint: .leading, endPoint: .trailing)
+                            .frame(width: 16)
+                            .offset(x: -16)
+                            .opacity(progress)
+                            .ignoresSafeArea()
+                            .allowsHitTesting(false)
+                    }
                     .offset(x: width - shown)
                     .allowsHitTesting(isOpen)
                     .accessibilityHidden(!isOpen)
@@ -136,12 +166,29 @@ struct KeDrawerOverlay<Content: View>: View {
         .onChange(of: isOpen) { _, open in
             if !open { controlActive = false }
         }
+        .task(id: isOpen) {
+            guard isOpen else { settled = false; return }
+            // 弹簧 0.38 秒，等它停稳再换玻璃
+            try? await Task.sleep(for: .milliseconds(reduceMotion ? 0 : 450))
+            guard !Task.isCancelled else { return }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { settled = true }
+        }
     }
 
     @ViewBuilder
-    private var panelBackground: some View {
+    private func panelBackground(glass: Bool) -> some View {
         // 117：抽屉也是那块玻璃；上面字多，纸色垫厚一点
-        KeGlass(shape: Rectangle(), minPaper: 0.72)
+        ZStack {
+            if glass {
+                KeGlass(shape: Rectangle(), minPaper: 0.72)
+                    .transition(.identity)
+            }
+            palette.paper.opacity(glass ? 0 : 1)
+        }
+        // 停稳后纸淡出、露出玻璃；一收回（或往右拖）立刻是整张纸，不跟着收回的弹簧慢慢变，免得半透一下
+        .transaction(value: glass) { transaction in
+            if !glass { transaction.animation = nil }
+        }
     }
 
     /// 往右划收回。滑杆按着的时候不算。
@@ -219,6 +266,9 @@ struct KeSettingsDrawer: View {
         }
         .task(id: isOpen) {
             guard isOpen else { return }
+            // 127：等抽屉滑完再去读。读回来会让整个聊天页重画，赶在滑的路上就是一卡
+            try? await Task.sleep(for: .milliseconds(450))
+            guard !Task.isCancelled else { return }
             await store.loadWindow()
         }
     }

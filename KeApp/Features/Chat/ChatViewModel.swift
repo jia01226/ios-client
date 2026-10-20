@@ -1963,6 +1963,9 @@ final class ChatViewModel: ObservableObject {
         visibleSegmentCounts[message.bubbleRevealKey]
     }
 
+    /// 127：只读，给时间线条目缓存当钥匙用（气泡一个个冒出来时它会变）
+    var segmentRevealCounts: [String: Int] { visibleSegmentCounts }
+
     /// 121：写完那一刻放上去的正文。气泡以服务器切好的为准；服务器没给才退回本机切法（segments 为 nil）。
     /// 一路收来的原文为空（重接时服务器只补了一个 done）就用切好的气泡拼回正文，复制出来也是整条。
     static func landedReply(text: String, segments: [String]?) -> (text: String, segments: [String]?) {

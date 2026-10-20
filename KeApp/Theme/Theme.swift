@@ -382,6 +382,30 @@ final class Theme: ObservableObject {
         didSet { UserDefaults.standard.set(bubbleCornerRadius, forKey: "app.bubbleCornerRadius") }
     }
 
+    /// 127：她自己挑的气泡颜色（0xRRGGBB）和浓度（0 = 透明，1 = 实心），我的、柯的各一份
+    @Published var bubbleMeHex: UInt32 {
+        didSet { UserDefaults.standard.set(Int(bubbleMeHex), forKey: BubbleStyleStore.meColorKey) }
+    }
+    @Published var bubbleKeHex: UInt32 {
+        didSet { UserDefaults.standard.set(Int(bubbleKeHex), forKey: BubbleStyleStore.keColorKey) }
+    }
+    @Published var bubbleMeDensity: Double {
+        didSet { UserDefaults.standard.set(bubbleMeDensity, forKey: BubbleStyleStore.meDensityKey) }
+    }
+    @Published var bubbleKeDensity: Double {
+        didSet { UserDefaults.standard.set(bubbleKeDensity, forKey: BubbleStyleStore.keDensityKey) }
+    }
+
+    func bubbleHex(_ side: BubbleSide) -> UInt32 { side == .me ? bubbleMeHex : bubbleKeHex }
+    func bubbleDensity(_ side: BubbleSide) -> Double { side == .me ? bubbleMeDensity : bubbleKeDensity }
+    func setBubbleHex(_ hex: UInt32, for side: BubbleSide) {
+        if side == .me { bubbleMeHex = hex } else { bubbleKeHex = hex }
+    }
+    func setBubbleDensity(_ value: Double, for side: BubbleSide) {
+        let clamped = min(max(value, 0), 1)
+        if side == .me { bubbleMeDensity = clamped } else { bubbleKeDensity = clamped }
+    }
+
     private init() {
         let defaults = UserDefaults.standard
         if !defaults.bool(forKey: "app.moonlight-pink.migrated.v76") {
@@ -389,6 +413,7 @@ final class Theme: ObservableObject {
             defaults.set(true, forKey: "app.moonlight-pink.migrated.v76")
         }
         Self.migrateChatPaletteToBlush(defaults)
+        KeGlassClarity.migrate(defaults)
         let savedFont = defaults.object(forKey: "app.chatFontSize") as? Double
         let savedOpacity = defaults.object(forKey: "app.bubbleOpacity") as? Double
         let savedBlur = defaults.object(forKey: "app.glassBlur") as? Double
@@ -403,6 +428,10 @@ final class Theme: ObservableObject {
         bubbleOpacity = min(max(migratedOpacity, 0), 0.06)
         glassBlur = min(max(savedBlur ?? 9, 0), 20)
         bubbleCornerRadius = min(max(savedRadius ?? 20, 12), 34)
+        bubbleMeHex = BubbleStyleStore.loadHex(.me, defaults)
+        bubbleKeHex = BubbleStyleStore.loadHex(.ke, defaults)
+        bubbleMeDensity = BubbleStyleStore.loadDensity(.me, defaults)
+        bubbleKeDensity = BubbleStyleStore.loadDensity(.ke, defaults)
 
         defaults.set(bubbleOpacity, forKey: "app.bubbleOpacity")
     }
@@ -595,9 +624,14 @@ struct ChatWallpaperTokens {
 struct ChatLegibility: ViewModifier {
     @EnvironmentObject private var theme: Theme
     func body(content: Content) -> some View {
-        content.shadow(color: theme.chatTextShadow,
-                       radius: theme.wallpaper.textShadowRadius,
-                       y: theme.wallpaper.textShadowY)
+        // 127：只有照片壁纸才要字影。平时原样返回——以前每个气泡的字都挂一层透明的影子，滑动时白白多一道离屏
+        if theme.lockscreenGlass {
+            content.shadow(color: theme.chatTextShadow,
+                           radius: theme.wallpaper.textShadowRadius,
+                           y: theme.wallpaper.textShadowY)
+        } else {
+            content
+        }
     }
 }
 

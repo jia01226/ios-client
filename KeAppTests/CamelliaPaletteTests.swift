@@ -91,13 +91,13 @@ final class CamelliaPaletteTests: XCTestCase {
         XCTAssertEqual(blush.ink, 0x564653)
         XCTAssertEqual(blush.secondary, 0x7A6572)
         XCTAssertEqual(blush.accent, 0x8C617A)
-        XCTAssertTrue(blush.clearBubbles)
+        XCTAssertTrue(blush.atmosphereImage)
         let palette = Palette.chat(blush)
         XCTAssertEqual(hex(palette.textOnAccent), 0xFFFFFF)
         XCTAssertEqual(hex(palette.textSecondary), 0x7A6572)
         // 原来几款不受影响
         let moon = try XCTUnwrap(ChatPalette.all.first { $0.id == "moonlight-pink" })
-        XCTAssertFalse(moon.clearBubbles)
+        XCTAssertFalse(moon.atmosphereImage)
         XCTAssertEqual(hex(Palette.chat(moon).textOnAccent), Morandi.ink)
     }
 

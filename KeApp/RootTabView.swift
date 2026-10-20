@@ -53,7 +53,9 @@ struct RootTabView: View {
                     .accessibilityHidden(selection != .ke)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .environment(\.floatingDockInset, showsDock ? dockInset : 0)
+            // 127：打开设置抽屉时底栏收起，但聊天的输入栏和记录的留白不跟着往下挪——
+            // 以前抽屉一开，输入胶囊下移、时间线重算留白并重新落到最新，正好压在抽屉滑出来的那几帧上
+            .environment(\.floatingDockInset, keyboardIsVisible ? 0 : dockInset)
             .overlay(alignment: .trailing) {
                 if selection != .ke && !chatSettingsOpen {
                     Color.clear

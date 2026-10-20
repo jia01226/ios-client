@@ -123,10 +123,12 @@ struct ChatToolStatusRow: View {
         }
         .frame(maxWidth: theme.metric.bubbleMaxWidth)
         .background(
+            // 127：这张卡在聊天记录的格子里，跟着滑：不挂实时模糊和影子
             CrystalSurface(
                 cornerRadius: theme.metric.radiusChip,
                 strength: 0.76,
-                usesChatControls: true
+                usesChatControls: true,
+                isStatic: true
             )
         )
         .frame(maxWidth: .infinity, alignment: .center)
@@ -593,22 +595,10 @@ struct MessageRow: View {
 
     /// 86：她要「玻璃质感的气泡」。iOS 26 用系统 Liquid Glass（最透的 .clear，按下会亮一下、轻轻弹），
     /// 染色仍跟「气泡透明度」滑杆走；iOS 26 以下保留原来的模糊 + 染色。
-    /// 126：粉白那款：气泡近透明（设计稿 tint 不到 1%），只留一道很细的亮边；字本身不变淡。
-    /// 照片壁纸（锁屏玻璃）、夜里、卧室还走原来的玻璃。
-    private var usesClearBubble: Bool {
-        theme.chatPalette.clearBubbles && theme.skin == .day && !theme.isBedroom && !theme.lockscreenGlass
-    }
-
-    @ViewBuilder
-    private var bubbleFill: some View {
-        if usesClearBubble {
-            // 「气泡透明度」滑杆照样管用：默认 1.2% → 柯的约 1.8%、她的约 6%
-            let scale: Double = message.sender == .ke ? 1.5 : 5
-            (message.sender == .me ? theme.color.bubbleMe : theme.color.bubbleKe)
-                .opacity(min(0.6, theme.bubbleOpacity * scale))
-        } else {
-            legacyBubbleFill
-        }
+    /// 127：白天（不在卧室、没用照片壁纸）的气泡改成她在话笺里挑的颜色 × 浓度，一块静止的纯色：
+    /// 每个格子不再挂实时玻璃，滑动时不用每帧重新采样底下。夜里、卧室、照片壁纸还走原来的玻璃。
+    private var usesPlainBubble: Bool {
+        theme.skin == .day && !theme.isBedroom && !theme.lockscreenGlass
     }
 
     @ViewBuilder
@@ -637,24 +627,26 @@ struct MessageRow: View {
         }
     }
 
+    @ViewBuilder
     private var bubbleBackground: some View {
-        bubbleFill
-        .clipShape(RoundedRectangle(cornerRadius: CGFloat(theme.bubbleCornerRadius), style: .continuous))
-        .overlay {
-            if usesClearBubble {
-                // 126：上沿一道白亮边、下沿几乎看不见的墨边，像设计稿 glass-surface 的 inset 高光
-                RoundedRectangle(cornerRadius: CGFloat(theme.bubbleCornerRadius), style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(colors: [Color.white.opacity(0.9), theme.chatBubbleKeText.opacity(0.07)],
-                                       startPoint: .top, endPoint: .bottom),
-                        lineWidth: 0.75
-                    )
-                    .allowsHitTesting(false)
-            } else if message.sender == .ke && !theme.lockscreenGlass {
-                RoundedRectangle(cornerRadius: CGFloat(theme.bubbleCornerRadius), style: .continuous)
-                    .strokeBorder(theme.chatBubbleKeText.opacity(0.10), lineWidth: 0.75)
-                    .allowsHitTesting(false)
-            }
+        if usesPlainBubble {
+            let side: BubbleSide = message.sender == .me ? .me : .ke
+            BubbleFill(
+                color: Color(hex: theme.bubbleHex(side)),
+                density: theme.bubbleDensity(side),
+                ink: theme.chatBubbleKeText,
+                cornerRadius: CGFloat(theme.bubbleCornerRadius)
+            )
+        } else {
+            legacyBubbleFill
+                .clipShape(RoundedRectangle(cornerRadius: CGFloat(theme.bubbleCornerRadius), style: .continuous))
+                .overlay {
+                    if message.sender == .ke && !theme.lockscreenGlass {
+                        RoundedRectangle(cornerRadius: CGFloat(theme.bubbleCornerRadius), style: .continuous)
+                            .strokeBorder(theme.chatBubbleKeText.opacity(0.10), lineWidth: 0.75)
+                            .allowsHitTesting(false)
+                    }
+                }
         }
     }
 

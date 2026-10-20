@@ -55,7 +55,11 @@ struct ChatView: View {
     // 112：月隐设置抽屉、换窗挑选、钉住的轮
     @StateObject private var keWindow: KeWindowStore
     @State private var keDrawerOpen = false
-    @State private var keDrawerPull: CGFloat = 0
+    /// 127：拉抽屉时的距离放在单独的对象里，只有抽屉外框看着它（ChatView 不订阅，拉的时候整页不重画）
+    @State private var keDrawerPull = KeDrawerPullState()
+    /// 127：时间线条目缓存。ChatView 每重画一次都会把整段记录重新切一遍（日期、气泡分段），
+    /// 记录很长时一次要好几毫秒；输入没变就直接用上一次的
+    @State private var timelineItems = ChatTimelineItemsCache()
     @State private var keDrawerPage: KeSettingsTab = .garden
     @State private var keWindowPickerOpen = false
     /// 120：「+」里的「锁着的日记」单子
@@ -201,7 +205,7 @@ struct ChatView: View {
                         .transition(.move(edge: .trailing))
                 }
 
-                KeDrawerOverlay(isOpen: $keDrawerOpen, pull: keDrawerPull) {
+                KeDrawerOverlay(isOpen: $keDrawerOpen, pullState: keDrawerPull, contentKey: [AnyHashable(keDrawerOpen), AnyHashable(keDrawerPage)]) {
                     KeSettingsDrawer(
                         isOpen: keDrawerOpen,
                         vm: vm,
@@ -418,13 +422,23 @@ struct ChatView: View {
     }
 
     /// 浮栏的玻璃：只画在圆角里，外面不铺底板、不扩散白雾。
-    /// 照片壁纸（锁屏玻璃）、夜里、卧室还用原来的玻璃；系统开了「降低透明度」，KeGlass 自己换成实心纸。
+    /// 127：浮栏就盖在滚动的记录上，不再用 iOS 26 的液态玻璃（每帧都要重新折射底下滑过的字）。
+    /// 白天走 KeGlass（系统 ultraThinMaterial + 纸色，透度在素笺里调）；照片壁纸、夜里、卧室也是一层系统模糊，
+    /// 不叠影子。系统开了「降低透明度」，材质自己会变实心，KeGlass 换成实心纸。
     @ViewBuilder
     private func chromeSurface(radius: CGFloat) -> some View {
-        if theme.lockscreenGlass || theme.skin == .night || theme.isBedroom {
-            FloatingGlassSurface(cornerRadius: radius, lockscreen: theme.lockscreenGlass)
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        if theme.lockscreenGlass {
+            shape.fill(.ultraThinMaterial)
+                .environment(\.colorScheme, .dark)
+        } else if theme.skin == .night || theme.isBedroom {
+            ZStack {
+                shape.fill(.ultraThinMaterial)
+                shape.fill(theme.color.glassTint.opacity(0.12))
+                shape.strokeBorder(theme.color.glassEdge.opacity(0.5), lineWidth: 0.6)
+            }
         } else {
-            KeGlass(shape: RoundedRectangle(cornerRadius: radius, style: .continuous), minPaper: 0.2)
+            KeGlass(shape: shape, minPaper: 0.2)
         }
     }
 
@@ -578,20 +592,21 @@ struct ChatView: View {
 
     private func handleDrawerPan(_ pan: ChatDrawerPan) {
         guard !keDrawerOpen, !settingsOpen, !keWindowPickerOpen else {
-            if keDrawerPull != 0 { keDrawerPull = 0 }
+            if keDrawerPull.pull != 0 { keDrawerPull.pull = 0 }
             return
         }
         switch pan {
         case let .changed(dx):
-            keDrawerPull = max(0, -dx)
+            let next = max(0, -dx)
+            if keDrawerPull.pull != next { keDrawerPull.pull = next }
         case let .ended(dx, velocity):
             let shouldOpen = dx < -80 || (dx < -24 && velocity < -500)
             withAnimation(KeDrawerMotion.animation(reduceMotion: reduceMotion)) {
-                keDrawerPull = 0
+                keDrawerPull.pull = 0
                 if shouldOpen { showKeDrawer(page: .garden) }
             }
         case .cancelled:
-            withAnimation(KeDrawerMotion.animation(reduceMotion: reduceMotion)) { keDrawerPull = 0 }
+            withAnimation(KeDrawerMotion.animation(reduceMotion: reduceMotion)) { keDrawerPull.pull = 0 }
         }
     }
 
@@ -660,12 +675,13 @@ struct ChatView: View {
                     .simultaneousGesture(drawerSwipe)
             } else {
                 ChatCollectionTimeline(
-                    items: ChatTimelineItem.make(
+                    items: timelineItems.items(
                         messages: vm.messages,
                         highlightedMessageID: highlightedMessageID,
-                        quotedIDs: Set(quotesStore.quotes.map(\.message_id)),
+                        quotedIDs: quotesStore.quotes.map(\.message_id),
                         pinnedIDs: keWindow.pinnedMessageIDs,
                         // 121：减弱动态效果时柯的几个气泡一起出来，不一个个冒
+                        revealCounts: reduceMotion ? nil : vm.segmentRevealCounts,
                         visibleSegmentCount: { reduceMotion ? nil : vm.visibleSegmentCount(for: $0) }
                     ),
                     streamRevision: vm.streamRevision,

@@ -43,15 +43,19 @@ final class KeWindowStore: ObservableObject {
     // MARK: 窗口
 
     func loadWindow() async {
-        isLoadingWindow = window == nil
-        defer { isLoadingWindow = false }
+        // 127：@Published 每赋一次值都会让看着它的页面（整个聊天页）重画一遍，值没变也一样；
+        // 抽屉一打开就要读一次，所以没变的就不赋
+        let loading = window == nil
+        if isLoadingWindow != loading { isLoadingWindow = loading }
+        defer { if isLoadingWindow { isLoadingWindow = false } }
         do {
             apply(try await api.fetchKeWindow())
-            windowError = nil
+            if windowError != nil { windowError = nil }
         } catch is CancellationError {
             return
         } catch {
-            windowError = Self.message(for: error)
+            let message = Self.message(for: error)
+            if windowError != message { windowError = message }
         }
     }
 

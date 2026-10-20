@@ -6,44 +6,44 @@ import UIKit
 /// 玻璃才有东西可以透；卧室状态保持原来的纯色。
 struct AppAtmosphere: View {
     @EnvironmentObject private var theme: Theme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// 85：她说「太平、没动效」。光晕很慢地来回漂（一个来回 18 秒），减弱动态效果时不动。
-    @State private var drift = false
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    // 85：她说「太平、没动效」，光晕曾经很慢地来回漂（一个来回 18 秒）。
+    // 127：聊天记录就在这层上面滑，底下再漂会晕；浮栏的模糊也得跟着每帧重算。现在整层静止。
 
     var body: some View {
         ZStack {
             theme.effectiveBackground
             if !theme.isBedroom {
                 let night = theme.skin == .night
-                let d: CGFloat = drift ? 1 : 0
-                // 126：粉白纸几乎是白的，光晕只留一点影子（设计稿底图只有 10% 的淡）
-                let glow = night ? 1 : theme.chatPalette.glow
-                RadialGradient(
-                    colors: [Color.white.opacity(night ? 0.14 : 0.70), .clear],
-                    center: UnitPoint(x: 0.80 - 0.10 * d, y: 0.10 + 0.05 * d), startRadius: 0, endRadius: 280
-                )
-                RadialGradient(
-                    colors: [theme.color.accentSoft.opacity((night ? 0.38 : 0.66) * glow), .clear],
-                    center: UnitPoint(x: 0.10 + 0.14 * d, y: 0.68 - 0.08 * d), startRadius: 0, endRadius: 440
-                )
-                RadialGradient(
-                    colors: [theme.sendColor.opacity((night ? 0.24 : 0.34) * glow), .clear],
-                    center: UnitPoint(x: 0.94 - 0.12 * d, y: 0.92 - 0.06 * d), startRadius: 0, endRadius: 400
-                )
+                if !night && theme.chatPalette.atmosphereImage {
+                    // 127：粉白那款铺设计稿那张淡粉底图（app-atmosphere：饱和度 0.4、轻糊、按 17% 正片叠底压在白纸上，
+                    // 都提前烤进图里了），运行时就是一张静止的图，不挂滤镜、不混合。「降低透明度」时只留纸色。
+                    if !reduceTransparency {
+                        Color.clear
+                            .overlay { Image("ChatAtmosphere").resizable().scaledToFill() }
+                            .clipped()
+                    }
+                } else {
+                    // 126：粉白纸几乎是白的，光晕只留一点影子（设计稿底图只有 10% 的淡）
+                    let glow = night ? 1 : theme.chatPalette.glow
+                    RadialGradient(
+                        colors: [Color.white.opacity(night ? 0.14 : 0.70), .clear],
+                        center: UnitPoint(x: 0.80, y: 0.10), startRadius: 0, endRadius: 280
+                    )
+                    RadialGradient(
+                        colors: [theme.color.accentSoft.opacity((night ? 0.38 : 0.66) * glow), .clear],
+                        center: UnitPoint(x: 0.10, y: 0.68), startRadius: 0, endRadius: 440
+                    )
+                    RadialGradient(
+                        colors: [theme.sendColor.opacity((night ? 0.24 : 0.34) * glow), .clear],
+                        center: UnitPoint(x: 0.94, y: 0.92), startRadius: 0, endRadius: 400
+                    )
+                }
             }
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-        .onAppear {
-#if DEBUG
-            // Fixture screenshots use static halos so XCUITest can wait for idle.
-            // Release keeps the original drifting atmosphere.
-            if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("-ui-test-") }) { return }
-#endif
-            guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 9).repeatForever(autoreverses: true)) { drift = true }
-        }
     }
 }
 
@@ -62,8 +62,36 @@ struct CrystalSurface: View {
     let cornerRadius: CGFloat
     var strength: Double = 1
     var usesChatControls: Bool = false
+    /// 127：放在聊天记录格子里的（工具状态卡）不挂实时模糊、不挂影子，只画一块静止的纸色 + 亮边
+    var isStatic: Bool = false
 
     var body: some View {
+        if isStatic {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(theme.color.card.opacity(0.72))
+                .overlay { rim }
+        } else {
+            liveBody
+        }
+    }
+
+    private var rim: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .stroke(
+                LinearGradient(
+                    colors: [
+                        theme.color.glassEdge,
+                        theme.color.accentSoft.opacity(theme.glass.accentEdgeOpacity),
+                        theme.color.glassInnerLight
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: theme.metric.glassStrokeWidth
+            )
+    }
+
+    private var liveBody: some View {
         ZStack {
             BackdropBlur(
                 intensity: usesChatControls
@@ -76,21 +104,7 @@ struct CrystalSurface: View {
                 .fill(theme.color.glassTint.opacity(surfaceTintOpacity))
         }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                theme.color.glassEdge,
-                                theme.color.accentSoft.opacity(theme.glass.accentEdgeOpacity),
-                                theme.color.glassInnerLight
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: theme.metric.glassStrokeWidth
-                    )
-            }
+            .overlay { rim }
             .shadow(
                 color: theme.color.glassShadow,
                 radius: theme.metric.glassShadowRadius,
@@ -171,19 +185,17 @@ struct FloatingGlassSurface: View {
     @EnvironmentObject private var theme: Theme
     let cornerRadius: CGFloat
     var lockscreen = false
+    // 127：这些都浮在滚动的聊天记录上（照片壁纸时的提示条等），不用 iOS 26 液态玻璃，统一走系统模糊
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         if lockscreen {
-            if #available(iOS 26.0, *) {
-                Color.clear.glassEffect(.clear, in: .rect(cornerRadius: cornerRadius))
-            } else {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .environment(\.colorScheme, .dark)
-            }
-        } else if #available(iOS 26.0, *) {
-            Color.clear.glassEffect(.clear.tint(theme.color.accentSoft.opacity(0.04)), in: .rect(cornerRadius: cornerRadius))
+            shape.fill(.ultraThinMaterial)
+                .environment(\.colorScheme, .dark)
         } else {
-            CrystalSurface(cornerRadius: cornerRadius)
+            ZStack {
+                shape.fill(.ultraThinMaterial)
+                shape.fill(theme.color.accentSoft.opacity(0.04))
+            }
         }
     }
 }
