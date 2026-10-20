@@ -301,7 +301,7 @@ struct ChatTimelineItem: Identifiable, Equatable {
         visibleSegmentCount: Int?
     ) -> [Self] {
         let segments = message.bubbleSegments
-        guard message.sender == .ke, message.unlockedDiary == nil, segments.count > 1 else {
+        guard message.sender == .ke, !message.isCardMessage, segments.count > 1 else {
             return [Self(
                 kind: .message,
                 message: message,
@@ -389,6 +389,52 @@ enum ChatTimelineFollowPolicy {
     }
 }
 
+/// 128 她：「滑消息还是晕啊 滑上面会回跳一下 继续滑」。
+/// 手指在列表上（按着、拖着、松手后还在滑）的时候，程序一下都不挪列表：不落回最新、不按快照摆回去。
+/// 这期间来了新消息、键盘或浮栏变了，要落回最新的先记着，等她停下来、而且停在最新附近再落。
+enum ChatTimelineScrollGate {
+    static func userIsScrolling(isTracking: Bool, isDragging: Bool, isDecelerating: Bool) -> Bool {
+        isTracking || isDragging || isDecelerating
+    }
+
+    /// 本来要落回最新：她没在滑就现在落；她在滑就先记着（followLater），停下来再看
+    static func resolveFollow(wantsFollow: Bool, userIsScrolling: Bool) -> (followNow: Bool, followLater: Bool) {
+        guard wantsFollow else { return (false, false) }
+        return userIsScrolling ? (false, true) : (true, false)
+    }
+
+    /// 她停下来了：记着的那次只有停在最新附近才落（往上翻走了就不拽回去，右下角有「回到最新」）
+    static func shouldFollowAfterScrollEnds(followLater: Bool, isNearLatest: Bool) -> Bool {
+        followLater && isNearLatest
+    }
+}
+
+/// 128：每一行量出来的高度，按行的 id 记住（连同量的时候的宽度）。
+/// ChatLayout 每次整体重排（落回最新、键盘起落、reloadData）都会把所有行的高度丢掉、按 40pt 估，
+/// 往上翻时每一行出现才重新量：上面的内容比真的短，一甩就先撞到「假的顶」弹回来，量完变长了才能接着滑——
+/// 就是「回跳一下」。有了这份记账，重排时每行直接按上次量的高度估，估的和真的一样，不用补偏移、也没有假顶。
+struct ChatRowHeightCache {
+    private var rows: [String: (width: CGFloat, height: CGFloat)] = [:]
+
+    mutating func store(id: String, width: CGFloat, height: CGFloat) {
+        guard width > 0, height > 0, height.isFinite else { return }
+        rows[id] = (width, height)
+    }
+
+    /// 同样宽（转屏、字号换了宽不变也会在下一次量的时候更新）才拿来估
+    func estimate(id: String, width: CGFloat) -> CGFloat? {
+        guard let row = rows[id], abs(row.width - width) <= 0.5 else { return nil }
+        return row.height
+    }
+
+    /// 时间线里已经没有的行不留
+    mutating func prune(keeping ids: Set<String>) {
+        rows = rows.filter { ids.contains($0.key) }
+    }
+
+    var count: Int { rows.count }
+}
+
 enum ChatTimelineScrollControlPolicy {
     static func shouldShow(
         distanceFromLatest: CGFloat,
@@ -418,6 +464,8 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable, Equatable {
     /// 顶上浮栏的下沿、输入胶囊的上沿。上下留白在 UIKit 那边按时间线自己在窗口里的位置算。
     var chromeTopEdge: CGFloat = 0
     var chromeBottomEdge: CGFloat = 0
+    /// 128：「夜里日记」卡的点评数据（不参与 ==：它自己会通知卡片重画）
+    var nightStore: NightStore? = nil
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         // ChatViewModel 还承载模型选择、上传和设置状态。那些发布会让父视图
@@ -448,7 +496,8 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable, Equatable {
             onTogglePin: onTogglePin,
             onDrawerPan: onDrawerPan,
             onBackgroundTap: onBackgroundTap,
-            onScrollToLatestVisibilityChanged: onScrollToLatestVisibilityChanged
+            onScrollToLatestVisibilityChanged: onScrollToLatestVisibilityChanged,
+            nightStore: nightStore
         )
     }
 
@@ -510,11 +559,16 @@ final class ChatTimelineHostingCell: UICollectionViewCell {
             width: width,
             height: ceil(max(measured.height, 1))
         )
+        onMeasured?(width, fitted.size.height)
         return fitted
     }
 
+    /// 128：量好了告诉时间线（记进 ChatRowHeightCache）
+    var onMeasured: ((CGFloat, CGFloat) -> Void)?
+
     override func prepareForReuse() {
         super.prepareForReuse()
+        onMeasured = nil
         contentConfiguration = nil
     }
 }
@@ -550,6 +604,21 @@ final class ChatCollectionTimelineController: UIViewController,
     private var lastPublishedScrollControlVisibility: Bool?
     private var chromeInsets: UIEdgeInsets = .zero
     private var chromeEdges: (top: CGFloat, bottom: CGFloat) = (0, 0)
+    /// 128：每行量过的高度（见 ChatRowHeightCache）
+    private var rowHeights = ChatRowHeightCache()
+    /// 128：她在滑的时候本来要落回最新的，记着等她停下来
+    private var followAfterUserScroll = false
+    /// 128：「夜里日记」卡要用的点评数据（整个聊天页共用一份）
+    var nightStore: NightStore?
+
+    /// 128：她的手指还在列表上，或者松手后还在惯性滑
+    private var userIsScrolling: Bool {
+        ChatTimelineScrollGate.userIsScrolling(
+            isTracking: collectionView.isTracking,
+            isDragging: collectionView.isDragging,
+            isDecelerating: collectionView.isDecelerating
+        )
+    }
 
     init(
         items: [ChatTimelineItem],
@@ -564,8 +633,10 @@ final class ChatCollectionTimelineController: UIViewController,
         onTogglePin: @escaping (Message) -> Void = { _ in },
         onDrawerPan: @escaping (ChatDrawerPan) -> Void = { _ in },
         onBackgroundTap: @escaping () -> Void,
-        onScrollToLatestVisibilityChanged: @escaping (Bool) -> Void
+        onScrollToLatestVisibilityChanged: @escaping (Bool) -> Void,
+        nightStore: NightStore? = nil
     ) {
+        self.nightStore = nightStore
         self.items = items
         self.streamRevision = streamRevision
         self.inputFocused = inputFocused
@@ -667,21 +738,24 @@ final class ChatCollectionTimelineController: UIViewController,
 
         if pendingFollowLatestAfterLayout, !items.isEmpty {
             pendingFollowLatestAfterLayout = false
-            chatLayout.invalidateLayout()
-            collectionView.layoutIfNeeded()
+            // 128：她正在滑（比如往下拖着收键盘又松回去）就不落，停下来再看
+            guard !userIsScrolling else {
+                followAfterUserScroll = true
+                publishScrollControlVisibility()
+                return
+            }
             scrollToLatest(animated: false)
             return
         }
 
         guard shouldPreserveLatest,
               abs(currentHeight - previousHeight) > 0.5,
-              !items.isEmpty else {
+              !items.isEmpty,
+              !userIsScrolling else {
             publishScrollControlVisibility()
             return
         }
 
-        chatLayout.invalidateLayout()
-        collectionView.layoutIfNeeded()
         scrollToLatest(animated: false)
     }
 
@@ -735,20 +809,28 @@ final class ChatCollectionTimelineController: UIViewController,
             appendedOwnMessage: appendedOwnMessage,
             mayAutoFollow: mayAutoFollow
         )
-        if shouldFollowLatest {
+        // 128：她在滑的时候不落回最新，记着等她停下来
+        let follow = ChatTimelineScrollGate.resolveFollow(
+            wantsFollow: shouldFollowLatest,
+            userIsScrolling: userIsScrolling
+        )
+        if follow.followLater { followAfterUserScroll = true }
+        if follow.followNow {
             followsLatestByIntent = true
         }
 
         // 121：一个个冒出来的气泡是插进来的新格子；拉回记录换成服务器那条时，没变的格子不碰。
         if let changes = ChatTimelineChanges.between(oldItems, newItems) {
-            apply(changes, followLatest: shouldFollowLatest)
+            apply(changes, followLatest: follow.followNow)
         } else {
-            let snapshot = shouldFollowLatest
+            rowHeights.prune(keeping: Set(newIDs))
+            // 128：她在滑的时候不拿快照摆回去（快照是这一刻的，摆回去那一下她的手已经往上走了）
+            let snapshot = follow.followNow || userIsScrolling
                 ? nil
                 : chatLayout.getContentOffsetSnapshot(from: .top)
             collectionView.reloadData()
             collectionView.layoutIfNeeded()
-            if shouldFollowLatest {
+            if follow.followNow {
                 scrollToLatest(animated: false)
             } else if let snapshot {
                 chatLayout.restoreContentOffset(with: snapshot)
@@ -769,6 +851,8 @@ final class ChatCollectionTimelineController: UIViewController,
         }
 
         if requestedScrollToLatest {
+            // 她自己点了「回到最新」或者发了一句：这是她要的，照落
+            followAfterUserScroll = false
             DispatchQueue.main.async { [weak self] in
                 self?.scrollToLatest(animated: !UIAccessibility.isReduceMotionEnabled)
             }
@@ -805,7 +889,11 @@ final class ChatCollectionTimelineController: UIViewController,
         chromeInsets = insets
         collectionView.contentInset = insets
         collectionView.verticalScrollIndicatorInsets = insets
-        if scrollIfFollowing && wasFollowingLatest && !items.isEmpty && !collectionView.isDragging {
+        if userIsScrolling {
+            // 128：她在滑：留白照改（不挪内容），落回最新等她停下来
+            if wasFollowingLatest && !items.isEmpty { followAfterUserScroll = true }
+            publishScrollControlVisibility()
+        } else if scrollIfFollowing && wasFollowingLatest && !items.isEmpty {
             scrollToLatest(animated: false)
         } else if wasFollowingLatest && !items.isEmpty {
             // 布局里改的：等这一轮布局完再落回最新，不在 layoutSubviews 里再套一层布局
@@ -841,7 +929,9 @@ final class ChatCollectionTimelineController: UIViewController,
             return
         }
 
-        let positionSnapshot = followLatest
+        // 128：她在滑的时候不拿快照：ChatLayout 自己按可见区底边补偏移（keepContentOffsetAtBottomOnBatchUpdates），
+        // 快照要到这一批做完才摆回去，那时她的手已经又走了一段，摆回去就是「回跳一下」
+        let positionSnapshot = followLatest || userIsScrolling
             ? nil
             : chatLayout.getContentOffsetSnapshot(from: .top)
         // UIKit 约定：删除用更新前的下标，插入用更新后的下标
@@ -864,7 +954,10 @@ final class ChatCollectionTimelineController: UIViewController,
             } completion: { [weak self] _ in
                 guard let self else { return }
                 self.collectionView.layoutIfNeeded()
-                if let positionSnapshot {
+                if self.userIsScrolling {
+                    // 128：这一批做完时她已经上手在滑了：不摆、不落，要落的等她停下来
+                    if followLatest { self.followAfterUserScroll = true }
+                } else if let positionSnapshot {
                     self.chatLayout.restoreContentOffset(with: positionSnapshot)
                 } else if followLatest {
                     self.scrollToLatest(animated: false)
@@ -884,9 +977,39 @@ final class ChatCollectionTimelineController: UIViewController,
         guard let endFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]
             as? CGRect,
               endFrame.minY < UIScreen.main.bounds.maxY else { return }
+        // 128：键盘是记录里的框叫起来的（「夜里日记」卡上「写一句」）：不落回最新，把那张卡留在键盘上面
+        if let field = collectionView.firstResponderDescendant {
+            DispatchQueue.main.async { [weak self] in self?.reveal(field) }
+            return
+        }
+        // 128：她拖着列表往下收键盘、又松回去时也会来这一下：手还在列表上就先记着，停下来再看
+        if userIsScrolling {
+            followAfterUserScroll = followsLatestByIntent || isNearLatest
+            return
+        }
         // UIKit 通知比 SwiftUI FocusState 稳定：即使用户从历史位置点输入框，
         // 也要等系统确定键盘终点后，把最新消息带回可见区。
         requestFollowLatestAfterLayout()
+    }
+
+    /// 128：记录里正在打字的那个框露在键盘和输入栏上面
+    private func reveal(_ field: UIView) {
+        guard field.window != nil else { return }
+        collectionView.layoutIfNeeded()
+        let rect = field.convert(field.bounds, to: collectionView).insetBy(dx: 0, dy: -Theme.shared.metric.gapM)
+        collectionView.scrollRectToVisible(rect, animated: !UIAccessibility.isReduceMotionEnabled)
+    }
+
+    /// 128：她停下来了：滑的时候记着的那次落回最新，停在最新附近才落
+    private func userScrollDidEnd() {
+        let shouldFollow = ChatTimelineScrollGate.shouldFollowAfterScrollEnds(
+            followLater: followAfterUserScroll,
+            isNearLatest: isNearLatest
+        )
+        followAfterUserScroll = false
+        if shouldFollow {
+            scrollToLatest(animated: !UIAccessibility.isReduceMotionEnabled)
+        }
     }
 
     private func scrollToLatestIfNeeded() {
@@ -902,6 +1025,12 @@ final class ChatCollectionTimelineController: UIViewController,
     private func scrollToLatest(animated: Bool) {
         guard !items.isEmpty else { return }
         followsLatestByIntent = true
+        // 128：已经停在最底就不整体重排（以前每来一次刷新都重排一遍）
+        if abs(collectionView.contentOffset.y - maximumContentOffsetY) <= 0.5 {
+            isScrollingToLatest = false
+            publishScrollControlVisibility()
+            return
+        }
         chatLayout.invalidateLayout()
         collectionView.layoutIfNeeded()
 
@@ -959,11 +1088,13 @@ final class ChatCollectionTimelineController: UIViewController,
         guard !decelerate else { return }
         followsLatestByIntent = isNearLatest
         publishScrollControlVisibility()
+        userScrollDidEnd()
     }
 
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
         followsLatestByIntent = isNearLatest
         publishScrollControlVisibility()
+        userScrollDidEnd()
     }
 
     func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
@@ -1014,7 +1145,12 @@ final class ChatCollectionTimelineController: UIViewController,
             return UICollectionViewCell()
         }
         let item = items[indexPath.item]
+        let rowID = item.id
         cell.backgroundColor = .clear
+        cell.onMeasured = { [weak self] width, height in
+            self?.rowHeights.store(id: rowID, width: width, height: height)
+        }
+        let nightStore = nightStore
         cell.contentConfiguration = UIHostingConfiguration {
             switch item.kind {
             case .date:
@@ -1063,6 +1199,7 @@ final class ChatCollectionTimelineController: UIViewController,
                     part: item.part
                 )
                 .environmentObject(Theme.shared)
+                .environment(\.keNightStore, nightStore)
 #if DEBUG
                 .onAppear { ChatRecoveryUITestTiming.shared.appeared(item.message) }
 #endif
@@ -1074,6 +1211,25 @@ final class ChatCollectionTimelineController: UIViewController,
 
     private func latest(_ message: Message) -> Message {
         items.first { $0.messageID == message.id && $0.part != nil }?.message ?? message
+    }
+
+    /// 128：量过的行按上次的高度估（见 ChatRowHeightCache）；没量过的照 ChatLayout 默认的 40pt
+    func sizeForItem(
+        _ chatLayout: CollectionViewChatLayout,
+        of kind: ItemKind,
+        at indexPath: IndexPath
+    ) -> ItemSize {
+        guard kind == .cell, items.indices.contains(indexPath.item) else { return .auto }
+        let width = rowWidth
+        guard let height = rowHeights.estimate(id: items[indexPath.item].id, width: width) else { return .auto }
+        return .estimated(CGSize(width: width, height: height))
+    }
+
+    /// 和 ChatLayout 的 layoutFrame 一样宽（不碰 layoutFrame：它要读内容高度，在 prepare 里每行读一次不值）
+    private var rowWidth: CGFloat {
+        let extra = chatLayout.settings.additionalInsets
+        let inset = collectionView.adjustedContentInset
+        return collectionView.bounds.width - extra.left - extra.right - inset.left - inset.right
     }
 
     func initialLayoutAttributesForInsertedItem(
@@ -1150,4 +1306,15 @@ extension ChatCollectionTimelineController: UIGestureRecognizerDelegate {
 /// 112：拉设置抽屉只认屏幕最右边这一条（三个页面都一样）
 enum KeDrawerEdge {
     static let width: CGFloat = 32
+}
+
+extension UIView {
+    /// 128：这块视图里正在打字的那个（没有就是 nil）
+    var firstResponderDescendant: UIView? {
+        if isFirstResponder { return self }
+        for subview in subviews {
+            if let found = subview.firstResponderDescendant { return found }
+        }
+        return nil
+    }
 }

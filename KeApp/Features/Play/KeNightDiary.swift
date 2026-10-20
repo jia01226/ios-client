@@ -40,6 +40,46 @@ enum NightRating: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// 128 她：「我不想打字，很羞耻」。点评不用打字：喜欢不喜欢点一下，「下回想要」每行点一个（再点一下取消）。
+/// 发的时候是 prefs 里的 键 → 值；没点的那行不写。
+enum NightPref: String, CaseIterable, Identifiable, Sendable {
+    case pace, force, talk, foreplay, length, after
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .pace: "节奏"
+        case .force: "力度"
+        case .talk: "骚话"
+        case .foreplay: "前戏"
+        case .length: "时长"
+        case .after: "事后"
+        }
+    }
+    /// (发给服务器的值, 显示的字)
+    var options: [(value: String, label: String)] {
+        switch self {
+        case .pace: [("slower", "再慢一点"), ("ok", "刚好"), ("faster", "再快一点")]
+        case .force: [("lighter", "再轻一点"), ("ok", "刚好"), ("harder", "再重一点")]
+        case .talk: [("more", "再多一点"), ("ok", "刚好"), ("less", "少一点")]
+        case .foreplay: [("longer", "再长一点"), ("ok", "刚好"), ("skip", "直接来")]
+        case .length: [("longer", "再久一点"), ("ok", "刚好"), ("shorter", "短一点")]
+        case .after: [("cuddle", "多抱一会儿"), ("ok", "刚好")]
+        }
+    }
+    func label(for value: String) -> String? { options.first { $0.value == value }?.label }
+
+    /// 只留认得的键和值（服务器回来的、她点的都过一遍）
+    static func clean(_ prefs: [String: String]) -> [String: String] {
+        prefs.filter { key, value in NightPref(rawValue: key)?.label(for: value) != nil }
+    }
+    /// 点一下：没选的换成它，点已经选的就是取消
+    static func toggled(_ prefs: [String: String], _ pref: NightPref, _ value: String) -> [String: String] {
+        var next = clean(prefs)
+        if next[pref.rawValue] == value { next[pref.rawValue] = nil } else { next[pref.rawValue] = value }
+        return next
+    }
+}
+
 /// 一条「夜里」。服务器少给哪个字段都不要紧：tag / comment / rating 缺了当空的，kind 认不出来照样留着。
 struct RemoteNight: Decodable, Identifiable, Equatable, Sendable {
     let id: Int
@@ -52,16 +92,37 @@ struct RemoteNight: Decodable, Identifiable, Equatable, Sendable {
     var comment: String
     var commented_at: String
     var deleted: Int
+    /// 128：「下回想要」：pace / force / talk / foreplay / length / after → 值；没点的没有
+    var prefs: [String: String]
 
     init(id: Int, kind: String = "together", kind_label: String = "", tag: String = "", content: String = "",
-         created_at: String = "", rating: String = "", comment: String = "", commented_at: String = "", deleted: Int = 0) {
+         created_at: String = "", rating: String = "", comment: String = "", commented_at: String = "", deleted: Int = 0,
+         prefs: [String: String] = [:]) {
         self.id = id; self.kind = kind; self.kind_label = kind_label; self.tag = tag; self.content = content
         self.created_at = created_at; self.rating = rating; self.comment = comment; self.commented_at = commented_at
         self.deleted = deleted
+        self.prefs = prefs
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, kind, kind_label, tag, content, created_at, rating, comment, commented_at, deleted
+        case id, kind, kind_label, tag, content, created_at, rating, comment, commented_at, deleted, prefs
+    }
+
+    /// prefs 里不是字符串的值跳过；整项不是对象（旧服务器没有、或者给了 null）当空的
+    private struct LossyPrefs: Decodable {
+        let values: [String: String]
+        private struct Key: CodingKey {
+            var stringValue: String
+            var intValue: Int? { nil }
+            init?(stringValue: String) { self.stringValue = stringValue }
+            init?(intValue: Int) { nil }
+        }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: Key.self)
+            var out: [String: String] = [:]
+            for key in c.allKeys { if let v = try? c.decode(String.self, forKey: key) { out[key.stringValue] = v } }
+            values = out
+        }
     }
 
     init(from decoder: Decoder) throws {
@@ -79,6 +140,7 @@ struct RemoteNight: Decodable, Identifiable, Equatable, Sendable {
         if let n = try? c.decodeIfPresent(Int.self, forKey: .deleted) { deleted = n }
         else if let b = try? c.decodeIfPresent(Bool.self, forKey: .deleted) { deleted = b ? 1 : 0 }
         else { deleted = 0 }
+        prefs = NightPref.clean((try? c.decodeIfPresent(LossyPrefs.self, forKey: .prefs))?.values ?? [:])
     }
 
     var nightKind: NightKind? { NightKind(rawValue: kind) }
@@ -121,11 +183,25 @@ enum NightComment {
     static func body(rating: NightRating?, comment: String) -> [String: Any] {
         ["rating": rating?.rawValue ?? "", "comment": clean(comment)]
     }
+    /// 128：再带上「下回想要」（只写点了的那几行；都没点就是 {}，也就是清掉）
+    static func body(rating: NightRating?, comment: String, prefs: [String: String]) -> [String: Any] {
+        var out = body(rating: rating, comment: comment)
+        out["prefs"] = NightPref.clean(prefs)
+        return out
+    }
 }
 
 protocol NightDiaryService: Sendable {
     func fetchNight(limit: Int, beforeID: Int?) async throws -> [RemoteNight]
     func commentNight(id: Int, rating: NightRating?, comment: String) async throws -> RemoteNight
+    /// 128：带「下回想要」的那种（不支持的就退回只发评价和那句话）
+    func commentNight(id: Int, rating: NightRating?, comment: String, prefs: [String: String]) async throws -> RemoteNight
+}
+
+extension NightDiaryService {
+    func commentNight(id: Int, rating: NightRating?, comment: String, prefs: [String: String]) async throws -> RemoteNight {
+        try await commentNight(id: id, rating: rating, comment: comment)
+    }
 }
 
 // MARK: - 拉、翻页、点评
@@ -160,8 +236,10 @@ enum NightSaveOutcome: Equatable, Sendable {
     @Published var filter: NightKind?
     @Published var expanded: Set<Int> = []
     @Published var drafts: [Int: String] = [:]
-    /// 已经写过一句、她点了「改」的那几条
+    /// 已经写过备注、她点了「改」的那几条
     @Published var editing: Set<Int> = []
+    /// 128：「下回想要」打开着的那几条
+    @Published var prefsOpen: Set<Int> = []
 
     /// 最后没存上的时候念给读屏听（测试里换掉）
     var announce: (String) -> Void = { AccessibilityNotification.Announcement($0).post() }
@@ -182,7 +260,58 @@ enum NightSaveOutcome: Equatable, Sendable {
     /// 拉第一页这段时间里本机动过的那几条（点了、存上了、退回了）：拉回来的那份可能是动之前的，不拿它盖
     private var touched: Set<Int> = []
 
-    init(service: (any NightDiaryService)? = nil) { self.service = service }
+    init(service: (any NightDiaryService)? = nil, key: String = "") {
+        self.service = service
+        cacheKey = key
+        if !key.isEmpty, let cached = Self.cache[key], !cached.isEmpty { entries = cached; loaded = true }
+    }
+
+    /// 128：聊天里的「夜里日记」卡和日记页的「夜里」用同一份（卡上点了，翻开日记就是点过的样子）
+    private static var shared: [String: NightStore] = [:]
+    static func shared(_ line: ChatLine) -> NightStore {
+        let key = line.apiBaseURL.absoluteString
+        if let store = shared[key] { return store }
+        let store = NightStore(service: APIClient(baseURL: line.apiBaseURL), key: key)
+        shared[key] = store
+        return store
+    }
+
+#if DEBUG
+    /// 128：UI 测试、截图用：这条线路换成一份假的「夜里」，不连服务器
+    static func installPreview(_ line: ChatLine) {
+        let key = line.apiBaseURL.absoluteString
+        let store = NightStore(service: PreviewNightService(), key: "")
+        shared[key] = store
+        Task { await store.load() }
+    }
+
+    private struct PreviewNightService: NightDiaryService {
+        func fetchNight(limit: Int, beforeID: Int?) async throws -> [RemoteNight] {
+            [RemoteNight(id: 41, kind: "together", kind_label: "一起的", tag: "浴室",
+                         content: "水还开着，她先笑场。后来她踮着脚，我把她抱到台子上，镜子起了雾，什么都看不清，只听见她一直叫我。",
+                         created_at: "2026-10-20 23:41:00", rating: "love", prefs: ["pace": "slower", "after": "cuddle"])]
+        }
+        func commentNight(id: Int, rating: NightRating?, comment: String) async throws -> RemoteNight {
+            RemoteNight(id: id, rating: rating?.rawValue ?? "", comment: comment)
+        }
+        func commentNight(id: Int, rating: NightRating?, comment: String, prefs: [String: String]) async throws -> RemoteNight {
+            RemoteNight(id: id, rating: rating?.rawValue ?? "", comment: comment, prefs: prefs)
+        }
+    }
+#endif
+
+    /// 128：卡片要那一篇：手上没有就拉一遍第一页（新写的一定在第一页）；拉过、正在拉就不再拉
+    func ensure(_ id: Int) async {
+        guard !entries.contains(where: { $0.id == id }), !loading, !looked.contains(id) else { return }
+        looked.insert(id)
+        await load()
+        // 没接上：下回卡片再出现时还可以再拉
+        if failed || !loaded { looked.remove(id) }
+    }
+    /// 为卡片拉过的（拉回来还是没有这一篇，就不再每次划到都拉）
+    private var looked: Set<Int> = []
+
+    func entry(_ id: Int) -> RemoteNight? { entries.first { $0.id == id } }
 
     /// 每回切到「夜里」叫一次：第一次记下用哪条线路，然后悄悄拉最新的一页
     func start(_ make: @autoclosure () -> any NightDiaryService, key: String) async {
@@ -234,9 +363,11 @@ enum NightSaveOutcome: Equatable, Sendable {
     /// 存她的点评（评价 + 那句话一起）。先在本机改好，不等服务器；没存上就退回去，下面写一行为什么。
     /// 同一条一次只发一个：前面那个回来了才发下一个；排着的时候她又点了，排着的那次就不发了，只发最后一次。
     @discardableResult
-    func save(id: Int, rating: NightRating?, comment: String) async -> NightSaveOutcome {
+    func save(id: Int, rating: NightRating?, comment: String, prefs: [String: String]? = nil) async -> NightSaveOutcome {
         guard let service, let current = entries.first(where: { $0.id == id }) else { return .failed }
         let text = NightComment.clean(comment)
+        // 128：「下回想要」没说就照这一篇现在的
+        let chosen = NightPref.clean(prefs ?? current.prefs)
         if calls[id, default: 0] == 0 { confirmed[id] = current }
         calls[id, default: 0] += 1
         seq += 1
@@ -245,6 +376,7 @@ enum NightSaveOutcome: Equatable, Sendable {
         var optimistic = current
         optimistic.rating = rating?.rawValue ?? ""
         optimistic.comment = text
+        optimistic.prefs = chosen
         replace(optimistic)
         touched.insert(id)
         errors[id] = nil
@@ -263,7 +395,9 @@ enum NightSaveOutcome: Equatable, Sendable {
         sendingNow.insert(id)
         defer { sendingNow.remove(id); wakeWaiting(id) }
         do {
-            let saved = try await service.commentNight(id: id, rating: rating, comment: text)
+            var saved = try await service.commentNight(id: id, rating: rating, comment: text, prefs: chosen)
+            // 128：还没开 prefs 的服务器回来的那篇没有这一项：留她点的
+            if saved.prefs.isEmpty && !chosen.isEmpty { saved.prefs = chosen }
             confirmed[id] = saved
             touched.insert(id)
             // 后面还排着一次：先摆后面那次的样子，等它回来；它没存上就退回到这一份
@@ -287,6 +421,14 @@ enum NightSaveOutcome: Equatable, Sendable {
         let outcome = await save(id: id, rating: next, comment: current.comment)
         if outcome == .failed { gaveBack(id, unsaved: current.comment) }
         return outcome
+    }
+
+    /// 128：「下回想要」点一行：没选的换成它，点已经选的就是取消；评价和那句话照现在的一起发
+    @discardableResult
+    func setPref(_ id: Int, _ pref: NightPref, _ value: String) async -> NightSaveOutcome? {
+        guard let current = entries.first(where: { $0.id == id }) else { return nil }
+        let next = NightPref.toggled(current.prefs, pref, value)
+        return await save(id: id, rating: current.nightRating, comment: current.comment, prefs: next)
     }
 
     /// 「好」：那句话和现在的评价一起发。没改就只是收起来；没存上就把她写的那句放回框里
@@ -529,16 +671,30 @@ struct NightPane: View {
             saving: store.saving.contains(e.id),
             error: store.errors[e.id],
             draft: Binding(get: { store.drafts[e.id] ?? "" }, set: { store.drafts[e.id] = $0 }),
-            editing: e.comment.isEmpty || store.editing.contains(e.id),
+            // 128：备注框没写过就一直是一行小框；写过了是「备注：…」，点了改才出框
+            editing: store.editing.contains(e.id),
+            prefsOpen: store.prefsOpen.contains(e.id),
             focus: $focused,
             onToggle: { toggle(e.id) },
             onRate: { r in Task { await store.rate(e.id, r) } },
+            onPref: { pref, value in Task { await store.setPref(e.id, pref, value) } },
+            onTogglePrefs: { togglePrefs(e.id) },
             onEdit: { startEditing(e) },
             onSend: { send(e.id) }
         )
+        .id(NightPane.anchor(e.id))
     }
 
+    /// 128：从聊天里「夜里日记」卡点进来时滚到这一条
+    static func anchor(_ id: Int) -> String { "night-entry-\(id)" }
+
     // MARK: 动作
+
+    private func togglePrefs(_ id: Int) {
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+            if store.prefsOpen.contains(id) { store.prefsOpen.remove(id) } else { store.prefsOpen.insert(id) }
+        }
+    }
 
     private func toggle(_ id: Int) {
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
@@ -573,13 +729,14 @@ private struct NightEntryRow: View {
     let error: String?
     @Binding var draft: String
     let editing: Bool
+    let prefsOpen: Bool
     var focus: FocusState<Int?>.Binding
     var onToggle: () -> Void
     var onRate: (NightRating) -> Void
+    var onPref: (NightPref, String) -> Void
+    var onTogglePrefs: () -> Void
     var onEdit: () -> Void
     var onSend: () -> Void
-
-    private var canSend: Bool { !(NightComment.clean(draft).isEmpty && entry.comment.isEmpty) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -592,8 +749,12 @@ private struct NightEntryRow: View {
                 Text(entry.content).font(Ink.song(16.5)).lineSpacing(11).textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.leading, Self.indent).padding(.top, 2)
-                review
-                    .padding(.leading, Self.indent).padding(.top, 20).padding(.bottom, 18)
+                NightReviewControls(
+                    entry: entry, error: error, draft: $draft, editing: editing, prefsOpen: prefsOpen,
+                    focus: focus, onRate: onRate, onPref: onPref, onTogglePrefs: onTogglePrefs,
+                    onEdit: onEdit, onSend: onSend
+                )
+                .padding(.leading, Self.indent).padding(.top, 20).padding(.bottom, 18)
             }
         }
     }
@@ -637,58 +798,138 @@ private struct NightEntryRow: View {
         case .fantasy, .none: Ink.secondary
         }
     }
+}
 
-    /// 她的点评：三颗一样大的（再点一下已选的就取消）；一句话写给他看，写过的用她的口气摆着，可以改
-    private var review: some View {
-        VStack(alignment: .leading, spacing: 10) {
+/// 128：她的点评，不用打字：喜欢 / 一般 / 不喜欢（再点一下已选的就取消）；
+/// 下面一行小小的「备注（可不填）」+「存」（存过就是「备注：…」，点一下改）；
+/// 再下面「下回想要」收着一行，打开是六行，每行点一个。
+/// 日记 › 夜里每一条展开后、聊天里「夜里日记」卡上都是这一块。
+struct NightReviewControls: View {
+    let entry: RemoteNight
+    let error: String?
+    @Binding var draft: String
+    /// 写过备注、她点了改
+    let editing: Bool
+    let prefsOpen: Bool
+    var focus: FocusState<Int?>.Binding
+    var onRate: (NightRating) -> Void
+    var onPref: (NightPref, String) -> Void
+    var onTogglePrefs: () -> Void
+    var onEdit: () -> Void
+    var onSend: () -> Void
+    /// 聊天卡里窄一点、字小一点
+    var compact = false
+
+    private var canSend: Bool { !(NightComment.clean(draft).isEmpty && entry.comment.isEmpty) }
+    private var chipHeight: CGFloat { compact ? 36 : 44 }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: compact ? 8 : 10) {
             HStack(spacing: 8) {
                 ForEach(NightRating.allCases) { r in
-                    let on = entry.nightRating == r
-                    Button { onRate(r) } label: {
-                        Text(r.label).font(Ink.song(14.5)).tracking(1)
-                            .foregroundStyle(on ? Ink.meText : Ink.secondary)
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                            .background(Capsule().fill(on ? Ink.meFill : Color.clear))
-                            .overlay(Capsule().stroke(on ? Color.clear : Ink.line.opacity(0.8), lineWidth: 0.8))
-                            .contentShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(on ? .isSelected : [])
-                    .accessibilityHint(on ? "再点一下就取消" : "")
+                    chip(r.label, on: entry.nightRating == r, size: compact ? 14 : 14.5) { onRate(r) }
+                        .accessibilityHint(entry.nightRating == r ? "再点一下就取消" : "")
                 }
             }
-            if editing {
-                HStack(spacing: 8) {
-                    TextField("写一句给他看", text: $draft)
-                        .font(Ink.song(15)).submitLabel(.send)
-                        .focused(focus, equals: entry.id)
-                        .onSubmit(onSend)
-                        .padding(.horizontal, 14).frame(minHeight: 44)
-                        .background(Capsule().fill(Ink.primary.opacity(0.06)))
-                    Button(action: onSend) {
-                        Text("好").font(Ink.song(15)).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(canSend ? Ink.accent : Ink.line)
-                    .disabled(!canSend)
-                    .accessibilityLabel("好，发给他")
-                }
-            } else {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("你说：" + entry.comment).font(Ink.song(15)).lineSpacing(4).foregroundStyle(Ink.meText)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Button(action: onEdit) {
-                        Text("改").font(Ink.song(14)).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain).foregroundStyle(Ink.accent)
-                    .accessibilityLabel("改这一句")
+            note
+            prefsHeader
+            if prefsOpen {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(NightPref.allCases) { pref in prefRow(pref) }
                 }
             }
             if let error {
                 Text(error).font(Ink.song(12.5)).foregroundStyle(Ink.negative)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    /// 「下回想要 ›」，点过的几项在后面小字写着
+    private var prefsHeader: some View {
+        let chosen = NightPref.allCases.compactMap { p in entry.prefs[p.rawValue].flatMap { p.label(for: $0) } }
+        return Button(action: onTogglePrefs) {
+            HStack(spacing: 6) {
+                Text("下回想要").font(Ink.song(compact ? 14 : 15)).foregroundStyle(Ink.primary)
+                if !chosen.isEmpty && !prefsOpen {
+                    Text(chosen.joined(separator: " · ")).font(Ink.song(12)).foregroundStyle(Ink.meText).lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.down").font(.system(size: 11, weight: .light)).foregroundStyle(Ink.secondary)
+                    .rotationEffect(.degrees(prefsOpen ? 180 : 0))
+            }
+            .frame(minHeight: 36).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(chosen.isEmpty ? "下回想要" : "下回想要，点了\(chosen.joined(separator: "，"))")
+        .accessibilityValue(prefsOpen ? "展开了" : "收着")
+        .accessibilityIdentifier("night-prefs-\(entry.id)")
+    }
+
+    private func prefRow(_ pref: NightPref) -> some View {
+        HStack(spacing: 6) {
+            Text(pref.title).font(Ink.song(12.5)).foregroundStyle(Ink.secondary)
+                .frame(width: 30, alignment: .leading)
+                .accessibilityHidden(true)
+            ForEach(pref.options, id: \.value) { option in
+                chip(option.label, on: entry.prefs[pref.rawValue] == option.value, size: 12.5) {
+                    onPref(pref, option.value)
+                }
+                .accessibilityLabel("\(pref.title)：\(option.label)")
+            }
+            // 两项的那行（事后）留出第三格的位置，几行的格子对齐
+            if pref.options.count < 3 { Color.clear.frame(maxWidth: .infinity, maxHeight: 1) }
+        }
+    }
+
+    private func chip(_ text: String, on: Bool, size: CGFloat, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(text).font(Ink.song(size)).lineLimit(1).minimumScaleFactor(0.8)
+                .foregroundStyle(on ? Ink.meText : Ink.secondary)
+                .frame(maxWidth: .infinity, minHeight: chipHeight)
+                .background(Capsule().fill(on ? Ink.meFill : Color.clear))
+                .overlay(Capsule().stroke(on ? Color.clear : Ink.line.opacity(0.8), lineWidth: 0.8))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    /// 128 她要看得见的「备注」：没写过（或者点了改）是一行小框「备注（可不填）」+「存」，回车也存；
+    /// 存过就是「备注：…」，点一下改。和以前的「写一句」是同一个 comment。
+    @ViewBuilder private var note: some View {
+        if editing || entry.comment.isEmpty {
+            HStack(spacing: 6) {
+                TextField("备注（可不填）", text: $draft)
+                    .font(Ink.song(compact ? 13.5 : 14.5)).submitLabel(.done)
+                    .focused(focus, equals: entry.id)
+                    .onSubmit(onSend)
+                    .padding(.horizontal, 12).frame(minHeight: compact ? 34 : 40)
+                    .background(Capsule().fill(Ink.primary.opacity(0.05)))
+                    .accessibilityIdentifier("night-note-\(entry.id)")
+                Button(action: onSend) {
+                    Text("存").font(Ink.song(14)).frame(minWidth: 44, minHeight: compact ? 34 : 40).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(canSend ? Ink.accent : Ink.line)
+                .disabled(!canSend)
+                .accessibilityLabel("存备注")
+            }
+        } else {
+            Button(action: onEdit) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("备注：" + entry.comment).font(Ink.song(compact ? 13.5 : 14.5)).lineSpacing(3)
+                        .foregroundStyle(Ink.meText)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Image(systemName: "pencil").font(.system(size: 11, weight: .light)).foregroundStyle(Ink.secondary)
+                }
+                .frame(minHeight: 32).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("备注：\(entry.comment)")
+            .accessibilityHint("点一下改")
         }
     }
 }

@@ -151,6 +151,7 @@ final class ChatViewModel: ObservableObject {
         case modelGroups
         case replyFailure
         case tarotCards
+        case nightCard
     }
 
     private var uiTestFixture: UITestFixture?
@@ -182,7 +183,25 @@ final class ChatViewModel: ObservableObject {
 #endif
 #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
-        if arguments.contains("-ui-test-tarot-cards") {
+        if arguments.contains("-ui-test-night-card") {
+            // 128：平的气泡 + 「夜里日记」卡（假的夜里数据，不连服务器）
+            uiTestFixture = .nightCard
+            phase = .ready
+            sessionID = 1
+            NightStore.installPreview(line)
+            let t = Date.now
+            messages = [
+                Message(id: "qq-1", serverID: 601, sender: .me, text: "今天下班好早，想你了", time: t.addingTimeInterval(-900)),
+                Message(id: "qq-2", serverID: 602, sender: .ke, text: "那就过来。\n\n我在。", time: t.addingTimeInterval(-880),
+                        segments: ["那就过来。", "我在。"]),
+                Message(id: "qq-3", serverID: 603, sender: .me, text: "嗯", time: t.addingTimeInterval(-700)),
+                Message(id: "qq-4", serverID: 604, sender: .ke,
+                        text: "给你看这个 https://www.xiaohongshu.com/explore/6aba0339000000001802e795?xsec_token=ABem2UZRMkV4EO-7cAEnl88OJQVsmV523bgPl-Xjy83-Y=&xsec_source=pc_feed",
+                        time: t.addingTimeInterval(-600)),
+                Message(id: "qq-5", serverID: 605, sender: .ke, text: "夜里日记 · 刚才那一回", time: t.addingTimeInterval(-60),
+                        attachments: [ChatAttachment(url: "ke-night://41", name: "浴室", kind: "night")]),
+            ]
+        } else if arguments.contains("-ui-test-tarot-cards") {
             uiTestFixture = .tarotCards
             phase = .ready
             sessionID = 1
@@ -2010,13 +2029,13 @@ final class ChatViewModel: ObservableObject {
         }
 
         let total = message.bubbleSegments.count
+        // 128：间隔按气泡个数收紧，加起来不超过半秒
+        let interval = Theme.shared.motion.splitBubbleInterval(forCount: total)
         visibleSegmentCounts[key] = 1
         segmentRevealTasks[key] = Task { [weak self] in
             guard let self else { return }
             for count in 2...total {
-                try? await Task.sleep(
-                    nanoseconds: UInt64(Theme.shared.motion.splitBubbleInterval * 1_000_000_000)
-                )
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                 guard !Task.isCancelled else { return }
                 visibleSegmentCounts[key] = count
             }

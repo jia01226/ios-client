@@ -107,6 +107,11 @@ extension Message {
         // 121 她：「应该后台切好，我这边看到是一条条的气泡，要么就是一整段」。
         // 柯还在写的那条一个气泡都不出（不再一个字一个字地长），写完才整条换上。
         if sender == .ke, isStreaming { return [] }
+        // 128：「夜里日记」那条画成一张卡，整条不切（服务器切了也不切）
+        if sender == .ke, nightCard != nil {
+            let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return value.isEmpty ? [] : [text]
+        }
         // 121：服务器切好的就照它的分；本机的切法只留给旧缓存里没带 segments 的那几条
         if sender == .ke, let segments {
             let server = segments.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -157,6 +162,16 @@ extension Message {
         return attachments?.first { $0.diaryID != nil }
     }
 
+    /// 128：刚才那一回，柯写了一篇「夜里」，服务器发一条「夜里日记 · 刚才那一回」，带一个 kind 为 night 的附件
+    /// （ke-night://<id>）。聊天里画成一张卡：她就在卡上点喜欢不喜欢、下回想要怎样，点卡打开那一篇。
+    var nightCard: ChatAttachment? {
+        guard sender == .ke else { return nil }
+        return attachments?.first { $0.nightID != nil }
+    }
+
+    /// 卡片画在第一个气泡的位置（日记卡、夜里日记卡）：这条整条只占一行
+    var isCardMessage: Bool { unlockedDiary != nil || nightCard != nil }
+
     /// 本地流式气泡与历史记录会换 id，serverID 让分条进度能跨刷新延续。
     var bubbleRevealKey: String {
         serverID.map { "server-\($0)" } ?? id
@@ -192,6 +207,20 @@ struct ChatAttachment: Identifiable, Hashable, Codable, Sendable {
     let name: String
     let kind: String
 
+    init(url: String, name: String, kind: String) {
+        self.url = url; self.name = name; self.kind = kind
+    }
+
+    private enum CodingKeys: String, CodingKey { case url, name, kind }
+
+    /// 128：服务器以后多出的新种类（夜里日记卡之类）少给 name/kind 也不让整条消息解不开
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        url = try c.decode(String.self, forKey: .url)
+        name = (try? c.decodeIfPresent(String.self, forKey: .name)) ?? ""
+        kind = (try? c.decodeIfPresent(String.self, forKey: .kind)) ?? ""
+    }
+
     var id: String { url }
     var isImage: Bool {
         if kind.lowercased() == "image" { return true }
@@ -205,6 +234,12 @@ struct ChatAttachment: Identifiable, Hashable, Codable, Sendable {
     var diaryID: Int? {
         let scheme = "ke-diary://"
         guard kind.lowercased() == "diary", url.lowercased().hasPrefix(scheme) else { return nil }
+        return Int(url.dropFirst(scheme.count).trimmingCharacters(in: CharacterSet(charactersIn: "/ ")))
+    }
+    /// 128：「夜里」那一篇：ke-night://<id>，kind 为 night。旧版本不认识这个 kind，当一个文件名显示，不会解不开
+    var nightID: Int? {
+        let scheme = "ke-night://"
+        guard kind.lowercased() == "night", url.lowercased().hasPrefix(scheme) else { return nil }
         return Int(url.dropFirst(scheme.count).trimmingCharacters(in: CharacterSet(charactersIn: "/ ")))
     }
 }

@@ -85,17 +85,16 @@ struct KeWordsPage: View {
         let side: BubbleSide = mine ? .me : .ke
         return Text(text)
             .font(theme.font.bubble)
-            .foregroundStyle(mine ? theme.color.bubbleMeText : theme.color.bubbleKeText)
+            .foregroundStyle(theme.bubbleInk(side))
             .lineSpacing(CGFloat(max(3, theme.chatFontSize * 0.28)))
             .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.horizontal, theme.metric.bubbleHorizontalPadding)
+            .padding(.vertical, theme.metric.bubbleVerticalPadding)
             .background {
                 // 127：和聊天里同一块（BubbleFill），拨颜色、拖浓度这里马上跟着变
                 BubbleFill(
-                    color: Color(hex: theme.bubbleHex(side)),
-                    density: theme.bubbleDensity(side),
-                    ink: theme.color.bubbleKeText,
+                    color: theme.bubbleFill(side),
+                    density: theme.bubbleFillDensity(side),
                     cornerRadius: CGFloat(theme.bubbleCornerRadius)
                 )
             }

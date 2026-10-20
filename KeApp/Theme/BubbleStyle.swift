@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// 127：她自己挑气泡——「我的气泡」「柯的气泡」各一排颜色、各一条浓度。
-/// 气泡只是一块不透明度可调的纯色（加一道 0.5pt 白边、底下一线很淡的影子），
-/// 不再每个气泡垫一层实时玻璃/模糊：滑聊天时每帧不用重新采样底下的东西。
+/// 128 她：「消息的边界感太重了，你就做成QQ那个样子吧，然后我自定义颜色」。
+/// 气泡就是一整块平的圆角纯色：没有白边、没有影子线、没有高光，浓度默认 100%（实心）。
+/// 她挑了深色，上面的字自动换成白的。
 enum BubbleSide: String, CaseIterable, Identifiable {
     case me, ke
     var id: String { rawValue }
@@ -19,7 +20,8 @@ struct BubbleSwatch: Identifiable, Equatable {
 
     /// 第一个是默认：设计稿那块淡粉（她）/ 近白（柯）；「月光浅粉」就是 125 和以前的那两种粉。
     static let all: [BubbleSwatch] = [
-        .init(id: "blush", name: "粉白", me: 0xF6E8EC, ke: 0xFFFFFF),
+        // 128：她的粉比 127 深一点点（实心以后 F6E8EC 和底色几乎分不出来）
+        .init(id: "blush", name: "粉白", me: 0xF3DDE4, ke: 0xFFFFFF),
         .init(id: "moonlight", name: "月光浅粉", me: Morandi.own, ke: Morandi.reply),
         .init(id: "cream", name: "奶白", me: 0xFBF5EC, ke: 0xFFFCF6),
         .init(id: "mist", name: "雾粉", me: 0xE6C6D0, ke: 0xF5E4E7),
@@ -39,9 +41,23 @@ enum BubbleStyleStore {
     static let meDensityKey = "app.bubble127.me.density"
     static let keDensityKey = "app.bubble127.ke.density"
 
-    /// 默认照设计稿在屏幕上的样子：她的淡粉约 70%，柯的近白约 60%
-    static let defaultMeDensity = 0.70
-    static let defaultKeDensity = 0.60
+    /// 128：QQ 那样实心，两边默认都是 100%
+    static let defaultMeDensity = 1.0
+    static let defaultKeDensity = 1.0
+    /// 128：搬一次——127 存过的浓度回到 100%（她要的是 QQ 那种实心），127 默认那块淡粉换成 128 的粉
+    static let solidMigrationKey = "app.bubble128.solid.migrated"
+    static let oldDefaultMeHex: UInt32 = 0xF6E8EC
+
+    static func migrateToSolid(_ defaults: UserDefaults) {
+        guard !defaults.bool(forKey: solidMigrationKey) else { return }
+        defaults.set(true, forKey: solidMigrationKey)
+        for side in BubbleSide.allCases where defaults.object(forKey: densityKey(side)) != nil {
+            defaults.set(1.0, forKey: densityKey(side))
+        }
+        if let stored = defaults.object(forKey: meColorKey) as? Int, UInt32(stored) == oldDefaultMeHex {
+            defaults.set(Int(defaultHex(.me)), forKey: meColorKey)
+        }
+    }
 
     static func colorKey(_ side: BubbleSide) -> String { side == .me ? meColorKey : keColorKey }
     static func densityKey(_ side: BubbleSide) -> String { side == .me ? meDensityKey : keDensityKey }
@@ -74,27 +90,86 @@ extension Color {
     }
 }
 
-/// 聊天里和设置预览里画气泡底的同一块：纯色 × 浓度、白边、底下一线淡影。
-/// 影子不用 .shadow（那个在每个格子上要离屏算），用往下挪一点的一道淡墨边代替，滑动时是静止的位图。
+/// 128：气泡上字的颜色。气泡（按浓度叠在底色上）够深就用白字，不然用平常的墨色——
+/// 两种字各算一次和气泡的对比度（WCAG 的算法），哪个高用哪个。
+enum BubbleInk {
+    static let light: UInt32 = 0xFFFFFF
+    /// 照片壁纸底下是什么颜色不知道，按一张偏暗的照片估
+    static let photoBackdrop: UInt32 = 0x5A5A5A
+
+    static func relativeLuminance(_ hex: UInt32) -> Double {
+        func channel(_ shift: UInt32) -> Double {
+            let c = Double((hex >> shift) & 0xFF) / 255
+            return c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0)
+    }
+
+    static func contrast(_ a: UInt32, _ b: UInt32) -> Double {
+        let la = relativeLuminance(a), lb = relativeLuminance(b)
+        return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+    }
+
+    /// 气泡颜色按浓度叠在底色上，屏幕上实际是这个颜色
+    static func composite(_ fill: UInt32, density: Double, over backdrop: UInt32) -> UInt32 {
+        let a = min(max(density.isFinite ? density : 1, 0), 1)
+        func mix(_ shift: UInt32) -> UInt32 {
+            let f = Double((fill >> shift) & 0xFF), b = Double((backdrop >> shift) & 0xFF)
+            return UInt32((f * a + b * (1 - a)).rounded()) << shift
+        }
+        return mix(16) | mix(8) | mix(0)
+    }
+
+    /// true：这块气泡上用白字
+    static func usesLightText(fill: UInt32, density: Double, backdrop: UInt32, darkInk: UInt32) -> Bool {
+        let shown = composite(fill, density: density, over: backdrop)
+        return contrast(light, shown) > contrast(darkInk, shown)
+    }
+}
+
+extension Theme {
+    /// 128：气泡一律是平的一块：白天和照片壁纸用她挑的颜色 × 浓度；夜里、卧室用夜色那两块（实心）
+    private var bubbleUsesHerColors: Bool { !(skin == .night || isBedroom) }
+
+    func bubbleFill(_ side: BubbleSide) -> Color {
+        guard bubbleUsesHerColors else { return side == .me ? color.bubbleMe : color.bubbleKe }
+        return Color(hex: bubbleHex(side))
+    }
+
+    func bubbleFillDensity(_ side: BubbleSide) -> Double {
+        bubbleUsesHerColors ? bubbleDensity(side) : 1
+    }
+
+    /// 气泡上字的颜色：深气泡白字，浅气泡墨色
+    func bubbleInk(_ side: BubbleSide) -> Color {
+        guard bubbleUsesHerColors else { return side == .me ? color.bubbleMeText : color.bubbleKeText }
+        let backdrop = lockscreenGlass ? BubbleInk.photoBackdrop : chatPalette.base
+        let light = BubbleInk.usesLightText(
+            fill: bubbleHex(side),
+            density: bubbleDensity(side),
+            backdrop: backdrop,
+            darkInk: chatPalette.ink
+        )
+        return Color(hex: light ? BubbleInk.light : chatPalette.ink)
+    }
+
+    /// 照片壁纸上、气泡又很透的时候字还要那层字影；气泡够实就不要（实心块上的字影很脏）
+    var bubbleTextNeedsShadow: Bool {
+        lockscreenGlass && bubbleUsesHerColors && min(bubbleMeDensity, bubbleKeDensity) < 0.5
+    }
+}
+
+/// 聊天里和设置预览里画气泡底的同一块。
+/// 128：QQ 那样一整块平的圆角纯色：不描边、不加影子线、不加高光。浓度 < 100% 时透一点底色。
 struct BubbleFill: View {
     let color: Color
     let density: Double
-    let ink: Color
     let cornerRadius: CGFloat
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        ZStack {
-            // 一线贴着下沿的淡墨边，当很轻的影子
-            shape.stroke(ink.opacity(0.07), lineWidth: 1).offset(y: 0.75)
-            // 「降低透明度」开着就画实心（和设计稿一样），浓度只在平时管用
-            shape.fill(color.opacity(reduceTransparency ? 1 : density))
-            shape.strokeBorder(
-                reduceTransparency ? ink.opacity(0.25) : Color.white.opacity(0.85),
-                lineWidth: reduceTransparency ? 0.75 : 0.5
-            )
-        }
-        .allowsHitTesting(false)
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(color.opacity(reduceTransparency ? 1 : density))
+            .allowsHitTesting(false)
     }
 }

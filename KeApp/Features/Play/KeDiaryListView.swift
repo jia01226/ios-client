@@ -11,8 +11,10 @@ enum DiaryTab: String, CaseIterable {
     static let storageKey = "diary.page.tab"
     var label: String { self == .diary ? "日记" : "夜里" }
     /// 带着要翻开的那一篇进来（pinnedToDiary）就是日记；不然照她上次选的，认不出来的当日记
-    static func current(saved: String, pinnedToDiary: Bool) -> DiaryTab {
-        pinnedToDiary ? .diary : (DiaryTab(rawValue: saved) ?? .diary)
+    static func current(saved: String, pinnedToDiary: Bool, pinnedToNight: Bool = false) -> DiaryTab {
+        // 128：从聊天里「夜里日记」卡点进来的，一定落在夜里
+        if pinnedToNight { return .night }
+        return pinnedToDiary ? .diary : (DiaryTab(rawValue: saved) ?? .diary)
     }
 }
 
@@ -23,6 +25,10 @@ struct KeDiaryListView: View {
     var openingID: Int? = nil
     /// 123：从「柯的」页底下那张写着日记的卡片点进来：卡片说的是日记，就落在日记，不管她上次停在哪一栏（点花还是照上次的）
     var startOnDiary = false
+    /// 128：从聊天里「夜里日记」卡点进来：落在「夜里」，那一条展开、滚到上面
+    var openingNightID: Int? = nil
+    /// 128：那一条已经滚到过了（她往别处翻以后不再拽回去）
+    @State private var nightOpened = false
     /// 拉过一遍了（转圈可以撤了）
     @State private var openingDone = false
     /// 那一篇已经翻开过（她退回目录后不再拽回去）
@@ -41,9 +47,23 @@ struct KeDiaryListView: View {
     /// 123：带着 openingID 或 startOnDiary 进来先钉在日记；她自己点了切换才放开（钉着的时候不改她记住的那一栏）
     @State private var leftPin = false
     /// 123：「夜里」那一栏的数据和她手上的样子（筛选、点开的、没发的那句话）跟着日记页一起开着，切来切去都还在
-    @StateObject private var night = NightStore()
+    /// 128：和聊天里「夜里日记」卡共用一份（NightStore.shared），卡上点过的这里就是点过的样子
+    @ObservedObject private var night: NightStore
+
+    init(line: ChatLine, onClose: @escaping () -> Void, openingID: Int? = nil, startOnDiary: Bool = false,
+         openingNightID: Int? = nil) {
+        self.line = line
+        self.onClose = onClose
+        self.openingID = openingID
+        self.startOnDiary = startOnDiary
+        self.openingNightID = openingNightID
+        _night = ObservedObject(wrappedValue: NightStore.shared(line))
+    }
     private var paper: Color { CamelliaPalette.resolve(savedPalette).paper }
-    private var tab: DiaryTab { DiaryTab.current(saved: savedTab, pinnedToDiary: (openingID != nil || startOnDiary) && !leftPin) }
+    private var tab: DiaryTab {
+        DiaryTab.current(saved: savedTab, pinnedToDiary: (openingID != nil || startOnDiary) && !leftPin,
+                         pinnedToNight: openingNightID != nil && !leftPin)
+    }
     private static let rowHeight: CGFloat = 66
 
     private var lockedCount: Int { entries.filter(Self.isLocked).count }
@@ -107,6 +127,14 @@ struct KeDiaryListView: View {
                     .padding(.horizontal, 26)
                 }
                 .scrollIndicators(.hidden)
+                // 128：「夜里日记」卡点进来：那一条拉回来了就展开、滚到顶上（只做一次）
+                .task(id: night.entries.contains { $0.id == openingNightID }) {
+                    guard let id = openingNightID, !nightOpened, night.entry(id) != nil else { return }
+                    nightOpened = true
+                    night.expanded.insert(id)
+                    try? await Task.sleep(nanoseconds: 120_000_000)
+                    proxy.scrollTo(NightPane.anchor(id), anchor: .top)
+                }
                 .sheet(isPresented: $pickingDate) {
                     NavigationStack {
                         DatePicker("跳到哪一天", selection: $jumpDate, in: ...Date(), displayedComponents: .date)

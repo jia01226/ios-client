@@ -934,6 +934,16 @@ actor APIClient {
         return entry
     }
 
+    /// 128：评价、那句话、「下回想要」每次一起发（没点的那几项不写进 prefs）
+    func commentNight(id: Int, rating: NightRating?, comment: String, prefs: [String: String]) async throws -> RemoteNight {
+        let reply: NightCommentReply = try await postNotebook(
+            "/api/night/\(id)/comment",
+            body: NightComment.body(rating: rating, comment: comment, prefs: prefs)
+        )
+        guard let entry = reply.entry else { throw APIError.serverMessage(reply.error ?? "") }
+        return entry
+    }
+
     func fetchArchivedMessages(query: String = "", beforeID: Int? = nil, limit: Int = 50) async throws -> [ArchivedChatMessage] {
         var queryItems = [
             URLQueryItem(name: "query", value: query),

@@ -301,7 +301,15 @@ struct GlassTokens {
 struct MotionTokens {
     let thinkingResponse: Double = 0.30
     let thinkingDampingFraction: Double = 1.0
-    let splitBubbleInterval: Double = 0.40
+    /// 128 她：「明明消息好了，但是还是要等待缓冲」。第一个气泡马上出，后面的隔 0.12 秒一个，
+    /// 一句话切得再多，从第一个到最后一个加起来也不超过 0.5 秒（以前每个 0.4 秒，五个要等两秒）
+    let splitBubbleInterval: Double = 0.12
+    let splitBubbleTotalCap: Double = 0.5
+
+    func splitBubbleInterval(forCount count: Int) -> Double {
+        guard count > 1 else { return 0 }
+        return min(splitBubbleInterval, splitBubbleTotalCap / Double(count - 1))
+    }
     let scrollControlResponse: Double = 0.28
     let scrollControlDampingFraction: Double = 1.0
 }
@@ -414,6 +422,7 @@ final class Theme: ObservableObject {
         }
         Self.migrateChatPaletteToBlush(defaults)
         KeGlassClarity.migrate(defaults)
+        BubbleStyleStore.migrateToSolid(defaults)
         let savedFont = defaults.object(forKey: "app.chatFontSize") as? Double
         let savedOpacity = defaults.object(forKey: "app.bubbleOpacity") as? Double
         let savedBlur = defaults.object(forKey: "app.glassBlur") as? Double
@@ -427,7 +436,8 @@ final class Theme: ObservableObject {
             : (savedOpacity ?? 0.012)
         bubbleOpacity = min(max(migratedOpacity, 0), 0.06)
         glassBlur = min(max(savedBlur ?? 9, 0), 20)
-        bubbleCornerRadius = min(max(savedRadius ?? 20, 12), 34)
+        // 128：QQ 那样的圆角，没拖过滑杆的默认 18
+        bubbleCornerRadius = min(max(savedRadius ?? 18, 12), 34)
         bubbleMeHex = BubbleStyleStore.loadHex(.me, defaults)
         bubbleKeHex = BubbleStyleStore.loadHex(.ke, defaults)
         bubbleMeDensity = BubbleStyleStore.loadDensity(.me, defaults)
@@ -626,6 +636,25 @@ struct ChatLegibility: ViewModifier {
     func body(content: Content) -> some View {
         // 127：只有照片壁纸才要字影。平时原样返回——以前每个气泡的字都挂一层透明的影子，滑动时白白多一道离屏
         if theme.lockscreenGlass {
+            content.shadow(color: theme.chatTextShadow,
+                           radius: theme.wallpaper.textShadowRadius,
+                           y: theme.wallpaper.textShadowY)
+        } else {
+            content
+        }
+    }
+}
+
+extension Theme {
+    /// 128：聊天里「夜里日记」卡的底（平的一块浅纸，墨色字在夜里也看得清）
+    var nightCardPaper: Color { Color(hex: 0xFFFDFB) }
+}
+
+/// 128：气泡里的字：照片壁纸上气泡又很透才要字影；平的实心气泡上不要
+struct BubbleTextLegibility: ViewModifier {
+    @EnvironmentObject private var theme: Theme
+    func body(content: Content) -> some View {
+        if theme.bubbleTextNeedsShadow {
             content.shadow(color: theme.chatTextShadow,
                            radius: theme.wallpaper.textShadowRadius,
                            y: theme.wallpaper.textShadowY)

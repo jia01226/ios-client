@@ -47,13 +47,14 @@ final class SmoothChatTests: XCTestCase {
     func testBubbleDefaultsFollowTheMockup() throws {
         let (defaults, suite) = try freshDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
-        XCTAssertEqual(BubbleStyleStore.loadHex(.me, defaults), 0xF6E8EC)
+        // 128：QQ 那样实心，她的粉深一点点
+        XCTAssertEqual(BubbleStyleStore.loadHex(.me, defaults), 0xF3DDE4)
         XCTAssertEqual(BubbleStyleStore.loadHex(.ke, defaults), 0xFFFFFF)
-        XCTAssertEqual(BubbleStyleStore.loadDensity(.me, defaults), 0.70)
-        XCTAssertEqual(BubbleStyleStore.loadDensity(.ke, defaults), 0.60)
+        XCTAssertEqual(BubbleStyleStore.loadDensity(.me, defaults), 1.0)
+        XCTAssertEqual(BubbleStyleStore.loadDensity(.ke, defaults), 1.0)
         // 旧的「气泡透明度」不影响新浓度
         defaults.set(0.012, forKey: "app.bubbleOpacity")
-        XCTAssertEqual(BubbleStyleStore.loadDensity(.me, defaults), 0.70)
+        XCTAssertEqual(BubbleStyleStore.loadDensity(.me, defaults), 1.0)
     }
 
     func testBubbleStoredValuesAreClampedAndBadOnesIgnored() throws {
@@ -66,14 +67,14 @@ final class SmoothChatTests: XCTestCase {
         XCTAssertEqual(BubbleStyleStore.loadHex(.me, defaults), Morandi.own)
         XCTAssertEqual(BubbleStyleStore.loadDensity(.me, defaults), 1)
         XCTAssertEqual(BubbleStyleStore.loadHex(.ke, defaults), 0xFFFFFF)
-        XCTAssertEqual(BubbleStyleStore.loadDensity(.ke, defaults), 0.60)
+        XCTAssertEqual(BubbleStyleStore.loadDensity(.ke, defaults), 1.0)
     }
 
     func testMoonlightSwatchIsBuild125Pink() throws {
         let moon = try XCTUnwrap(BubbleSwatch.all.first { $0.id == "moonlight" })
         XCTAssertEqual(moon.me, Morandi.own)
         XCTAssertEqual(moon.ke, Morandi.reply)
-        XCTAssertEqual(BubbleSwatch.matching(0xF6E8EC, side: .me)?.id, "blush")
+        XCTAssertEqual(BubbleSwatch.matching(0xF3DDE4, side: .me)?.id, "blush")
         XCTAssertNil(BubbleSwatch.matching(0x123456, side: .ke))
         XCTAssertEqual(Color(hex: 0xF6E8EC).rgbHex, 0xF6E8EC)
     }

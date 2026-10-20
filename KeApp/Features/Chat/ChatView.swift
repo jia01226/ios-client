@@ -66,7 +66,14 @@ struct ChatView: View {
     @State private var lockedDiariesOpen = false
     /// 120：点了「爸爸开锁了」那张卡，直接翻开的那一篇
     @State private var openedDiary: DiaryOpenRequest?
-    private struct DiaryOpenRequest: Identifiable { let id: Int }
+    /// 128：night = 「夜里日记」卡点进来的，翻开日记 › 夜里的那一篇
+    private struct DiaryOpenRequest: Identifiable {
+        let entryID: Int
+        var night = false
+        var id: String { "\(night ? "night" : "diary")-\(entryID)" }
+    }
+    /// 128：「夜里日记」卡和日记页「夜里」那一栏共用的一份（聊天页自己不看它变，卡片自己看）
+    private let nightStore: NightStore
     /// 121：输入框的动静——只报字数和删光/卡住/切走，不带字
     @StateObject private var presence: ComposerPresenceReporter
     /// 126：顶栏、输入栏、底栏浮在聊天记录上；记录一直铺到屏幕底，靠上下留白让第一条、最后一条露出来
@@ -84,6 +91,7 @@ struct ChatView: View {
         _keWindow = StateObject(wrappedValue: KeWindowStore(api: APIClient(baseURL: line.apiBaseURL)))
         _presence = StateObject(wrappedValue: ComposerPresenceReporter.live(api: APIClient(baseURL: line.apiBaseURL)))
         quotesStore = .shared(line: line)
+        nightStore = NightStore.shared(line)
         _quoteOpenRequest = quoteOpenRequest
         _sendRequests = sendRequests
     }
@@ -343,7 +351,12 @@ struct ChatView: View {
         }
         // 120：从聊天直接翻开柯刚开锁的那一篇；「目录」回日记目录，左上返回（或从左边缘右划）回聊天
         .fullScreenCover(item: $openedDiary) { request in
-            KeDiaryListView(line: line, onClose: { openedDiary = nil }, openingID: request.id)
+            KeDiaryListView(
+                line: line,
+                onClose: { openedDiary = nil },
+                openingID: request.night ? nil : request.entryID,
+                openingNightID: request.night ? request.entryID : nil
+            )
                 .environmentObject(theme)
                 .swipeBackToClose { openedDiary = nil }
                 .preferredColorScheme(theme.skin == .night ? .dark : .light)
@@ -704,7 +717,11 @@ struct ChatView: View {
                         if let id = attachment.diaryID {
                             inputFocused = false
                             attachmentsOpen = false
-                            openedDiary = DiaryOpenRequest(id: id)
+                            openedDiary = DiaryOpenRequest(entryID: id)
+                        } else if let id = attachment.nightID {
+                            inputFocused = false
+                            attachmentsOpen = false
+                            openedDiary = DiaryOpenRequest(entryID: id, night: true)
                         } else {
                             previewedImage = attachment
                         }
@@ -733,7 +750,8 @@ struct ChatView: View {
                         showsScrollToLatest = shouldShow
                     },
                     chromeTopEdge: chromeTopEdge + theme.metric.chromeGap,
-                    chromeBottomEdge: composerTopEdge
+                    chromeBottomEdge: composerTopEdge,
+                    nightStore: nightStore
                 )
                 .equatable()
                 // 126：时间线铺满整屏（上到状态栏、下到屏幕底），浮栏盖在上面；

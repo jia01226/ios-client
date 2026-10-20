@@ -337,6 +337,9 @@ struct MessageRow: View {
                     // 120：「爸爸开锁了」画成一张卡：不切气泡、不当文件；点一下直接翻开那一篇
                     DiaryUnlockCard(title: diary.name) { onAttachmentTap(diary) }
                         .accessibilityIdentifier("diary-unlock-\(diary.diaryID ?? 0)")
+                } else if showsFirstBubble, let night = message.nightCard {
+                    // 128：「夜里日记 · 刚才那一回」：一张卡，就地点评；点卡翻开日记 › 夜里的那一篇
+                    NightDiaryCard(message: message, attachment: night) { onAttachmentTap(night) }
                 } else if hasBubbleContent {
                     bubbleStack
                 }
@@ -580,10 +583,11 @@ struct MessageRow: View {
             if let text, !text.isEmpty {
                 Text(ChatLinks.linked(text))
                     .font(theme.font.bubble)
-                    .foregroundStyle(message.sender == .ke
-                                     ? theme.chatBubbleKeText
-                                     : theme.chatBubbleMeText)
-                    .modifier(ChatLegibility())
+                    // 128：字色跟着气泡走（深气泡白字）
+                    .foregroundStyle(theme.bubbleInk(bubbleSide))
+                    .modifier(BubbleTextLegibility())
+                    // 128：小红书的链接直接翻到那一篇（见 ChatLinks.open）
+                    .environment(\.openURL, OpenURLAction { ChatLinks.open($0) })
                     .lineSpacing(CGFloat(max(3, theme.chatFontSize * 0.28)))
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
@@ -593,61 +597,17 @@ struct MessageRow: View {
         .padding(.vertical, theme.metric.bubbleVerticalPadding)
     }
 
-    /// 86：她要「玻璃质感的气泡」。iOS 26 用系统 Liquid Glass（最透的 .clear，按下会亮一下、轻轻弹），
-    /// 染色仍跟「气泡透明度」滑杆走；iOS 26 以下保留原来的模糊 + 染色。
-    /// 127：白天（不在卧室、没用照片壁纸）的气泡改成她在话笺里挑的颜色 × 浓度，一块静止的纯色：
-    /// 每个格子不再挂实时玻璃，滑动时不用每帧重新采样底下。夜里、卧室、照片壁纸还走原来的玻璃。
-    private var usesPlainBubble: Bool {
-        theme.skin == .day && !theme.isBedroom && !theme.lockscreenGlass
-    }
+    /// 128 她：「消息的边界感太重了，你就做成QQ那个样子吧，然后我自定义颜色」。
+    /// 白天、夜里、卧室、照片壁纸都是一整块平的圆角纯色（BubbleFill）：不描边、不加影子、不挂玻璃。
+    /// 每个格子不再有实时玻璃，滑动时不用每帧重新采样底下——这也是滑动最后那点开销。
+    private var bubbleSide: BubbleSide { message.sender == .me ? .me : .ke }
 
-    @ViewBuilder
-    private var legacyBubbleFill: some View {
-        let fillScale: Double = message.sender == .ke ? 36
-            : (theme.skin == .day && !theme.isBedroom ? 80 : 13)
-        let tint = (message.sender == .me ? theme.color.bubbleMe : theme.color.bubbleKe)
-            .opacity(min(1, theme.bubbleOpacity * fillScale))
-        if #available(iOS 26.0, *) {
-            // 87：玻璃要透出来，染色得淡。默认（滑杆 1.2%）她的约 30%、柯的约 15%，拉满也不超过 60%。
-            let glassScale: Double = message.sender == .ke ? 12 : 25
-            let glassTint = (message.sender == .me ? theme.color.bubbleMe : theme.color.bubbleKe)
-                .opacity(min(0.6, theme.bubbleOpacity * glassScale))
-            Color.clear.glassEffect(
-                .clear.tint(glassTint).interactive(),
-                in: .rect(cornerRadius: CGFloat(theme.bubbleCornerRadius))
-            )
-        } else {
-            ZStack {
-                BackdropBlur(
-                    intensity: theme.glassBlur / theme.glass.maximumBlurValue,
-                    dark: theme.skin == .night || theme.isBedroom
-                )
-                tint
-            }
-        }
-    }
-
-    @ViewBuilder
     private var bubbleBackground: some View {
-        if usesPlainBubble {
-            let side: BubbleSide = message.sender == .me ? .me : .ke
-            BubbleFill(
-                color: Color(hex: theme.bubbleHex(side)),
-                density: theme.bubbleDensity(side),
-                ink: theme.chatBubbleKeText,
-                cornerRadius: CGFloat(theme.bubbleCornerRadius)
-            )
-        } else {
-            legacyBubbleFill
-                .clipShape(RoundedRectangle(cornerRadius: CGFloat(theme.bubbleCornerRadius), style: .continuous))
-                .overlay {
-                    if message.sender == .ke && !theme.lockscreenGlass {
-                        RoundedRectangle(cornerRadius: CGFloat(theme.bubbleCornerRadius), style: .continuous)
-                            .strokeBorder(theme.chatBubbleKeText.opacity(0.10), lineWidth: 0.75)
-                            .allowsHitTesting(false)
-                    }
-                }
-        }
+        BubbleFill(
+            color: theme.bubbleFill(bubbleSide),
+            density: theme.bubbleFillDensity(bubbleSide),
+            cornerRadius: CGFloat(theme.bubbleCornerRadius)
+        )
     }
 
     /// id 是这个气泡在整句里的序号（无障碍标识、附件都按它认）
@@ -897,6 +857,63 @@ enum ChatLinks {
         }
         if cursor < ns.length { out += AttributedString(ns.substring(from: cursor)) }
         return out
+    }
+
+    /// 128 修：「去小红书看 ›」只打开了小红书 App，没翻到那一篇。
+    /// 认出笔记 id（/explore/<id>、/discovery/item/<id>），先叫 App 直接打开那一篇（xhsdiscover://item/<id>）；
+    /// 叫不起来（没装、不认）再用 Safari 打开网页版那一篇（带上原来的 xsec_token）。xhslink 短链接照原样打开。
+    struct XHSNote: Equatable {
+        let id: String
+        let token: String?
+    }
+
+    static func xhsNote(_ url: URL) -> XHSNote? {
+        let host = url.host?.lowercased() ?? ""
+        guard host == "xiaohongshu.com" || host.hasSuffix(".xiaohongshu.com") else { return nil }
+        let parts = url.path.split(separator: "/").map(String.init)
+        let id: String?
+        if parts.count >= 2, parts[0] == "explore" {
+            id = parts[1]
+        } else if parts.count >= 3, parts[0] == "discovery", parts[1] == "item" {
+            id = parts[2]
+        } else {
+            id = nil
+        }
+        guard let id, !id.isEmpty, id.allSatisfy({ $0.isLetter || $0.isNumber }) else { return nil }
+        let token = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?.first { $0.name == "xsec_token" }?.value
+        return XHSNote(id: id, token: token?.isEmpty == true ? nil : token)
+    }
+
+    /// 先试 App 里打开，再退回网页；不是小红书笔记就是 nil（照系统默认打开）
+    static func xhsTargets(_ url: URL) -> (app: URL, web: URL)? {
+        guard let note = xhsNote(url), let app = URL(string: "xhsdiscover://item/\(note.id)") else { return nil }
+        var web = URLComponents()
+        web.scheme = "https"
+        web.host = "www.xiaohongshu.com"
+        web.path = "/discovery/item/\(note.id)"
+        // token 里有 = 和 -，自己编码：只放过不会被当成分隔符的字符
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._~")
+        var query: [String] = []
+        if let token = note.token, let encoded = token.addingPercentEncoding(withAllowedCharacters: allowed) {
+            query.append("xsec_token=\(encoded)")
+        }
+        query.append("xsec_source=app_share")
+        web.percentEncodedQuery = query.joined(separator: "&")
+        guard let webURL = web.url else { return nil }
+        return (app, webURL)
+    }
+
+    /// 气泡里点链接走这里
+    @MainActor
+    static func open(_ url: URL) -> OpenURLAction.Result {
+        guard let targets = xhsTargets(url) else { return .systemAction }
+        UIApplication.shared.open(targets.app, options: [:]) { opened in
+            guard !opened else { return }
+            UIApplication.shared.open(targets.web, options: [:], completionHandler: nil)
+        }
+        return .handled
     }
 
     private static func label(for url: URL, raw: String) -> String {
