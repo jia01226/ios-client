@@ -35,26 +35,58 @@ final class QQChatTests: XCTestCase {
         XCTAssertFalse(ChatTimelineScrollGate.shouldFollowAfterScrollEnds(followLater: false, isNearLatest: true))
     }
 
-    /// 回跳的根：整体重排后每行都按 40pt 估。量过的行要按上次量的高度估回来
-    func testRowHeightCacheEstimatesMeasuredRowsAtSameWidth() {
-        var cache = ChatRowHeightCache()
-        XCTAssertNil(cache.estimate(id: "a::message", width: 358))
-        cache.store(id: "a::message", width: 358, height: 212)
-        cache.store(id: "b::message", width: 358, height: 64)
-        XCTAssertEqual(cache.estimate(id: "a::message", width: 358), 212)
-        XCTAssertEqual(cache.estimate(id: "a::message", width: 358.3), 212, "小数点上的差不算换了宽")
-        XCTAssertNil(cache.estimate(id: "a::message", width: 300), "宽变了（转屏）就重新量")
+    /// 回跳的根：同一行在复用的格子上量，一会儿 161 一会儿 73。现在同一行同一版内容同样宽只量一次，之后一直是这个数
+    func testRowHeightCacheKeepsOneHeightPerRowVersion() {
+        var cache = ChatRowHeightCache<String>()
+        cache.resetIfNeeded(signature: "15|regular|L")
+        XCTAssertNil(cache.height(id: "a::message", content: "v1", width: 358))
+        cache.store(id: "a::message", content: "v1", width: 358, height: 212)
+        cache.store(id: "b::message", content: "v1", width: 358, height: 64)
+        XCTAssertEqual(cache.height(id: "a::message", content: "v1", width: 358), 212)
+        XCTAssertEqual(cache.height(id: "a::message", content: "v1", width: 358.3), 212, "小数点上的差不算换了宽")
+        XCTAssertNil(cache.height(id: "a::message", content: "v1", width: 300), "宽变了（转屏）就重新量")
+        XCTAssertNil(cache.height(id: "a::message", content: "v2", width: 358), "内容变了重新量")
+        XCTAssertEqual(cache.estimate(id: "a::message", width: 358), 212, "估的时候先按上次的")
         // 坏的量法不记
-        cache.store(id: "c::message", width: 0, height: 50)
-        cache.store(id: "d::message", width: 358, height: .infinity)
+        cache.store(id: "c::message", content: "v1", width: 0, height: 50)
+        cache.store(id: "d::message", content: "v1", width: 358, height: .infinity)
         XCTAssertEqual(cache.count, 2)
-        // 新量的盖旧的
-        cache.store(id: "a::message", width: 358, height: 230)
-        XCTAssertEqual(cache.estimate(id: "a::message", width: 358), 230)
         // 时间线里没有了的行拿掉
         cache.prune(keeping: ["b::message"])
         XCTAssertNil(cache.estimate(id: "a::message", width: 358))
         XCTAssertEqual(cache.estimate(id: "b::message", width: 358), 64)
+        // 字号换了：都不算数
+        cache.resetIfNeeded(signature: "15|regular|L")
+        XCTAssertEqual(cache.count, 1)
+        cache.resetIfNeeded(signature: "18|regular|L")
+        XCTAssertEqual(cache.count, 0)
+    }
+
+    /// 量尺：同一行量几次都是同一个数（不跟着格子当时多高走），字多的更高
+    func testRowSizerIsDeterministic() {
+        let sizer = ChatRowSizer()
+        func row(_ text: String) -> AnyView {
+            AnyView(MessageRow(message: Message(id: "x", sender: .ke, text: text, time: .now),
+                               isHighlighted: false, visibleSegmentCount: nil, onAttachmentTap: { _ in })
+                .environmentObject(Theme.shared))
+        }
+        let short = sizer.height(of: row("嗯。"), width: 358)
+        let again = sizer.height(of: row("嗯。"), width: 358)
+        let long = sizer.height(of: row(String(repeating: "前面的回复，用来把聊天列表撑过一屏。", count: 6)), width: 358)
+        XCTAssertGreaterThan(short, 20)
+        XCTAssertEqual(short, again)
+        XCTAssertGreaterThan(long, short + 40)
+        XCTAssertEqual(sizer.height(of: row("嗯。"), width: 358), short, "量过长的再量短的，还是原来的数")
+    }
+
+    func testOnlySelfGrowingRowsAreMeasuredOnTheCell() {
+        let plain = Message(id: "p", sender: .ke, text: "嗯", time: .now)
+        let night = Message(id: "n", sender: .ke, text: "夜里日记 · 刚才那一回", time: .now,
+                            attachments: [ChatAttachment(url: "ke-night://41", name: "", kind: "night")])
+        XCTAssertTrue(ChatCollectionTimelineController.isStaticallySized(ChatTimelineItem(kind: .message, message: plain, isHighlighted: false)))
+        XCTAssertTrue(ChatCollectionTimelineController.isStaticallySized(ChatTimelineItem(kind: .date("2026-10-20"), message: plain, isHighlighted: false)))
+        XCTAssertFalse(ChatCollectionTimelineController.isStaticallySized(ChatTimelineItem(kind: .message, message: night, isHighlighted: false)))
+        XCTAssertFalse(ChatCollectionTimelineController.isStaticallySized(ChatTimelineItem(kind: .tool("t1"), message: plain, isHighlighted: false)))
     }
 
     // MARK: 气泡：深色自动白字、默认实心

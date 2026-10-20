@@ -585,6 +585,8 @@ struct MessageRow: View {
                     .font(theme.font.bubble)
                     // 128：字色跟着气泡走（深气泡白字）
                     .foregroundStyle(theme.bubbleInk(bubbleSide))
+                    // 链接跟字一个颜色（带下划线），深气泡上不会是一行看不清的蓝
+                    .tint(theme.bubbleInk(bubbleSide))
                     .modifier(BubbleTextLegibility())
                     // 128：小红书的链接直接翻到那一篇（见 ChatLinks.open）
                     .environment(\.openURL, OpenURLAction { ChatLinks.open($0) })

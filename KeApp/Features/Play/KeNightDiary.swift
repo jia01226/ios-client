@@ -279,9 +279,10 @@ enum NightSaveOutcome: Equatable, Sendable {
 #if DEBUG
     /// 128：UI 测试、截图用：这条线路换成一份假的「夜里」，不连服务器
     static func installPreview(_ line: ChatLine) {
-        let key = line.apiBaseURL.absoluteString
-        let store = NightStore(service: PreviewNightService(), key: "")
-        shared[key] = store
+        // 聊天页可能已经先拿了这一份：换掉它的服务器，不另起一份
+        let store = shared(line)
+        store.service = PreviewNightService()
+        store.cacheKey = ""
         Task { await store.load() }
     }
 
@@ -900,8 +901,10 @@ struct NightReviewControls: View {
     @ViewBuilder private var note: some View {
         if editing || entry.comment.isEmpty {
             HStack(spacing: 6) {
-                TextField("备注（可不填）", text: $draft)
+                // 提示字自己上色：聊天格子里没有外面那层墨色，系统默认的提示字淡得看不见
+                TextField("", text: $draft, prompt: Text("备注（可不填）").foregroundStyle(Ink.secondary))
                     .font(Ink.song(compact ? 13.5 : 14.5)).submitLabel(.done)
+                    .foregroundStyle(Ink.primary)
                     .focused(focus, equals: entry.id)
                     .onSubmit(onSend)
                     .padding(.horizontal, 12).frame(minHeight: compact ? 34 : 40)
@@ -911,7 +914,7 @@ struct NightReviewControls: View {
                     Text("存").font(Ink.song(14)).frame(minWidth: 44, minHeight: compact ? 34 : 40).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(canSend ? Ink.accent : Ink.line)
+                .foregroundStyle(canSend ? Ink.accent : Ink.secondary.opacity(0.5))
                 .disabled(!canSend)
                 .accessibilityLabel("存备注")
             }

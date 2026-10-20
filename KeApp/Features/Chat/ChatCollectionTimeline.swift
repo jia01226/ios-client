@@ -409,22 +409,37 @@ enum ChatTimelineScrollGate {
     }
 }
 
-/// 128：每一行量出来的高度，按行的 id 记住（连同量的时候的宽度）。
-/// ChatLayout 每次整体重排（落回最新、键盘起落、reloadData）都会把所有行的高度丢掉、按 40pt 估，
-/// 往上翻时每一行出现才重新量：上面的内容比真的短，一甩就先撞到「假的顶」弹回来，量完变长了才能接着滑——
-/// 就是「回跳一下」。有了这份记账，重排时每行直接按上次量的高度估，估的和真的一样，不用补偏移、也没有假顶。
-struct ChatRowHeightCache {
-    private var rows: [String: (width: CGFloat, height: CGFloat)] = [:]
+/// 128：每一行量出来的高度，按行的 id 记住（连同量的是哪一版内容、多宽）。
+/// 「回跳」的根：以前每一格是在格子自己身上量的（ChatTimelineHostingCell），复用的格子里 SwiftUI 还没换成这一行、
+/// 高度又跟着格子当时的高度走，同一行一会儿量 161、一会儿量 73、一会儿 75、77……每量出一个新数，
+/// ChatLayout 就重排一次、按可见区底边补一次偏移——屏幕上的字就往回跳一下。
+/// 现在同一行同一版内容、同样宽只量一次（在一个不上屏的量尺上量，和格子复用无关），之后一直用这个数。
+struct ChatRowHeightCache<Content: Equatable> {
+    private var rows: [String: (content: Content, width: CGFloat, height: CGFloat)] = [:]
+    /// 字号、字体、系统字号档位：变了以后量过的都不算数
+    private(set) var signature = ""
 
-    mutating func store(id: String, width: CGFloat, height: CGFloat) {
+    mutating func store(id: String, content: Content, width: CGFloat, height: CGFloat) {
         guard width > 0, height > 0, height.isFinite else { return }
-        rows[id] = (width, height)
+        rows[id] = (content, width, height)
     }
 
-    /// 同样宽（转屏、字号换了宽不变也会在下一次量的时候更新）才拿来估
+    /// 这一行这一版内容、这么宽量过就是那个数
+    func height(id: String, content: Content, width: CGFloat) -> CGFloat? {
+        guard let row = rows[id], row.content == content, abs(row.width - width) <= 0.5 else { return nil }
+        return row.height
+    }
+
+    /// 给 ChatLayout 估高度用：内容换过也先按上次的估（上屏时再量准）
     func estimate(id: String, width: CGFloat) -> CGFloat? {
         guard let row = rows[id], abs(row.width - width) <= 0.5 else { return nil }
         return row.height
+    }
+
+    mutating func resetIfNeeded(signature next: String) {
+        guard next != signature else { return }
+        signature = next
+        rows.removeAll()
     }
 
     /// 时间线里已经没有的行不留
@@ -433,6 +448,24 @@ struct ChatRowHeightCache {
     }
 
     var count: Int { rows.count }
+}
+
+/// 128：不上屏的量尺：把这一行的 SwiftUI 放进去，按时间线的宽量高。和格子复用、格子当时多高都没关系，同一行永远量出同一个数。
+@MainActor
+final class ChatRowSizer {
+    private lazy var host: UIHostingController<AnyView> = {
+        let host = UIHostingController(rootView: AnyView(EmptyView()))
+        host.view.backgroundColor = .clear
+        host.safeAreaRegions = []
+        return host
+    }()
+
+    func height(of view: AnyView, width: CGFloat) -> CGFloat {
+        host.rootView = view
+        let size = host.sizeThatFits(in: CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))
+        host.rootView = AnyView(EmptyView())
+        return ceil(max(size.height, 1))
+    }
 }
 
 enum ChatTimelineScrollControlPolicy {
@@ -531,6 +564,11 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable, Equatable {
 /// Measure the hosted SwiftUI hierarchy at the exact timeline width before handing
 /// the attributes back to ChatLayout.
 final class ChatTimelineHostingCell: UICollectionViewCell {
+    /// 128：格子不要安全区。126 起时间线铺到状态栏和 Home 条底下，整格滑进状态栏那一截时，
+    /// 格子里的 SwiftUI 会把内容挤到安全区下沿去画（压在下一行上），量出来的高度也跟着位置变——
+    /// 滑着滑着行高就变，ChatLayout 每变一次补一次偏移，就是「回跳一下」。上下留白已经由 contentInset 给了。
+    override var safeAreaInsets: UIEdgeInsets { .zero }
+
     override func preferredLayoutAttributesFitting(
         _ layoutAttributes: UICollectionViewLayoutAttributes
     ) -> UICollectionViewLayoutAttributes {
@@ -540,6 +578,18 @@ final class ChatTimelineHostingCell: UICollectionViewCell {
 
         let width = fitted.size.width
         guard width > 0 else { return fitted }
+        // 128：能在量尺上量的行（几乎所有行）直接用量尺的数：同一行永远同一个高度，上屏以后不再变
+        if let height = fixedHeight?(width) {
+            fitted.size = CGSize(width: width, height: height)
+            // 复用来的格子里，SwiftUI 可能还按上一行的高度排着（内容会在格子里上下错开、压到别的行上）：
+            // 按这一行的高度马上重排一遍（只排，不量）
+            if contentView.bounds.size != fitted.size {
+                contentView.bounds.size = fitted.size
+                contentView.setNeedsLayout()
+                contentView.layoutIfNeeded()
+            }
+            return fitted
+        }
 
         // A reused hosting view may still carry the previous proposal. ViewThatFits
         // must see today's exact row width before it decides between a compact and
@@ -563,12 +613,15 @@ final class ChatTimelineHostingCell: UICollectionViewCell {
         return fitted
     }
 
-    /// 128：量好了告诉时间线（记进 ChatRowHeightCache）
+    /// 128：量好了告诉时间线（记进 ChatRowHeightCache）——只有自己会变高的那几种行（工具卡、夜里日记卡）走这里
     var onMeasured: ((CGFloat, CGFloat) -> Void)?
+    /// 128：这一行在量尺上量好的高度（按宽）；nil 就在格子自己身上量
+    var fixedHeight: ((CGFloat) -> CGFloat?)?
 
     override func prepareForReuse() {
         super.prepareForReuse()
         onMeasured = nil
+        fixedHeight = nil
         contentConfiguration = nil
     }
 }
@@ -605,7 +658,8 @@ final class ChatCollectionTimelineController: UIViewController,
     private var chromeInsets: UIEdgeInsets = .zero
     private var chromeEdges: (top: CGFloat, bottom: CGFloat) = (0, 0)
     /// 128：每行量过的高度（见 ChatRowHeightCache）
-    private var rowHeights = ChatRowHeightCache()
+    private var rowHeights = ChatRowHeightCache<ChatTimelineItem>()
+    private let rowSizer = ChatRowSizer()
     /// 128：她在滑的时候本来要落回最新的，记着等她停下来
     private var followAfterUserScroll = false
     /// 128：「夜里日记」卡要用的点评数据（整个聊天页共用一份）
@@ -1145,68 +1199,115 @@ final class ChatCollectionTimelineController: UIViewController,
             return UICollectionViewCell()
         }
         let item = items[indexPath.item]
-        let rowID = item.id
         cell.backgroundColor = .clear
-        cell.onMeasured = { [weak self] width, height in
-            self?.rowHeights.store(id: rowID, width: width, height: height)
-        }
-        let nightStore = nightStore
-        cell.contentConfiguration = UIHostingConfiguration {
-            switch item.kind {
-            case .date:
-                ChatDateDividerRow(date: item.message.time)
-                    .environmentObject(Theme.shared)
-                    .accessibilityIdentifier("chat-date-\(item.id)")
-            case let .gap(minutes):
-                ChatGapRow(minutes: minutes)
-                    .environmentObject(Theme.shared)
-            case .thinking:
-                ThinkingTimelineRow { [weak self] in
-                    self?.onThinkingOpen(item.messageID)
-                }
-                .environmentObject(Theme.shared)
-                .accessibilityIdentifier("thinking-entry-\(item.messageID)")
-            case .tool:
-                if let toolRun = item.toolRun {
-                    ChatToolStatusRow(toolRun: toolRun)
-                        .environmentObject(Theme.shared)
-                        .accessibilityIdentifier("chat-tool-run-\(toolRun.id)")
-                }
-            case .message, .segment:
-                // 121：每个气泡一格。格子没重画时手里那份消息可能是本机旧的一版，
-                // 撤回、收语录、钉住都按 id 取时间线里最新的那条。
-                MessageRow(
-                    message: item.message,
-                    isHighlighted: item.isHighlighted,
-                    visibleSegmentCount: nil,
-                    onAttachmentTap: { [weak self] attachment in
-                        self?.onAttachmentTap(attachment)
-                    },
-                    onRecall: { [weak self] message in
-                        guard let self else { return }
-                        self.onRecall(self.latest(message))
-                    },
-                    onSaveQuote: { [weak self] message in
-                        guard let self else { return }
-                        self.onSaveQuote(self.latest(message))
-                    },
-                    isQuoted: item.isQuoted,
-                    onTogglePin: { [weak self] message in
-                        guard let self else { return }
-                        self.onTogglePin(self.latest(message))
-                    },
-                    isPinned: item.isPinned,
-                    part: item.part
-                )
-                .environmentObject(Theme.shared)
-                .environment(\.keNightStore, nightStore)
-#if DEBUG
-                .onAppear { ChatRecoveryUITestTiming.shared.appeared(item.message) }
-#endif
+        if Self.isStaticallySized(item) {
+            cell.fixedHeight = { [weak self] width in self?.measuredHeight(for: item, width: width) }
+        } else if item.message.nightCard != nil {
+            // 夜里日记卡：高度跟着点评数据变（打开「下回想要」、存了备注），每次都在量尺上按现在的样子量，不记
+            cell.fixedHeight = { [weak self] width in self?.sizerHeight(for: item, width: width) }
+        } else {
+            cell.onMeasured = { [weak self] width, height in
+                guard let self else { return }
+                self.rowHeights.store(id: item.id, content: item, width: width, height: height)
             }
         }
-        .margins(.all, 0)
+        cell.contentConfiguration = UIHostingConfiguration { self.rowContent(item) }
+            .margins(.all, 0)
         return cell
+    }
+
+    /// 128：自己会变高的行（工具卡点开详情、夜里日记卡打开「下回想要」）不进量尺，照旧在格子上量
+    nonisolated static func isStaticallySized(_ item: ChatTimelineItem) -> Bool {
+        switch item.kind {
+        case .tool: return false
+        case .message: return item.message.nightCard == nil
+        case .date, .gap, .thinking, .segment: return true
+        }
+    }
+
+    /// 128：这一行在量尺上的高度（同一行同一版内容只量一次）
+    private func measuredHeight(for item: ChatTimelineItem, width: CGFloat) -> CGFloat {
+        rowHeights.resetIfNeeded(signature: layoutSignature)
+        if let height = rowHeights.height(id: item.id, content: item, width: width) { return height }
+        let height = sizerHeight(for: item, width: width)
+        rowHeights.store(id: item.id, content: item, width: width, height: height)
+        return height
+    }
+
+    private func sizerHeight(for item: ChatTimelineItem, width: CGFloat) -> CGFloat {
+        let view = AnyView(
+            rowContent(item)
+                .frame(width: width)
+                .environment(\.dynamicTypeSize, dynamicTypeSize)
+        )
+        return rowSizer.height(of: view, width: width)
+    }
+
+    /// 会改变行高、但不在条目里的东西：字号、字体、系统字号档位
+    private var layoutSignature: String {
+        let theme = Theme.shared
+        return "\(theme.chatFontSize)|\(theme.chatTypeface.id)|\(traitCollection.preferredContentSizeCategory.rawValue)"
+    }
+
+    private var dynamicTypeSize: DynamicTypeSize {
+        DynamicTypeSize(traitCollection.preferredContentSizeCategory) ?? .large
+    }
+
+    /// 一行画什么（格子和量尺用同一份）
+    @ViewBuilder
+    private func rowContent(_ item: ChatTimelineItem) -> some View {
+        switch item.kind {
+        case .date:
+            ChatDateDividerRow(date: item.message.time)
+                .environmentObject(Theme.shared)
+                .accessibilityIdentifier("chat-date-\(item.id)")
+        case let .gap(minutes):
+            ChatGapRow(minutes: minutes)
+                .environmentObject(Theme.shared)
+        case .thinking:
+            ThinkingTimelineRow { [weak self] in
+                self?.onThinkingOpen(item.messageID)
+            }
+            .environmentObject(Theme.shared)
+            .accessibilityIdentifier("thinking-entry-\(item.messageID)")
+        case .tool:
+            if let toolRun = item.toolRun {
+                ChatToolStatusRow(toolRun: toolRun)
+                    .environmentObject(Theme.shared)
+                    .accessibilityIdentifier("chat-tool-run-\(toolRun.id)")
+            }
+        case .message, .segment:
+            // 121：每个气泡一格。格子没重画时手里那份消息可能是本机旧的一版，
+            // 撤回、收语录、钉住都按 id 取时间线里最新的那条。
+            MessageRow(
+                message: item.message,
+                isHighlighted: item.isHighlighted,
+                visibleSegmentCount: nil,
+                onAttachmentTap: { [weak self] attachment in
+                    self?.onAttachmentTap(attachment)
+                },
+                onRecall: { [weak self] message in
+                    guard let self else { return }
+                    self.onRecall(self.latest(message))
+                },
+                onSaveQuote: { [weak self] message in
+                    guard let self else { return }
+                    self.onSaveQuote(self.latest(message))
+                },
+                isQuoted: item.isQuoted,
+                onTogglePin: { [weak self] message in
+                    guard let self else { return }
+                    self.onTogglePin(self.latest(message))
+                },
+                isPinned: item.isPinned,
+                part: item.part
+            )
+            .environmentObject(Theme.shared)
+            .environment(\.keNightStore, nightStore)
+#if DEBUG
+            .onAppear { ChatRecoveryUITestTiming.shared.appeared(item.message) }
+#endif
+        }
     }
 
     private func latest(_ message: Message) -> Message {
@@ -1221,7 +1322,9 @@ final class ChatCollectionTimelineController: UIViewController,
     ) -> ItemSize {
         guard kind == .cell, items.indices.contains(indexPath.item) else { return .auto }
         let width = rowWidth
-        guard let height = rowHeights.estimate(id: items[indexPath.item].id, width: width) else { return .auto }
+        let item = items[indexPath.item]
+        guard let height = rowHeights.height(id: item.id, content: item, width: width)
+                ?? rowHeights.estimate(id: item.id, width: width) else { return .auto }
         return .estimated(CGSize(width: width, height: height))
     }
 

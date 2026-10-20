@@ -73,41 +73,37 @@ private struct NightDiaryCardLive: View {
                 title: title,
                 excerpt: NightDiaryCard.excerpt(entry, fallback: fallback),
                 saving: store.saving.contains(id),
+                offline: entry == nil && store.failed,
                 onOpen: onOpen
             )
-            if let entry {
-                NightReviewControls(
-                    entry: entry,
-                    error: store.errors[id],
-                    draft: Binding(get: { store.drafts[id] ?? "" }, set: { store.drafts[id] = $0 }),
-                    editing: store.editing.contains(id),
-                    prefsOpen: store.prefsOpen.contains(id),
-                    focus: $focused,
-                    onRate: { r in Task { await store.rate(id, r) } },
-                    onPref: { pref, value in Task { await store.setPref(id, pref, value) } },
-                    onTogglePrefs: {
-                        if store.prefsOpen.contains(id) { store.prefsOpen.remove(id) } else { store.prefsOpen.insert(id) }
-                    },
-                    onEdit: {
-                        store.startEditing(entry)
-                        DispatchQueue.main.async { focused = id }
-                    },
-                    onSend: {
-                        focused = nil
-                        Task { await store.send(id) }
-                    },
-                    compact: true
-                )
-                .padding(.horizontal, 14)
-                .padding(.bottom, 12)
-            } else if store.failed {
-                Button { Task { await store.load() } } label: {
-                    Text("没接上，点这里再试").font(Ink.song(13)).foregroundStyle(Ink.secondary)
-                        .frame(maxWidth: .infinity, minHeight: 36).contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 14).padding(.bottom, 10)
-            }
+            // 那一篇还没拉回来时点评那一块也先摆着（点不了、淡一点）：卡片从一开始就是这么高，
+            // 拉回来以后不长高——聊天记录里不会因为它往上顶一下
+            NightReviewControls(
+                entry: entry ?? RemoteNight(id: id),
+                error: store.errors[id],
+                draft: Binding(get: { store.drafts[id] ?? "" }, set: { store.drafts[id] = $0 }),
+                editing: store.editing.contains(id),
+                prefsOpen: store.prefsOpen.contains(id),
+                focus: $focused,
+                onRate: { r in Task { await store.rate(id, r) } },
+                onPref: { pref, value in Task { await store.setPref(id, pref, value) } },
+                onTogglePrefs: {
+                    if store.prefsOpen.contains(id) { store.prefsOpen.remove(id) } else { store.prefsOpen.insert(id) }
+                },
+                onEdit: {
+                    if let entry { store.startEditing(entry) }
+                    DispatchQueue.main.async { focused = id }
+                },
+                onSend: {
+                    focused = nil
+                    Task { await store.send(id) }
+                },
+                compact: true
+            )
+            .disabled(entry == nil)
+            .opacity(entry == nil ? 0.5 : 1)
+            .padding(.horizontal, 14)
+            .padding(.bottom, 12)
         }
         .frame(maxWidth: Theme.shared.metric.bubbleMaxWidth, alignment: .leading)
         .background(NightCardSurface())
@@ -122,6 +118,8 @@ private struct NightDiaryCardFace: View {
     let title: String
     let excerpt: String
     var saving = false
+    /// 那一篇没拉下来（卡片下次出现会再拉）：右上角写一句，点卡片照样翻开日记
+    var offline = false
     var onOpen: () -> Void
 
     var body: some View {
@@ -135,7 +133,7 @@ private struct NightDiaryCardFace: View {
                     Text(title).font(Ink.song(13)).foregroundStyle(Ink.secondary).lineLimit(1)
                     Spacer(minLength: 4)
                     if saving { ProgressView().controlSize(.mini).tint(Ink.secondary) }
-                    Text("点开看 ›").font(Ink.song(12.5)).foregroundStyle(Ink.accent)
+                    Text(offline ? "没接上 · 点开看 ›" : "点开看 ›").font(Ink.song(12.5)).foregroundStyle(Ink.accent)
                 }
                 // 两行的位置一直留着：那一篇拉回来以前和以后一样高，格子不变大小
                 Text(excerpt)
