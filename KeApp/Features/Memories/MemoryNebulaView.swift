@@ -3,10 +3,13 @@ import SwiftUI
 // 129：记忆星河 = 六团星云（10-21 她定的）。
 // 整片星河：说好的（涡状星系）在正中，像钟一样很慢地转；日常吃喝、身体和药、以后的家、亲密时刻、难过的夜里围在旁边；
 // 归不进去的小事是暗暗的小星星。点一团（或者双指拉开）进去：
-// · 一根手指拖：左右、上下都能转一整圈；转到侧面能看见这一团的厚度（厚度跟着星云的形状，不是一块板）
-// · 双指拉近：拉近一层，名字就多出来一层
+// · 一根手指拖：转着看（左右、上下都能转一整圈）；拉近以后再拖就是挪位置
+// · 双指拉近：拉近一层，名字就多出来一层；拉回去就回到整片星河
 // · 点星星读记忆；亲密时刻上了锁，点开才看
-// 不碰它的时候画面停着（除了「说好的」慢慢转），不白耗电、不卡。
+// 不碰它的时候画面停着（除了「说好的」慢慢转），不白耗电。
+// 130 她：点了要等一秒才出卡片（单击在等双击）、进去要缓冲、拉近后挪不动还偏上、不要十字星芒、
+// 点身体和药会点到说好的、进去会跳一下。——单击不再等双击；六团画一次存在手机里、开 App 就在后台备好；
+// 星团在标题和按钮中间的正中、绕自己的重心转；拉近后拖动是挪；整片星河按离哪团近来认；画布用自己的尺寸，不跳。
 
 struct NebulaStar: Identifiable {
     let id: String
@@ -22,6 +25,10 @@ final class NebulaMotion {
     private var start = Date.distantPast, duration = 0.0
     private var base: NebulaCamera?
     private var dragOrigin: CGSize?, pinchOrigin: CGFloat?
+    /// 这一下拖是挪还是转：起手时定，拖到一半不换
+    private var panning = false
+    /// 拉近到这么多以后，一根手指拖就是挪位置
+    static let panZoom = 1.15
 
     func camera(at date: Date) -> NebulaCamera {
         guard duration > 0 else { return to }
@@ -31,7 +38,6 @@ final class NebulaMotion {
                             pan: CGSize(width: from.pan.width + (to.pan.width - from.pan.width) * e,
                                         height: from.pan.height + (to.pan.height - from.pan.height) * e))
     }
-    func moving(at date: Date) -> Bool { duration > 0 && date.timeIntervalSince(start) < duration }
     func fly(_ target: NebulaCamera, duration: Double) {
         let now = Date()
         from = camera(at: now)
@@ -39,16 +45,34 @@ final class NebulaMotion {
         start = now; self.duration = duration
     }
     func jump(_ c: NebulaCamera) { from = c; to = c; duration = 0 }
-    /// 拖：左右转、上下转，都不设限，可以转一整圈
-    func drag(_ t: CGSize) {
-        if base == nil { base = camera(at: Date()); pinchOrigin = nil }
+
+    /// 挪的时候别把星团挪出屏幕
+    static func clamp(_ c: NebulaCamera, _ size: CGSize) -> NebulaCamera {
+        var c = c
+        let limit = NebulaProjection.baseScale(size) * c.zoom * 0.95
+        c.pan.width = min(limit, max(-limit, c.pan.width))
+        c.pan.height = min(limit, max(-limit, c.pan.height))
+        return c
+    }
+    /// 拖：没拉近时转（不设限，可以转一整圈）；拉近了是挪
+    func drag(_ t: CGSize, size: CGSize) {
+        if base == nil {
+            base = camera(at: Date()); pinchOrigin = nil
+            panning = (base?.zoom ?? 1) > Self.panZoom
+        }
         if dragOrigin == nil { dragOrigin = t }
         guard var c = base, let o = dragOrigin else { return }
-        c.yaw += Double(t.width - o.width) * 0.009
-        c.pitch -= Double(t.height - o.height) * 0.009
+        let dx = Double(t.width - o.width), dy = Double(t.height - o.height)
+        if panning {
+            c.pan.width += dx; c.pan.height += dy
+            c = Self.clamp(c, size)
+        } else {
+            c.yaw += dx * 0.009
+            c.pitch -= dy * 0.009
+        }
         jump(c)
     }
-    /// 拉近：手指中间那一点不动
+    /// 拉近：两根手指中间那一点不动
     func pinch(_ m: CGFloat, anchor: CGPoint, size: CGSize) {
         if base == nil { base = camera(at: Date()); dragOrigin = nil }
         if pinchOrigin == nil { pinchOrigin = m }
@@ -56,13 +80,20 @@ final class NebulaMotion {
         let old = c.zoom
         c.zoom = min(4.5, max(0.6, old * Double(m / max(0.05, o))))
         let k = c.zoom / old
-        let center = CGPoint(x: size.width / 2 + c.pan.width, y: size.height * 0.44 + c.pan.height)
+        let center = NebulaProjection.screenCenter(size, c.pan)
         c.pan.width += (center.x - anchor.x) * (k - 1)
         c.pan.height += (center.y - anchor.y) * (k - 1)
-        if c.zoom <= 1.02 { c.pan = CGSize(width: c.pan.width * 0.9, height: c.pan.height * 0.9) }
-        jump(c)
+        jump(Self.clamp(c, size))
     }
-    func endGesture() { base = nil; dragOrigin = nil; pinchOrigin = nil }
+    /// 松手：拉回原大小时，顺手回到正中
+    func endGesture(size: CGSize) {
+        base = nil; dragOrigin = nil; pinchOrigin = nil
+        let c = camera(at: Date())
+        if c.zoom <= 1.05, c.pan != .zero {
+            var t = c; t.pan = .zero; t.zoom = max(1, t.zoom)
+            fly(t, duration: 0.3)
+        }
+    }
 }
 
 // MARK: - 一团里面
@@ -75,13 +106,19 @@ private struct NebulaDetailCanvas: View {
     let selectedID: String?
     let reduceMotion: Bool
     let active: Bool
+    /// 外面让镜头飞了（回到正面、挪开卡片）：这边跟着画
+    let cameraVersion: Int
     var onTap: (String?) -> Void
     var onPinchOut: () -> Void
     @State private var size = CGSize(width: 390, height: 760)
     @State private var touching = false
+    @State private var pinching = false
     @State private var flyingUntil = Date.distantPast
     @State private var settle = 0
     @State private var pinchAnchor: CGPoint?
+
+    private var spins: Bool { group.kind == .whirlpool && !reduceMotion }
+    static func spin(_ date: Date) -> Double { date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 300) / 300 * 2 * .pi }
 
     /// 镜头飞一会儿：这段时间一帧一帧画，飞完停下
     private func flying(_ seconds: Double) {
@@ -92,58 +129,59 @@ private struct NebulaDetailCanvas: View {
         }
     }
 
-    private var spins: Bool { group.kind == .whirlpool && !reduceMotion }
-    static func spin(_ date: Date) -> Double { date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 300) / 300 * 2 * .pi }
-
     var body: some View {
         // 平时停着；手指在上面、镜头在飞的时候才一帧一帧画。「说好的」慢慢转，一秒画 12 次就够
         let live = active && (touching || flyingUntil > Date()) && settle >= 0
-        TimelineView(.animation(minimumInterval: live ? nil : 1.0 / 12, paused: !(live || (active && spins)))) { timeline in
-            Canvas(rendersAsynchronously: false) { context, size in draw(&context, size, timeline.date) }
+        TimelineView(.animation(minimumInterval: live ? 1.0 / 60 : 1.0 / 12, paused: !(live || (active && spins)))) { timeline in
+            Canvas(rendersAsynchronously: false) { context, canvasSize in draw(&context, canvasSize, timeline.date, labels: !touching) }
         }
         .background(GeometryReader { g in Color.clear.onAppear { size = g.size }.onChange(of: g.size) { _, s in size = s } })
         .contentShape(Rectangle())
         .gesture(
             SimultaneousGesture(
-                DragGesture(minimumDistance: 4, coordinateSpace: .local)
+                // 一根手指：一点就是点（不等双击，马上出卡片）；动了就是转或者挪
+                DragGesture(minimumDistance: 0, coordinateSpace: .local)
                     .onChanged { v in
-                        guard v.startLocation.x >= SwipeBackToClose.edge else { return }
-                        touching = true; motion.drag(v.translation)
+                        guard v.startLocation.x >= SwipeBackToClose.edge, !pinching else { return }
+                        guard hypot(v.translation.width, v.translation.height) > 6 else { return }
+                        if !touching { touching = true }
+                        motion.drag(v.translation, size: size)
                     }
                     .onEnded { v in
                         guard v.startLocation.x >= SwipeBackToClose.edge else { return }
-                        motion.endGesture(); touching = false
+                        let moved = touching
+                        motion.endGesture(size: size)
+                        if moved { touching = false; flying(0.35) }
+                        else if !pinching, hypot(v.translation.width, v.translation.height) <= 6 { onTap(hit(v.location)) }
                     },
                 MagnifyGesture()
                     .onChanged { v in
-                        touching = true
+                        if !pinching { pinching = true; touching = true }
                         let anchor = pinchAnchor ?? CGPoint(x: v.startAnchor.x * size.width, y: v.startAnchor.y * size.height)
                         pinchAnchor = anchor
                         motion.pinch(v.magnification, anchor: anchor, size: size)
                     }
                     .onEnded { _ in
-                        motion.endGesture(); touching = false; pinchAnchor = nil
+                        motion.endGesture(size: size); pinchAnchor = nil
+                        touching = false; flying(0.35)
+                        Task { @MainActor in try? await Task.sleep(for: .milliseconds(150)); pinching = false }
                         if motion.camera(at: Date()).zoom < 0.8 { onPinchOut() }
                     }
             )
         )
-        .onTapGesture(count: 2) {
-            motion.fly(.home, duration: reduceMotion ? 0 : 0.7)
-            flying(0.8)
-        }
-        .onTapGesture(coordinateSpace: .local) { onTap(hit($0)) }
-        .onChange(of: selectedID) { _, _ in flying(0.9) }
+        .onChange(of: selectedID) { _, _ in flying(0.6) }
+        .onChange(of: cameraVersion) { _, _ in flying(0.9) }
         .accessibilityElement()
         .accessibilityLabel("\(group.name)，\(stars.count) 颗记忆")
         .accessibilityHint("用下面的「查看记忆」按列表一条一条读")
     }
 
-    private func projection(_ date: Date) -> NebulaProjection {
-        NebulaProjection(camera: motion.camera(at: date), size: size, spin: spins ? Self.spin(date) : 0)
+    private func projection(_ date: Date, _ size: CGSize) -> NebulaProjection {
+        NebulaProjection(camera: motion.camera(at: date), size: size, spin: spins ? Self.spin(date) : 0, origin: art.centroid)
     }
 
     private func hit(_ point: CGPoint) -> String? {
-        let pr = projection(Date())
+        let pr = projection(Date(), size)
         var best: (String, Double)?
         for s in stars {
             let (p, depth) = pr.project(s.position)
@@ -153,11 +191,11 @@ private struct NebulaDetailCanvas: View {
         return best?.0
     }
 
-    private func draw(_ ctx: inout GraphicsContext, _ size: CGSize, _ now: Date) {
-        let pr = projection(now), cam = pr.camera
+    private func draw(_ ctx: inout GraphicsContext, _ size: CGSize, _ now: Date, labels: Bool) {
+        let pr = projection(now, size)
         drawGas(&ctx, pr)
         drawDust(&ctx, pr)
-        drawStars(&ctx, pr, cam, size)
+        drawStars(&ctx, pr, size, labels: labels)
     }
 
     /// 星云的气：正对着最清楚，转到侧面淡下去，这时候星尘撑起这一团的厚度
@@ -183,7 +221,8 @@ private struct NebulaDetailCanvas: View {
         }
     }
 
-    private func drawStars(_ ctx: inout GraphicsContext, _ pr: NebulaProjection, _ cam: NebulaCamera, _ size: CGSize) {
+    private func drawStars(_ ctx: inout GraphicsContext, _ pr: NebulaProjection, _ size: CGSize, labels showLabels: Bool) {
+        let cam = pr.camera
         let glow = ctx.resolve(NebulaDetailCanvas.glowSprite)
         let h = group.hue
         // 第二层：拉近到 1.5 倍，以前整理的那些也亮起来、名字多起来
@@ -193,7 +232,9 @@ private struct NebulaDetailCanvas: View {
         }
         projected.sort { $0.2 < $1.2 }   // 远的先画
         var labels: [(title: String, at: CGPoint, r: Double, rank: Double, selected: Bool)] = []
-        let screenCenter = CGPoint(x: size.width / 2, y: size.height * 0.44)
+        let screenCenter = pr.center
+        var sprite = glow
+        sprite.shading = .color(NebulaPaint.color(h, 52, 80))
         for (s, p, depth) in projected {
             guard p.x > -30, p.x < size.width + 30, p.y > -30, p.y < size.height + 30 else { continue }
             let bright = s.ke
@@ -201,25 +242,19 @@ private struct NebulaDetailCanvas: View {
             var alpha = (bright ? 1.0 : 0.55 + 0.45 * layer2) * near
             if let selectedID, selectedID != s.id { alpha *= 0.75 }
             let r = (bright ? 3.6 : 2.7) * (0.85 + 0.25 * sqrt(cam.zoom)) * (1 + Double(s.importance - 5) * 0.03)
-            var sprite = glow
-            sprite.shading = .color(NebulaPaint.color(h, 52, 80))
             var outer = ctx
             outer.blendMode = .screen
-            outer.opacity = (bright ? 0.58 : 0.36) * alpha
-            let big = r * (group.kind == .heart ? 10 : 7)
-            outer.draw(sprite, in: CGRect(x: p.x - big, y: p.y - big, width: big * 2, height: big * 2))
-            outer.opacity = (bright ? 0.85 : 0.64) * alpha
-            let small = r * 2.4
+            if bright {
+                outer.opacity = 0.58 * alpha
+                let big = r * (group.kind == .heart ? 10 : 7)
+                outer.draw(sprite, in: CGRect(x: p.x - big, y: p.y - big, width: big * 2, height: big * 2))
+            }
+            outer.opacity = (bright ? 0.85 : 0.7) * alpha
+            let small = r * (bright ? 2.4 : 3.2)
             outer.draw(sprite, in: CGRect(x: p.x - small, y: p.y - small, width: small * 2, height: small * 2))
             let core = r * 0.43
             ctx.fill(Path(ellipseIn: CGRect(x: p.x - core, y: p.y - core, width: core * 2, height: core * 2)),
                      with: .color(NebulaPaint.color(h, group.kind == .sombrero ? 60 : 40, bright ? 91 : 81, 0.9 * alpha)))
-            if group.kind == .pleiades && bright {
-                var cross = Path()
-                cross.move(to: CGPoint(x: p.x - r * 4, y: p.y)); cross.addLine(to: CGPoint(x: p.x + r * 4, y: p.y))
-                cross.move(to: CGPoint(x: p.x, y: p.y - r * 5)); cross.addLine(to: CGPoint(x: p.x, y: p.y + r * 5))
-                ctx.stroke(cross, with: .color(NebulaPaint.color(h, 50, 88, (bright ? 0.72 : 0.42) * alpha)), lineWidth: 0.7)
-            }
             if s.loved {
                 let ring = r * 2.6
                 ctx.stroke(Path(ellipseIn: CGRect(x: p.x - ring, y: p.y - ring, width: ring * 2, height: ring * 2)),
@@ -230,11 +265,13 @@ private struct NebulaDetailCanvas: View {
                 ctx.stroke(Path(ellipseIn: CGRect(x: p.x - ring, y: p.y - ring, width: ring * 2, height: ring * 2)),
                            with: .color(Color(red: 0.94, green: 0.88, blue: 0.73).opacity(0.85)), lineWidth: 1)
             }
+            guard showLabels || s.id == selectedID else { continue }
             // 名字：第一层只写柯亲手记的、重要的几颗；拉近一层，离屏幕中间近的都写
             let dist = Double(hypot(p.x - screenCenter.x, p.y - screenCenter.y))
             let rank = s.id == selectedID ? 1e9 : (layer2 > 0.5 ? 1000 - dist + (s.ke ? 60 : 0) : (s.ke ? Double(s.importance) * 10 - dist * 0.05 : -1))
             if rank >= 0 { labels.append((s.title, p, r, rank, s.id == selectedID)) }
         }
+        // 手指在上面时不写名字（转的时候字跟着乱跑看着晕，也省力气），松手就出来
         let maxLabels = cam.zoom < 1.3 ? 6 : (cam.zoom < 2.4 ? 12 : 18)
         let font = cam.zoom < 2.4 ? 13.0 : 12.0
         var placed: [CGRect] = []
@@ -245,7 +282,7 @@ private struct NebulaDetailCanvas: View {
             let below = CGRect(x: x - w / 2, y: l.at.y + l.r * 2 + 5, width: w, height: hgt)
             let above = CGRect(x: x - w / 2, y: l.at.y - l.r * 2 - 5 - hgt, width: w, height: hgt)
             // 上面是标题、下面是按钮，名字不写进去
-            guard let spot = [below, above].first(where: { c in c.minY > 236 && c.maxY < size.height - 120
+            guard let spot = [below, above].first(where: { c in c.minY > NebulaProjection.topBand && c.maxY < size.height - NebulaProjection.bottomBand
                 && !placed.contains { $0.insetBy(dx: -3, dy: -2).intersects(c) } }) else { continue }
             placed.append(spot)
             let title = l.title.count > 14 ? String(l.title.prefix(13)) + "…" : l.title
@@ -287,21 +324,35 @@ struct MemoryNebulaView: View {
     @State private var correcting: MemoryFlower?
     @State private var note = ""
     @State private var visible = false
-    @State private var arts: [NebulaKind: NebulaArt] = [:]
+    @State private var arts: [NebulaKind: NebulaArt] = Self.readyArts()
     @State private var motion = NebulaMotion()
     @State private var canvasSize = CGSize(width: 390, height: 760)
     @State private var toast: String?
+    /// 130：分好团的记忆，只在记忆变了的时候算一次（以前每画一下都重新排序、筛选好几遍）
+    @State private var byGroup: [String: [MemoryFlower]] = [:]
+    @State private var shownCount = 0
+    @State private var cameraVersion = 0
     @AppStorage("memory.galaxy.lastSeen") private var lastSeen = ""
 
     private static let ink = Color(red: 0.945, green: 0.94, blue: 0.93)
     private static let muted = Color(red: 0.72, green: 0.74, blue: 0.81)
     private static let line = Color(red: 0.76, green: 0.8, blue: 0.87).opacity(0.22)
     private static let night = Color(red: 5 / 255, green: 7 / 255, blue: 13 / 255)
+    private static let spots: [(NebulaKind, CGFloat, CGFloat)] = [(.pleiades, 0.5, 0.10), (.orion, 0.22, 0.40), (.sombrero, 0.78, 0.40),
+                                                                  (.heart, 0.24, 0.85), (.horsehead, 0.76, 0.85), (.whirlpool, 0.5, 0.57)]
 
-    private var shown: [MemoryFlower] {
-        store.visible(includeOthers: true).sorted { ($0.occurred_at ?? $0.written_at ?? "") < ($1.occurred_at ?? $1.written_at ?? "") }
+    private static func readyArts() -> [NebulaKind: NebulaArt] {
+        var out: [NebulaKind: NebulaArt] = [:]
+        for k in NebulaKind.allCases { if let a = NebulaArt.cached(k) { out[k] = a } }
+        return out
     }
-    private func members(_ name: String) -> [MemoryFlower] { shown.filter { NebulaGroup.groupName(for: $0) == name } }
+    private func regroup() {
+        let shown = store.visible(includeOthers: true).sorted { ($0.occurred_at ?? $0.written_at ?? "") < ($1.occurred_at ?? $1.written_at ?? "") }
+        byGroup = Dictionary(grouping: shown, by: { NebulaGroup.groupName(for: $0) })
+        shownCount = shown.count
+    }
+    private var shown: [MemoryFlower] { byGroup.values.flatMap { $0 }.sorted { ($0.occurred_at ?? $0.written_at ?? "") < ($1.occurred_at ?? $1.written_at ?? "") } }
+    private func members(_ name: String) -> [MemoryFlower] { byGroup[name] ?? [] }
     private var loose: [MemoryFlower] { members(NebulaGroup.background) }
     private var selected: MemoryFlower? { selectedID.flatMap { id in store.flowers.first { $0.id == id } } }
     private func stars(_ g: NebulaGroup, _ art: NebulaArt) -> [NebulaStar] {
@@ -318,11 +369,11 @@ struct MemoryNebulaView: View {
             if let g = current {
                 if let art = arts[g.kind] {
                     NebulaDetailCanvas(group: g, art: art, stars: stars(g, art), motion: motion, selectedID: selectedID,
-                                       reduceMotion: reduceMotion, active: visible && !listOpen,
+                                       reduceMotion: reduceMotion, active: visible && !listOpen, cameraVersion: cameraVersion,
                                        onTap: { id in selectedID = id }, onPinchOut: { leave() })
                         .ignoresSafeArea()
                         .background(GeometryReader { geo in Color.clear.onAppear { canvasSize = geo.size }.onChange(of: geo.size) { _, s in canvasSize = s } }.ignoresSafeArea())
-                        .transition(.opacity.combined(with: .scale(scale: 0.86)))
+                        .transition(.opacity)
                 } else {
                     ProgressView().tint(Self.muted)
                 }
@@ -351,14 +402,16 @@ struct MemoryNebulaView: View {
         }
         .foregroundStyle(Self.ink)
         .environment(\.colorScheme, .dark)
-        .animation(reduceMotion ? nil : .spring(response: 0.5, dampingFraction: 0.9), value: selectedID)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.55), value: current)
+        // 卡片一点就出来，不慢慢弹
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: selectedID)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: current)
         .sensoryFeedback(.selection, trigger: selectedID)
         .task { await store.load() }
         .task { await paint() }
-        .onAppear { visible = true; welcomeNewMemory() }
+        .onAppear { visible = true; regroup(); welcomeNewMemory() }
         .onDisappear { visible = false; privateOpen = false; if current?.kind == .heart { current = nil } }
         .onChange(of: store.flowers) { _, _ in
+            regroup()
             if let id = selectedID, !store.flowers.contains(where: { $0.id == id && $0.isDrawable }) { selectedID = nil }
             welcomeNewMemory()
         }
@@ -380,11 +433,14 @@ struct MemoryNebulaView: View {
         } message: { Text("会告诉柯不再记起这件事。这颗星会熄灭，点错了可以从「熄灭的星」重新点亮。") }
     }
 
-    /// 六团在后台画，画好一团摆一团
+    /// 六团在后台画（画过的直接从手机里读），好一团摆一团
     private func paint() async {
         for g in [NebulaGroup.all[5]] + NebulaGroup.all.dropLast() where arts[g.kind] == nil {
             let kind = g.kind
             let art = await Task.detached(priority: .userInitiated) { NebulaArt.art(kind) }.value
+            // 先把这一团的星位算好，点进去不用现算
+            let group = g, ids = members(g.name).map(\.id)
+            await Task.detached(priority: .userInitiated) { for id in ids { _ = art.seat(for: id, thickness: group.thickness) } }.value
             arts[kind] = art
         }
     }
@@ -395,24 +451,20 @@ struct MemoryNebulaView: View {
         GeometryReader { geo in
             let w = geo.size.width, top: CGFloat = 150, bottom: CGFloat = 178
             let mapH = max(300, geo.size.height - top - bottom)
-            let spots: [(NebulaKind, CGFloat, CGFloat)] = [(.pleiades, 0.5, 0.10), (.orion, 0.22, 0.40), (.sombrero, 0.78, 0.40),
-                                                           (.heart, 0.24, 0.85), (.horsehead, 0.76, 0.85), (.whirlpool, 0.5, 0.57)]
             ZStack(alignment: .topLeading) {
                 ForEach(loose.prefix(60)) { f in
                     let p = Self.looseSpot(f.id)
-                    Button { selectedID = f.id } label: {
-                        Circle().fill(Color(red: 0.8, green: 0.84, blue: 0.9).opacity(0.5)).frame(width: 2.4, height: 2.4)
-                            .background(Circle().fill(Color(red: 0.8, green: 0.84, blue: 0.9).opacity(0.12)).frame(width: 12, height: 12))
-                            .frame(width: 30, height: 30).contentShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .position(x: p.x * w, y: top + p.y * mapH)
-                    .accessibilityLabel("还没归类的小事：\(f.title)")
+                    Circle().fill(Color(red: 0.8, green: 0.84, blue: 0.9).opacity(0.5)).frame(width: 2.4, height: 2.4)
+                        .background(Circle().fill(Color(red: 0.8, green: 0.84, blue: 0.9).opacity(0.12)).frame(width: 12, height: 12))
+                        .position(x: p.x * w, y: top + p.y * mapH)
+                        .accessibilityElement().accessibilityAddTraits(.isButton)
+                        .accessibilityLabel("还没归类的小事：\(f.title)")
+                        .accessibilityAction { selectedID = f.id }
                 }
-                ForEach(spots, id: \.0) { spot in
+                ForEach(Self.spots, id: \.0) { spot in
                     if let g = NebulaGroup.all.first(where: { $0.kind == spot.0 }) {
                         let big = spot.0 == .whirlpool
-                        nebulaButton(g, box: w * (big ? 0.54 : 0.44))
+                        nebulaLabel(g, box: w * (big ? 0.54 : 0.44))
                             .position(x: spot.1 * w, y: top + spot.2 * mapH)
                             .zIndex(big ? 2 : 1)
                     }
@@ -420,51 +472,79 @@ struct MemoryNebulaView: View {
             }
             .frame(width: w, height: geo.size.height)
             .contentShape(Rectangle())
-            .gesture(MagnifyGesture().onEnded { v in
+            // 130：点哪儿就认离哪团最近（以前按钮的框叠在一起，点身体和药会点到说好的）；一点马上进
+            .gesture(DragGesture(minimumDistance: 0).onEnded { v in
+                guard hypot(v.translation.width, v.translation.height) < 10 else { return }
+                overviewTap(v.location, w: w, top: top, mapH: mapH)
+            })
+            .simultaneousGesture(MagnifyGesture().onEnded { v in
                 guard v.magnification > 1.25 else { return }
                 let a = CGPoint(x: v.startAnchor.x * w, y: v.startAnchor.y * geo.size.height)
-                let nearest = spots.min { hypot($0.1 * w - a.x, top + $0.2 * mapH - a.y) < hypot($1.1 * w - a.x, top + $1.2 * mapH - a.y) }
-                if let k = nearest?.0, let g = NebulaGroup.all.first(where: { $0.kind == k }) { tapGroup(g) }
+                if let g = nearestGroup(a, w: w, top: top, mapH: mapH, reach: 10) { tapGroup(g) }
             })
         }
         .ignoresSafeArea(edges: .bottom)
     }
 
-    private func nebulaButton(_ g: NebulaGroup, box: CGFloat) -> some View {
+    private func overviewTap(_ p: CGPoint, w: CGFloat, top: CGFloat, mapH: CGFloat) {
+        // 暗暗的小星先认（手指 22 点以内）
+        var bestLoose: (String, CGFloat)?
+        for f in loose.prefix(60) {
+            let s = Self.looseSpot(f.id), d = hypot(s.x * w - p.x, top + s.y * mapH - p.y)
+            if d < 22, d < (bestLoose?.1 ?? .infinity) { bestLoose = (f.id, d) }
+        }
+        if let id = bestLoose?.0 { selectedID = id; return }
+        if let g = nearestGroup(p, w: w, top: top, mapH: mapH, reach: 1.25) { tapGroup(g) }
+    }
+
+    /// 离哪团最近：按这一团画出来的大小量（说好的那团画得小，按它自己的大小算）
+    private func nearestGroup(_ p: CGPoint, w: CGFloat, top: CGFloat, mapH: CGFloat, reach: CGFloat) -> NebulaGroup? {
+        var best: (NebulaKind, CGFloat)?
+        for (kind, x, y) in Self.spots {
+            let radius = w * (kind == .whirlpool ? 0.2 : 0.19)
+            let c = CGPoint(x: x * w, y: top + y * mapH - w * 0.02)
+            let d = hypot(c.x - p.x, c.y - p.y) / radius
+            if d < reach, d < (best?.1 ?? .infinity) { best = (kind, d) }
+        }
+        return best.flatMap { b in NebulaGroup.all.first { $0.kind == b.0 } }
+    }
+
+    private func nebulaLabel(_ g: NebulaGroup, box: CGFloat) -> some View {
         let count = members(g.name).count
-        return Button { tapGroup(g) } label: {
-            VStack(spacing: 0) {
-                Group {
-                    if let art = arts[g.kind] {
-                        if g.kind == .whirlpool && !reduceMotion {
-                            // 像钟一样：五分钟转一圈，一秒挪 12 下，看不出跳
-                            TimelineView(.periodic(from: .now, by: 1.0 / 12)) { t in
-                                art.thumb.resizable().interpolation(.high)
-                                    .rotationEffect(.radians(NebulaDetailCanvas.spin(t.date)))
-                            }
-                        } else {
+        return VStack(spacing: 0) {
+            Group {
+                if let art = arts[g.kind] {
+                    if g.kind == .whirlpool && !reduceMotion {
+                        // 像钟一样：五分钟转一圈，一秒挪 12 下，看不出跳
+                        TimelineView(.periodic(from: .now, by: 1.0 / 12)) { t in
                             art.thumb.resizable().interpolation(.high)
+                                .rotationEffect(.radians(NebulaDetailCanvas.spin(t.date)))
                         }
                     } else {
-                        Color.clear
+                        art.thumb.resizable().interpolation(.high)
                     }
+                } else {
+                    Color.clear
                 }
-                .frame(width: box * (g.kind == .whirlpool ? 1.1 : 0.96), height: box * (g.kind == .whirlpool ? 1.1 : 0.96))
-                .blur(radius: g.kind == .heart ? 0.65 : 0.35)
-                .brightness(g.kind == .heart ? 0.12 : 0)
-                .frame(width: box, height: box * 0.72)
-                HStack(spacing: 5) {
-                    if g.kind == .heart && !privateOpen { Image(systemName: "lock").font(.system(size: 11, weight: .light)) }
-                    Text(g.name).font(.custom("NotoSerifSC-Regular", size: 16, relativeTo: .body)).tracking(1.3)
-                }
-                .shadow(color: Self.night, radius: 6)
-                .padding(.top, -8)
-                Text("\(g.astro) · \(count)").font(.system(size: 9.5)).tracking(0.8).foregroundStyle(Self.muted)
-                    .padding(.top, 2)
             }
+            .frame(width: box * (g.kind == .whirlpool ? 1.1 : 0.96), height: box * (g.kind == .whirlpool ? 1.1 : 0.96))
+            .blur(radius: g.kind == .heart ? 0.65 : 0.35)
+            .brightness(g.kind == .heart ? 0.12 : 0)
+            .frame(width: box, height: box * 0.72)
+            HStack(spacing: 5) {
+                if g.kind == .heart && !privateOpen { Image(systemName: "lock").font(.system(size: 11, weight: .light)) }
+                Text(g.name).font(.custom("NotoSerifSC-Regular", size: 16, relativeTo: .body)).tracking(1.3)
+            }
+            .shadow(color: Self.night, radius: 6)
+            .padding(.top, -8)
+            Text("\(g.astro) · \(count)").font(.system(size: 9.5)).tracking(0.8).foregroundStyle(Self.muted)
+                .padding(.top, 2)
         }
-        .buttonStyle(.plain)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isButton)
         .accessibilityLabel("\(g.name)，\(g.astro)，\(count) 颗记忆\(g.kind == .heart && !privateOpen ? "，已锁好" : "")")
+        .accessibilityAction { tapGroup(g) }
         .accessibilityIdentifier("nebula-\(g.kind.rawValue)")
     }
 
@@ -510,7 +590,7 @@ struct MemoryNebulaView: View {
                     Button("所有记忆") { listAll = true; search = ""; listOpen = true }
                     Button("熄灭的星") { dimmedOpen = true }
                     if current != nil {
-                        Button("回到正面") { motion.fly(.home, duration: reduceMotion ? 0 : 0.8); selectedID = nil }
+                        Button("回到正面") { motion.fly(.home, duration: reduceMotion ? 0 : 0.8); cameraVersion += 1; selectedID = nil }
                     }
                     Button("刷新") { Task { await store.load() } }
                 } label: {
@@ -531,7 +611,7 @@ struct MemoryNebulaView: View {
                 .transformEffect(CGAffineTransform(a: 0.9, b: 0, c: -0.287, d: 1, tx: 14, ty: 0))
                 .shadow(color: .black.opacity(0.35), radius: 6)
                 .accessibilityHidden(true)
-            Text(current.map { "\($0.astro) · \(members($0.name).count) 颗" } ?? "说好的在中央，小事在身旁 · \(shown.count) 颗")
+            Text(current.map { "\($0.astro) · \(members($0.name).count) 颗" } ?? "说好的在中央，小事在身旁 · \(shownCount) 颗")
                 .font(.system(size: 12)).tracking(1.2).foregroundStyle(Self.muted)
                 .shadow(color: .black.opacity(0.5), radius: 4)
         }
@@ -543,7 +623,7 @@ struct MemoryNebulaView: View {
     private var footer: some View {
         VStack(spacing: 10) {
             Text(current == nil ? "轻点一团星云 · 双指拉开也能进去 · 暗暗的小星是还没归类的事"
-                 : (current?.kind == .heart && !privateOpen ? "" : "拖动转着看 · 双指拉近，名字一层层出来 · 点星星读记忆"))
+                 : (current?.kind == .heart && !privateOpen ? "" : "拖动转着看 · 双指拉近出名字，拉近后拖动是挪 · 点星星读记忆"))
                 .font(.system(size: 11)).tracking(0.5).foregroundStyle(Self.muted)
                 .multilineTextAlignment(.center)
                 .shadow(color: .black.opacity(0.6), radius: 4)
@@ -749,20 +829,18 @@ struct MemoryNebulaView: View {
         }
     }
 
-    /// 选中一颗：拉近一点，把它挪到卡片上方
+    /// 选中一颗：画面不动（130 她：点一下整团跑到左上去了）；只有这颗会被下面的卡片挡住时，往上挪一点
     private func focus(_ id: String?) {
-        guard let g = current, let art = arts[g.kind] else { return }
-        guard let id, let f = store.flowers.first(where: { $0.id == id }), NebulaGroup.groupName(for: f) == g.name else {
-            var c = motion.camera(at: Date()); c.pan = .zero; c.zoom = min(c.zoom, 1.4)
-            motion.fly(c, duration: reduceMotion ? 0 : 0.7)
-            return
-        }
+        guard let id, let g = current, let art = arts[g.kind],
+              let f = store.flowers.first(where: { $0.id == id }), NebulaGroup.groupName(for: f) == g.name else { return }
         var c = motion.camera(at: Date())
-        c.zoom = max(c.zoom, 1.5); c.pan = .zero
-        let spin = g.kind == .whirlpool && !reduceMotion ? NebulaDetailCanvas.spin(Date().addingTimeInterval(0.8)) : 0
-        let p = NebulaProjection(camera: c, size: canvasSize, spin: spin).project(art.seat(for: id, thickness: g.thickness)).0
-        c.pan = CGSize(width: canvasSize.width / 2 - p.x, height: canvasSize.height * 0.27 - p.y)
-        motion.fly(c, duration: reduceMotion ? 0 : 0.8)
+        let spin = g.kind == .whirlpool && !reduceMotion ? NebulaDetailCanvas.spin(Date()) : 0
+        let p = NebulaProjection(camera: c, size: canvasSize, spin: spin, origin: art.centroid).project(art.seat(for: id, thickness: g.thickness)).0
+        let line = canvasSize.height * 0.4
+        guard p.y > line else { return }
+        c.pan.height -= p.y - line + 20
+        motion.fly(NebulaMotion.clamp(c, canvasSize), duration: reduceMotion ? 0 : 0.35)
+        cameraVersion += 1
     }
 
     /// 柯上次之后新记的事：上面轻轻亮一句，说记在哪一团

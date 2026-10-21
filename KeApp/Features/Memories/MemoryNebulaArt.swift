@@ -1,4 +1,5 @@
 import SwiftUI
+import ImageIO
 
 // 129：记忆星河改成六团星云（10-21 她定的）。画法照 GPT 的星河包（six-worlds.mjs / star-seats.mjs）一笔一笔搬过来：
 // 同一张 640×640 的画布、同样的颜色和形状。不用照片，全是程序画的。
@@ -108,6 +109,8 @@ final class NebulaArt: @unchecked Sendable {
     /// 128×128，0…1
     let density: [Double]
     let densityMax: Double
+    /// 这一团亮光的重心（盘面坐标）：转和放都绕着它，画面上它在正中
+    let centroid: SIMD2<Double>
     /// 星尘：盘面坐标 (u, v, z)，-1…1；按亮度分四档，画的时候一档一笔
     let dust: [[SIMD3<Double>]]
 
@@ -115,6 +118,12 @@ final class NebulaArt: @unchecked Sendable {
         self.image = image; self.thumb = thumb; self.density = density
         densityMax = max(0.0001, density.max() ?? 1)
         self.dust = dust
+        var sx = 0.0, sy = 0.0, sw = 0.0
+        for y in 0..<128 { for x in 0..<128 {
+            let w = density[y * 128 + x]; guard w > 0.02 else { continue }
+            sx += w * ((Double(x) + 0.5) / 64 - 1); sy += w * ((Double(y) + 0.5) / 64 - 1); sw += w
+        } }
+        centroid = sw > 0 ? SIMD2(sx / sw, sy / sw) : .zero
     }
 
     private static let lock = NSLock()
@@ -128,9 +137,26 @@ final class NebulaArt: @unchecked Sendable {
     static func art(_ kind: NebulaKind) -> NebulaArt {
         if let a = cached(kind) { return a }
         let group = NebulaGroup.all.first { $0.kind == kind }!
-        let a = render(group)
+        // 130：画过一次就存到手机里，下次直接读（以前每次打开都重画，要等一会儿）
+        let file = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("nebula-v130-\(kind.rawValue).png")
+        var image: CGImage?
+        if let src = CGImageSourceCreateWithURL(file as CFURL, nil) { image = CGImageSourceCreateImageAtIndex(src, 0, nil) }
+        if image == nil {
+            image = render(group)
+            if let image, let dest = CGImageDestinationCreateWithURL(file as CFURL, "public.png" as CFString, 1, nil) {
+                CGImageDestinationAddImage(dest, image, nil); CGImageDestinationFinalize(dest)
+            }
+        }
+        let a = finish(image!, group)
         lock.lock(); cache[kind] = a; lock.unlock()
         return a
+    }
+    /// 一打开 App 就在后台把六团画好（或者从手机里读出来），点进记忆不用等
+    static func prewarm() {
+        Task.detached(priority: .utility) {
+            for k in [NebulaKind.whirlpool, .orion, .pleiades, .sombrero, .horsehead, .heart] { _ = art(k) }
+        }
     }
 
     /// 盘面上 (u, v) 处有多亮，0…1
@@ -168,7 +194,7 @@ final class NebulaArt: @unchecked Sendable {
 
     // MARK: 画布（坐标和网页一样：左上角是原点，y 往下）
 
-    private static func render(_ g: NebulaGroup) -> NebulaArt {
+    private static func render(_ g: NebulaGroup) -> CGImage? {
         let px = Int(CGFloat(size) * scale)
         let ctx = CGContext(data: nil, width: px, height: px, bitsPerComponent: 8, bytesPerRow: px * 4,
                             space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
@@ -177,24 +203,22 @@ final class NebulaArt: @unchecked Sendable {
         var rng = NebulaRandom(UInt32(1021 + index * 109))
         let painter = Painter(ctx: ctx)
         painter.body(g, &rng)
-        let cg = ctx.makeImage()!
-        // 亮度图：每 5×5 个点取一个（贴图是 960，取 128 格）
+        return ctx.makeImage()
+    }
+
+    private static func finish(_ cg: CGImage, _ g: NebulaGroup) -> NebulaArt {
+        let index = Double(NebulaGroup.all.firstIndex(of: g) ?? 0)
+        // 亮度图：整张缩到 128 格，每格的平均亮度
         var density = [Double](repeating: 0, count: 128 * 128)
-        if let data = ctx.data {
-            let p = data.bindMemory(to: UInt8.self, capacity: px * px * 4)
-            for y in 0..<128 {
-                for x in 0..<128 {
-                    let sx = min(px - 1, Int(Double(x) / 128 * Double(px))), sy = min(px - 1, Int(Double(y) / 128 * Double(px)))
-                    var sum = 0.0
-                    for oy in stride(from: 0, to: 6, by: 2) {
-                        for ox in stride(from: 0, to: 6, by: 2) {
-                            let i = (min(px - 1, sy + oy) * px + min(px - 1, sx + ox)) * 4
-                            sum += (Double(p[i]) + Double(p[i + 1]) + Double(p[i + 2])) / 765
-                        }
-                    }
-                    density[y * 128 + x] = sum / 9
-                }
-            }
+        var small = [UInt8](repeating: 0, count: 128 * 128 * 4)
+        small.withUnsafeMutableBytes { raw in
+            guard let c = CGContext(data: raw.baseAddress, width: 128, height: 128, bitsPerComponent: 8, bytesPerRow: 128 * 4,
+                                    space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+            c.interpolationQuality = .medium
+            c.draw(cg, in: CGRect(x: 0, y: 0, width: 128, height: 128))
+        }
+        for i in 0..<(128 * 128) {
+            density[i] = (Double(small[i * 4]) + Double(small[i * 4 + 1]) + Double(small[i * 4 + 2])) / 765
         }
         // 缩略图（整片星河那一页用）：256 就够
         let t = 256
@@ -239,12 +263,7 @@ private struct Painter {
         glow(x, y, r * 8, h, bright ? 0.66 : 0.25)
         ctx.setFillColor(CGColor(red: 249 / 255, green: 244 / 255, blue: 239 / 255, alpha: 1))
         ctx.fillEllipse(in: CGRect(x: x - r * 0.6, y: y - r * 0.6, width: r * 1.2, height: r * 1.2))
-        if bright {
-            ctx.setStrokeColor(NebulaPaint.cg(h, 36, 88, 0.6)); ctx.setLineWidth(0.65)
-            ctx.move(to: CGPoint(x: x - r * 5, y: y)); ctx.addLine(to: CGPoint(x: x + r * 5, y: y))
-            ctx.move(to: CGPoint(x: x, y: y - r * 6)); ctx.addLine(to: CGPoint(x: x, y: y + r * 6))
-            ctx.strokePath()
-        }
+        // 130 她：不要十字星芒
     }
     func dust(_ rng: inout NebulaRandom, _ h: Double, _ count: Int = 1500, _ spread: Double = 160) {
         for _ in 0..<count {
@@ -435,14 +454,25 @@ struct NebulaProjection {
     let size: CGSize
     /// 说好的那团自己慢慢转（像钟），只在盘面里转
     let spin: Double
+    /// 这一团的重心：绕它转、它在屏幕正中
+    var origin = SIMD2<Double>(0, 0)
 
-    var scale: Double { Double(min(size.width, size.height * 0.72)) * 0.56 * camera.zoom }
-    var center: CGPoint { CGPoint(x: size.width / 2 + camera.pan.width, y: size.height * 0.44 + camera.pan.height) }
+    /// 130：上面标题、下面按钮之间那一块的正中（以前偏上）
+    static let topBand: CGFloat = 236, bottomBand: CGFloat = 120
+    static func screenCenter(_ size: CGSize, _ pan: CGSize) -> CGPoint {
+        CGPoint(x: size.width / 2 + pan.width, y: (topBand + max(topBand + 100, size.height - bottomBand)) / 2 + pan.height)
+    }
+    static func baseScale(_ size: CGSize) -> Double {
+        Double(min(size.width * 0.94, max(240, size.height - topBand - bottomBand))) * 0.62
+    }
+    var scale: Double { Self.baseScale(size) * camera.zoom }
+    var center: CGPoint { Self.screenCenter(size, camera.pan) }
 
     /// 返回屏幕上的点、远近（越大越近）
     func project(_ p: SIMD3<Double>) -> (CGPoint, Double) {
         let cs = cos(spin), ss = sin(spin)
-        let u = p.x * cs - p.y * ss, v = p.x * ss + p.y * cs
+        let px = p.x - origin.x, py = p.y - origin.y
+        let u = px * cs - py * ss, v = px * ss + py * cs
         let cy = cos(camera.yaw), sy = sin(camera.yaw), cp = cos(camera.pitch), sp = sin(camera.pitch)
         let x1 = u * cy + p.z * sy, z1 = -u * sy + p.z * cy
         let y2 = v * cp - z1 * sp, z2 = v * sp + z1 * cp
@@ -456,7 +486,8 @@ struct NebulaProjection {
         let a = cy, b = sp * sy, c = 0.0, d = cp
         let m = CGAffineTransform(a: a, b: b, c: c, d: d, tx: 0, ty: 0)
         let s = CGAffineTransform(a: cs, b: ss, c: -ss, d: cs, tx: 0, ty: 0)
-        return s.concatenating(m).concatenating(CGAffineTransform(scaleX: scale, y: scale))
+        return CGAffineTransform(translationX: -origin.x, y: -origin.y)
+            .concatenating(s).concatenating(m).concatenating(CGAffineTransform(scaleX: scale, y: scale))
             .concatenating(CGAffineTransform(translationX: center.x, y: center.y))
     }
     /// 正对着看是 1，转到侧面是 0

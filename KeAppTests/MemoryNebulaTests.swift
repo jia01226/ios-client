@@ -35,7 +35,7 @@ final class MemoryNebulaTests: XCTestCase {
     func testTextureAndStarsUseTheSameProjection() {
         for cam in [NebulaCamera.home, NebulaCamera(yaw: 0.9, pitch: -0.4, zoom: 2, pan: CGSize(width: 12, height: -30)),
                     NebulaCamera(yaw: 3.3, pitch: 2.2, zoom: 0.8)] {
-            let pr = NebulaProjection(camera: cam, size: CGSize(width: 390, height: 844), spin: 0.7)
+            let pr = NebulaProjection(camera: cam, size: CGSize(width: 390, height: 844), spin: 0.7, origin: SIMD2(0.1, -0.05))
             for (u, v) in [(0.0, 0.0), (0.5, -0.3), (-0.8, 0.9)] {
                 let star = pr.project(SIMD3(u, v, 0)).0
                 let tex = CGPoint(x: u, y: v).applying(pr.planeTransform)
@@ -46,10 +46,29 @@ final class MemoryNebulaTests: XCTestCase {
     }
 
     func testRotationGoesAllTheWayRound() {
-        let m = NebulaMotion()
-        m.drag(.zero); m.drag(CGSize(width: 800, height: -800)); m.endGesture()
+        let m = NebulaMotion(), size = CGSize(width: 390, height: 844)
+        m.drag(.zero, size: size); m.drag(CGSize(width: 800, height: -800), size: size); m.endGesture(size: size)
         let c = m.camera(at: Date())
         XCTAssertGreaterThan(abs(c.yaw), 2 * .pi)
         XCTAssertGreaterThan(abs(c.pitch), 2 * .pi)
+    }
+
+    func testZoomedInDragMovesInsteadOfTurningAndStaysOnScreen() {
+        let m = NebulaMotion(), size = CGSize(width: 390, height: 844)
+        m.jump(NebulaCamera(zoom: 2))
+        m.drag(.zero, size: size); m.drag(CGSize(width: 60, height: -40), size: size); m.endGesture(size: size)
+        var c = m.camera(at: Date())
+        XCTAssertEqual(c.yaw, 0); XCTAssertEqual(c.pan.width, 60, accuracy: 0.01); XCTAssertEqual(c.pan.height, -40, accuracy: 0.01)
+        m.drag(.zero, size: size); m.drag(CGSize(width: 9000, height: 0), size: size); m.endGesture(size: size)
+        c = m.camera(at: Date())
+        XCTAssertLessThanOrEqual(c.pan.width, NebulaProjection.baseScale(size) * 2 * 0.95 + 0.01)
+    }
+
+    func testNebulaSitsBetweenHeaderAndButtons() {
+        let size = CGSize(width: 390, height: 844), art = NebulaArt.art(.orion)
+        let pr = NebulaProjection(camera: .home, size: size, spin: 0, origin: art.centroid)
+        let c = pr.project(SIMD3(art.centroid.x, art.centroid.y, 0)).0
+        XCTAssertEqual(c.x, 195, accuracy: 0.5)
+        XCTAssertEqual(c.y, (NebulaProjection.topBand + size.height - NebulaProjection.bottomBand) / 2, accuracy: 0.5)
     }
 }

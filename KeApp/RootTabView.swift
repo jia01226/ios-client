@@ -101,8 +101,8 @@ struct RootTabView: View {
         }
         .preferredColorScheme(selection == .drawer || selection == .us || theme.skin != .night ? .light : .dark)
         .task {
-            // 107：星河的星云、银河两张大图第一次用时现画会卡一下，先在后台画好
-            Task.detached(priority: .utility) { _ = GalaxyArt.nebula; _ = GalaxyArt.galaxy; _ = GalaxyArt.glow }
+            // 130：记忆的六团星云先在后台备好（画过的从手机里读），点进记忆不用等（旧星河的图不再用，不画了）
+            NebulaArt.prewarm()
             if chatNotifications.openRequest != nil { selection = .ke }
             await chatNotifications.clearBadgeIfActive()
         }
