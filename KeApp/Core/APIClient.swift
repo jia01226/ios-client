@@ -889,6 +889,17 @@ actor APIClient {
     func fetchHut() async throws -> RemoteHut { try await readResource("/api/hut") }
     func sendHutLetter(text: String) async throws { try await writeResource("/api/hut/letter", body: ["text": text]) }
 
+    // 130：亲密记录（「我们」月历上的小心）
+    func loveLog(month: String) async throws -> LoveLogMonth {
+        let (data, _) = try await perform(try makeRequest(path: "/api/love/log", queryItems: [URLQueryItem(name: "month", value: month)]))
+        do { return try decoder.decode(LoveLogMonth.self, from: data) }
+        catch { throw APIError.decoding(error) }
+    }
+
+    func deleteLove(id: Int) async throws {
+        _ = try await perform(try makeRequest(path: "/api/love/log/\(id)/delete", method: "POST"))
+    }
+
     func fetchAnniversaries() async throws -> [RemoteAnniversary] {
         try await readResource("/api/anniversaries")
     }

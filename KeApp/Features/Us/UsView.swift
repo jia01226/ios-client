@@ -10,6 +10,7 @@ struct UsView: View {
     @StateObject private var vm: UsViewModel
     @StateObject private var periods: PeriodStore
     @StateObject private var notes: StickyNotesStore
+    @StateObject private var love: LoveLogStore
     @State private var anniversaryID = "together"
     @State private var editAnniversaries = false
     @State private var editTemplates = false
@@ -23,6 +24,7 @@ struct UsView: View {
         _vm = StateObject(wrappedValue: UsViewModel(api: api))
         _periods = StateObject(wrappedValue: PeriodStore(api: api, scope: line.rawValue))
         _notes = StateObject(wrappedValue: StickyNotesStore(api: api, scope: line.rawValue))
+        _love = StateObject(wrappedValue: LoveLogStore(api: api, scope: line.rawValue))
     }
     private var selected: Anniversary? { vm.anniversaries.first { $0.id == anniversaryID } ?? vm.anniversaries.first }
     var body: some View {
@@ -75,6 +77,7 @@ struct UsView: View {
         .buttonStyle(.plain).foregroundStyle(theme.pageColor.textPrimary)
         .background(theme.pageBackground.ignoresSafeArea()).tint(theme.pageAccent)
         .task { await load() }
+        .onChange(of: month) { _, m in Task { await love.load(m) } }
         .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await load() } } }
         .sheet(isPresented: $editTemplates) { HomeReminderSettingsView(model: vm).environmentObject(theme) }
         .sheet(isPresented: $editAnniversaries, onDismiss: { Task { await vm.loadReminders() } }) {
@@ -90,7 +93,8 @@ struct UsView: View {
         async let a: Void = vm.loadReminders()
         async let b: Void = periods.load()
         async let c: Void = notes.load()
-        _ = await (a, b, c)
+        async let d: Void = love.load(month)
+        _ = await (a, b, c, d)
     }
     private var dayOpening: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -229,15 +233,42 @@ struct UsView: View {
                                 Text("\(Calendar.current.component(.day, from: date))").font(Moonlight.numeral(20))
                                 Text(vm.shift(on: date).map { vm.shiftDisplay($0, on: date) } ?? " ")
                                     .font(Moonlight.serif(10)).lineLimit(1).minimumScaleFactor(0.7)
-                                Circle().fill(isAnniversary(date) ? theme.pageAccent : theme.pageAccent.opacity(0)).frame(width: 3, height: 3)
+                                HStack(spacing: 2) {
+                                    Circle().fill(isAnniversary(date) ? theme.pageAccent : theme.pageAccent.opacity(0)).frame(width: 3, height: 3)
+                                    // 130 亲密记录：那天一颗小心，两次以上带个数
+                                    let times = love.count(on: date)
+                                    if times > 0 {
+                                        Image(systemName: "heart.fill").font(.system(size: 7))
+                                        if times > 1 { Text("\(times)").font(.system(size: 8, weight: .medium)).monospacedDigit() }
+                                    }
+                                }.foregroundStyle(theme.pageAccent).frame(height: 9)
                             }.frame(maxWidth: .infinity, minHeight: 52)
                                 .background(theme.pageAccent.opacity(isPeriod(date) ? 0.16 : 0), in: RoundedRectangle(cornerRadius: 12))
                                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(theme.pageAccent.opacity(Calendar.current.isDateInToday(date) ? 0.7 : 0), lineWidth: 0.6))
                         }.accessibilityIdentifier(vm.calendarDayIdentifier(date))
-                            .accessibilityLabel(vm.calendarDayAccessibilityLabel(date) + (isPeriod(date) ? "，经期" : "") + (isAnniversary(date) ? "，纪念日" : ""))
+                            .accessibilityLabel(vm.calendarDayAccessibilityLabel(date) + (isPeriod(date) ? "，经期" : "") + (isAnniversary(date) ? "，纪念日" : "")
+                                                + (love.count(on: date) > 0 ? "，亲密 \(love.count(on: date)) 次" : ""))
+                            .contextMenu {
+                                // 长按那天：看亲密记录，记错的删掉
+                                let items = love.items(on: date)
+                                if !items.isEmpty {
+                                    Text("这天亲密 \(items.count) 次")
+                                    ForEach(items) { item in
+                                        Button(role: .destructive) { Task { await love.delete(item) } } label: {
+                                            Label("删掉这一次（记错了）· \(String(item.at.dropFirst(11).prefix(5)))", systemImage: "trash")
+                                        }
+                                    }
+                                }
+                            }
                     } else { Color.clear.frame(height: 52) }
                 }
             }.accessibilityIdentifier("us-month-grid")
+            if love.monthCount(month) > 0 {
+                HStack(spacing: 5) {
+                    Image(systemName: "heart.fill").font(.system(size: 9))
+                    Text("这个月亲密 \(love.monthCount(month)) 次 · 柯记的，长按那天能删").font(Moonlight.serif(12))
+                }.foregroundStyle(theme.pageColor.textSecondary).accessibilityElement(children: .combine)
+            }
             if !vm.isCurrentMonth(month) { Button("回到本月") { month = vm.startOfMonth(for: .now) }.font(Moonlight.serif(12)) }
         }
     }
