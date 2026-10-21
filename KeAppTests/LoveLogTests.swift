@@ -10,6 +10,12 @@ private final class FakeLoveAPI: LoveLogAPI, @unchecked Sendable {
         return try JSONDecoder().decode(LoveLogMonth.self, from: Data(json.utf8))
     }
     func deleteLove(id: Int) async throws { deleted.append(id) }
+    var setCalls: [(String, Int)] = []
+    func setLoveDay(day: String, count: Int) async throws -> LoveLogMonth {
+        setCalls.append((day, count))
+        if fail { throw APIError.invalidResponse }
+        return LoveLogMonth(month: String(day.prefix(7)), days: count > 0 ? [day: count] : [:], month_count: count, total: count, items: [])
+    }
 }
 
 @MainActor final class LoveLogTests: XCTestCase {
@@ -39,5 +45,16 @@ private final class FakeLoveAPI: LoveLogAPI, @unchecked Sendable {
         let ok = await store.delete(store.items(on: day(21))[0])
         XCTAssertTrue(ok)
         XCTAssertEqual(api.deleted, [2])
+    }
+
+    func testSheCanChangeADayAndAFailedSaveGoesBack() async {
+        let api = FakeLoveAPI(), store = LoveLogStore(api: api, defaults: UserDefaults(suiteName: "love-\(UUID().uuidString)")!)
+        await store.setCount(2, on: day(18))
+        XCTAssertEqual(store.count(on: day(18)), 2)
+        XCTAssertEqual(api.setCalls.last?.0, "2026-10-18"); XCTAssertEqual(api.setCalls.last?.1, 2)
+        api.fail = true
+        await store.setCount(3, on: day(18))
+        XCTAssertEqual(store.count(on: day(18)), 2)
+        XCTAssertNotNil(store.error)
     }
 }

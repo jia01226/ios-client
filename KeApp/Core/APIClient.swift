@@ -900,6 +900,15 @@ actor APIClient {
         _ = try await perform(try makeRequest(path: "/api/love/log/\(id)/delete", method: "POST"))
     }
 
+    func setLoveDay(day: String, count: Int) async throws -> LoveLogMonth {
+        var request = try makeRequest(path: "/api/love/log/day", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["day": day, "count": count])
+        let (data, _) = try await perform(request)
+        do { return try decoder.decode(LoveLogMonth.self, from: data) }
+        catch { throw APIError.decoding(error) }
+    }
+
     func fetchAnniversaries() async throws -> [RemoteAnniversary] {
         try await readResource("/api/anniversaries")
     }

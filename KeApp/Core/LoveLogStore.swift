@@ -2,13 +2,13 @@ import Foundation
 
 // 130：亲密记录（10-21 她：「做了在日历显示，也是柯记，还有次数」）。
 // 柯到了服务器自动记一次，他也能补记；「我们」的月历上那天一颗小心和次数，这个月几次。
-// 记错的她长按那天删掉（服务器只是不再显示，不真删）。
+// 131 她：「柯可以记，我也可以改」——长按那天加一次、减一次（减掉的服务器只是收起来，不真删）。
 
 struct LoveLogMonth: Codable, Equatable, Sendable {
     let month: String
-    let days: [String: Int]
-    let month_count: Int
-    let total: Int
+    var days: [String: Int]
+    var month_count: Int
+    var total: Int
     let items: [LoveLogItemStored]
 }
 
@@ -24,6 +24,7 @@ struct LoveLogItemStored: Codable, Equatable, Identifiable, Sendable {
 protocol LoveLogAPI: Sendable {
     func loveLog(month: String) async throws -> LoveLogMonth
     func deleteLove(id: Int) async throws
+    func setLoveDay(day: String, count: Int) async throws -> LoveLogMonth
 }
 extension APIClient: LoveLogAPI {}
 
@@ -62,6 +63,25 @@ extension APIClient: LoveLogAPI {}
         } catch {
             // 拉不到就留着上次的，不清空
             self.error = months[key] == nil ? "亲密记录没拉下来，下拉刷新再试" : nil
+        }
+    }
+
+    /// 她改那天几次：先在月历上改好（不等网），服务器回来再对一遍；没存上就退回去
+    func setCount(_ count: Int, on date: Date) async {
+        let day = HomeReminderCoordinator.dayKey(date), key = String(day.prefix(7))
+        let before = months[key]
+        var m = before ?? LoveLogMonth(month: key, days: [:], month_count: 0, total: 0, items: [])
+        let old = m.days[day] ?? 0, new = max(0, min(20, count))
+        m.days[day] = new == 0 ? nil : new
+        m.month_count += new - old; m.total += new - old
+        months[key] = m
+        do {
+            months[key] = try await api.setLoveDay(day: day, count: new)
+            error = nil
+            persist()
+        } catch {
+            months[key] = before
+            self.error = "没改上，再试一次"
         }
     }
 

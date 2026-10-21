@@ -235,11 +235,11 @@ struct UsView: View {
                                     .font(Moonlight.serif(10)).lineLimit(1).minimumScaleFactor(0.7)
                                 HStack(spacing: 2) {
                                     Circle().fill(isAnniversary(date) ? theme.pageAccent : theme.pageAccent.opacity(0)).frame(width: 3, height: 3)
-                                    // 130 亲密记录：那天一颗小心，两次以上带个数
+                                    // 131 亲密记录：那天一颗小心和几次
                                     let times = love.count(on: date)
                                     if times > 0 {
                                         Image(systemName: "heart.fill").font(.system(size: 7))
-                                        if times > 1 { Text("\(times)").font(.system(size: 8, weight: .medium)).monospacedDigit() }
+                                        Text("\(times)").font(.system(size: 9, weight: .medium)).monospacedDigit()
                                     }
                                 }.foregroundStyle(theme.pageAccent).frame(height: 9)
                             }.frame(maxWidth: .infinity, minHeight: 52)
@@ -249,15 +249,12 @@ struct UsView: View {
                             .accessibilityLabel(vm.calendarDayAccessibilityLabel(date) + (isPeriod(date) ? "，经期" : "") + (isAnniversary(date) ? "，纪念日" : "")
                                                 + (love.count(on: date) > 0 ? "，亲密 \(love.count(on: date)) 次" : ""))
                             .contextMenu {
-                                // 长按那天：看亲密记录，记错的删掉
-                                let items = love.items(on: date)
-                                if !items.isEmpty {
-                                    Text("这天亲密 \(items.count) 次")
-                                    ForEach(items) { item in
-                                        Button(role: .destructive) { Task { await love.delete(item) } } label: {
-                                            Label("删掉这一次（记错了）· \(String(item.at.dropFirst(11).prefix(5)))", systemImage: "trash")
-                                        }
-                                    }
+                                // 长按那天：几次、自己加减（柯记的、她改的都在一起算）
+                                let times = love.count(on: date)
+                                Text(times > 0 ? "这天亲密 \(times) 次" : "这天还没有亲密记录")
+                                Button { Task { await love.setCount(times + 1, on: date) } } label: { Label("加一次", systemImage: "plus") }
+                                if times > 0 {
+                                    Button { Task { await love.setCount(times - 1, on: date) } } label: { Label("减一次", systemImage: "minus") }
                                 }
                             }
                     } else { Color.clear.frame(height: 52) }
@@ -266,7 +263,7 @@ struct UsView: View {
             if love.monthCount(month) > 0 {
                 HStack(spacing: 5) {
                     Image(systemName: "heart.fill").font(.system(size: 9))
-                    Text("这个月亲密 \(love.monthCount(month)) 次 · 柯记的，长按那天能删").font(Moonlight.serif(12))
+                    Text("这个月亲密 \(love.monthCount(month)) 次 · 长按哪天都能加减").font(Moonlight.serif(12))
                 }.foregroundStyle(theme.pageColor.textSecondary).accessibilityElement(children: .combine)
             }
             if !vm.isCurrentMonth(month) { Button("回到本月") { month = vm.startOfMonth(for: .now) }.font(Moonlight.serif(12)) }
