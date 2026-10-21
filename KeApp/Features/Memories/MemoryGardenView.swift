@@ -53,9 +53,10 @@ private struct MemoryPageHeader: View {
 }
 
 // 97：记忆页是「记忆星河」（MemoryGalaxyView，2D 自算投影，每颗都点得到）。喜欢、记错了、熄灭的星沿用花园的接口。
+// 129：换成六团星云（MemoryNebulaView）。
 struct MemoryGardenView: View {
     @ObservedObject var store: MemoryGardenStore
     @Binding var page: Int
     var onClose: (() -> Void)?
-    var body: some View { MemoryGalaxyView(store: store, page: $page, onClose: onClose) }
+    var body: some View { MemoryNebulaView(store: store, page: $page, onClose: onClose) }
 }

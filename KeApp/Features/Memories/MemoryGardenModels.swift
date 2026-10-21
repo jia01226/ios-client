@@ -17,10 +17,14 @@ struct MemoryFlower: Decodable, Identifiable, Equatable, Sendable {
     var state: String
     let author: String
     var loved: Bool
+    /// 129：六团里的哪一团（说好的、日常吃喝……；「背景」是还没归类的）
+    let group: String?
+    /// 129：她的事变了，「以前……，现在……」
+    let changed: String?
 
     enum CodingKeys: String, CodingKey {
         case id, title, body, quotes, occurred_at, written_at, category, importance, valence
-        case last_recalled_at, recall_count, state, author, loved
+        case last_recalled_at, recall_count, state, author, loved, group, changed
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -39,6 +43,8 @@ struct MemoryFlower: Decodable, Identifiable, Equatable, Sendable {
         state = try c.decode(String.self, forKey: .state)
         author = try c.decode(String.self, forKey: .author)
         loved = try c.decodeIfPresent(Bool.self, forKey: .loved) ?? false
+        group = try c.decodeIfPresent(String.self, forKey: .group)
+        changed = try c.decodeIfPresent(String.self, forKey: .changed)
     }
     var isDrawable: Bool { ["bloom", "bud", "fallen"].contains(state) }
 }
