@@ -15,6 +15,8 @@ struct UsPondView: View {
     @StateObject private var periods: PeriodStore
     @StateObject private var notes: StickyNotesStore
     @StateObject private var book: NotebookStore
+    /// 133：亲密记录（132 错加在旧的 UsView 上了，她这页看不到）
+    @StateObject private var love: LoveLogStore
     @AppStorage(CamelliaPalette.storageKey) private var savedPalette = CamelliaPalette.defaultPalette.rawValue
     @State private var month = Calendar.current.dateInterval(of: .month, for: .now)?.start ?? .now
     @State private var editDay: PondDay?
@@ -35,6 +37,7 @@ struct UsPondView: View {
         _periods = StateObject(wrappedValue: PeriodStore(api: api, scope: line.rawValue))
         _notes = StateObject(wrappedValue: StickyNotesStore(api: api, scope: line.rawValue))
         _book = StateObject(wrappedValue: NotebookStore(api: api))
+        _love = StateObject(wrappedValue: LoveLogStore(api: api, scope: line.rawValue))
     }
 
     var body: some View {
@@ -63,6 +66,7 @@ struct UsPondView: View {
         .onAppear { visible = true }
         .onDisappear { visible = false }
         .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await load() } } }
+        .onChange(of: month) { _, m in Task { await love.load(m) } }
         .sheet(item: $editDay) { day in daySheet(day.date) }
         .sheet(isPresented: $choosingAnniversary) { anniversarySheet }
         .sheet(isPresented: $managingDates, onDismiss: { Task { await vm.loadReminders() } }) {
@@ -76,7 +80,8 @@ struct UsPondView: View {
         async let b: Void = periods.load()
         async let c: Void = notes.load()
         async let d: Void = book.load()
-        _ = await (a, b, c, d)
+        async let e: Void = love.load(month)
+        _ = await (a, b, c, d, e)
     }
 
     // MARK: 寄语
@@ -191,6 +196,9 @@ struct UsPondView: View {
             sectionTitle("这个月", "NOTRE MOIS")
             HStack {
                 Text(vm.monthTitle(for: month)).font(Ink.song(16)).tracking(1.8)
+                if love.monthCount(month) > 0 {
+                    Text("亲密 \(love.monthCount(month)) 次").font(Ink.song(12)).foregroundStyle(Ink.accent).padding(.leading, 8)
+                }
                 Spacer()
                 Button { month = vm.month(byAdding: -1, to: month) } label: { Image(systemName: "chevron.left").font(.system(size: 16, weight: .ultraLight)).frame(width: 44, height: 40) }
                     .accessibilityLabel("上个月")
@@ -215,6 +223,7 @@ struct UsPondView: View {
                 legend(Circle().fill(Ink.accent), "今天")
                 legend(Circle().fill(Ink.periodFill), "月经")
                 legend(Text("☾").font(.system(size: 11)).foregroundStyle(Ink.accent), "纪念日")
+                legend(Image(systemName: "heart.fill").font(.system(size: 7)).foregroundStyle(Ink.accent), "亲密")
             }
             .padding(.top, 6)
             .overlay(alignment: .top) { Rectangle().fill(Ink.line.opacity(0.5)).frame(height: 0.7) }
@@ -243,14 +252,32 @@ struct UsPondView: View {
                     .overlay(alignment: .topTrailing) {
                         if isAnniversary(date) { Text("☾").font(.system(size: 10)).foregroundStyle(Ink.accent).offset(x: 7, y: -3) }
                     }
+                    .overlay(alignment: .bottomTrailing) {
+                        // 133 亲密记录：那天一颗小心和几次
+                        let times = love.count(on: date)
+                        if times > 0 {
+                            HStack(spacing: 1) {
+                                Image(systemName: "heart.fill").font(.system(size: 7))
+                                Text("\(times)").font(.system(size: 9, weight: .semibold)).monospacedDigit()
+                            }
+                            .foregroundStyle(Ink.accent).offset(x: 12, y: 3)
+                        }
+                    }
                 Text(shift ?? " ").font(Ink.song(9.5)).lineLimit(1).minimumScaleFactor(0.7).foregroundStyle(Ink.secondary)
             }
             .frame(maxWidth: .infinity, minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(vm.calendarDayAccessibilityLabel(date) + (period ? "，月经" : "") + (isAnniversary(date) ? "，纪念日" : ""))
+        .accessibilityLabel(vm.calendarDayAccessibilityLabel(date) + (period ? "，月经" : "") + (isAnniversary(date) ? "，纪念日" : "")
+                            + (love.count(on: date) > 0 ? "，亲密 \(love.count(on: date)) 次" : ""))
         .accessibilityIdentifier(vm.calendarDayIdentifier(date))
+        .contextMenu {
+            let times = love.count(on: date)
+            Text(times > 0 ? "这天亲密 \(times) 次" : "这天还没有亲密记录")
+            Button { Task { await love.setCount(times + 1, on: date) } } label: { Label("加一次", systemImage: "plus") }
+            if times > 0 { Button { Task { await love.setCount(times - 1, on: date) } } label: { Label("减一次", systemImage: "minus") } }
+        }
     }
 
     private func isPeriod(_ date: Date) -> Bool {
@@ -283,6 +310,25 @@ struct UsPondView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 24).padding(.top, 2)
                 .accessibilityIdentifier("period-summary")
+            // 133：亲密记录，柯记的，她也能改
+            HStack {
+                Text("亲密").font(Ink.song(15))
+                Spacer()
+                let times = love.count(on: date)
+                Button { Task { await love.setCount(times - 1, on: date) } } label: {
+                    Image(systemName: "minus").frame(width: 40, height: 36)
+                }.disabled(times == 0).accessibilityLabel("减一次")
+                Text("\(times) 次").font(Ink.song(15)).monospacedDigit().frame(minWidth: 44)
+                Button { Task { await love.setCount(times + 1, on: date) } } label: {
+                    Image(systemName: "plus").frame(width: 40, height: 36)
+                }.accessibilityLabel("加一次")
+            }
+            .foregroundStyle(Ink.accent)
+            .padding(.horizontal, 24).padding(.top, 10)
+            if let error = love.error {
+                Text(error).font(Ink.song(12)).foregroundStyle(Ink.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 24)
+            }
             ScheduleEditorSheet(model: vm, date: date, currentShift: vm.shift(on: date), currentNote: vm.shiftNote(on: date)) { shift, note in
                 vm.setShift(shift, note: note, on: date); editDay = nil
             }
