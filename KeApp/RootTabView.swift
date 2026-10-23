@@ -20,6 +20,9 @@ struct RootTabView: View {
     /// 126：底栏实际多高（大字号时会长高）、Home 条那截多高
     @State private var dockHeight: CGFloat = 58
     @State private var safeBottom: CGFloat = 0
+    /// 134：手指在底栏上滑到哪儿了（没在滑就是 nil）；滑过一格震一下
+    @State private var dockDragX: CGFloat?
+    @State private var dockTick = 0
 
     enum Tab: Hashable {
         // 佳佳 2026-10-06：原来「佳佳」那一格换成柯的抽屉——他自己的地方。
@@ -179,27 +182,61 @@ struct RootTabView: View {
     }
 
     /// 柯 · 我们 · 柯的：三个字（宋体 14、字距 2.4），当前那页垫一层亮。整条是一块圆角玻璃，浮在页面上。
+    /// 134 她：「底下 tab 切换能不能像苹果一样划过去，不是点击的那种」——照 iOS 26 的底栏：
+    /// 手指按在底栏上左右滑，那块亮跟着手指走（稍微放大一点，像个放大镜），滑过一格轻轻震一下，松手就到那一页。点也照样能点。
+    private static let dockTabs: [(Tab, String)] = [(.ke, "柯"), (.us, "我们"), (.drawer, "柯的")]
     private var simpleTabBar: some View {
-        HStack(spacing: 3) {
-            ForEach([(Tab.ke, "柯"), (Tab.us, "我们"), (Tab.drawer, "柯的")], id: \.1) { tab, label in
-                let selected = selection == tab
-                Button { withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { selection = tab } } label: {
-                    Text(label).font(theme.font.dockLabel).tracking(theme.font.dockTracking)
-                        .foregroundStyle(selected ? Ink.primary : Ink.secondary)
-                        .frame(maxWidth: .infinity, minHeight: theme.metric.chromeDockHeight - 2 * theme.metric.chromeDockPadding)
-                        .background {
-                            if selected {
-                                RoundedRectangle(cornerRadius: theme.metric.chromeDockItemRadius, style: .continuous)
-                                    .fill(reduceTransparency ? Ink.accent.opacity(0.08) : Ink.dockSelection)
-                            }
-                        }
-                        .contentShape(Rectangle())
+        let tabs = Self.dockTabs
+        let current = tabs.firstIndex { $0.0 == selection } ?? 0
+        return GeometryReader { geo in
+            let w = geo.size.width / CGFloat(tabs.count)
+            // 手指在哪一格（滑的时候），不滑就是当前页
+            let hover = dockDragX.map { min(tabs.count - 1, max(0, Int($0 / max(1, w)))) } ?? current
+            let pillX = dockDragX.map { min(max($0, w / 2), geo.size.width - w / 2) } ?? (CGFloat(current) + 0.5) * w
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: theme.metric.chromeDockItemRadius, style: .continuous)
+                    .fill(reduceTransparency ? Ink.accent.opacity(0.08) : Ink.dockSelection)
+                    .frame(width: w - 3, height: geo.size.height)
+                    .scaleEffect(dockDragX == nil ? 1 : 1.08)
+                    .position(x: pillX, y: geo.size.height / 2)
+                    .animation(dockDragX == nil ? .spring(response: 0.35, dampingFraction: 0.8) : .interactiveSpring(response: 0.18, dampingFraction: 0.86), value: pillX)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: dockDragX == nil)
+                HStack(spacing: 0) {
+                    ForEach(Array(tabs.enumerated()), id: \.offset) { index, item in
+                        let lit = index == hover
+                        Text(item.1).font(theme.font.dockLabel).tracking(theme.font.dockTracking)
+                            .foregroundStyle(lit ? Ink.primary : Ink.secondary)
+                            .frame(width: w, height: geo.size.height)
+                            .accessibilityElement()
+                            .accessibilityLabel(item.1)
+                            .accessibilityAddTraits(item.0 == selection ? [.isButton, .isSelected] : .isButton)
+                            .accessibilityAction { withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { selection = item.0 } }
+                            .accessibilityIdentifier("tab-\(item.0)")
+                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(selected ? .isSelected : [])
-                .accessibilityIdentifier("tab-\(tab)")
             }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                    .onChanged { v in
+                        let moved = abs(v.translation.width) > 6 || abs(v.translation.height) > 6
+                        guard moved || dockDragX != nil else { return }
+                        let old = dockDragX.map { min(tabs.count - 1, max(0, Int($0 / max(1, w)))) }
+                        dockDragX = v.location.x
+                        let now = min(tabs.count - 1, max(0, Int(v.location.x / max(1, w))))
+                        if old != nil, old != now { dockTick += 1 }
+                    }
+                    .onEnded { v in
+                        let index = min(tabs.count - 1, max(0, Int(v.location.x / max(1, w))))
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            selection = tabs[index].0
+                            dockDragX = nil
+                        }
+                    }
+            )
         }
+        .frame(height: theme.metric.chromeDockHeight - 2 * theme.metric.chromeDockPadding)
+        .sensoryFeedback(.selection, trigger: dockTick)
         .padding(theme.metric.chromeDockPadding)
         // 117：三个页面的底栏都是同一块液态玻璃（素笺里能选纸感/轻玻璃/浮光）；126：只画在圆角里，外面不铺底
         .background {
