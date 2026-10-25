@@ -8,7 +8,7 @@ final class CompanionPreviewTransport: URLProtocol {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         let path = request.url?.path ?? ""
-        if path.hasSuffix("/uploads/companion-preview.png"), let data = UIImage(named: "CamelliaSunset")?.pngData() {
+        if path.hasSuffix("/uploads/companion-preview.png"), let data = Self.previewPhoto.pngData() {
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type":"image/png"])!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: data)
@@ -100,5 +100,15 @@ final class CompanionPreviewTransport: URLProtocol {
         client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}
+
+    /// 验收用的假照片：现画一张暖色晚霞，不再把一整张 1.5 MB 的照片打进正式包
+    private static let previewPhoto = UIGraphicsImageRenderer(size: CGSize(width: 600, height: 800)).image { context in
+        UIColor.systemOrange.setFill()
+        context.fill(CGRect(x: 0, y: 0, width: 600, height: 800))
+        UIColor.systemPink.setFill()
+        context.fill(CGRect(x: 0, y: 0, width: 600, height: 340))
+        UIColor.systemPurple.setFill()
+        context.fill(CGRect(x: 0, y: 620, width: 600, height: 180))
+    }
 }
 #endif

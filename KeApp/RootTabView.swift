@@ -26,7 +26,7 @@ struct RootTabView: View {
 
     enum Tab: Hashable {
         // 佳佳 2026-10-06：原来「佳佳」那一格换成柯的抽屉——他自己的地方。
-        case ke, us, play, memory, drawer
+        case ke, us, memory, drawer
     }
 
     init() {
@@ -155,8 +155,6 @@ struct RootTabView: View {
             UsPondView(line: chatLine).id(chatLine)
         case .ke:
             Color.clear.allowsHitTesting(false)
-        case .play:
-            PlayView(line: chatLine).id(chatLine)
         case .drawer:
             KeSpaceView(line: chatLine) { quote in
                 selection = .ke
@@ -250,79 +248,6 @@ struct RootTabView: View {
         .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { dockHeight = $0 }
         .padding(.horizontal, theme.metric.chromeDockInset)
         .padding(.bottom, dockBottomPadding)
-    }
-
-    private var journalTabBar: some View {
-        HStack(spacing: 0) {
-            journalTab(.ke, label: "柯", symbol: "bubble.left")
-            journalTab(.us, label: "我们", symbol: "heart")
-            journalTab(.play, label: "玩", symbol: "gamecontroller")
-            journalTab(.memory, label: "记忆", symbol: "camera.macro")
-            journalTab(.drawer, label: "柯的", symbol: "archivebox")
-        }
-        .padding(.horizontal, 12).padding(.top, 9).padding(.bottom, 3)
-        .background(selection == .drawer ? camelliaPalette.paper : theme.pageBackground.opacity(0.96))
-        .overlay(alignment: .top) { Rectangle().fill(theme.pageColor.separator.opacity(0.55)).frame(height: 0.5) }
-    }
-    private func journalTab(_ tab: Tab, label: String, symbol: String) -> some View {
-        Button { withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) { selection = tab } } label: {
-            VStack(spacing: 5) {
-                Image(systemName: tab == selection && tab != .memory ? symbol + ".fill" : symbol)
-                    .font(.system(size: 18, weight: .ultraLight)).frame(height: 22)
-                    .symbolEffect(.bounce, value: tab != .memory && selection == tab)
-                Text(label).font(.custom("NotoSerifSC-ExtraLight", size: 11))
-            }
-            .foregroundStyle(selection == .drawer
-                ? (tab == selection ? CamelliaPalette.ink : CamelliaPalette.secondaryInk)
-                : (tab == selection ? theme.pageAccent : theme.pageColor.textSecondary))
-            .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
-        }.buttonStyle(.plain).accessibilityIdentifier("tab-\(tab)")
-    }
-
-    private var crystalTabBar: some View {
-        HStack(spacing: 0) {
-            tabButton(.ke, label: "柯")
-            tabButton(.us, label: "我们")
-            tabButton(.play, label: "玩")
-            tabButton(.memory, label: "记忆")
-            tabButton(.drawer, label: "柯的")
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 7)
-        .background(FloatingGlassSurface(cornerRadius: theme.metric.radiusDock))
-        .padding(.horizontal, theme.metric.pagePadding)
-        .padding(.top, 6)
-        .padding(.bottom, 4)
-    }
-
-    private func tabButton(_ tab: Tab, label: String) -> some View {
-        Button {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) { selection = tab }
-        } label: {
-            VStack(spacing: 1) {
-                Image(systemName: symbol(for: tab))
-                    .font(.system(size: 23, weight: .light))
-                    .symbolEffect(.bounce, value: selection == tab)
-                    .frame(width: 42, height: 30)
-                Text(label)
-                    .font(.caption2.weight(selection == tab ? .semibold : .regular))
-            }
-            .foregroundStyle(selection == tab ? (selection == .ke ? theme.effectiveAccent : theme.pageAccent) : (selection == .ke ? theme.color.textSecondary : theme.pageColor.textSecondary))
-            .frame(maxWidth: .infinity, minHeight: 48)
-            .background(selection == tab ? theme.color.textPrimary.opacity(0.055) : Color.clear, in: Capsule())
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("tab-\(tab)")
-    }
-    private func symbol(for tab: Tab) -> String {
-        switch tab {
-        case .us: return selection == tab ? "heart.fill" : "heart"
-        case .ke: return "bubble.left.and.bubble.right.fill"
-        case .play: return selection == tab ? "gamecontroller.fill" : "gamecontroller"
-        case .drawer: return selection == tab ? "archivebox.fill" : "archivebox"
-        case .memory: return "camera.macro"
-        }
     }
 
 }

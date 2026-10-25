@@ -54,30 +54,6 @@ struct MemoryGardenPage: Decodable, Sendable {
     let flowers: [MemoryFlower]
 }
 
-enum MemoryScene: String, CaseIterable {
-    case moon = "MemoryMoon", water = "MemoryWater", castle = "MemoryCastle"
-    case courtyard = "MemoryCourtyard", glasshouse = "MemoryGlasshouse"
-    static func forCategory(_ category: String) -> Self {
-        switch category {
-        case "约定": .moon
-        case "关系", "恋爱": .water
-        case "生活": .castle
-        case "身体", "医疗": .courtyard
-        case "喜好": .glasshouse
-        default: .courtyard
-        }
-    }
-    var title: String {
-        switch self {
-        case .moon: "月下山茶"
-        case .water: "水边山茶"
-        case .castle: "山茶城堡"
-        case .courtyard: "山茶庭院"
-        case .glasshouse: "玻璃花房"
-        }
-    }
-}
-
 protocol MemoryGardenAPI: Sendable {
     func memoryGarden() async throws -> MemoryGardenPage
     func changeMemoryFlower(id: String, action: String, note: String?, loved: Bool?) async throws

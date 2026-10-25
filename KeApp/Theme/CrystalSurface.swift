@@ -224,21 +224,6 @@ struct JournalMoonArtwork: View {
     }
 }
 
-struct JournalBookCover: View {
-    @EnvironmentObject private var theme: Theme
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 6).fill(theme.pageAccent.opacity(0.48))
-            RoundedRectangle(cornerRadius: 5).stroke(theme.pageAccent.opacity(0.65), lineWidth: 0.6).padding(3)
-            Rectangle().fill(theme.pageColor.separator).frame(width: 1).padding(.leading, 8).frame(maxWidth: .infinity, alignment: .leading)
-            VStack(spacing: 8) {
-                Image(systemName: "moon.fill").font(.system(size: 16, weight: .ultraLight))
-                Text("MOONLIGHT\nJOURNAL").font(.custom("Didot", size: 7)).tracking(1.1).multilineTextAlignment(.center)
-            }.foregroundStyle(theme.pageColor.textPrimary.opacity(0.55))
-        }.frame(width: 74, height: 100)
-    }
-}
-
 struct MoonOrbitGuide: Shape {
     func path(in rect: CGRect) -> Path {
         Path { path in

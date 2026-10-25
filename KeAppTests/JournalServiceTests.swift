@@ -15,27 +15,6 @@ final class JournalServiceTests: XCTestCase {
         XCTAssertEqual(hut.fact_book.first?.items.first?.text, "一个事实")
     }
 
-    func testFailedLetterIsRetryableAndSuccessfulPostSurvivesRefreshFailure() async {
-        let api = HutFake()
-        let model = HutViewModel(api: api)
-        await model.load()
-        XCTAssertNotNil(model.hut)
-        api.failWrite = true
-        let failed = await model.send("还没发出的信")
-        XCTAssertFalse(failed)
-        XCTAssertNotNil(model.letterError)
-        XCTAssertFalse(model.letterSent)
-        api.failWrite = false; api.failRead = true
-        let sent = await model.send("  已经发出的信  ")
-        XCTAssertTrue(sent)
-        XCTAssertTrue(model.letterSent)
-        XCTAssertNotNil(model.error)
-        XCTAssertEqual(api.sent, ["已经发出的信"])
-        let empty = await model.send("  ")
-        XCTAssertFalse(empty)
-        XCTAssertEqual(api.sent.count, 1)
-    }
-
     func testPeriodEndDoesNotDeleteStartAndPersistsUntilServerConfirms() async throws {
         let suite = "PeriodTests." + UUID().uuidString
         let defaults = UserDefaults(suiteName: suite)!
@@ -108,19 +87,6 @@ final class JournalServiceTests: XCTestCase {
         XCTAssertTrue(store.canStart)
         XCTAssertTrue(store.records.isEmpty)
         XCTAssertTrue(store.status?.contains("还没记上") == true)
-    }
-}
-
-@MainActor private final class HutFake: HutAPI {
-    var failWrite = false, failRead = false
-    var sent: [String] = []
-    func fetchHut() async throws -> RemoteHut {
-        if failRead { throw URLError(.notConnectedToInternet) }
-        return try JSONDecoder().decode(RemoteHut.self, from: Data(hutFixture.utf8))
-    }
-    func sendHutLetter(text: String) async throws {
-        if failWrite { throw URLError(.notConnectedToInternet) }
-        sent.append(text)
     }
 }
 

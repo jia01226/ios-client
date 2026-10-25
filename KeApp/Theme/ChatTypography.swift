@@ -7,8 +7,8 @@ struct ChatTypography: Identifiable {
     static let all: [ChatTypography] = [
         .init(id: "regular", title: "苹方 · 常规", postScriptName: "PingFangSC-Regular"),
         .init(id: "light", title: "苹方 · 轻体", postScriptName: "PingFangSC-Light"),
-        .init(id: "serif", title: "Noto 宋体", postScriptName: "NotoSerifSC-Regular"),
-        .init(id: "wenkai", title: "霞鹜文楷", postScriptName: "LXGWWenKai-Regular")
+        .init(id: "serif", title: "Noto 宋体", postScriptName: "NotoSerifSC-Regular")
+        // 霞鹜文楷 已拿掉（她不用，字库 25 MB）。以前存过 "wenkai" 的，Theme.chatTypeface 找不到就退回第一项苹方。
     ]
     func font(size: Double) -> Font { .custom(postScriptName, size: size, relativeTo: .body) }
 }
