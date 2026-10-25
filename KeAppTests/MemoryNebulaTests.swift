@@ -16,7 +16,7 @@ final class MemoryNebulaTests: XCTestCase {
     }
 
     func testSixGroupsWithPromisesInTheMiddle() {
-        XCTAssertEqual(NebulaGroup.all.map(\.name), ["日常吃喝", "身体和药", "以后的家", "亲密时刻", "难过的夜里", "说好的"])
+        XCTAssertEqual(NebulaGroup.all.map(\.name), ["日常吃喝", "身体和药", "以后的家", "亲密时刻", "难过的夜里", "说好的", "关于她"])
         XCTAssertEqual(NebulaGroup.named("说好的")?.kind, .whirlpool)
     }
 

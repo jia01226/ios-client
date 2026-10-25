@@ -338,7 +338,9 @@ struct MemoryNebulaView: View {
     private static let muted = Color(red: 0.72, green: 0.74, blue: 0.81)
     private static let line = Color(red: 0.76, green: 0.8, blue: 0.87).opacity(0.22)
     private static let night = Color(red: 5 / 255, green: 7 / 255, blue: 13 / 255)
-    private static let spots: [(NebulaKind, CGFloat, CGFloat)] = [(.pleiades, 0.5, 0.10), (.orion, 0.22, 0.40), (.sombrero, 0.78, 0.40),
+    /// 136：第七团「关于她」和日常吃喝并排在最上面
+    private static let spots: [(NebulaKind, CGFloat, CGFloat)] = [(.pleiades, 0.27, 0.10), (NebulaGroup.about.kind, 0.73, 0.10),
+                                                                  (.orion, 0.22, 0.40), (.sombrero, 0.78, 0.40),
                                                                   (.heart, 0.24, 0.85), (.horsehead, 0.76, 0.85), (.whirlpool, 0.5, 0.57)]
 
     private static func readyArts() -> [NebulaKind: NebulaArt] {
@@ -435,7 +437,7 @@ struct MemoryNebulaView: View {
 
     /// 六团在后台画（画过的直接从手机里读），好一团摆一团
     private func paint() async {
-        for g in [NebulaGroup.all[5]] + NebulaGroup.all.dropLast() where arts[g.kind] == nil {
+        for g in NebulaArt.paintOrder where arts[g.kind] == nil {
             let kind = g.kind
             let art = await Task.detached(priority: .userInitiated) { NebulaArt.art(kind) }.value
             // 先把这一团的星位算好，点进去不用现算
@@ -551,8 +553,7 @@ struct MemoryNebulaView: View {
     /// 没归类的小事撒在几团之间的空处，位置只看 id
     static func looseSpot(_ id: String) -> CGPoint {
         var r = NebulaRandom(NebulaRandom.hash(id) ^ 0x9e37)
-        let centers: [CGPoint] = [CGPoint(x: 0.5, y: 0.1), CGPoint(x: 0.22, y: 0.4), CGPoint(x: 0.78, y: 0.4),
-                                  CGPoint(x: 0.24, y: 0.85), CGPoint(x: 0.76, y: 0.85), CGPoint(x: 0.5, y: 0.57)]
+        let centers = spots.map { CGPoint(x: $0.1, y: $0.2) }
         var best = CGPoint(x: 0.08, y: 0.25)
         for _ in 0..<40 {
             let p = CGPoint(x: 0.05 + r.next() * 0.9, y: -0.04 + r.next() * 1.06)

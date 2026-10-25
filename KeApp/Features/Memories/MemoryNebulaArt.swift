@@ -7,6 +7,8 @@ import ImageIO
 
 enum NebulaKind: String, CaseIterable, Identifiable {
     case pleiades, orion, sombrero, heart, horsehead, whirlpool
+    /// 136：第七团「关于她」（家人、从前、她是谁），她挑的仙女座
+    case andromeda
     var id: String { rawValue }
 }
 
@@ -27,7 +29,10 @@ struct NebulaGroup: Identifiable, Equatable {
         NebulaGroup(kind: .heart, name: "亲密时刻", astro: "心脏星云 · IC 1805", hue: 352, desc: "一些只属于我们的话，\n被柔软的红色星云抱着。", thickness: 0.3),
         NebulaGroup(kind: .horsehead, name: "难过的夜里", astro: "马头星云 · Barnard 33", hue: 338, desc: "有些夜晚很暗。\n但光，一直在后面。", thickness: 0.26),
         NebulaGroup(kind: .whirlpool, name: "说好的", astro: "涡状星系 · M51", hue: 215, desc: "拉过钩的事，放在这里。\n一件一件，慢慢做到。", thickness: 0.16),
+        about,
     ]
+    /// 136：以前的「背景」：她的家人、她的从前、她是谁
+    static let about = NebulaGroup(kind: .andromeda, name: "关于她", astro: "仙女座星系 · M31", hue: 228, desc: "她的家人，她的从前，她是谁。\n离我最近的那一片光。", thickness: 0.2)
     static func named(_ name: String) -> NebulaGroup? { all.first { $0.name == name } }
     static let background = "背景"
 
@@ -155,9 +160,12 @@ final class NebulaArt: @unchecked Sendable {
     /// 一打开 App 就在后台把六团画好（或者从手机里读出来），点进记忆不用等
     static func prewarm() {
         Task.detached(priority: .utility) {
-            for k in [NebulaKind.whirlpool, .orion, .pleiades, .sombrero, .horsehead, .heart] { _ = art(k) }
+            for g in paintOrder { _ = art(g.kind) }
         }
     }
+
+    /// 说好的那团在正中，先画它
+    static var paintOrder: [NebulaGroup] { NebulaGroup.all.filter { $0.kind == .whirlpool } + NebulaGroup.all.filter { $0.kind != .whirlpool } }
 
     /// 盘面上 (u, v) 处有多亮，0…1
     func brightness(_ u: Double, _ v: Double) -> Double {
@@ -434,7 +442,65 @@ private struct Painter {
             }
             spiral(&rng, 435, 158, 62, 38)
             ctx.restoreGState()
+        case .andromeda:
+            andromeda(h, &rng)
         }
+    }
+
+    static func smooth(_ a: Double, _ b: Double, _ x: Double) -> Double {
+        let t = max(0, min(1, (x - a) / (b - a)))
+        return t * t * (3 - 2 * t)
+    }
+    /// 一张 n×n 的像素，每格自己算颜色和浓淡（h, s, l, 浓度），铺到 rect
+    func paintPixels(_ n: Int, in rect: CGRect, _ shade: (Double, Double) -> (Double, Double, Double, Double)) {
+        var buf = [UInt8](repeating: 0, count: n * n * 4)
+        for y in 0..<n {
+            for x in 0..<n {
+                let (h, sat, l, dens) = shade((Double(x) + 0.5) / Double(n), (Double(y) + 0.5) / Double(n))
+                guard dens > 0.002 else { continue }
+                let c = NebulaPaint.rgb(h, sat, l)
+                let a = min(255, dens * 245) / 255
+                let i = (y * n + x) * 4
+                buf[i] = UInt8(max(0, min(255, c.0 * 255 * a))); buf[i + 1] = UInt8(max(0, min(255, c.1 * 255 * a)))
+                buf[i + 2] = UInt8(max(0, min(255, c.2 * 255 * a))); buf[i + 3] = UInt8(a * 255)
+            }
+        }
+        drawBuffer(&buf, n, in: rect)
+    }
+
+    /// 仙女座星系：斜躺着的大旋涡，暖黄的核，外圈偏蓝紫，近的一侧压着两道暗尘带；旁边两个小伴星系
+    func andromeda(_ hue: Double, _ rng: inout NebulaRandom) {
+        let tilt = -0.62, incl = 0.3, R = 272.0
+        let ct = cos(tilt), st = sin(tilt)
+        paintPixels(480, in: CGRect(x: 0, y: 0, width: 640, height: 640)) { fx, fy in
+            let dx = fx * 640 - 320, dy = fy * 640 - 320
+            let u = (dx * ct + dy * st) / R, v = (-dx * st + dy * ct) / (R * incl)
+            let r = hypot(u, v), d = hypot(dx, dy) / R
+            let f = NebulaPaint.fbm(u * 6 + 3, v * 6 * incl + 5)
+            let bulge = exp(-pow(d / 0.1, 2)) * 1.1 + exp(-d / 0.07) * 0.35
+            let disk = exp(-r / 0.3) * 0.75 * (0.7 + 0.5 * f)
+            let rings = (0.42 * exp(-pow((r - 0.56) / 0.08, 2)) + 0.24 * exp(-pow((r - 0.83) / 0.07, 2))) * (0.45 + 1.1 * f)
+            let lanes = exp(-pow((r - 0.46) / 0.035, 2)) + 0.8 * exp(-pow((r - 0.71) / 0.03, 2))
+            let near = v > 0 ? 0.85 : 0.3
+            var dens = (disk + rings) * (1 - lanes * near * (0.55 + 0.45 * f)) * (1 - Self.smooth(0.9, 1.08, r)) + bulge
+            dens = min(1.15, dens)
+            let warm = 1 - Self.smooth(0.08, 0.5, r)
+            return (hue + (400 - hue) * warm + (f - 0.5) * 18, 34 + 14 * abs(warm - 0.5) * 2, 40 + min(1, dens) * 50, dens)
+        }
+        // 一颗颗的星，沿着盘面
+        for _ in 0..<9000 {
+            let r = -log(max(0.0001, rng.next())) * 0.3, a = rng.next() * Self.tau
+            guard r < 1.02 else { continue }
+            let u = cos(a) * r * R, v = sin(a) * r * R * incl
+            let x = 320 + u * ct - v * st, y = 320 + u * st + v * ct
+            dot(x, y, 0.6 + rng.next() * 0.8, 0.6 + rng.next() * 0.8, NebulaPaint.cg(hue, 30, 74 + rng.next() * 20, 0.1 + (1 - r) * 0.3))
+        }
+        glow(320, 320, 60, 40, 0.75); glow(320, 320, 18, 44, 0.95)
+        // 两个小伴星系：一个圆圆亮亮贴着核，一个椭圆的远一点
+        glow(346, 372, 15, 42, 0.8)
+        ctx.saveGState(); ctx.translateBy(x: 218, y: 196); ctx.rotate(by: 0.5); ctx.scaleBy(x: 1, y: 0.55)
+        glow(0, 0, 44, 40, 0.42); ctx.restoreGState()
+        star(470, 470, 2.2, hue, bright: false); star(160, 420, 1.8, hue, bright: false)
     }
 }
 
