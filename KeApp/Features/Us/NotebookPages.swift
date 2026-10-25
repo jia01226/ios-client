@@ -737,9 +737,10 @@ struct PursePage: View {
     }
 
     /// 136：写的不是数也说一声，不再点了没反应（「3,000」「¥3000」也认）
+    /// 粘进来的「nan」「inf」、负数也挡住（nan 发出去会闪退）
     private func saveCap() {
         let text = capText.trimmingCharacters(in: .whitespaces)
-        guard let v = Double(text) ?? JarText.parseYuan(text) else {
+        guard let v = Double(text) ?? JarText.parseYuan(text), v.isFinite, v >= 0 else {
             store.notice = "每月上限写一个数就好，比如 3000。"
             return
         }
