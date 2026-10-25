@@ -574,15 +574,21 @@ struct MemoryNebulaView: View {
                     }
                     .accessibilityIdentifier("nebula-back")
                 } else {
-                    Text("记忆").font(.custom("NotoSerifSC-Regular", size: 28, relativeTo: .title)).tracking(3.4)
+                    HStack(spacing: 2) {
+                        // 136：右边的「合上」改成左上一个小箭头，跟日记、抽屉、塔罗一样（读屏念「返回」）。
+                        // 箭头往左挪进页边，和别的页的箭头对齐；底栏里的「记忆」页没有它
+                        if let onClose {
+                            Button(action: onClose) {
+                                Image(systemName: "chevron.left").font(.system(size: 20, weight: .light))
+                                    .foregroundStyle(Self.muted).frame(width: 44, height: 44)
+                            }
+                            .accessibilityLabel("返回").accessibilityIdentifier("memory-close")
+                            .padding(.leading, -16)
+                        }
+                        Text("记忆").font(.custom("NotoSerifSC-Regular", size: 28, relativeTo: .title)).tracking(3.4)
+                    }
                 }
                 Spacer()
-                if let onClose {
-                    Button("合上", action: onClose)
-                        .font(.system(size: 13)).foregroundStyle(Self.muted)
-                        .frame(minWidth: 44, minHeight: 44)
-                        .accessibilityIdentifier("memory-close")
-                }
                 Button("语录") { page = 1 }
                     .font(.system(size: 13)).foregroundStyle(Self.muted)
                     .frame(minWidth: 44, minHeight: 44)
