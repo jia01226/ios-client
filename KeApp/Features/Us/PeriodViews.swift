@@ -27,8 +27,9 @@ struct PeriodQuickActions: View {
 }
 
 /// Compact month-header controls retain direct start/end recording and the history sheet.
+/// 137：只在「我们」点一天的面板里用——换成和面板上半截一样的细宋体、粉白强调色；
+/// 按钮写明「今天来了 / 今天走了」（点的是别的日子，记的也是今天）
 struct PeriodCalendarControls: View {
-    @EnvironmentObject private var theme: Theme
     @ObservedObject var store: PeriodStore
     @State private var history = false
     var body: some View {
@@ -36,18 +37,19 @@ struct PeriodCalendarControls: View {
             Button { history = true } label: {
                 Image(systemName: "drop").font(.system(size: 12, weight: .ultraLight)).frame(width: 44, height: 44)
             }.accessibilityLabel("经期记录").accessibilityValue(store.summary).accessibilityIdentifier("period-history")
-            Button { Task { await store.start() } } label: { actionLabel("来了", available: store.canStart) }
+            Button { Task { await store.start() } } label: { actionLabel("今天来了", available: store.canStart) }
                 .disabled(!store.canStart).accessibilityIdentifier("period-start")
-            Button { Task { await store.finish() } } label: { actionLabel("走了", available: store.canEnd) }
+            Button { Task { await store.finish() } } label: { actionLabel("今天走了", available: store.canEnd) }
                 .disabled(!store.canEnd).accessibilityIdentifier("period-end")
-        }.buttonStyle(.plain).foregroundStyle(theme.pageAccent)
+        }.buttonStyle(.plain).foregroundStyle(Ink.accent)
             .sheet(isPresented: $history) { PeriodHistoryView(store: store) }
     }
     private func actionLabel(_ title: String, available: Bool) -> some View {
         // 127 她：「那个入口有点小」
-        Text(title).font(Moonlight.serif(15)).frame(width: 60, height: 34)
-            .overlay(Capsule().stroke(theme.pageAccent.opacity(available ? 0.6 : 0.25), lineWidth: 0.6))
-            .opacity(available ? 1 : 0.45).frame(width: 64, height: 48).contentShape(Rectangle())
+        Text(title).font(Ink.song(14)).lineLimit(1).minimumScaleFactor(0.7)
+            .padding(.horizontal, 11).frame(height: 34)
+            .overlay(Capsule().stroke(Ink.accent.opacity(available ? 0.6 : 0.25), lineWidth: 0.6))
+            .opacity(available ? 1 : 0.45).frame(minWidth: 64, minHeight: 48).contentShape(Rectangle())
     }
 }
 
@@ -69,9 +71,10 @@ private struct PeriodHistoryView: View {
                 if let error = store.error { Button(error) { Task { await store.load() } } }
                 ForEach(store.records.sorted { $0.start_date > $1.start_date }) { record in
                     VStack(alignment: .leading, spacing: JournalLayout.smallGap) {
-                        Text(record.start_date + " 来了")
+                        // 137：写「10月2日 来了」，不写「2026-10-02」
+                        Text(store.dayLabel(record.start_date) + " 来了")
                         if let end = store.pendingEnds[record.id] ?? record.end_date {
-                            Text(end + (store.pendingEnds[record.id] == nil ? " 走了" : " 走了 · 待同步"))
+                            Text(store.dayLabel(end) + (store.pendingEnds[record.id] == nil ? " 走了" : " 走了 · 还没告诉上柯"))
                                 .foregroundStyle(theme.pageColor.textSecondary)
                         }
                         if let note = record.note, !note.isEmpty { Text(note).font(theme.font.journalCaption) }

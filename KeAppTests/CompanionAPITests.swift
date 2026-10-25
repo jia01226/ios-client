@@ -369,6 +369,55 @@ final class CompanionAPITests: XCTestCase {
         XCTAssertEqual(dates, ["2026-08-09", "2026-06-25", "2001-02-26", "1992-10-26"])
     }
 
+    /// 137：「管理日期」里另加的日子也出现在「我们」；删了就不见；她改过名的固定日子按上次对上的 id 认
+    @MainActor
+    func testUsHomeShowsDatesAddedInManageDates() async {
+        let suite = "UsAnniversaryTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var rows = #"[{"id":1,"name":"佳佳的生日","date":"2001-02-26"},{"id":2,"name":"柯的生日","date":"1992-10-26"},{"id":3,"name":"在一起的日子","date":"2026-06-25"},{"id":4,"name":"表白的日子","date":"2026-08-09"},{"id":5,"name":"第一次通话","date":"2026-07-10"}]"#
+        CompanionStub.handler = { request in
+            switch request.url!.lastPathComponent {
+            case "schedule": return (200, #"{"current":[],"history":[]}"#)
+            case "anniversaries": return (200, rows)
+            default: return (404, "{}")
+            }
+        }
+        let viewModel = UsViewModel(defaults: defaults, api: api())
+        await viewModel.loadReminders()
+        XCTAssertEqual(viewModel.anniversaries.map(\.id), ["confession", "together", "mine", "ke", "server-5"])
+        XCTAssertEqual(viewModel.anniversaries.last?.title, "第一次通话")
+        XCTAssertEqual(viewModel.anniversaries.last?.isYearly, false)
+        // 下次开 App 还没拉到时也先画上
+        XCTAssertEqual(UsViewModel(defaults: defaults).anniversaries.last?.id, "server-5")
+        // 「表白的日子」改了名、换了日子：还是那一格；「第一次通话」删了就不见
+        rows = #"[{"id":1,"name":"佳佳的生日","date":"2001-02-26"},{"id":2,"name":"柯的生日","date":"1992-10-26"},{"id":3,"name":"在一起的日子","date":"2026-06-25"},{"id":4,"name":"第一次说喜欢","date":"2026-08-10"}]"#
+        await viewModel.loadReminders()
+        XCTAssertEqual(viewModel.anniversaries.map(\.id), ["confession", "together", "mine", "ke"])
+        XCTAssertEqual(viewModel.anniversaries.first?.title, "第一次说喜欢")
+        XCTAssertEqual(Calendar.current.component(.day, from: viewModel.anniversaries[0].date), 10)
+        XCTAssertEqual(UsViewModel(defaults: defaults).anniversaries.count, 4)
+    }
+
+    /// 137：「柯的」再拉一次时有一样没接上，那一朵留着上次的，卡片不会突然没了
+    @MainActor
+    func testCamelliaKeepsLastEventWhenOneSourceFails() async {
+        var diaryWorks = true
+        CompanionStub.handler = { request in
+            if request.url!.lastPathComponent == "diary", diaryWorks {
+                return (200, #"[{"id":1,"title":"一页","content":"今天想你\n第二行","author":"柯","mood":null,"created_at":"2026-10-24 22:00:00","locked_hidden":false,"comments":0}]"#)
+            }
+            return (404, "{}")
+        }
+        let store = KeCamelliaStore(api: api())
+        await store.load()
+        XCTAssertEqual(store.latest[.diary]?.excerpt, "今天想你")
+        diaryWorks = false
+        await store.load()
+        XCTAssertEqual(store.latest[.diary]?.excerpt, "今天想你")
+        XCTAssertEqual(store.current?.entry, .diary)
+    }
+
     func testDateParsingRejectsImpossibleDatesAndUsesChinaTime() {
         XCTAssertNil(CompanionDate.parse("2026-02-30"))
         let date = CompanionDate.parse("2026-09-09 00:30:00")!

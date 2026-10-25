@@ -11,17 +11,21 @@ struct UsPondView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     let line: ChatLine
-    @StateObject private var vm: UsViewModel
-    @StateObject private var periods: PeriodStore
-    @StateObject private var notes: StickyNotesStore
-    @StateObject private var book: NotebookStore
+    /// 137：几样数据按线路各留一份（UsPondStores），切到别的页再回来不重建，先画上次的
+    private let stores: UsPondStores
+    @ObservedObject private var vm: UsViewModel
+    @ObservedObject private var periods: PeriodStore
+    @ObservedObject private var notes: StickyNotesStore
+    @ObservedObject private var book: NotebookStore
     /// 133：亲密记录（132 错加在旧的 UsView 上了，她这页看不到）
-    @StateObject private var love: LoveLogStore
+    @ObservedObject private var love: LoveLogStore
     @AppStorage(CamelliaPalette.storageKey) private var savedPalette = CamelliaPalette.defaultPalette.rawValue
     @State private var month = Calendar.current.dateInterval(of: .month, for: .now)?.start ?? .now
     @State private var editDay: PondDay?
     @State private var open: PondEntry?
     @State private var visible = false
+    /// 137：池子滑到眼前了没有（在日历下面，没滑到就不画鱼）
+    @State private var pondShowing = false
     @State private var ripples: [PondRipple] = []
     @State private var choosingAnniversary = false
     @State private var managingDates = false
@@ -32,12 +36,13 @@ struct UsPondView: View {
 
     init(line: ChatLine) {
         self.line = line
-        let api = APIClient(baseURL: line.apiBaseURL)
-        _vm = StateObject(wrappedValue: UsViewModel(api: api))
-        _periods = StateObject(wrappedValue: PeriodStore(api: api, scope: line.rawValue))
-        _notes = StateObject(wrappedValue: StickyNotesStore(api: api, scope: line.rawValue))
-        _book = StateObject(wrappedValue: NotebookStore(api: api))
-        _love = StateObject(wrappedValue: LoveLogStore(api: api, scope: line.rawValue))
+        let stores = UsPondStores.shared(line)
+        self.stores = stores
+        _vm = ObservedObject(wrappedValue: stores.vm)
+        _periods = ObservedObject(wrappedValue: stores.periods)
+        _notes = ObservedObject(wrappedValue: stores.notes)
+        _book = ObservedObject(wrappedValue: stores.book)
+        _love = ObservedObject(wrappedValue: stores.love)
     }
 
     var body: some View {
@@ -51,7 +56,7 @@ struct UsPondView: View {
                         .frame(maxWidth: .infinity).padding(.top, 14).padding(.bottom, 4)
                         .accessibilityHidden(true)
                     sectionTitle("也去看看", "ALSO HERE").padding(.horizontal, 28).padding(.top, 10)
-                    pond(width: geo.size.width, height: max(geo.size.width * 1.25, geo.size.height - 60))
+                    pond(width: geo.size.width, height: max(geo.size.width * 1.25, geo.size.height - 60), viewport: geo.size.height)
                 }
                 .padding(.bottom, 12 + dockInset)
             }
@@ -62,26 +67,18 @@ struct UsPondView: View {
             Image("KeUsWater").resizable().scaledToFill().saturation(palette.mistSaturation).colorMultiply(palette.mistTint).opacity(palette.mistOpacity * palette.pondWash)
         }.ignoresSafeArea())
         .foregroundStyle(Ink.primary)
-        .task { await load() }
+        // 137：切过来照样刷新；回前台 5 分钟内拉过就不再整页重拉（没告诉上柯的「走了」还是会再送）
+        .task { await stores.refresh(month: month) }
         .onAppear { visible = true }
         .onDisappear { visible = false }
-        .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await load() } } }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await stores.refresh(month: month, onlyIfStale: true) } } }
         .onChange(of: month) { _, m in Task { await love.load(m) } }
-        .sheet(item: $editDay) { day in daySheet(day.date) }
+        .sheet(item: $editDay, onDismiss: { periods.clearStatus() }) { day in daySheet(day.date) }
         .sheet(isPresented: $choosingAnniversary) { anniversarySheet }
         .sheet(isPresented: $managingDates, onDismiss: { Task { await vm.loadReminders() } }) {
             CompanionPages(page: .anniversaries, line: line).environmentObject(Theme.shared)
         }
         .fullScreenCover(item: $open) { entry in page(entry).swipeBackToClose { open = nil; Task { await book.load(); await notes.load() } } }
-    }
-
-    private func load() async {
-        async let a: Void = vm.loadReminders()
-        async let b: Void = periods.load()
-        async let c: Void = notes.load()
-        async let d: Void = book.load()
-        async let e: Void = love.load(month)
-        _ = await (a, b, c, d, e)
     }
 
     // MARK: 寄语
@@ -109,15 +106,20 @@ struct UsPondView: View {
             let line = "每年 \(comps.month ?? 0) 月 \(comps.day ?? 0) 日"
             return left == 0 ? ("今天", "", "今天是" + Self.shortName(a), false) : ("\(left)", "天后", line, false)
         }
+        // 137：「管理日期」里加的、还没到的日子（比如「下次见面」）往后数
+        if a.date > Date.now {
+            return ("\(vm.daysAhead(to: a.date))", "天后", "\(comps.year ?? 0) 年 \(comps.month ?? 0) 月 \(comps.day ?? 0) 日", false)
+        }
         // 那天就算第一天，和柯那边说的「今天第 113 天」一样
         return ("\(vm.daysTogether(since: a.date) + 1)", "天", "从 \(comps.year ?? 0) 年 \(comps.month ?? 0) 月 \(comps.day ?? 0) 日那天起", true)
     }
 
     private var verse: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(book.snapshot?.verse?.en ?? "With you, even ordinary days shine.")
+            // 137：还没拉到时先用手机里留的上次那句，不先闪英文默认那句
+            Text(book.snapshot?.verse?.en ?? stores.savedVerse?.en ?? "With you, even ordinary days shine.")
                 .font(Ink.script(18)).foregroundStyle(Ink.secondary).lineLimit(1).minimumScaleFactor(0.6)
-            Text(book.snapshot?.verse?.zh ?? "和你一起，平常的日子也有光。")
+            Text(book.snapshot?.verse?.zh ?? stores.savedVerse?.zh ?? "和你一起，平常的日子也有光。")
                 .font(Ink.song(12)).tracking(1.2).foregroundStyle(Ink.secondary)
             if let a = hero {
                 let n = numbers(a)
@@ -200,9 +202,10 @@ struct UsPondView: View {
                     Text("亲密 \(love.monthCount(month)) 次").font(Ink.song(12)).foregroundStyle(Ink.accent).padding(.leading, 8)
                 }
                 Spacer()
-                Button { month = vm.month(byAdding: -1, to: month) } label: { Image(systemName: "chevron.left").font(.system(size: 16, weight: .ultraLight)).frame(width: 44, height: 40) }
+                // 137：点的范围放到 44×44，箭头本身不变
+                Button { month = vm.month(byAdding: -1, to: month) } label: { Image(systemName: "chevron.left").font(.system(size: 16, weight: .ultraLight)).frame(width: 44, height: 44).contentShape(Rectangle()) }
                     .accessibilityLabel("上个月")
-                Button { month = vm.month(byAdding: 1, to: month) } label: { Image(systemName: "chevron.right").font(.system(size: 16, weight: .ultraLight)).frame(width: 44, height: 40) }
+                Button { month = vm.month(byAdding: 1, to: month) } label: { Image(systemName: "chevron.right").font(.system(size: 16, weight: .ultraLight)).frame(width: 44, height: 44).contentShape(Rectangle()) }
                     .accessibilityLabel("下个月")
             }.padding(.top, 6)
             let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
@@ -296,35 +299,62 @@ struct UsPondView: View {
         }
     }
 
+    private static let dayTitleFormatter: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "zh_CN"); f.dateFormat = "M月d日 EEE"
+        return f
+    }()
+
     /// 点一天：排班（沿用原来的排班编辑），月经来了 / 走了。
+    /// 137：最上面写点的是哪一天、右上「关上」；整张面板一个样子（细宋体、粉白强调色）
     private func daySheet(_ date: Date) -> some View {
         VStack(spacing: 0) {
+            HStack(alignment: .center) {
+                Text(Self.dayTitleFormatter.string(from: date)).font(Ink.song(18)).tracking(1.5)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                // 137：44×44 和点的范围要放在按钮里面，放外面 .plain 只认那两个字
+                Button { editDay = nil } label: {
+                    Text("关上").font(Ink.song(15)).foregroundStyle(Ink.accent)
+                        .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("day-sheet-close")
+            }
+            .padding(.horizontal, 24).padding(.top, 10)
             HStack {
                 Text("月经").font(Ink.song(15))
                 Spacer()
                 PeriodCalendarControls(store: periods)
             }
-            .padding(.horizontal, 24).padding(.top, 18)
+            .padding(.horizontal, 24).padding(.top, 2)
+            // 137：「来了 / 走了」只记今天——点的是别的日子就说一声，免得以为记在了那天
+            if !Calendar.current.isDateInToday(date) {
+                Text("「今天来了」「今天走了」都记在今天，不记在这一天").font(Ink.song(11.5)).foregroundStyle(Ink.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 24)
+            }
             // 126：上次哪天来、哪天走；今天点了「走了」就写「今天走了 · 正在告诉柯 / 已告诉柯」
             Text(periods.summary).font(Ink.song(12)).foregroundStyle(Ink.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 24).padding(.top, 2)
                 .accessibilityIdentifier("period-summary")
+            periodSyncRow
             // 133：亲密记录，柯记的，她也能改
             HStack {
                 Text("亲密").font(Ink.song(15))
                 Spacer()
                 let times = love.count(on: date)
+                // 137：点的范围放到 44×44，加减号本身不变
                 Button { Task { await love.setCount(times - 1, on: date) } } label: {
-                    Image(systemName: "minus").frame(width: 40, height: 36)
+                    Image(systemName: "minus").frame(width: 44, height: 44).contentShape(Rectangle())
                 }.disabled(times == 0).accessibilityLabel("减一次")
                 Text("\(times) 次").font(Ink.song(15)).monospacedDigit().frame(minWidth: 44)
                 Button { Task { await love.setCount(times + 1, on: date) } } label: {
-                    Image(systemName: "plus").frame(width: 40, height: 36)
+                    Image(systemName: "plus").frame(width: 44, height: 44).contentShape(Rectangle())
                 }.accessibilityLabel("加一次")
             }
             .foregroundStyle(Ink.accent)
-            .padding(.horizontal, 24).padding(.top, 10)
+            .padding(.horizontal, 24).padding(.top, 6)
             if let error = love.error {
                 Text(error).font(Ink.song(12)).foregroundStyle(Ink.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 24)
@@ -335,14 +365,39 @@ struct UsPondView: View {
         }
         .presentationDetents([.large])
         .presentationBackground(palette.paper)
+        .foregroundStyle(Ink.primary)
+    }
+
+    /// 137：经期记没记上，在面板里直接说；没告诉上柯的「走了」给一个「再告诉柯一次」
+    @ViewBuilder private var periodSyncRow: some View {
+        if periods.hasUnsentEnd && !periods.saving {
+            Button { Task { await periods.syncEnds() } } label: {
+                Text("再告诉柯一次").font(Ink.song(13)).foregroundStyle(Ink.accent).frame(minHeight: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 24)
+            .accessibilityIdentifier("period-retry-sync")
+        } else if let status = periods.status {
+            Text(status).font(Ink.song(12)).foregroundStyle(Ink.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 24).padding(.top, 2)
+        }
+        if let error = periods.error {
+            Button { Task { await periods.load() } } label: {
+                Text(error).font(Ink.song(12)).foregroundStyle(Ink.accent).frame(minHeight: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 24)
+        }
     }
 
     // MARK: 也去看看（锦鲤池）
 
-    private func pond(width: CGFloat, height: CGFloat) -> some View {
+    private func pond(width: CGFloat, height: CGFloat, viewport: CGFloat) -> some View {
         let snap = book.snapshot
+        // 137：池子在日历下面——没滑到眼前、或者荷包这些整页、点一天的面板盖着时，鱼不游（以前一进页面就全速画）
+        let paused = !visible || !pondShowing || open != nil || editDay != nil || reduceMotion || scenePhase != .active
         return ZStack(alignment: .topLeading) {
-            PondCanvas(paused: !visible || reduceMotion || scenePhase != .active, reduceMotion: reduceMotion, ripples: ripples)
+            PondCanvas(paused: paused, reduceMotion: reduceMotion, ripples: ripples)
                 .frame(width: width, height: height)
                 .contentShape(Rectangle())
                 .onTapGesture(coordinateSpace: .local) { p in
@@ -363,6 +418,10 @@ struct UsPondView: View {
                   })
         }
         .frame(width: width, height: height)
+        .onGeometryChange(for: Bool.self) { proxy in
+            let frame = proxy.frame(in: .scrollView)
+            return frame.maxY > 0 && frame.minY < viewport
+        } action: { pondShowing = $0 }
     }
 
     private func entry(_ e: PondEntry, x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat, badge: String?) -> some View {
@@ -417,7 +476,8 @@ struct PondCanvas: View {
     let ripples: [PondRipple]
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: nil, paused: paused)) { timeline in
+        // 137：一秒 30 下够顺（和「柯的」的蝴蝶一样）
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: paused)) { timeline in
             Canvas(rendersAsynchronously: false) { ctx, size in
                 draw(&ctx, size: size, now: timeline.date)
             }
@@ -512,6 +572,20 @@ struct PondCanvas: View {
     }
 
     // —— 花瓣：沿错开的弧线飘下来，落水漾一圈，漂一会儿淡掉 ——
+    /// 137：花瓣原图 1254×1254，画出来才二十几点——先缩成 128 像素的小图，不用每帧从大图缩
+    private static let petal: Image = {
+        #if canImport(UIKit)
+        if let big = UIImage(named: "KeUsPetal") {
+            let format = UIGraphicsImageRendererFormat(); format.scale = 1; format.opaque = false
+            let side: CGFloat = 128
+            let small = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { _ in
+                big.draw(in: CGRect(x: 0, y: 0, width: side, height: side))
+            }
+            return Image(uiImage: small)
+        }
+        #endif
+        return Image("KeUsPetal")
+    }()
     private static let routes: [[(Double, Double)]] = [
         [(0.18, -0.08), (0.08, 0.22), (0.30, 0.38)], [(0.82, -0.08), (0.95, 0.18), (0.72, 0.30)],
         [(0.55, -0.08), (0.40, 0.25), (0.48, 0.56)], [(0.30, -0.08), (0.22, 0.40), (0.38, 0.82)],
@@ -521,7 +595,7 @@ struct PondCanvas: View {
         guard !reduceMotion else { return }
         let gap = 3.1, fall = 5.2, rest = 6.0, fade = 2.4, total = fall + rest + fade
         let newest = Int(floor(t / gap))
-        let image = Image("KeUsPetal")
+        let image = Self.petal
         for k in 0..<Int(ceil(total / gap)) {
             let n = newest - k, age = t - Double(n) * gap
             guard age >= 0, age < total else { continue }
@@ -540,5 +614,70 @@ struct PondCanvas: View {
             let w = size.width * (0.05 + Double(n % 3) * 0.008)
             g.draw(image, in: CGRect(x: -w / 2, y: -w / 2, width: w, height: w))
         }
+    }
+}
+
+// MARK: - 「我们」页的数据，按线路各留一份
+
+/// 137：以前每次切到别的页再回来，「我们」整页重建、几样数据全部重新联网，寄语先闪一下英文默认那句。
+/// 现在每条线路只建一份（一个 APIClient），换页回来先画上次的，再在后台悄悄刷新。
+@MainActor final class UsPondStores {
+    private static var all: [String: UsPondStores] = [:]
+    static func shared(_ line: ChatLine) -> UsPondStores {
+        if let stores = all[line.rawValue] { return stores }
+        let stores = UsPondStores(line: line)
+        all[line.rawValue] = stores
+        return stores
+    }
+
+    let vm: UsViewModel
+    let periods: PeriodStore
+    let notes: StickyNotesStore
+    let book: NotebookStore
+    let love: LoveLogStore
+    /// 寄语在手机上留一份：刚开 App、还没拉到时先画上次那句
+    private(set) var savedVerse: (en: String, zh: String)?
+    private let verseKey: String
+    private var lastLoad: Date?
+    private var loading: Task<Void, Never>?
+    static let foregroundGap: TimeInterval = 5 * 60
+
+    private init(line: ChatLine) {
+        let api = APIClient(baseURL: line.apiBaseURL)
+        vm = UsViewModel(api: api)
+        periods = PeriodStore(api: api, scope: line.rawValue)
+        notes = StickyNotesStore(api: api, scope: line.rawValue)
+        book = NotebookStore(api: api)
+        love = LoveLogStore(api: api, scope: line.rawValue)
+        verseKey = "us.verse." + line.rawValue
+        if let saved = UserDefaults.standard.stringArray(forKey: verseKey), saved.count == 2 { savedVerse = (saved[0], saved[1]) }
+    }
+
+    /// 拉一遍。放在不跟着页面走的 Task 里：拉到一半切走了也会拉完，不会被取消、错写成「没接上」。
+    /// onlyIfStale（回前台）：5 分钟内好好拉过就不再整页重拉，只把没告诉上柯的「走了」再送一次。
+    func refresh(month: Date, onlyIfStale: Bool = false) async {
+        if let loading { await loading.value; return }
+        if onlyIfStale, let lastLoad, Date().timeIntervalSince(lastLoad) < Self.foregroundGap {
+            if periods.hasUnsentEnd { await periods.syncEnds() }
+            return
+        }
+        let task = Task { @MainActor [vm, periods, notes, book, love] in
+            async let a: Void = vm.loadReminders()
+            async let b: Void = periods.load()
+            async let c: Void = notes.load()
+            async let d: Void = book.load()
+            async let e: Void = love.load(month)
+            _ = await (a, b, c, d, e)
+        }
+        loading = task
+        await task.value
+        loading = nil
+        if let verse = book.snapshot?.verse {
+            savedVerse = (verse.en, verse.zh)
+            UserDefaults.standard.set([verse.en, verse.zh], forKey: verseKey)
+        }
+        // 有一样没接上就不算拉过，回前台还会再拉
+        let ok = periods.error == nil && book.error == nil && vm.reminderLoadError == nil
+        lastLoad = ok ? .now : nil
     }
 }

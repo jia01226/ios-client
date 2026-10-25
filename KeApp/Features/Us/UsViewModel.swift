@@ -3,9 +3,10 @@ import SwiftUI
 // 「我们」的数据和写班表那一页。原来跟旧 UsView 写在一个文件里；旧页面已删，
 // 真正在用的「我们」是 UsPondView（锦鲤池），它用这里的 UsViewModel 和 ScheduleEditorSheet；HomeReminderSettingsView 也用 UsViewModel。
 
+/// 137：只嵌在「我们」点一天的面板里——换成和面板上半截一样的细宋体、粉白强调色；
+/// 哪一天、「关上」都挪到面板最上面了，这里不再有自己的标题日期和「取消」。
 struct ScheduleEditorSheet: View {
     @ObservedObject var model: UsViewModel
-    @Environment(\.dismiss) private var dismiss
     let date: Date
     let onSave: (ShiftDay.Kind?, String?) -> Void
     @State private var selectedShift: ShiftDay.Kind?
@@ -25,23 +26,8 @@ struct ScheduleEditorSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("写班表")
-                        .font(.custom("STSongti-SC-Light", size: 24, relativeTo: .title2))
-                        .tracking(1.8)
-                        .foregroundStyle(UsPalette.ink)
-                    Text(dateLabel)
-                        .font(.custom("STSongti-SC-Light", size: 13, relativeTo: .caption))
-                        .foregroundStyle(UsPalette.mutedInk)
-                }
-                Spacer()
-                Button("取消") { dismiss() }
-                    .font(.custom("STSongti-SC-Light", size: 14, relativeTo: .body))
-                    .foregroundStyle(UsPalette.mutedInk)
-                    .buttonStyle(.plain)
-            }
+        VStack(alignment: .leading, spacing: 18) {
+            Text("排班").font(Ink.song(15)).foregroundStyle(Ink.primary)
 
             ScrollView {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())]) {
@@ -56,69 +42,44 @@ struct ScheduleEditorSheet: View {
                 if selectedShift == .other {
                     HStack(spacing: 10) {
                         Image(systemName: "pencil.line")
-                            .foregroundStyle(UsPalette.gold)
+                            .foregroundStyle(Ink.accent)
                         TextField("写下班次，例如：培训、临时班", text: $note)
                             .textInputAutocapitalization(.never)
                             .submitLabel(.done)
                     }
-                    .font(.custom("STSongti-SC-Light", size: 14, relativeTo: .body))
+                    .font(Ink.song(14))
+                    .foregroundStyle(Ink.primary)
                     .padding(.horizontal, 14)
                     .frame(height: 48)
                     .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(UsPalette.blush.opacity(0.09))
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(Ink.line.opacity(0.8), lineWidth: 0.7)
                     )
                 } else {
                     Text("休息日无需填写，清除当天排班即可。")
-                        .font(.custom("STSongti-SC-Light", size: 13, relativeTo: .caption))
-                        .foregroundStyle(UsPalette.mutedInk)
-                        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                        .font(Ink.song(12))
+                        .foregroundStyle(Ink.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 }
             }
 
             HStack(spacing: 12) {
-                Button {
+                Button("清除排班") {
                     selectedShift = nil
                     note = ""
-                } label: {
-                    Text("清除排班")
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(selectedShift == nil ? UsPalette.coral : UsPalette.mutedInk)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(UsPalette.blush.opacity(selectedShift == nil ? 0.16 : 0.07))
-                )
+                .buttonStyle(KeDrawerButtonStyle())
 
-                Button {
+                Button("保存班表") {
                     onSave(selectedShift, selectedShift == .other ? normalizedNote : nil)
-                } label: {
-                    Text("保存班表")
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(PageColors.calendarText)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(UsPalette.coral.opacity(0.88))
-                )
+                .buttonStyle(KeDrawerButtonStyle(solid: true))
             }
-            .font(.custom("STSongti-SC-Light", size: 15, relativeTo: .body))
         }
         .padding(.horizontal, 24)
-        .padding(.top, 22)
+        .padding(.top, 16)
         .sensoryFeedback(.selection, trigger: selectedShift)
         .accessibilityElement(children: .contain)
-    }
-
-    private var dateLabel: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = "M月d日 EEEE"
-        return formatter.string(from: date)
     }
 
     private var normalizedNote: String? {
@@ -139,19 +100,20 @@ private struct ShiftChoice: View {
                 Image(systemName: icon)
                     .font(.system(size: 19, weight: .light))
                 Text(label)
-                    .font(.custom("STSongti-SC-Light", size: 14, relativeTo: .body))
+                    .font(Ink.song(14))
             }
-            .foregroundStyle(selected ? UsPalette.coral : UsPalette.ink)
+            .foregroundStyle(selected ? Ink.accent : Ink.primary)
             .frame(maxWidth: .infinity)
             .frame(height: 88)
             .background(
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .fill(selected ? UsPalette.blush.opacity(0.18) : UsPalette.paper)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(selected ? Ink.accent.opacity(0.08) : Color.clear)
                     .overlay {
-                        RoundedRectangle(cornerRadius: 15, style: .continuous)
-                            .stroke(selected ? UsPalette.gold.opacity(0.72) : UsPalette.hairline.opacity(0.28), lineWidth: selected ? 1.2 : 0.7)
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(selected ? Ink.accent.opacity(0.7) : Ink.line.opacity(0.8), lineWidth: selected ? 1 : 0.7)
                     }
             )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -203,6 +165,9 @@ final class UsViewModel: ObservableObject {
     private var shiftRevision = 0
     private let pendingShiftsKey = "us.shift-sync.pending.v1"
     private let knownRemoteShiftsKey = "us.shift-sync.remote-keys.v1"
+    /// 137：固定的四个纪念日上次各对上了服务器哪一行（她改了名也认得）；「管理日期」里另加的日子也留一份，进页面先画上
+    private let anniversarySlotsKey = "us.anniversary.slots.v1"
+    private let extraAnniversariesKey = "us.anniversary.extra.v1"
     @Published private(set) var reminderLoadError: String?
     @Published private(set) var loadingReminders = false
 
@@ -277,7 +242,7 @@ final class UsViewModel: ObservableObject {
             Anniversary(id: "together", title: "在一起的日子", date: fixedDay(2026, 6, 25), isYearly: false),
             Anniversary(id: "mine", title: "佳佳的生日", date: fixedDay(2001, 2, 26)),
             Anniversary(id: "ke", title: "柯的生日", date: fixedDay(1992, 10, 26)),
-        ]
+        ] + (defaults.data(forKey: extraAnniversariesKey).flatMap { try? JSONDecoder().decode([Anniversary].self, from: $0) } ?? [])
 
         if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("-ui-test") || $0.hasPrefix("-preview-us") }) {
             let medicineTime = calendar.date(bySettingHour: 15, minute: 0, second: 0, of: today) ?? today
@@ -317,36 +282,65 @@ final class UsViewModel: ObservableObject {
         }
         do {
             let rows = try await api.fetchAnniversaries()
-            let resolved = Self.anniversaries(from: rows)
+            let remembered = defaults.dictionary(forKey: anniversarySlotsKey) as? [String: Int] ?? [:]
+            let matched = Self.slotRows(rows, remembered: remembered)
+            defaults.set(remembered.merging(matched.mapValues(\.id)) { $1 }, forKey: anniversarySlotsKey)
+            let resolved = Self.anniversaries(from: rows, remembered: remembered)
             // 服务器缺哪一个，就留着本机那一个，不让某一格突然空掉。
-            if !resolved.isEmpty {
-                let fetched = Dictionary(uniqueKeysWithValues: resolved.map { ($0.id, $0) })
-                anniversaries = anniversaries.map { fetched[$0.id] ?? $0 }
-            }
+            let fetched = Dictionary(resolved.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            let fixed = anniversaries.filter { !Self.isExtra($0) }.map { fetched[$0.id] ?? $0 }
+            // 137：「管理日期」里另加的日子跟着服务器走：加了就出现，删了就不见
+            let extra = resolved.filter(Self.isExtra)
+            anniversaries = fixed + extra
+            defaults.set(try? JSONEncoder().encode(extra), forKey: extraAnniversariesKey)
         } catch {
             failures.append("纪念日")
         }
         reminderLoadError = failures.isEmpty ? nil : failures.joined(separator: "、") + "暂时没有接上，请下拉重试。"
     }
 
-    static func anniversaries(from rows: [RemoteAnniversary]) -> [Anniversary] {
-        // 2026-10-08：以前用服务器的数字当 id，页面上选中的是 "together" 这类固定名字，
-        // 一加载完就对不上号——先显示、再消失（她说「纪念日时好时坏看不见」）。按名字认回固定 id。
-        let slots: [(id: String, matches: (String) -> Bool)] = [
-            ("confession", { $0.contains("表白") }),
-            ("together", { $0.contains("在一起") }),
-            ("mine", { $0.contains("佳佳") && $0.contains("生日") }),
-            ("ke", { $0.contains("柯") && $0.contains("生日") }),
-        ]
-        return slots.compactMap { slot in
-            // 「2026-06-25」按年月日数字拼成本地那一天，不经过时区换算（换算会差出前一天）。
-            guard let row = rows.first(where: { slot.matches($0.name) }) else { return nil }
-            let ymd = row.date.prefix(10).split(separator: "-").compactMap { Int($0) }
-            guard let date = ymd.count == 3
-                ? Calendar.current.date(from: DateComponents(year: ymd[0], month: ymd[1], day: ymd[2]))
-                : CompanionDate.parse(row.date) else { return nil }
-            return Anniversary(id: slot.id, title: row.name, date: date, isYearly: row.name.contains("生日"))
+    // 2026-10-08：以前用服务器的数字当 id，页面上选中的是 "together" 这类固定名字，
+    // 一加载完就对不上号——先显示、再消失（她说「纪念日时好时坏看不见」）。按名字认回固定 id。
+    private static let slots: [(id: String, matches: (String) -> Bool)] = [
+        ("confession", { $0.contains("表白") }),
+        ("together", { $0.contains("在一起") }),
+        ("mine", { $0.contains("佳佳") && $0.contains("生日") }),
+        ("ke", { $0.contains("柯") && $0.contains("生日") }),
+    ]
+
+    /// 固定的四个各对上服务器哪一行：先按名字认；名字对不上（她改过名）就认上次对上的那一行 id。
+    static func slotRows(_ rows: [RemoteAnniversary], remembered: [String: Int] = [:]) -> [String: RemoteAnniversary] {
+        var result: [String: RemoteAnniversary] = [:], used = Set<Int>()
+        for slot in slots {
+            guard let row = rows.first(where: { !used.contains($0.id) && slot.matches($0.name) }) else { continue }
+            result[slot.id] = row; used.insert(row.id)
         }
+        for slot in slots where result[slot.id] == nil {
+            guard let id = remembered[slot.id], !used.contains(id), let row = rows.first(where: { $0.id == id }) else { continue }
+            result[slot.id] = row; used.insert(row.id)
+        }
+        return result
+    }
+
+    /// 137：「管理日期」里另加的日子（不是固定四个之一），id 是 "server-服务器编号"
+    static func isExtra(_ a: Anniversary) -> Bool { a.id.hasPrefix("server-") }
+
+    static func anniversaries(from rows: [RemoteAnniversary], remembered: [String: Int] = [:]) -> [Anniversary] {
+        let matched = slotRows(rows, remembered: remembered)
+        let used = Set(matched.values.map(\.id))
+        let fixed = slots.compactMap { slot in matched[slot.id].flatMap { anniversary(id: slot.id, row: $0) } }
+        // 137：其余服务器上的日子也带上（以前全丢了，她在「管理日期」加的日子这页看不到）
+        let extra = rows.filter { !used.contains($0.id) }.compactMap { anniversary(id: "server-\($0.id)", row: $0) }
+        return fixed + extra
+    }
+
+    private static func anniversary(id: String, row: RemoteAnniversary) -> Anniversary? {
+        // 「2026-06-25」按年月日数字拼成本地那一天，不经过时区换算（换算会差出前一天）。
+        let ymd = row.date.prefix(10).split(separator: "-").compactMap { Int($0) }
+        guard let date = ymd.count == 3
+            ? Calendar.current.date(from: DateComponents(year: ymd[0], month: ymd[1], day: ymd[2]))
+            : CompanionDate.parse(row.date) else { return nil }
+        return Anniversary(id: id, title: row.name, date: date, isYearly: row.name.contains("生日"))
     }
 
     static func reminders(from rows: [RemoteReminder]) -> [Reminder] {
@@ -381,6 +375,11 @@ final class UsViewModel: ObservableObject {
         var target = calendar.date(from: components) ?? item.date
         if target < today { target = calendar.date(byAdding: .year, value: 1, to: target) ?? target }
         return max(0, calendar.dateComponents([.day], from: today, to: target).day ?? 0)
+    }
+
+    /// 137：还没到的一次性日子（比如「下次见面」）还有几天
+    func daysAhead(to date: Date) -> Int {
+        max(0, calendar.dateComponents([.day], from: calendar.startOfDay(for: .now), to: calendar.startOfDay(for: date)).day ?? 0)
     }
 
     func daysTogether(since date: Date) -> Int {
