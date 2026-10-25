@@ -135,6 +135,29 @@ final class PeriodDisplayTests: XCTestCase {
         XCTAssertEqual(again.summary, "今天走了 · 已告诉柯")
     }
 
+    /// 137：旧的「走了」那条记录在服务器上被删了，不能挡住后面真的那条
+    func testDeletedRecordsEndDoesNotBlockTheRealOne() async {
+        let api = DisplayPeriodFake()
+        let store = PeriodStore(api: api, defaults: defaults)
+        api.rows = [RemotePeriod(id: 1, start_date: day(-4, from: store), end_date: nil, note: nil)]
+        await store.load()
+        api.endWorks = false
+        await store.finish()
+        XCTAssertEqual(store.pendingEnds[1], store.today)
+        // 柯（或别的手机）把那条删了，又记了新的一次
+        api.rows = [RemotePeriod(id: 2, start_date: day(-1, from: store), end_date: nil, note: nil)]
+        await store.load()
+        XCTAssertNil(store.pendingEnds[1])
+        await store.finish()
+        XCTAssertEqual(store.pendingEnds[2], store.today)
+        XCTAssertTrue(store.hasUnsentEnd)
+        // 接上以后点「再告诉柯一次」，真的那条送得上
+        api.endWorks = true
+        await store.syncEnds()
+        XCTAssertTrue(store.pendingEnds.isEmpty)
+        XCTAssertEqual(store.summary, "今天走了 · 已告诉柯")
+    }
+
     func testEarlierEndKeepsTheOldSummaries() async {
         let api = DisplayPeriodFake()
         let store = PeriodStore(api: api, defaults: defaults)

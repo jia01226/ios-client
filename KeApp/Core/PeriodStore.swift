@@ -109,6 +109,8 @@ final class PeriodStore: ObservableObject {
                 records = rows; loaded = true; fetched = true
                 // Only an explicit matching end date confirms delivery to the server.
                 for row in rows where pendingEnds[row.id] == row.end_date && row.end_date != nil { pendingEnds.removeValue(forKey: row.id) }
+                // 137：记录已被删的（柯删的、别的手机删的）「走了」不再留着——不然每次先送它、送不上就停，后面真的那条一直告诉不上柯
+                pendingEnds = pendingEnds.filter { id, _ in rows.contains { $0.id == id } }
                 persistEnds()
             }
         } catch { self.error = "经期记录暂时没接上，点这里重试。" }
