@@ -1053,9 +1053,13 @@ struct NotesPage: View {
     @State private var editing: StickyNote?
     @State private var adding = false
     @State private var text = ""
+    /// 136：贴、改、删没成功说一句（原来悄悄吞掉了）；没存上的那句按纸条留着（新贴的是 ""），再点开还在
+    @State private var problem: String?
+    @State private var unsent: [String: String] = [:]
 
     var body: some View {
-        NotebookShell(title: "纸条", script: "Billets", paper: paper, onClose: onClose) {
+        NotebookShell(title: "纸条", script: "Billets", paper: paper, onClose: onClose, notice: problem ?? notes.status,
+                      onRefresh: { problem = nil; await notes.load() }) {
             NotebookSection(title: "贴着的", hint: "柯贴的点一下收起") {
                 VStack(spacing: 0) {
                     ForEach(notes.notes.filter { !$0.acked }) { note in row(note) }
@@ -1063,7 +1067,7 @@ struct NotesPage: View {
                         Text("没有贴着的纸条").font(Ink.song(14)).foregroundStyle(Ink.secondary).frame(maxWidth: .infinity).padding(.vertical, 18)
                     }
                 }
-                AddLine(title: "我贴一张") { text = ""; adding = true }
+                AddLine(title: "我贴一张") { text = unsent[""] ?? ""; adding = true }
             }
             let done = notes.notes.filter(\.acked)
             if !done.isEmpty {
@@ -1080,7 +1084,7 @@ struct NotesPage: View {
         }
         .alert("改这张纸条", isPresented: Binding(get: { editing != nil }, set: { if !$0 { editing = nil } })) {
             TextField("一句话", text: $text)
-            Button("删掉", role: .destructive) { if let n = editing { Task { try? await api.deleteStickyNote(id: n.id); await notes.load() } } }
+            Button("删掉", role: .destructive) { if let n = editing { remove(n) } }
             Button("取消", role: .cancel) {}
             Button("保存") { if let n = editing { save(id: n.id, content: text) } }
         }
@@ -1089,19 +1093,40 @@ struct NotesPage: View {
     private func row(_ note: StickyNote) -> some View {
         HStack(spacing: 12) {
             Button {
+                problem = nil
                 Task { if note.acked { await notes.restore(note) } else { await notes.acknowledge(note) } }
             } label: {
                 Image(systemName: note.acked ? "checkmark.circle.fill" : "circle").font(.system(size: 22))
                     .foregroundStyle(Ink.accent).frame(width: 44, height: 44)
             }.buttonStyle(.plain).accessibilityLabel(note.acked ? "放回去" : "收起")
             NotebookRow(title: note.content, detail: shortDay(note.created_at), author: note.author == .ai ? "ke" : "me", struck: note.acked) {
-                if note.author == .user { text = note.content; editing = note }
+                if note.author == .user { text = unsent[note.id] ?? note.content; editing = note }
             }
         }
     }
     private func save(id: String, content: String) {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        Task { _ = try? await api.saveStickyNote(id: id, content: trimmed); await notes.load() }
+        problem = nil
+        Task {
+            do {
+                _ = try await api.saveStickyNote(id: id, content: trimmed)
+                unsent[id] = nil
+                await notes.load()
+            } catch {
+                unsent[id] = trimmed
+                problem = id.isEmpty ? "纸条没贴上，刚写的还留着，再贴一次。" : "纸条没改上，刚改的还留着，再点它试试。"
+            }
+        }
+    }
+    private func remove(_ note: StickyNote) {
+        problem = nil
+        Task {
+            do {
+                try await api.deleteStickyNote(id: note.id)
+                unsent[note.id] = nil
+                await notes.load()
+            } catch { problem = "纸条没删掉，再试一次。" }
+        }
     }
 }
