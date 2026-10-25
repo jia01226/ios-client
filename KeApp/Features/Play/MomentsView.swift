@@ -117,7 +117,9 @@ struct MomentsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("返回") { dismiss() }
+                    // 136：还是微信的样子，只是字「返回」换成左上一个小箭头，跟「柯的」别的页一样（读屏照样念「返回」）
+                    Button { dismiss() } label: { Image(systemName: "chevron.left") }
+                        .accessibilityLabel("返回")
                         .accessibilityIdentifier("moments-close")
                 }
                 ToolbarItem(placement: .primaryAction) {

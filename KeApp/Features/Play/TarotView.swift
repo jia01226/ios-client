@@ -150,10 +150,15 @@ struct TarotView: View {
 
     private var header: some View {
         ZStack {
-            Text("塔罗").font(TarotTableStyle.title)
+            // 136：跟日记、抽屉、梦一样：居中标题下面一行花体小字，左上的小箭头一样大小粗细
+            VStack(spacing: 0) {
+                Text("塔罗").font(TarotTableStyle.title)
+                Text("Tarot").font(Ink.script(18)).foregroundStyle(TarotTableStyle.muted).padding(.top, -4)
+            }
             HStack(spacing: 4) {
                 Button { operation?.cancel(); dismiss() } label: {
-                    Image(systemName: "chevron.left").frame(width: TarotTableStyle.controlHeight, height: TarotTableStyle.controlHeight)
+                    Image(systemName: "chevron.left").font(.system(size: 20, weight: .light))
+                        .frame(width: TarotTableStyle.controlHeight, height: TarotTableStyle.controlHeight, alignment: .leading)
                 }.accessibilityLabel("返回").accessibilityIdentifier("tarot-close")
                 Spacer()
                 // 136：以前抽过的牌
@@ -293,7 +298,10 @@ struct TarotView: View {
         return TarotTableCard(backID: backID, card: card, api: api, faceUp: faceUp)
             .frame(width: cardWidth, height: cardWidth / TarotTableStyle.cardAspect)
             .contentShape(RoundedRectangle(cornerRadius: TarotTableStyle.cardRadius))
-            .shadow(color: TarotTableStyle.shadow, radius: TarotTableStyle.shadowRadius, y: TarotTableStyle.shadowY)
+            // 136：只有放上桌的牌带阴影。牌堆、牌扇里的几十张不带（透明、零半径的阴影系统直接跳过），
+            // 洗牌、左右滑、上下翻页面不再每一帧重画几十个阴影；牌上桌时阴影跟着慢慢出来，滑的路线、大小都不变
+            .shadow(color: slot == nil ? .clear : TarotTableStyle.shadow,
+                    radius: slot == nil ? 0 : TarotTableStyle.shadowRadius, y: slot == nil ? 0 : TarotTableStyle.shadowY)
             .onTapGesture { if faceUp, let card { inspectedCard = card } }
             .gesture(DragGesture(minimumDistance: TarotTableStyle.gap, coordinateSpace: .named("tarot-table"))
                 .onChanged { value in
