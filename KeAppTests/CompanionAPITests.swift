@@ -399,6 +399,25 @@ final class CompanionAPITests: XCTestCase {
         XCTAssertEqual(UsViewModel(defaults: defaults).anniversaries.count, 4)
     }
 
+    /// 137：「柯的」再拉一次时有一样没接上，那一朵留着上次的，卡片不会突然没了
+    @MainActor
+    func testCamelliaKeepsLastEventWhenOneSourceFails() async {
+        var diaryWorks = true
+        CompanionStub.handler = { request in
+            if request.url!.lastPathComponent == "diary", diaryWorks {
+                return (200, #"[{"id":1,"title":"一页","content":"今天想你\n第二行","author":"柯","mood":null,"created_at":"2026-10-24 22:00:00","locked_hidden":false,"comments":0}]"#)
+            }
+            return (404, "{}")
+        }
+        let store = KeCamelliaStore(api: api())
+        await store.load()
+        XCTAssertEqual(store.latest[.diary]?.excerpt, "今天想你")
+        diaryWorks = false
+        await store.load()
+        XCTAssertEqual(store.latest[.diary]?.excerpt, "今天想你")
+        XCTAssertEqual(store.current?.entry, .diary)
+    }
+
     func testDateParsingRejectsImpossibleDatesAndUsesChinaTime() {
         XCTAssertNil(CompanionDate.parse("2026-02-30"))
         let date = CompanionDate.parse("2026-09-09 00:30:00")!

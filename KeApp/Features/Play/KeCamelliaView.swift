@@ -67,16 +67,48 @@ struct CamelliaEvent: Equatable {
 }
 
 @MainActor final class KeCamelliaStore: ObservableObject {
+    /// 137：每条线路一份（连同朋友圈那份、同一个 APIClient）。以前每次切到「柯的」都整页重建、重新联网，
+    /// 底下那张卡片要等好几秒；现在切回来蝴蝶和卡片先停在上次那条，再在后台刷新。
+    private static var all: [String: (camellia: KeCamelliaStore, moments: MomentsStore)] = [:]
+    static func shared(_ line: ChatLine) -> (camellia: KeCamelliaStore, moments: MomentsStore) {
+        if let stores = all[line.rawValue] { return stores }
+        let api = APIClient(baseURL: line.apiBaseURL)
+        let stores = (camellia: KeCamelliaStore(api: api), moments: MomentsStore(api: api, scope: line.rawValue))
+        all[line.rawValue] = stores
+        return stores
+    }
+
     @Published private(set) var latest: [CamelliaEntry: CamelliaEvent] = [:]
     @Published private(set) var loaded = false
     private let api: APIClient
     private let defaults = UserDefaults.standard
+    private var loading: Task<Void, Never>?
+    private var lastLoad: Date?
     init(api: APIClient) { self.api = api }
 
-    func load() async {
-        var found: [CamelliaEntry: CamelliaEvent] = [:]
+    /// 137：拉一遍放在不跟着页面走的 Task 里：拉到一半切走了也拉完，不会被取消成「什么都没有」。
+    /// onlyIfStale（回前台）：5 分钟内四样都拉到过，就不再拉。
+    func load(onlyIfStale: Bool = false) async {
+        if let loading { await loading.value; return }
+        if onlyIfStale, let lastLoad, Date().timeIntervalSince(lastLoad) < 5 * 60 { return }
+        let task = Task { await self.fetch() }
+        loading = task
+        await task.value
+        loading = nil
+    }
+
+    private func fetch() async {
+        // 137：四样一起问（以前一个等一个）
+        async let diaries = try? api.fetchDiaries(query: "", offset: 0, limit: 30)
+        async let momentRows = try? api.fetchMoments()
+        async let drawerPage = try? api.fetchDrawer()
+        async let garden = try? api.memoryGarden()
+        let (diaryRows, moments, drawer, page) = await (diaries, momentRows, drawerPage, garden)
+        // 哪一样没接上，那一朵就留着上次的，不让蝴蝶和卡片突然没了
+        var found = latest
         let ke: Set<String> = ["柯", "ke", "ai", "assistant"]
-        if let rows = try? await api.fetchDiaries(query: "", offset: 0, limit: 30) {
+        if let rows = diaryRows {
+            found[.diary] = nil; found[.dream] = nil
             for row in rows where !row.locked_hidden && ke.contains(row.author ?? "柯") {
                 let entry: CamelliaEntry = row.kind == "dream" ? .dream : .diary
                 if found[entry].map({ $0.at < row.created_at }) ?? true {
@@ -84,7 +116,8 @@ struct CamelliaEvent: Equatable {
                 }
             }
         }
-        if let rows = try? await api.fetchMoments() {
+        if let rows = moments {
+            found[.moments] = nil
             for row in rows where row.author != "user" {
                 if found[.moments].map({ $0.at < row.created_at }) ?? true {
                     found[.moments] = CamelliaEvent(entry: .moments, at: row.created_at, title: "柯的朋友圈", excerpt: Self.firstLine(row.content))
@@ -92,7 +125,8 @@ struct CamelliaEvent: Equatable {
             }
         }
         // 110：柯往抽屉里放了便签、小画，蝴蝶也去抽屉那朵停一停（不推送）
-        if let drawer = try? await api.fetchDrawer() {
+        if let drawer {
+            found[.drawer] = nil
             for item in drawer.outside {
                 let at = KeDrawerPage.when(item)
                 if found[.drawer].map({ $0.at < at }) ?? true {
@@ -101,7 +135,8 @@ struct CamelliaEvent: Equatable {
                 }
             }
         }
-        if let page = try? await api.memoryGarden() {
+        if let page {
+            found[.memory] = nil
             for flower in page.flowers where flower.author == "ke" && flower.isDrawable {
                 guard let at = flower.written_at else { continue }
                 if found[.memory].map({ $0.at < at }) ?? true {
@@ -111,6 +146,8 @@ struct CamelliaEvent: Equatable {
         }
         latest = found
         loaded = true
+        let complete = diaryRows != nil && moments != nil && drawer != nil && page != nil
+        lastLoad = complete ? .now : nil
     }
 
     private func seenKey(_ e: CamelliaEntry) -> String { "camellia.seen." + e.rawValue }
@@ -175,8 +212,8 @@ struct KeSpaceView: View {
     @Environment(\.scenePhase) private var scenePhase
     let line: ChatLine
     var onOpenQuote: (AppQuote) -> Void
-    @StateObject private var store: KeCamelliaStore
-    @StateObject private var moments: MomentsStore
+    @ObservedObject private var store: KeCamelliaStore
+    @ObservedObject private var moments: MomentsStore
     @State private var butterfly: CamelliaButterfly
     @State private var shown: CamelliaEvent?
     @State private var open: CamelliaEntry?
@@ -200,11 +237,14 @@ struct KeSpaceView: View {
 
     init(line: ChatLine, onOpenQuote: @escaping (AppQuote) -> Void) {
         self.line = line; self.onOpenQuote = onOpenQuote
-        let api = APIClient(baseURL: line.apiBaseURL)
-        _store = StateObject(wrappedValue: KeCamelliaStore(api: api))
-        _moments = StateObject(wrappedValue: MomentsStore(api: api, scope: line.rawValue))
+        // 137：每条线路一份，切页不重建
+        let stores = KeCamelliaStore.shared(line)
+        _store = ObservedObject(wrappedValue: stores.camellia)
+        _moments = ObservedObject(wrappedValue: stores.moments)
         let saved = CamelliaEntry(rawValue: UserDefaults.standard.string(forKey: "camellia.perch") ?? "") ?? .diary
         _butterfly = State(initialValue: CamelliaButterfly(perch: saved))
+        // 切回来时卡片先写上次那条（蝴蝶就停在那朵上时才写，两边永远是同一条）
+        _shown = State(initialValue: stores.camellia.current.flatMap { $0.entry == saved ? $0 : nil })
     }
 
     var body: some View {
@@ -249,7 +289,7 @@ struct KeSpaceView: View {
             var quiet = Transaction(); quiet.disablesAnimations = true
             withTransaction(quiet) { swayed = false }
         }
-        .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await refresh() } } }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await refresh(onlyIfStale: true) } } }
         .sensoryFeedback(.selection, trigger: open)
         // 塔罗抽完交给柯、抽屉里「去找柯要」：都会回聊天，盖着的页面先收起来
         .onReceive(NotificationCenter.default.publisher(for: .tarotReadingRequest)) { _ in open = nil }
@@ -465,8 +505,8 @@ struct KeSpaceView: View {
 
     // MARK: 动作
 
-    private func refresh() async {
-        await store.load()
+    private func refresh(onlyIfStale: Bool = false) async {
+        await store.load(onlyIfStale: onlyIfStale)
         guard let event = store.current else { return }
         // 蝴蝶和卡片绑定同一条：落定的时候一起换
         if butterfly.perch != event.entry {
