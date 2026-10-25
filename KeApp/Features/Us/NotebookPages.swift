@@ -74,24 +74,166 @@ struct NotebookSnapshot: Decodable, Equatable, Sendable {
     let verse: Verse?
 }
 
+/// 136：小本子要跟服务器说的几样，测试里换成假的
+protocol NotebookAPI: Sendable {
+    func fetchNotebook() async throws -> NotebookSnapshot
+    @discardableResult func createNotebookItem(kind: String, fields: [String: Any]) async throws -> NotebookItem
+    @discardableResult func updateNotebookItem(id: Int, fields: [String: Any]) async throws -> NotebookItem
+    func deleteNotebookItem(id: Int) async throws
+    func setNotebookDose(when: String, taken: Bool) async throws
+    func setNotebookCap(yuan: Double) async throws
+}
+extension APIClient: NotebookAPI {}
+
 @MainActor final class NotebookStore: ObservableObject {
     @Published private(set) var snapshot: NotebookSnapshot?
     @Published private(set) var busy = false
-    @Published var error: String?
+    /// 136：拉小本子没拉到。还没有上次的可看时，页面给「没接上，点这里再试」，不再一直转圈
+    @Published private(set) var loadFailed = false
+    /// 136：页面标题下面那一行：哪件事没记上（打勾、改上限），她再点别的或下拉就收起
+    @Published var notice: String?
+    /// 136：打勾先在本机改上（药盒「吃了」、食单「兑现了」），服务器回话前照这个画
+    @Published private(set) var checking: [String: Bool] = [:]
     let api: APIClient
-    init(api: APIClient) { self.api = api }
+    private let book: any NotebookAPI
+    /// 136：改动排着队一件一件发，连着点不会被吞
+    private var tail: Task<Void, Error>?
+    private var queued = 0
+    /// 每个勾最后点的那一下；前面的没成功、后面又点了，就听后面的
+    private var taps: [String: UUID] = [:]
+
+    init(api: APIClient, book: (any NotebookAPI)? = nil) {
+        self.api = api
+        self.book = book ?? api
+    }
+
+    /// 标题下面那一行要说的话；没记上的那件事优先，其次是拉不到新的
+    var banner: String? {
+        if let notice { return notice }
+        if loadFailed && snapshot != nil { return "小本子暂时没接上，先看上次记的。" }
+        return nil
+    }
+    /// 有上次的可看、只是拉不到新的：那一行旁边放「再试一次」
+    var canRetry: Bool { loadFailed && snapshot != nil }
 
     func load() async {
-        do { snapshot = try await api.fetchNotebook(); error = nil }
-        catch { self.error = "小本子暂时没接上，下拉或稍后再试。" }
+        do {
+            snapshot = try await book.fetchNotebook()
+            loadFailed = false
+            // 已经有回话的勾，交回给服务器那份
+            checking = checking.filter { taps[$0.key] != nil }
+        } catch {
+            // 页面一离开就会取消，那不算没接上
+            if Task.isCancelled { return }
+            loadFailed = true
+        }
     }
-    /// 所有改动走这里：先发给服务器，成功了再整本刷新（柯那边也同时看到）。
-    func run(_ work: @escaping () async throws -> Void) async {
-        guard !busy else { return }
+
+    /// 她点「再试一次」、下拉、点开一页时：先把上回那句收起，转圈再拉
+    func retry() async {
+        notice = nil
+        loadFailed = false
+        await load()
+    }
+
+    /// 点开荷包、食单、药盒：还没拉到（或上次没拉到）就再拉一次
+    func opened() async {
+        notice = nil
+        if snapshot == nil || loadFailed { await retry() }
+    }
+
+    /// 所有改动走这里：排队发给服务器，成功了再整本刷新（柯那边也同时看到）。没成功就把原因抛回去。
+    func run(_ work: @escaping () async throws -> Void) async throws {
+        let previous = tail
+        queued += 1
         busy = true
-        defer { busy = false }
-        do { try await work(); await load() }
-        catch { self.error = "没有保存成功，请再试一次。" }
+        let task = Task { @MainActor in
+            defer { self.queued -= 1; self.busy = self.queued > 0 }
+            _ = await previous?.result
+            try await work()
+            await self.load()
+            if self.loadFailed { self.notice = "存上了，只是页面还没刷新，下拉再看看。" }
+        }
+        tail = task
+        try await task.value
+    }
+
+    /// 服务器说了中文原因就照给她看；网络断了这类回 nil，用页面自己的话
+    nonisolated static func reason(_ error: Error) -> String? {
+        guard let apiError = error as? APIError else { return nil }
+        switch apiError {
+        case let .badStatus(_, message) where !message.isEmpty: return message
+        case let .serverMessage(message) where !message.isEmpty: return message
+        case .unauthorized: return "需要重新登录一下。"
+        default: return nil
+        }
+    }
+
+    /// 136：编辑框用：存上回 nil，框子才关；没存上回一句话，框子留着、她写的都在
+    func save(_ draft: NotebookDraft, fields: [String: Any]) async -> String? {
+        let book = book
+        do {
+            try await run {
+                if let i = draft.item { try await book.updateNotebookItem(id: i.id, fields: fields) }
+                else { try await book.createNotebookItem(kind: draft.kind, fields: fields) }
+            }
+            return nil
+        } catch { return Self.reason(error).map { "没存上：" + $0 } ?? "没存上，再点一次保存。" }
+    }
+
+    func delete(_ item: NotebookItem) async -> String? {
+        let book = book
+        do {
+            try await run { try await book.deleteNotebookItem(id: item.id) }
+            return nil
+        } catch { return Self.reason(error).map { "没删掉：" + $0 } ?? "没删掉，再点一次。" }
+    }
+
+    func setCap(yuan: Double) async {
+        notice = nil
+        let book = book
+        do { try await run { try await book.setNotebookCap(yuan: yuan) } }
+        catch { notice = "每月上限没改上" + (Self.reason(error).map { "：" + $0 } ?? "，再改一次。") }
+    }
+
+    /// 药盒今天这一格：她刚点的先算数
+    func doseTaken(_ when: String) -> Bool {
+        checking["dose:" + when] ?? snapshot?.meds.today[when]?.taken ?? false
+    }
+    func setDose(_ when: String, taken: Bool) async {
+        let book = book
+        await check("dose:" + when, to: taken, failed: "\(when)的药没记上") {
+            try await book.setNotebookDose(when: when, taken: taken)
+        }
+    }
+
+    /// 食单「欠着的」那个圈：她刚点的先算数
+    func owedDone(_ item: NotebookItem) -> Bool { checking["owe:\(item.id)"] ?? (item.done == 1) }
+    func setOwed(_ item: NotebookItem, done: Bool) async {
+        let book = book
+        await check("owe:\(item.id)", to: done, failed: "「\(item.title)」没改上") {
+            try await book.updateNotebookItem(id: item.id, fields: ["done": done])
+        }
+    }
+
+    /// 136：打勾先在本机改上，排队发给服务器；只有她最后点的那一下说了算，没成功就退回去、说一句
+    private func check(_ key: String, to value: Bool, failed: String, send: @escaping () async throws -> Void) async {
+        notice = nil
+        let tap = UUID()
+        taps[key] = tap
+        checking[key] = value
+        do {
+            try await run(send)
+            guard taps[key] == tap else { return }
+            taps[key] = nil
+            // 存上了但没刷新到新的，就先留着她点的样子，下次拉到再交回去
+            if !loadFailed { checking[key] = nil }
+        } catch {
+            guard taps[key] == tap else { return }
+            taps[key] = nil
+            checking[key] = nil
+            notice = failed + (Self.reason(error).map { "：" + $0 } ?? "，再点一次。")
+        }
     }
 }
 
@@ -152,11 +294,15 @@ func shortDay(_ day: String?) -> String {
 }
 
 /// 一本小本子的外壳：纸色底、标题 + 花体小字、「完成」返回。
+/// 136：notice 是标题下面一行浅浅的提示（没接上、没记上）；onRetry 有就在旁边放「再试一次」；onRefresh 有就能下拉刷新。
 struct NotebookShell<Content: View>: View {
     let title: String
     let script: String
     let paper: Color
     var onClose: () -> Void
+    var notice: String? = nil
+    var onRetry: (() async -> Void)? = nil
+    var onRefresh: (() async -> Void)? = nil
     @ViewBuilder var content: () -> Content
     var body: some View {
         ScrollView {
@@ -167,13 +313,60 @@ struct NotebookShell<Content: View>: View {
                         .accessibilityIdentifier("notebook-close")
                     Text(title).font(Ink.song(28)).tracking(2).foregroundStyle(Ink.primary)
                     Text(script).font(Ink.script(27)).foregroundStyle(Ink.secondary).padding(.top, -4)
+                    if let notice { noticeLine(notice) }
                 }
                 content()
             }
             .padding(.horizontal, 28).padding(.bottom, 48)
         }
+        .notebookRefreshable(onRefresh)
         .background(paper.ignoresSafeArea())
         .foregroundStyle(Ink.primary)
+    }
+
+    private func noticeLine(_ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(text).font(Ink.song(13)).foregroundStyle(Ink.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("notebook-notice")
+            if let onRetry {
+                Button("再试一次") { Task { await onRetry() } }
+                    .font(Ink.song(13)).foregroundStyle(Ink.accent)
+                    .frame(minHeight: 44)
+                    .accessibilityIdentifier("notebook-retry")
+            }
+        }
+        .padding(.top, 6)
+    }
+}
+
+/// 136：还没拉到小本子：在拉就转圈；没接上就给「没接上，点这里再试」，不再一直转（和攒钱页一样）
+struct NotebookPlaceholder: View {
+    let failed: Bool
+    var onRetry: () async -> Void
+    var body: some View {
+        if failed {
+            Button { Task { await onRetry() } } label: {
+                VStack(spacing: 10) {
+                    Image(systemName: "arrow.clockwise").font(.system(size: 18, weight: .light))
+                    Text("没接上，点这里再试").font(Ink.song(15))
+                }
+                .foregroundStyle(Ink.secondary)
+                .frame(maxWidth: .infinity, minHeight: 140)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("notebook-retry-load")
+        } else {
+            ProgressView().frame(maxWidth: .infinity).padding(40)
+        }
+    }
+}
+
+extension View {
+    /// 136：给了刷新的事才能下拉（梦那本不给，照旧）
+    @ViewBuilder func notebookRefreshable(_ action: (() async -> Void)?) -> some View {
+        if let action { refreshable { await action() } } else { self }
     }
 }
 
@@ -280,14 +473,22 @@ struct NotebookEditor: View {
     @Environment(\.dismiss) private var dismiss
     let draft: NotebookDraft
     let paper: Color
-    var onSave: ([String: Any]) -> Void
-    var onDelete: (() -> Void)?
+    /// 136：存上回 nil 才关框子；没存上回一句话，框子留着、她写的都在
+    var onSave: ([String: Any]) async -> String?
+    var onDelete: (() async -> String?)?
     @State private var values: [String: String] = [:]
     @State private var confirmDelete = false
+    @State private var problem: String?
+    @State private var saving = false
 
     var body: some View {
         NavigationStack {
             Form {
+                // 136：没存上就写在最上面，键盘挡不住
+                if let problem {
+                    Section { Text(problem).font(.system(size: 14)).foregroundStyle(Ink.negative) }
+                        .accessibilityIdentifier("notebook-editor-problem")
+                }
                 ForEach(draft.fields, id: \.0.rawValue) { field, label in
                     switch field {
                     case .status:
@@ -310,6 +511,7 @@ struct NotebookEditor: View {
                             .font(.system(size: 13)).foregroundStyle(Ink.secondary)
                         if onDelete != nil {
                             Button("删掉这条", role: .destructive) { confirmDelete = true }
+                                .disabled(saving)
                         }
                     }
                 }
@@ -318,18 +520,44 @@ struct NotebookEditor: View {
             .background(paper.ignoresSafeArea())
             .navigationTitle(draft.heading).navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() }.disabled(saving) }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") { onSave(payload()); dismiss() }
-                        .disabled((values["title"] ?? "").trimmingCharacters(in: .whitespaces).isEmpty)
+                    if saving { ProgressView() } else {
+                        Button("保存") { save() }
+                            .disabled((values["title"] ?? "").trimmingCharacters(in: .whitespaces).isEmpty)
+                            .accessibilityIdentifier("notebook-editor-save")
+                    }
                 }
             }
             .confirmationDialog("删掉这条？", isPresented: $confirmDelete, titleVisibility: .visible) {
-                Button("删掉", role: .destructive) { onDelete?(); dismiss() }
+                Button("删掉", role: .destructive) { remove() }
             } message: { Text("柯那边也会一起看不到这条。") }
         }
         .tint(Ink.accent)
+        .interactiveDismissDisabled(saving)
         .onAppear { values = initialValues() }
+    }
+
+    /// 136：等服务器说存上了再关；没存上就留在框里说一句
+    private func save() {
+        let fields = payload()
+        problem = nil
+        saving = true
+        Task {
+            let failure = await onSave(fields)
+            saving = false
+            if let failure { problem = failure } else { dismiss() }
+        }
+    }
+    private func remove() {
+        guard let onDelete else { return }
+        problem = nil
+        saving = true
+        Task {
+            let failure = await onDelete()
+            saving = false
+            if let failure { problem = failure } else { dismiss() }
+        }
     }
 
     private func binding(_ key: String, default value: String = "") -> Binding<String> {
@@ -473,7 +701,11 @@ struct PursePage: View {
 
     var body: some View {
         ZStack {
-            NotebookShell(title: "荷包", script: "Bourse", paper: paper, onClose: onClose) {
+            // 136：小本子那一行只在「花钱」页说（攒钱页的罐子有自己的「点这里再试」）；下拉刷新眼前这一页
+            NotebookShell(title: "荷包", script: "Bourse", paper: paper, onClose: onClose,
+                          notice: current == .spend ? store.banner : nil,
+                          onRetry: current == .spend && store.canRetry ? { await store.retry() } : nil,
+                          onRefresh: { if current == .save { await jars.load() } else { await store.retry() } }) {
                 tabSwitch
                 if current == .save {
                     JarListPane(store: jars, paper: paper) { jar in openJar = jar.id }
@@ -496,11 +728,23 @@ struct PursePage: View {
         .alert("每月上限", isPresented: $editingCap) {
             TextField("比如 3000", text: $capText).keyboardType(.decimalPad)
             Button("取消", role: .cancel) {}
-            Button("保存") { if let v = Double(capText) { Task { await store.run { try await store.api.setNotebookCap(yuan: v) } } } }
+            Button("保存") { saveCap() }
         } message: { Text("这个月最多花多少，柯也会照这个数提醒你。") }
         .alert("没有成功", isPresented: Binding(get: { jars.notice != nil }, set: { if !$0 { jars.notice = nil } })) {
             Button("知道了", role: .cancel) { jars.notice = nil }
         } message: { Text(jars.notice ?? "") }
+        .task { await store.opened() }
+    }
+
+    /// 136：写的不是数也说一声，不再点了没反应（「3,000」「¥3000」也认）
+    /// 粘进来的「nan」「inf」、负数也挡住（nan 发出去会闪退）
+    private func saveCap() {
+        let text = capText.trimmingCharacters(in: .whitespaces)
+        guard let v = Double(text) ?? JarText.parseYuan(text), v.isFinite, v >= 0 else {
+            store.notice = "每月上限写一个数就好，比如 3000。"
+            return
+        }
+        Task { await store.setCap(yuan: v) }
     }
 
     /// 121：标题下面一行「花钱｜攒钱」：选中的字深一点、底下一道细墨线，跟着滑过去
@@ -601,14 +845,10 @@ struct PursePage: View {
                       fields: [(.title, "想买什么"), (.amount, "多少钱"), (.status, "柯怎么说"), (.note, "柯的话")])
     }
     private func editor(_ d: NotebookDraft) -> some View {
-        NotebookEditor(draft: d, paper: paper, onSave: { fields in
-            Task { await store.run {
-                if let i = d.item { try await store.api.updateNotebookItem(id: i.id, fields: fields) }
-                else { try await store.api.createNotebookItem(kind: d.kind, fields: fields) }
-            } }
-        }, onDelete: d.item.map { i in { Task { await store.run { try await store.api.deleteNotebookItem(id: i.id) } } } })
+        NotebookEditor(draft: d, paper: paper, onSave: { fields in await store.save(d, fields: fields) },
+                       onDelete: d.item.map { i in { await store.delete(i) } })
     }
-    private var loading: some View { ProgressView().frame(maxWidth: .infinity).padding(40) }
+    private var loading: some View { NotebookPlaceholder(failed: store.loadFailed) { await store.retry() } }
     private func empty(_ text: String) -> some View {
         Text(text).font(Ink.song(14)).foregroundStyle(Ink.secondary).frame(maxWidth: .infinity).padding(.vertical, 18)
     }
@@ -635,7 +875,8 @@ struct MenuPage: View {
     private func shownMeal(_ i: NotebookItem) -> Bool { hit(i) && (rating == nil || i.rate == rating) }
 
     var body: some View {
-        NotebookShell(title: "食单", script: "Menu", paper: paper, onClose: onClose) {
+        NotebookShell(title: "食单", script: "Menu", paper: paper, onClose: onClose, notice: store.banner,
+                      onRetry: store.canRetry ? { await store.retry() } : nil, onRefresh: { await store.retry() }) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(Ink.secondary)
                 TextField("搜吃过的、哪家、柯说的话", text: $query).font(Ink.song(15)).submitLabel(.search)
@@ -668,28 +909,27 @@ struct MenuPage: View {
                 NotebookSection(title: "柯的账本上欠着的", hint: "胃好了一样一样兑现") {
                     VStack(spacing: 0) {
                         ForEach(m.owed.filter(hit)) { o in
+                            // 136：点圈先划上，没改上再退回来说一句
+                            let done = store.owedDone(o)
                             HStack(spacing: 12) {
                                 Button {
-                                    Task { await store.run { try await store.api.updateNotebookItem(id: o.id, fields: ["done": o.done == 0]) } }
+                                    Task { await store.setOwed(o, done: !done) }
                                 } label: {
-                                    Image(systemName: o.done == 1 ? "checkmark.circle.fill" : "circle").font(.system(size: 22))
+                                    Image(systemName: done ? "checkmark.circle.fill" : "circle").font(.system(size: 22))
                                         .foregroundStyle(Ink.accent).frame(width: 44, height: 44)
-                                }.buttonStyle(.plain).accessibilityLabel(o.done == 1 ? "已兑现" : "还欠着")
-                                NotebookRow(title: o.title, author: o.author, editedBy: o.edited_by, struck: o.done == 1) { draft = owedDraft(o) }
+                                }.buttonStyle(.plain).accessibilityLabel(done ? "已兑现" : "还欠着")
+                                NotebookRow(title: o.title, author: o.author, editedBy: o.edited_by, struck: done) { draft = owedDraft(o) }
                             }
                         }
                     }
                     AddLine(title: "再欠一样") { draft = owedDraft(nil) }
                 }
-            } else { ProgressView().frame(maxWidth: .infinity).padding(40) }
+            } else { NotebookPlaceholder(failed: store.loadFailed) { await store.retry() } }
         }
+        .task { await store.opened() }
         .sheet(item: $draft) { d in
-            NotebookEditor(draft: d, paper: paper, onSave: { fields in
-                Task { await store.run {
-                    if let i = d.item { try await store.api.updateNotebookItem(id: i.id, fields: fields) }
-                    else { try await store.api.createNotebookItem(kind: d.kind, fields: fields) }
-                } }
-            }, onDelete: d.item.map { i in { Task { await store.run { try await store.api.deleteNotebookItem(id: i.id) } } } })
+            NotebookEditor(draft: d, paper: paper, onSave: { fields in await store.save(d, fields: fields) },
+                           onDelete: d.item.map { i in { await store.delete(i) } })
         }
     }
     /// 一排小字筛选：全部 / 好吃 / 一般 / 踩雷，选中的那个浅浅垫一块底
@@ -734,14 +974,16 @@ struct MedsPage: View {
     @State private var draft: NotebookDraft?
 
     var body: some View {
-        NotebookShell(title: "药盒", script: "Remèdes", paper: paper, onClose: onClose) {
+        NotebookShell(title: "药盒", script: "Remèdes", paper: paper, onClose: onClose, notice: store.banner,
+                      onRetry: store.canRetry ? { await store.retry() } : nil, onRefresh: { await store.retry() }) {
             if let m = store.snapshot?.meds {
                 NotebookSection(title: "今天", hint: Self.todayText()) {
                     VStack(spacing: 0) {
                         ForEach(m.order ?? Array(m.today.keys).sorted(), id: \.self) { when in
-                            let taken = m.today[when]?.taken ?? false
+                            // 136：点一下先打上勾，不等服务器；没记上再退回来、标题下说一句
+                            let taken = store.doseTaken(when)
                             Button {
-                                Task { await store.run { try await store.api.setNotebookDose(when: when, taken: !taken) } }
+                                Task { await store.setDose(when, taken: !taken) }
                             } label: {
                                 HStack(spacing: 12) {
                                     Image(systemName: taken ? "checkmark.circle.fill" : "circle").font(.system(size: 22)).foregroundStyle(Ink.accent)
@@ -784,15 +1026,12 @@ struct MedsPage: View {
                 }
                 Text("药量以医生说的为准。这里只是记下来，柯不会替你改药。")
                     .font(.system(size: 12)).foregroundStyle(Ink.secondary)
-            } else { ProgressView().frame(maxWidth: .infinity).padding(40) }
+            } else { NotebookPlaceholder(failed: store.loadFailed) { await store.retry() } }
         }
+        .task { await store.opened() }
         .sheet(item: $draft) { d in
-            NotebookEditor(draft: d, paper: paper, onSave: { fields in
-                Task { await store.run {
-                    if let i = d.item { try await store.api.updateNotebookItem(id: i.id, fields: fields) }
-                    else { try await store.api.createNotebookItem(kind: d.kind, fields: fields) }
-                } }
-            }, onDelete: d.item.map { i in { Task { await store.run { try await store.api.deleteNotebookItem(id: i.id) } } } })
+            NotebookEditor(draft: d, paper: paper, onSave: { fields in await store.save(d, fields: fields) },
+                           onDelete: d.item.map { i in { await store.delete(i) } })
         }
     }
     private func rxDraft(_ i: NotebookItem?) -> NotebookDraft {
@@ -815,9 +1054,13 @@ struct NotesPage: View {
     @State private var editing: StickyNote?
     @State private var adding = false
     @State private var text = ""
+    /// 136：贴、改、删没成功说一句（原来悄悄吞掉了）；没存上的那句按纸条留着（新贴的是 ""），再点开还在
+    @State private var problem: String?
+    @State private var unsent: [String: String] = [:]
 
     var body: some View {
-        NotebookShell(title: "纸条", script: "Billets", paper: paper, onClose: onClose) {
+        NotebookShell(title: "纸条", script: "Billets", paper: paper, onClose: onClose, notice: problem ?? notes.status,
+                      onRefresh: { problem = nil; await notes.load() }) {
             NotebookSection(title: "贴着的", hint: "柯贴的点一下收起") {
                 VStack(spacing: 0) {
                     ForEach(notes.notes.filter { !$0.acked }) { note in row(note) }
@@ -825,7 +1068,7 @@ struct NotesPage: View {
                         Text("没有贴着的纸条").font(Ink.song(14)).foregroundStyle(Ink.secondary).frame(maxWidth: .infinity).padding(.vertical, 18)
                     }
                 }
-                AddLine(title: "我贴一张") { text = ""; adding = true }
+                AddLine(title: "我贴一张") { text = unsent[""] ?? ""; adding = true }
             }
             let done = notes.notes.filter(\.acked)
             if !done.isEmpty {
@@ -842,7 +1085,7 @@ struct NotesPage: View {
         }
         .alert("改这张纸条", isPresented: Binding(get: { editing != nil }, set: { if !$0 { editing = nil } })) {
             TextField("一句话", text: $text)
-            Button("删掉", role: .destructive) { if let n = editing { Task { try? await api.deleteStickyNote(id: n.id); await notes.load() } } }
+            Button("删掉", role: .destructive) { if let n = editing { remove(n) } }
             Button("取消", role: .cancel) {}
             Button("保存") { if let n = editing { save(id: n.id, content: text) } }
         }
@@ -851,19 +1094,56 @@ struct NotesPage: View {
     private func row(_ note: StickyNote) -> some View {
         HStack(spacing: 12) {
             Button {
+                problem = nil
+                // 136：还在同步时点的那一下会被跳过，说一声，不悄悄没反应
+                if note.author == .ai, notes.loading || notes.saving { problem = "正在同步，等一下再点一次。"; return }
                 Task { if note.acked { await notes.restore(note) } else { await notes.acknowledge(note) } }
             } label: {
                 Image(systemName: note.acked ? "checkmark.circle.fill" : "circle").font(.system(size: 22))
                     .foregroundStyle(Ink.accent).frame(width: 44, height: 44)
             }.buttonStyle(.plain).accessibilityLabel(note.acked ? "放回去" : "收起")
             NotebookRow(title: note.content, detail: shortDay(note.created_at), author: note.author == .ai ? "ke" : "me", struck: note.acked) {
-                if note.author == .user { text = note.content; editing = note }
+                if note.author == .user { text = unsent[note.id] ?? note.content; editing = note }
             }
         }
     }
     private func save(id: String, content: String) {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        Task { _ = try? await api.saveStickyNote(id: id, content: trimmed); await notes.load() }
+        problem = nil
+        Task {
+            do {
+                let saved = try await api.saveStickyNote(id: id, content: trimmed)
+                unsent[id] = nil
+                await reloadAfterChange()
+                if !notes.notes.contains(where: { $0.id == saved.id && $0.content == saved.content }) {
+                    problem = id.isEmpty ? "纸条贴上了，还没刷出来，下拉一下就有。" : "纸条改上了，还没刷出来，下拉一下就有。"
+                }
+            } catch {
+                unsent[id] = trimmed
+                problem = id.isEmpty ? "纸条没贴上，刚写的还留着，再贴一次。" : "纸条没改上，刚改的还留着，再点它试试。"
+            }
+        }
+    }
+    private func remove(_ note: StickyNote) {
+        problem = nil
+        Task {
+            do {
+                try await api.deleteStickyNote(id: note.id)
+                unsent[note.id] = nil
+                await reloadAfterChange()
+                if notes.notes.contains(where: { $0.id == note.id }) { problem = "纸条删掉了，还没刷出来，下拉一下就好。" }
+            } catch { problem = "纸条没删掉，再试一次。" }
+        }
+    }
+    /// 136：贴上、改上、删掉以后，要是正赶上别的同步在跑，这次拉取会被跳过、新纸条不出来，
+    /// 她以为没贴上再贴一张就重了。先等那次走完（最多半分钟）再拉；还是没刷出来就在上面说一声
+    private func reloadAfterChange() async {
+        var waited = 0
+        while notes.loading || notes.saving, waited < 150 {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            waited += 1
+        }
+        await notes.load()
     }
 }
