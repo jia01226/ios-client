@@ -115,6 +115,42 @@ import XCTest
         XCTAssertEqual(h.hesitations.count, 1)
     }
 
+    /// 137：没发的草稿按线路存在本机；删光（只剩空格换行）就清掉
+    func testDraftIsKeptPerLineAndClearedWhenEmpty() throws {
+        let suite = "chat-draft-tests-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(ChatDraftStore.load(.test1, defaults: defaults), "")
+        ChatDraftStore.save("上次没写完的\n那句话", for: .test1, defaults: defaults)
+        ChatDraftStore.save("另一条线", for: .main, defaults: defaults)
+        XCTAssertEqual(ChatDraftStore.load(.test1, defaults: defaults), "上次没写完的\n那句话")
+        XCTAssertEqual(ChatDraftStore.load(.main, defaults: defaults), "另一条线")
+        ChatDraftStore.save(" \n ", for: .test1, defaults: defaults)
+        XCTAssertEqual(ChatDraftStore.load(.test1, defaults: defaults), "")
+        XCTAssertNil(defaults.object(forKey: ChatDraftStore.key(.test1)))
+        XCTAssertEqual(ChatDraftStore.load(.main, defaults: defaults), "另一条线")
+    }
+
+    /// 137：草稿是没发稳那句放回来的：连那句的 id 一起存（重开 App 原样按发送还是重发）；草稿删光、发出去就一起清掉
+    func testFailedMessageLinkIsKeptWithDraftAndClearedWhenDraftIsBlank() throws {
+        let suite = "chat-draft-failed-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertNil(ChatDraftStore.loadFailedID(.test1, defaults: defaults))
+        ChatDraftStore.save("地铁里说的", for: .test1, defaults: defaults)
+        ChatDraftStore.saveFailedID("user-ios-1", for: .test1, defaults: defaults)
+        ChatDraftStore.saveFailedID("user-ios-2", for: .main, defaults: defaults)
+        XCTAssertEqual(ChatDraftStore.loadFailedID(.test1, defaults: defaults), "user-ios-1")
+        ChatDraftStore.save("地铁里说的！", for: .test1, defaults: defaults)
+        XCTAssertEqual(ChatDraftStore.loadFailedID(.test1, defaults: defaults), "user-ios-1", "改字不清（发送时再比对）")
+        ChatDraftStore.save("", for: .test1, defaults: defaults)
+        XCTAssertNil(ChatDraftStore.loadFailedID(.test1, defaults: defaults), "草稿删光、发出去就清掉")
+        XCTAssertNil(defaults.object(forKey: ChatDraftStore.failedKey(.test1)))
+        XCTAssertEqual(ChatDraftStore.loadFailedID(.main, defaults: defaults), "user-ios-2", "别的线不动")
+        ChatDraftStore.saveFailedID(nil, for: .main, defaults: defaults)
+        XCTAssertNil(ChatDraftStore.loadFailedID(.main, defaults: defaults))
+    }
+
     func testRestoredDraftDoesNotCount() async {
         let h = PresenceHarness()
         h.reporter.adoptRestoredDraft("上次没写完的那句话")

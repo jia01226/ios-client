@@ -489,6 +489,9 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable, Equatable {
     var onRecall: (Message) -> Void = { _ in }
     var onSaveQuote: (Message) -> Void = { _ in }
     var onTogglePin: (Message) -> Void = { _ in }
+    /// 137：她那句没发稳：长按「重发」「删掉」
+    var onResend: (Message) -> Void = { _ in }
+    var onDiscard: (Message) -> Void = { _ in }
     /// 112：在聊天记录上往左划，拉出设置抽屉
     var onDrawerPan: (ChatDrawerPan) -> Void = { _ in }
     let onBackgroundTap: () -> Void
@@ -527,6 +530,8 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable, Equatable {
             onRecall: onRecall,
             onSaveQuote: onSaveQuote,
             onTogglePin: onTogglePin,
+            onResend: onResend,
+            onDiscard: onDiscard,
             onDrawerPan: onDrawerPan,
             onBackgroundTap: onBackgroundTap,
             onScrollToLatestVisibilityChanged: onScrollToLatestVisibilityChanged,
@@ -550,6 +555,8 @@ struct ChatCollectionTimeline: UIViewControllerRepresentable, Equatable {
             onRecall: onRecall,
             onSaveQuote: onSaveQuote,
             onTogglePin: onTogglePin,
+            onResend: onResend,
+            onDiscard: onDiscard,
             onDrawerPan: onDrawerPan,
             onBackgroundTap: onBackgroundTap,
             onScrollToLatestVisibilityChanged: onScrollToLatestVisibilityChanged
@@ -645,6 +652,8 @@ final class ChatCollectionTimelineController: UIViewController,
     private var onRecall: (Message) -> Void
     private var onSaveQuote: (Message) -> Void
     private var onTogglePin: (Message) -> Void
+    private var onResend: (Message) -> Void
+    private var onDiscard: (Message) -> Void
     private var onDrawerPan: (ChatDrawerPan) -> Void
     private var onBackgroundTap: () -> Void
     private var onScrollToLatestVisibilityChanged: (Bool) -> Void
@@ -685,6 +694,8 @@ final class ChatCollectionTimelineController: UIViewController,
         onRecall: @escaping (Message) -> Void,
         onSaveQuote: @escaping (Message) -> Void = { _ in },
         onTogglePin: @escaping (Message) -> Void = { _ in },
+        onResend: @escaping (Message) -> Void = { _ in },
+        onDiscard: @escaping (Message) -> Void = { _ in },
         onDrawerPan: @escaping (ChatDrawerPan) -> Void = { _ in },
         onBackgroundTap: @escaping () -> Void,
         onScrollToLatestVisibilityChanged: @escaping (Bool) -> Void,
@@ -701,6 +712,8 @@ final class ChatCollectionTimelineController: UIViewController,
         self.onRecall = onRecall
         self.onSaveQuote = onSaveQuote
         self.onTogglePin = onTogglePin
+        self.onResend = onResend
+        self.onDiscard = onDiscard
         self.onDrawerPan = onDrawerPan
         self.onBackgroundTap = onBackgroundTap
         self.onScrollToLatestVisibilityChanged = onScrollToLatestVisibilityChanged
@@ -825,6 +838,8 @@ final class ChatCollectionTimelineController: UIViewController,
         onRecall: @escaping (Message) -> Void,
         onSaveQuote: @escaping (Message) -> Void = { _ in },
         onTogglePin: @escaping (Message) -> Void = { _ in },
+        onResend: @escaping (Message) -> Void = { _ in },
+        onDiscard: @escaping (Message) -> Void = { _ in },
         onDrawerPan: @escaping (ChatDrawerPan) -> Void = { _ in },
         onBackgroundTap: @escaping () -> Void,
         onScrollToLatestVisibilityChanged: @escaping (Bool) -> Void
@@ -834,6 +849,8 @@ final class ChatCollectionTimelineController: UIViewController,
         self.onRecall = onRecall
         self.onSaveQuote = onSaveQuote
         self.onTogglePin = onTogglePin
+        self.onResend = onResend
+        self.onDiscard = onDiscard
         self.onDrawerPan = onDrawerPan
         self.onBackgroundTap = onBackgroundTap
         self.onScrollToLatestVisibilityChanged = onScrollToLatestVisibilityChanged
@@ -1300,6 +1317,14 @@ final class ChatCollectionTimelineController: UIViewController,
                     self.onTogglePin(self.latest(message))
                 },
                 isPinned: item.isPinned,
+                onResend: { [weak self] message in
+                    guard let self else { return }
+                    self.onResend(self.latest(message))
+                },
+                onDiscard: { [weak self] message in
+                    guard let self else { return }
+                    self.onDiscard(self.latest(message))
+                },
                 part: item.part
             )
             .environmentObject(Theme.shared)

@@ -76,6 +76,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        [.banner, .sound, .badge]
+        // 137：她正开着 App，聊天页顺手拉一次记录，这句直接出现在聊天里
+        await MainActor.run { ChatNotificationCoordinator.shared.noteIncoming() }
+        return [.banner, .sound, .badge]
     }
 }

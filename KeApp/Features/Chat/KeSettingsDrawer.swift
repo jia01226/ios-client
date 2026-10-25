@@ -339,6 +339,8 @@ struct KeSettingsDrawer: View {
                                 .padding(.horizontal, 10)
                         }
                         .contentShape(Rectangle())
+                        // 137：看着还是 40 高，能点的地方上下各多 2 点，凑够 44
+                        .modifier(ChatHitSlop(horizontal: 0, vertical: 2))
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(page == tab ? .isSelected : [])

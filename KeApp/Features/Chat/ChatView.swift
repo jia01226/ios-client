@@ -22,6 +22,12 @@ struct ChatView: View {
     @StateObject private var recentPhotos = RecentPhotosStore()
     @StateObject private var wallpaperStore = ChatWallpaperStore.shared
     @State private var draft = ""
+    /// 137：上次没发的草稿只在打开时放回一次
+    @State private var didRestoreDraft = false
+    /// 137：输入框里的字是从哪句没发稳的放回来的（原样再按发送 = 重发那一句）
+    @State private var draftFromFailedID: String?
+    /// 137：长按「删掉」没发稳的那句，先问一声
+    @State private var unsentToDiscard: Message?
     @State private var showingCallPlaceholder = false
     @State private var tarotOpen = false
     @State private var showingMemoryUsage = false
@@ -158,6 +164,7 @@ struct ChatView: View {
             if quoteOpenRequest?.id == request.id { quoteOpenRequest = nil }
         }
         .task {
+            restoreSavedDraft()
 #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("-ui-test-wallpaper"), wallpaperStore.image == nil {
                 let image = UIGraphicsImageRenderer(size: CGSize(width: 360, height: 780)).image { context in
@@ -192,6 +199,33 @@ struct ChatView: View {
         }
         .onChange(of: chatNotifications.openRequest) { _, _ in
             Task { await vm.resumeFromForeground(forceReconnect: true) }
+        }
+        // 137：开着 App 时来了推送：不打断正在回的那句，只是空着时拉一次记录
+        .onChange(of: chatNotifications.incoming) { _, _ in
+            Task { await vm.resumeFromForeground() }
+        }
+        // 137：没发稳的那句放回输入框——她已经在打下一句了就不动
+        .onChange(of: vm.restoredDraft) { _, restored in
+            guard let restored else { return }
+            vm.restoredDraft = nil
+            guard trimmedDraft.isEmpty else { return }
+            presence.adoptRestoredDraft(restored.text)
+            draft = restored.text
+            draftFromFailedID = restored.messageID
+        }
+        // 137：输入框里这句是哪句没发稳的放回来的，跟着草稿存在本机：App 被关掉再打开，原样按发送还是重发那一句
+        .onChange(of: draftFromFailedID) { _, id in
+            ChatDraftStore.saveFailedID(id, for: line)
+        }
+        // 137：放回输入框的那句其实已经送到了（接回时对上了任务、拉回的记录里有它）：
+        // 输入框里还是原样的话收起来，不然再按发送柯就收到两遍；她改过的不动
+        .onChange(of: draftFromFailedID.flatMap { vm.unsentMessage(id: $0)?.deliveryState }) { _, state in
+            guard state == .sent, let id = draftFromFailedID, let delivered = vm.unsentMessage(id: id) else { return }
+            if trimmedDraft == delivered.text {
+                presence.didSend()
+                draft = ""
+            }
+            draftFromFailedID = nil
         }
     }
 
@@ -284,6 +318,16 @@ struct ChatView: View {
         .alert("未能撤回", isPresented: Binding(get: { recallError != nil }, set: { if !$0 { recallError = nil } })) {
             Button("知道了", role: .cancel) { recallError = nil }
         } message: { Text(recallError ?? "") }
+        .alert("删掉这句？", isPresented: Binding(get: { unsentToDiscard != nil }, set: { if !$0 { unsentToDiscard = nil } })) {
+            Button("删掉", role: .destructive) {
+                guard let message = unsentToDiscard else { return }
+                unsentToDiscard = nil
+                Task { await vm.discardUnsent(messageID: message.id) }
+            }
+            Button("取消", role: .cancel) { unsentToDiscard = nil }
+        } message: {
+            Text("这句还没发到柯那里，删掉就没有了。")
+        }
         .sheet(isPresented: $showingCallPlaceholder) {
             KeCallPlaceholderCard()
                 .presentationDetents([.height(300)])
@@ -322,17 +366,8 @@ struct ChatView: View {
         }
         .sheet(isPresented: $showingCamera) {
             CameraPicker { image in
-                guard let data = image.chatUploadJPEGData() else {
-                    vm.reportUploadFailure("这张照片没有读取成功，请重新拍一次。")
-                    return
-                }
-                Task {
-                    await vm.addAttachment(
-                        data: data,
-                        fileName: "照片-\(UUID().uuidString.prefix(8)).jpg",
-                        mimeType: "image/jpeg"
-                    )
-                }
+                // 137：缩边、压 JPEG 在后台做，拍完不再冻一下
+                Task { await vm.addCameraPhoto(image) }
             }
             .ignoresSafeArea()
         }
@@ -342,6 +377,8 @@ struct ChatView: View {
                 .presentationDragIndicator(.visible)
                 .presentationContentInteraction(.scrolls)
         }
+        // 137：Thinking 弹窗开着时柯想的字才边想边写进记录（关着时攒着，写完一次放上）
+        .onChange(of: presentedThinkingMessageID) { _, id in vm.liveThinkingMessageID = id }
         .fullScreenCover(isPresented: $tarotOpen) {
             TarotView(line: line).environmentObject(theme)
         }
@@ -741,6 +778,11 @@ struct ChatView: View {
                         inputFocused = false
                         togglePin(message)
                     },
+                    onResend: { message in resendUnsent(message) },
+                    onDiscard: { message in
+                        inputFocused = false
+                        unsentToDiscard = message
+                    },
                     onDrawerPan: { pan in handleDrawerPan(pan) },
                     onBackgroundTap: {
                         inputFocused = false
@@ -852,7 +894,11 @@ struct ChatView: View {
                 .padding(.horizontal, 4)
                 .padding(.vertical, 11)
                 // 121：打字、删字、粘贴都算；只把字数交出去
-                .onChange(of: draft) { _, text in presence.textChanged(text) }
+                .onChange(of: draft) { _, text in
+                    presence.textChanged(text)
+                    // 137：随打随存，App 在后台被系统关掉，回来字还在
+                    ChatDraftStore.save(text, for: line)
+                }
 
             Button { send() } label: {
                 // 佳佳 2026-10-06：「先回消息 不要等消息」——柯回着的时候也能接着发。
@@ -866,6 +912,8 @@ struct ChatView: View {
                     Circle()
                         .fill(theme.sendColor)
                 )
+                // 137：圆还是这么大，能点的地方补到 44×44
+                .modifier(ChatHitSlop(visible: 40, 40, target: theme.metric.touchTarget))
             }
             .buttonStyle(PressBounceStyle())
             .disabled(!canSend || vm.isUploading)
@@ -1040,11 +1088,13 @@ struct ChatView: View {
                             Image(systemName: "doc")
                             Text(attachment.name).lineLimit(1)
                         }
+                        // 137：能点的那圈往左只伸到和名字之间那道缝，不盖住名字（点名字是看大图，不是拿掉）
                         Button {
                             vm.removePendingAttachment(attachment)
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .frame(width: 28, height: 28)
+                                .modifier(ChatHitSlop(leading: theme.metric.gapXS, trailing: 8, vertical: 8))
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("移除 \(attachment.name)")
@@ -1064,14 +1114,33 @@ struct ChatView: View {
                         Text(error)
                             .font(theme.font.caption)
                             .foregroundStyle(theme.color.textSecondary)
-                        if vm.canRetryUpload {
-                            Button("重试") {
+                        // 137：正在上传时「重试」点不动，先不摆出来
+                        if showsUploadRetry {
+                            Button {
                                 Task { await vm.retryLastUpload() }
+                            } label: {
+                                Text("重试")
+                                    .modifier(ChatHitSlop(horizontal: theme.metric.gapS + theme.metric.gapXS, vertical: theme.metric.gapM))
                             }
                             .buttonStyle(.borderless)
                             .font(theme.font.caption)
                             .foregroundStyle(theme.effectiveAccent)
                         }
+                        // 137：不想发这个附件了，点一下收起这条报错
+                        // 能点的那圈往左不伸进「重试」：点在「重试」右边一点算重试，不算收起
+                        Button {
+                            vm.dismissUploadError()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .frame(width: 28, height: 28)
+                                .modifier(ChatHitSlop(leading: showsUploadRetry ? 0 : theme.metric.gapXS,
+                                                      trailing: 8, vertical: 8))
+                        }
+                        .buttonStyle(.plain)
+                        .font(theme.font.caption)
+                        .foregroundStyle(theme.color.textSecondary)
+                        .accessibilityLabel("收起这条上传提示")
+                        .accessibilityIdentifier("dismiss-upload-error")
                     }
                 }
             }
@@ -2004,6 +2073,23 @@ struct ChatView: View {
         inputFocused = false
     }
 
+    /// 137：放回上次没发的字。先告诉 presence 这是恢复的，不算她在打字（不会报给服务器、不会叫醒柯）
+    private func restoreSavedDraft() {
+        guard !didRestoreDraft else { return }
+        didRestoreDraft = true
+        let saved = ChatDraftStore.load(line)
+        guard draft.isEmpty, !saved.isEmpty else { return }
+        presence.adoptRestoredDraft(saved)
+        draft = saved
+        // 137：是没发稳那句放回来的话，接着认它（原样按发送 = 重发那一句；长按重发会把输入框里这句一起收走）
+        draftFromFailedID = ChatDraftStore.loadFailedID(line)
+    }
+
+    /// 137：上传报错旁边的「重试」：正在上传（缩图）时点不动，不摆出来
+    private var showsUploadRetry: Bool {
+        vm.canRetryUpload && !vm.isUploading
+    }
+
     private var trimmedDraft: String {
         draft.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -2020,7 +2106,28 @@ struct ChatView: View {
         presence.didSend()
         draft = ""
         scrollToLatestRequest &+= 1
+        // 137：输入框里是没发稳那句放回来的、一个字没改：就是重发那一句（同一个 clientID），不另起一条
+        let failedID = draftFromFailedID
+        draftFromFailedID = nil
+        if let failedID, vm.isUnchangedResend(of: failedID, text: text) {
+            Task { await vm.resend(messageID: failedID, reduceMotion: reduceMotion) }
+            return
+        }
+        // 137：那句其实已经送到了（还没来得及收起输入框）：不再发一遍
+        if let failedID, vm.isDeliveredUnsent(of: failedID, text: text) { return }
         Task { await vm.send(text, reduceMotion: reduceMotion) }
+    }
+
+    /// 137：长按没发稳的那句点了「重发」。放回输入框的那句原样没动的话一起收走，不然再按发送又是一条
+    private func resendUnsent(_ message: Message) {
+        guard !vm.isRefreshingClaude, !vm.isClearingWindow else { return }
+        if draftFromFailedID == message.id, trimmedDraft == message.text {
+            presence.didSend()
+            draft = ""
+        }
+        if draftFromFailedID == message.id { draftFromFailedID = nil }
+        scrollToLatestRequest &+= 1
+        Task { await vm.resend(messageID: message.id, reduceMotion: reduceMotion) }
     }
 
     private var checkingView: some View {
@@ -2051,6 +2158,51 @@ struct ChatView: View {
         }
         .padding(theme.metric.gapXL)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// 137：输入框里没发的字，按线路存在本机（UserDefaults）。发出去、删光就清掉。
+/// 字是没发稳那句放回来的，连那句的本机 id 一起存（删光字时一起清掉）
+enum ChatDraftStore {
+    static func key(_ line: ChatLine) -> String { "chat.draft.\(line.rawValue)" }
+    static func failedKey(_ line: ChatLine) -> String { "chat.draft.\(line.rawValue).failedID" }
+
+    static func load(_ line: ChatLine, defaults: UserDefaults = .standard) -> String {
+        guard isEnabled else { return "" }
+        return defaults.string(forKey: key(line)) ?? ""
+    }
+
+    static func save(_ text: String, for line: ChatLine, defaults: UserDefaults = .standard) {
+        guard isEnabled else { return }
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            defaults.removeObject(forKey: key(line))
+            defaults.removeObject(forKey: failedKey(line))
+        } else {
+            defaults.set(text, forKey: key(line))
+        }
+    }
+
+    static func loadFailedID(_ line: ChatLine, defaults: UserDefaults = .standard) -> String? {
+        guard isEnabled else { return nil }
+        return defaults.string(forKey: failedKey(line))
+    }
+
+    static func saveFailedID(_ messageID: String?, for line: ChatLine, defaults: UserDefaults = .standard) {
+        guard isEnabled else { return }
+        if let messageID {
+            defaults.set(messageID, forKey: failedKey(line))
+        } else {
+            defaults.removeObject(forKey: failedKey(line))
+        }
+    }
+
+    /// UI 测试每次都从空输入框开始
+    private static var isEnabled: Bool {
+#if DEBUG
+        !ProcessInfo.processInfo.arguments.contains { $0.hasPrefix("-ui-test") }
+#else
+        true
+#endif
     }
 }
 

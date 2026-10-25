@@ -1,6 +1,7 @@
 import SwiftUI
 import Photos
 import UIKit
+import ImageIO
 import UniformTypeIdentifiers
 
 private enum ChatAttachmentEncodingPolicy {
@@ -24,6 +25,59 @@ extension UIImage {
             draw(in: CGRect(origin: .zero, size: target))
         }
         return resized.jpegData(compressionQuality: ChatAttachmentEncodingPolicy.jpegQuality)
+    }
+}
+
+/// 137：聊天里发照片。解码、缩边、压 JPEG 都在后台做——以前在主线程，点一张最近的照片、
+/// 从相册选几张、拍完照，界面都会冻住零点几秒到一两秒。
+/// 她说「不是压缩图片」：清晰度不降，最长边 2048、JPEG 质量 0.85。
+enum ChatPhotoEncoder {
+    static let maxPixelSize = 2048
+    static let quality: CGFloat = 0.85
+
+    /// 相册、最近照片给的原图数据 → 发出去的 JPEG；读不出来是 nil
+    static func jpeg(from data: Data) async -> Data? {
+        await Task.detached(priority: .userInitiated) { encode(data) }.value
+    }
+
+    /// 拍完照拿到的那张
+    static func jpeg(from image: UIImage) async -> Data? {
+        await Task.detached(priority: .userInitiated) { encode(image) }.value
+    }
+
+    /// 按目标尺寸直接解码（不先把四五千万像素的整张解出来），照片的方向一并摆正
+    static func encode(_ data: Data) -> Data? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+                kCGImageSourceShouldCacheImmediately: true
+              ] as CFDictionary) else { return nil }
+        let output = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(output, UTType.jpeg.identifier as CFString, 1, nil) else {
+            return nil
+        }
+        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return output as Data
+    }
+
+    static func encode(_ image: UIImage) -> Data? {
+        let width = image.size.width * image.scale
+        let height = image.size.height * image.scale
+        let longest = max(width, height)
+        guard longest > 0 else { return nil }
+        let limit = CGFloat(maxPixelSize)
+        guard longest > limit else { return image.jpegData(compressionQuality: quality) }
+        let ratio = limit / longest
+        let target = CGSize(width: (width * ratio).rounded(), height: (height * ratio).rounded())
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let resized = UIGraphicsImageRenderer(size: target, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: target))
+        }
+        return resized.jpegData(compressionQuality: quality)
     }
 }
 

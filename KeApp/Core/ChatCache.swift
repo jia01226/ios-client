@@ -68,9 +68,21 @@ actor ChatCache {
 
     func save(_ messages: [Message], sessionID: Int) {
         guard let fileURL else { return }
+        // 137：她那句没发稳的也存下来（App 被关掉再打开还在，还能长按重发）。
+        // 还在发、没等到回执的那句也存，存成「没有发稳」：还没送到 App 就被系统关掉，重开那句还在、能重发
+        // （同一个 clientID，服务器其实收到了也不会记两遍）。柯还没写完的照旧不存，重开以后没有东西能接回它们
         let confirmed = messages
-            .filter { $0.serverID != nil && $0.deliveryState == .sent }
+            .filter {
+                ($0.serverID != nil && $0.deliveryState == .sent)
+                    || ($0.sender == .me && $0.clientID != nil
+                        && ($0.deliveryState == .failed || $0.deliveryState == .sending))
+            }
             .suffix(120)
+            .map { message -> Message in
+                var stored = message
+                if stored.sender == .me, stored.deliveryState == .sending { stored.deliveryState = .failed }
+                return stored
+            }
         let envelope = Envelope(
             sessionID: sessionID,
             savedAt: .now,

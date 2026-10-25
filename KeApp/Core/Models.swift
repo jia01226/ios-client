@@ -357,4 +357,9 @@ extension Message {
     var canRecall: Bool {
         sender == .me && serverID != nil && deliveryState == .sent && !isStreaming
     }
+
+    /// 137：她那句「没有发稳」：长按可以重发（沿用原来的 clientID）或者删掉
+    var canResend: Bool {
+        sender == .me && deliveryState == .failed && clientID != nil && !isStreaming
+    }
 }
