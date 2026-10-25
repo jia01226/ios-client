@@ -43,7 +43,6 @@ targets:
           - Allura-Regular.ttf
           - PinyonScript-Regular.ttf
           - NotoSerifSC.ttf
-          - LXGWWenKai-Regular.ttf
         LSRequiresIPhoneOS: true
         NSMotionUsageDescription: 用于驾驶时暂缓到家后的提醒，不记录运动轨迹
         NSFaceIDUsageDescription: 用于打开只有你能进入的私密空间
