@@ -22,6 +22,8 @@ struct ChatView: View {
     @StateObject private var recentPhotos = RecentPhotosStore()
     @StateObject private var wallpaperStore = ChatWallpaperStore.shared
     @State private var draft = ""
+    /// 137：上次没发的草稿只在打开时放回一次
+    @State private var didRestoreDraft = false
     @State private var showingCallPlaceholder = false
     @State private var tarotOpen = false
     @State private var showingMemoryUsage = false
@@ -158,6 +160,7 @@ struct ChatView: View {
             if quoteOpenRequest?.id == request.id { quoteOpenRequest = nil }
         }
         .task {
+            restoreSavedDraft()
 #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("-ui-test-wallpaper"), wallpaperStore.image == nil {
                 let image = UIGraphicsImageRenderer(size: CGSize(width: 360, height: 780)).image { context in
@@ -856,7 +859,11 @@ struct ChatView: View {
                 .padding(.horizontal, 4)
                 .padding(.vertical, 11)
                 // 121：打字、删字、粘贴都算；只把字数交出去
-                .onChange(of: draft) { _, text in presence.textChanged(text) }
+                .onChange(of: draft) { _, text in
+                    presence.textChanged(text)
+                    // 137：随打随存，App 在后台被系统关掉，回来字还在
+                    ChatDraftStore.save(text, for: line)
+                }
 
             Button { send() } label: {
                 // 佳佳 2026-10-06：「先回消息 不要等消息」——柯回着的时候也能接着发。
@@ -2008,6 +2015,16 @@ struct ChatView: View {
         inputFocused = false
     }
 
+    /// 137：放回上次没发的字。先告诉 presence 这是恢复的，不算她在打字（不会报给服务器、不会叫醒柯）
+    private func restoreSavedDraft() {
+        guard !didRestoreDraft else { return }
+        didRestoreDraft = true
+        let saved = ChatDraftStore.load(line)
+        guard draft.isEmpty, !saved.isEmpty else { return }
+        presence.adoptRestoredDraft(saved)
+        draft = saved
+    }
+
     private var trimmedDraft: String {
         draft.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -2055,6 +2072,34 @@ struct ChatView: View {
         }
         .padding(theme.metric.gapXL)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// 137：输入框里没发的字，按线路存在本机（UserDefaults）。发出去、删光就清掉。
+enum ChatDraftStore {
+    static func key(_ line: ChatLine) -> String { "chat.draft.\(line.rawValue)" }
+
+    static func load(_ line: ChatLine, defaults: UserDefaults = .standard) -> String {
+        guard isEnabled else { return "" }
+        return defaults.string(forKey: key(line)) ?? ""
+    }
+
+    static func save(_ text: String, for line: ChatLine, defaults: UserDefaults = .standard) {
+        guard isEnabled else { return }
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            defaults.removeObject(forKey: key(line))
+        } else {
+            defaults.set(text, forKey: key(line))
+        }
+    }
+
+    /// UI 测试每次都从空输入框开始
+    private static var isEnabled: Bool {
+#if DEBUG
+        !ProcessInfo.processInfo.arguments.contains { $0.hasPrefix("-ui-test") }
+#else
+        true
+#endif
     }
 }
 

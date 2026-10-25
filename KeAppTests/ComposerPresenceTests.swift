@@ -115,6 +115,22 @@ import XCTest
         XCTAssertEqual(h.hesitations.count, 1)
     }
 
+    /// 137：没发的草稿按线路存在本机；删光（只剩空格换行）就清掉
+    func testDraftIsKeptPerLineAndClearedWhenEmpty() throws {
+        let suite = "chat-draft-tests-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(ChatDraftStore.load(.test1, defaults: defaults), "")
+        ChatDraftStore.save("上次没写完的\n那句话", for: .test1, defaults: defaults)
+        ChatDraftStore.save("另一条线", for: .main, defaults: defaults)
+        XCTAssertEqual(ChatDraftStore.load(.test1, defaults: defaults), "上次没写完的\n那句话")
+        XCTAssertEqual(ChatDraftStore.load(.main, defaults: defaults), "另一条线")
+        ChatDraftStore.save(" \n ", for: .test1, defaults: defaults)
+        XCTAssertEqual(ChatDraftStore.load(.test1, defaults: defaults), "")
+        XCTAssertNil(defaults.object(forKey: ChatDraftStore.key(.test1)))
+        XCTAssertEqual(ChatDraftStore.load(.main, defaults: defaults), "另一条线")
+    }
+
     func testRestoredDraftDoesNotCount() async {
         let h = PresenceHarness()
         h.reporter.adoptRestoredDraft("上次没写完的那句话")
