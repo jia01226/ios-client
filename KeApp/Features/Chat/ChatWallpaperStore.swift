@@ -149,8 +149,7 @@ final class ChatWallpaperStore: ObservableObject {
         defaults.set(name, forKey: "chat.wallpaper.photoID")
         sourceImage = source
         image = cropped
-        background = .photo
-        scheduleBake(after: 0)
+        background = .photo   // 137：它的 didSet 会照新照片重烤
         if let oldName, UUID(uuidString: oldName) != nil {
             try? FileManager.default.removeItem(at: directory.appendingPathComponent(oldName + "-source.jpg"))
             try? FileManager.default.removeItem(at: directory.appendingPathComponent(oldName + "-crop.jpg"))
