@@ -22,6 +22,8 @@ struct UsPondView: View {
     @State private var editDay: PondDay?
     @State private var open: PondEntry?
     @State private var visible = false
+    /// 137：池子滑到眼前了没有（在日历下面，没滑到就不画鱼）
+    @State private var pondShowing = false
     @State private var ripples: [PondRipple] = []
     @State private var choosingAnniversary = false
     @State private var managingDates = false
@@ -51,7 +53,7 @@ struct UsPondView: View {
                         .frame(maxWidth: .infinity).padding(.top, 14).padding(.bottom, 4)
                         .accessibilityHidden(true)
                     sectionTitle("也去看看", "ALSO HERE").padding(.horizontal, 28).padding(.top, 10)
-                    pond(width: geo.size.width, height: max(geo.size.width * 1.25, geo.size.height - 60))
+                    pond(width: geo.size.width, height: max(geo.size.width * 1.25, geo.size.height - 60), viewport: geo.size.height)
                 }
                 .padding(.bottom, 12 + dockInset)
             }
@@ -391,10 +393,12 @@ struct UsPondView: View {
 
     // MARK: 也去看看（锦鲤池）
 
-    private func pond(width: CGFloat, height: CGFloat) -> some View {
+    private func pond(width: CGFloat, height: CGFloat, viewport: CGFloat) -> some View {
         let snap = book.snapshot
+        // 137：池子在日历下面——没滑到眼前、或者荷包这些整页、点一天的面板盖着时，鱼不游（以前一进页面就全速画）
+        let paused = !visible || !pondShowing || open != nil || editDay != nil || reduceMotion || scenePhase != .active
         return ZStack(alignment: .topLeading) {
-            PondCanvas(paused: !visible || reduceMotion || scenePhase != .active, reduceMotion: reduceMotion, ripples: ripples)
+            PondCanvas(paused: paused, reduceMotion: reduceMotion, ripples: ripples)
                 .frame(width: width, height: height)
                 .contentShape(Rectangle())
                 .onTapGesture(coordinateSpace: .local) { p in
@@ -415,6 +419,10 @@ struct UsPondView: View {
                   })
         }
         .frame(width: width, height: height)
+        .onGeometryChange(for: Bool.self) { proxy in
+            let frame = proxy.frame(in: .scrollView)
+            return frame.maxY > 0 && frame.minY < viewport
+        } action: { pondShowing = $0 }
     }
 
     private func entry(_ e: PondEntry, x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat, badge: String?) -> some View {
@@ -469,7 +477,8 @@ struct PondCanvas: View {
     let ripples: [PondRipple]
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: nil, paused: paused)) { timeline in
+        // 137：一秒 30 下够顺（和「柯的」的蝴蝶一样）
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: paused)) { timeline in
             Canvas(rendersAsynchronously: false) { ctx, size in
                 draw(&ctx, size: size, now: timeline.date)
             }
@@ -564,6 +573,20 @@ struct PondCanvas: View {
     }
 
     // —— 花瓣：沿错开的弧线飘下来，落水漾一圈，漂一会儿淡掉 ——
+    /// 137：花瓣原图 1254×1254，画出来才二十几点——先缩成 128 像素的小图，不用每帧从大图缩
+    private static let petal: Image = {
+        #if canImport(UIKit)
+        if let big = UIImage(named: "KeUsPetal") {
+            let format = UIGraphicsImageRendererFormat(); format.scale = 1; format.opaque = false
+            let side: CGFloat = 128
+            let small = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { _ in
+                big.draw(in: CGRect(x: 0, y: 0, width: side, height: side))
+            }
+            return Image(uiImage: small)
+        }
+        #endif
+        return Image("KeUsPetal")
+    }()
     private static let routes: [[(Double, Double)]] = [
         [(0.18, -0.08), (0.08, 0.22), (0.30, 0.38)], [(0.82, -0.08), (0.95, 0.18), (0.72, 0.30)],
         [(0.55, -0.08), (0.40, 0.25), (0.48, 0.56)], [(0.30, -0.08), (0.22, 0.40), (0.38, 0.82)],
@@ -573,7 +596,7 @@ struct PondCanvas: View {
         guard !reduceMotion else { return }
         let gap = 3.1, fall = 5.2, rest = 6.0, fade = 2.4, total = fall + rest + fade
         let newest = Int(floor(t / gap))
-        let image = Image("KeUsPetal")
+        let image = Self.petal
         for k in 0..<Int(ceil(total / gap)) {
             let n = newest - k, age = t - Double(n) * gap
             guard age >= 0, age < total else { continue }
