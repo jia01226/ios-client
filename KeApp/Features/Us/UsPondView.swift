@@ -11,12 +11,14 @@ struct UsPondView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     let line: ChatLine
-    @StateObject private var vm: UsViewModel
-    @StateObject private var periods: PeriodStore
-    @StateObject private var notes: StickyNotesStore
-    @StateObject private var book: NotebookStore
+    /// 137：几样数据按线路各留一份（UsPondStores），切到别的页再回来不重建，先画上次的
+    private let stores: UsPondStores
+    @ObservedObject private var vm: UsViewModel
+    @ObservedObject private var periods: PeriodStore
+    @ObservedObject private var notes: StickyNotesStore
+    @ObservedObject private var book: NotebookStore
     /// 133：亲密记录（132 错加在旧的 UsView 上了，她这页看不到）
-    @StateObject private var love: LoveLogStore
+    @ObservedObject private var love: LoveLogStore
     @AppStorage(CamelliaPalette.storageKey) private var savedPalette = CamelliaPalette.defaultPalette.rawValue
     @State private var month = Calendar.current.dateInterval(of: .month, for: .now)?.start ?? .now
     @State private var editDay: PondDay?
@@ -34,12 +36,13 @@ struct UsPondView: View {
 
     init(line: ChatLine) {
         self.line = line
-        let api = APIClient(baseURL: line.apiBaseURL)
-        _vm = StateObject(wrappedValue: UsViewModel(api: api))
-        _periods = StateObject(wrappedValue: PeriodStore(api: api, scope: line.rawValue))
-        _notes = StateObject(wrappedValue: StickyNotesStore(api: api, scope: line.rawValue))
-        _book = StateObject(wrappedValue: NotebookStore(api: api))
-        _love = StateObject(wrappedValue: LoveLogStore(api: api, scope: line.rawValue))
+        let stores = UsPondStores.shared(line)
+        self.stores = stores
+        _vm = ObservedObject(wrappedValue: stores.vm)
+        _periods = ObservedObject(wrappedValue: stores.periods)
+        _notes = ObservedObject(wrappedValue: stores.notes)
+        _book = ObservedObject(wrappedValue: stores.book)
+        _love = ObservedObject(wrappedValue: stores.love)
     }
 
     var body: some View {
@@ -64,10 +67,11 @@ struct UsPondView: View {
             Image("KeUsWater").resizable().scaledToFill().saturation(palette.mistSaturation).colorMultiply(palette.mistTint).opacity(palette.mistOpacity * palette.pondWash)
         }.ignoresSafeArea())
         .foregroundStyle(Ink.primary)
-        .task { await load() }
+        // 137：切过来照样刷新；回前台 5 分钟内拉过就不再整页重拉（没告诉上柯的「走了」还是会再送）
+        .task { await stores.refresh(month: month) }
         .onAppear { visible = true }
         .onDisappear { visible = false }
-        .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await load() } } }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await stores.refresh(month: month, onlyIfStale: true) } } }
         .onChange(of: month) { _, m in Task { await love.load(m) } }
         .sheet(item: $editDay, onDismiss: { periods.clearStatus() }) { day in daySheet(day.date) }
         .sheet(isPresented: $choosingAnniversary) { anniversarySheet }
@@ -75,15 +79,6 @@ struct UsPondView: View {
             CompanionPages(page: .anniversaries, line: line).environmentObject(Theme.shared)
         }
         .fullScreenCover(item: $open) { entry in page(entry).swipeBackToClose { open = nil; Task { await book.load(); await notes.load() } } }
-    }
-
-    private func load() async {
-        async let a: Void = vm.loadReminders()
-        async let b: Void = periods.load()
-        async let c: Void = notes.load()
-        async let d: Void = book.load()
-        async let e: Void = love.load(month)
-        _ = await (a, b, c, d, e)
     }
 
     // MARK: 寄语
@@ -121,9 +116,10 @@ struct UsPondView: View {
 
     private var verse: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(book.snapshot?.verse?.en ?? "With you, even ordinary days shine.")
+            // 137：还没拉到时先用手机里留的上次那句，不先闪英文默认那句
+            Text(book.snapshot?.verse?.en ?? stores.savedVerse?.en ?? "With you, even ordinary days shine.")
                 .font(Ink.script(18)).foregroundStyle(Ink.secondary).lineLimit(1).minimumScaleFactor(0.6)
-            Text(book.snapshot?.verse?.zh ?? "和你一起，平常的日子也有光。")
+            Text(book.snapshot?.verse?.zh ?? stores.savedVerse?.zh ?? "和你一起，平常的日子也有光。")
                 .font(Ink.song(12)).tracking(1.2).foregroundStyle(Ink.secondary)
             if let a = hero {
                 let n = numbers(a)
@@ -615,5 +611,70 @@ struct PondCanvas: View {
             let w = size.width * (0.05 + Double(n % 3) * 0.008)
             g.draw(image, in: CGRect(x: -w / 2, y: -w / 2, width: w, height: w))
         }
+    }
+}
+
+// MARK: - 「我们」页的数据，按线路各留一份
+
+/// 137：以前每次切到别的页再回来，「我们」整页重建、几样数据全部重新联网，寄语先闪一下英文默认那句。
+/// 现在每条线路只建一份（一个 APIClient），换页回来先画上次的，再在后台悄悄刷新。
+@MainActor final class UsPondStores {
+    private static var all: [String: UsPondStores] = [:]
+    static func shared(_ line: ChatLine) -> UsPondStores {
+        if let stores = all[line.rawValue] { return stores }
+        let stores = UsPondStores(line: line)
+        all[line.rawValue] = stores
+        return stores
+    }
+
+    let vm: UsViewModel
+    let periods: PeriodStore
+    let notes: StickyNotesStore
+    let book: NotebookStore
+    let love: LoveLogStore
+    /// 寄语在手机上留一份：刚开 App、还没拉到时先画上次那句
+    private(set) var savedVerse: (en: String, zh: String)?
+    private let verseKey: String
+    private var lastLoad: Date?
+    private var loading: Task<Void, Never>?
+    static let foregroundGap: TimeInterval = 5 * 60
+
+    private init(line: ChatLine) {
+        let api = APIClient(baseURL: line.apiBaseURL)
+        vm = UsViewModel(api: api)
+        periods = PeriodStore(api: api, scope: line.rawValue)
+        notes = StickyNotesStore(api: api, scope: line.rawValue)
+        book = NotebookStore(api: api)
+        love = LoveLogStore(api: api, scope: line.rawValue)
+        verseKey = "us.verse." + line.rawValue
+        if let saved = UserDefaults.standard.stringArray(forKey: verseKey), saved.count == 2 { savedVerse = (saved[0], saved[1]) }
+    }
+
+    /// 拉一遍。放在不跟着页面走的 Task 里：拉到一半切走了也会拉完，不会被取消、错写成「没接上」。
+    /// onlyIfStale（回前台）：5 分钟内好好拉过就不再整页重拉，只把没告诉上柯的「走了」再送一次。
+    func refresh(month: Date, onlyIfStale: Bool = false) async {
+        if let loading { await loading.value; return }
+        if onlyIfStale, let lastLoad, Date().timeIntervalSince(lastLoad) < Self.foregroundGap {
+            if periods.hasUnsentEnd { await periods.syncEnds() }
+            return
+        }
+        let task = Task { @MainActor [vm, periods, notes, book, love] in
+            async let a: Void = vm.loadReminders()
+            async let b: Void = periods.load()
+            async let c: Void = notes.load()
+            async let d: Void = book.load()
+            async let e: Void = love.load(month)
+            _ = await (a, b, c, d, e)
+        }
+        loading = task
+        await task.value
+        loading = nil
+        if let verse = book.snapshot?.verse {
+            savedVerse = (verse.en, verse.zh)
+            UserDefaults.standard.set([verse.en, verse.zh], forKey: verseKey)
+        }
+        // 有一样没接上就不算拉过，回前台还会再拉
+        let ok = periods.error == nil && book.error == nil && vm.reminderLoadError == nil
+        lastLoad = ok ? .now : nil
     }
 }
