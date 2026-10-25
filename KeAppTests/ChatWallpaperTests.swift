@@ -57,6 +57,72 @@ final class ChatWallpaperTests: XCTestCase {
         XCTAssertNil(ChatWallpaperStore.decode(Data("invalid image".utf8)))
     }
 
+    private func pixel(_ image: CGImage, x: Int, y: Int) -> (r: UInt8, a: UInt8) {
+        var data = [UInt8](repeating: 0, count: 4)
+        let space = CGColorSpace(name: CGColorSpace.sRGB)!
+        let context = CGContext(data: &data, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.draw(image, in: CGRect(x: -x, y: -(image.height - 1 - y), width: image.width, height: image.height))
+        return (data[0], data[3])
+    }
+
+    private func solid(_ width: CGFloat, _ height: CGFloat) -> UIImage {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: CGSize(width: width, height: height), format: format).image { context in
+            UIColor.white.setFill(); context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        }
+    }
+
+    /// 137：模糊、压暗烤成一张：按原比例、中间照压暗变暗、边上照旧淡出（和实时模糊一样）；糊得重的缩小了烤
+    func testBakedWallpaperMatchesLiveBlurAndDim() throws {
+        let white = solid(100, 200)
+        let screen = CGSize(width: 100, height: 200)
+        let baked = try XCTUnwrap(ChatWallpaperStore.bake(white, blur: 4, dim: 0.25, shade: [0, 0, 0],
+                                                          screen: screen, screenScale: 1)?.cgImage)
+        XCTAssertEqual(baked.width, 100)
+        XCTAssertEqual(baked.height, 200)
+        let center = pixel(baked, x: 50, y: 100)
+        XCTAssertEqual(Double(center.r), 255 * 0.75, accuracy: 3)
+        XCTAssertEqual(center.a, 255)
+        XCTAssertLessThan(pixel(baked, x: 0, y: 0).a, 255, "边上照旧淡出")
+        XCTAssertNil(ChatWallpaperStore.bake(white, blur: 0, dim: 0.25, shade: [0, 0, 0], screen: screen, screenScale: 1))
+        let heavy = try XCTUnwrap(ChatWallpaperStore.bake(white, blur: 20, dim: 0, shade: [0, 0, 0],
+                                                          screen: CGSize(width: 50, height: 100), screenScale: 3)?.cgImage)
+        XCTAssertEqual(heavy.width, 50)
+        XCTAssertEqual(heavy.height, 100)
+    }
+
+    /// 137：换照片、拖滑杆：没烤好之前照旧实时模糊，手停一下就换成烤好的那张
+    func testBakedWallpaperFollowsPhotoAndSliders() async throws {
+        let suite = "wallpaper-bake-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let store = ChatWallpaperStore(defaults: defaults, directory: directory)
+        try store.save(source: solid(60, 120), cropped: solid(60, 120))
+        XCTAssertNil(store.bakedImage, "不模糊就不烤")
+        func settled() async {
+            for _ in 0..<100 where store.bakedImage == nil { try? await Task.sleep(nanoseconds: 20_000_000) }
+        }
+        store.blur = 8
+        XCTAssertNil(store.bakedImage, "拖的时候照旧实时模糊")
+        await settled()
+        XCTAssertNotNil(store.bakedImage)
+        store.dim = 0.3
+        XCTAssertNil(store.bakedImage, "压暗换了，旧的那张不用")
+        await settled()
+        XCTAssertNotNil(store.bakedImage)
+        XCTAssertEqual(store.baked?.dim, 0.3)
+        try store.save(source: solid(80, 160), cropped: solid(80, 160))
+        XCTAssertNil(store.bakedImage, "换了照片，旧的那张不用")
+        await settled()
+        XCTAssertTrue(store.baked?.source === store.image)
+    }
+
     func testCropTracksPanAndZoomAndMaintainsViewportAspect() throws {
         let image = UIGraphicsImageRenderer(size: CGSize(width: 300, height: 100)).image { context in
             UIColor.red.setFill(); context.fill(CGRect(x: 0, y: 0, width: 100, height: 100))
