@@ -69,6 +69,18 @@ final class ChatViewModel: ObservableObject {
         let text: String
     }
     @Published var restoredDraft: RestoredDraft?
+    /// 137：柯在想（Thinking）时流来的字先攒在这里，不再每 0.05 秒改一次 messages——
+    /// 每改一次整个聊天页（连同藏着的抽屉）都要把整段记录重算一遍，Thinking 那十几秒滑着就一顿一顿的。
+    /// 第一段马上写（「Thinking」那一行要出来）；之后只有她点开了 Thinking 弹窗才边想边写；
+    /// 写完（done）、换成工具卡、出错、掐断时一次写回。
+    private var thinkingBuffer: (messageID: String, text: String)?
+    private var lastThinkingFlush = Date.distantPast
+    /// 137：她正开着看的那条 Thinking（ChatView 告诉这里）；点开那一下先把攒着的写上
+    var liveThinkingMessageID: String? {
+        didSet {
+            if liveThinkingMessageID != nil, liveThinkingMessageID == thinkingBuffer?.messageID { flushThinking() }
+        }
+    }
     /// 137：没发稳的那几句当时真发出去的附件（按 clientID），重发时原样带上
     private var failedSends: [String: [ChatAttachment]] = [:]
     /// 137：从输入框发的那几句（按 clientID）。只有这些没发稳时才把字放回输入框；
@@ -860,6 +872,8 @@ final class ChatViewModel: ObservableObject {
     }
 
     private func abandonReplyConnection() {
+        // 137：攒着没写的 Thinking 先写上，不随这一轮丢掉
+        flushThinking()
         replyOwner = nil
         let previous = replyTask
         replyTask = nil
@@ -1692,19 +1706,10 @@ final class ChatViewModel: ObservableObject {
         /// 121：柯的正文一路收着，不往气泡里写——写完（done）那一刻才整条放上去。
         /// 断线重接是新的一轮 performSend，从头再收，不会把前一轮的半截接在后面。
         var replyText = ""
-        var pendingThinking = ""
-        var lastPublish = Date.distantPast
 
         func flushBufferedEvents() {
             guard ownsReply(owner) else { return }
-            guard !pendingThinking.isEmpty else { return }
-            let thinkingDelta = pendingThinking
-            pendingThinking = ""
-            updateMessage(id: assistantLocalID) {
-                $0.thoughtSummary = ($0.thoughtSummary ?? "") + thinkingDelta
-            }
-            streamRevision += 1
-            lastPublish = .now
+            flushThinking()
         }
 
         do {
@@ -1744,10 +1749,7 @@ final class ChatViewModel: ObservableObject {
                     replyText += delta
 
                 case let .thinkingDelta(delta):
-                    pendingThinking += delta
-                    if Date.now.timeIntervalSince(lastPublish) >= 0.05 {
-                        flushBufferedEvents()
-                    }
+                    bufferThinking(delta, for: assistantLocalID)
 
                 case let .thoughtNote(summary):
                     flushBufferedEvents()
@@ -2224,6 +2226,31 @@ final class ChatViewModel: ObservableObject {
             visibleSegmentCounts.removeValue(forKey: key)
             segmentRevealTasks[key] = nil
         }
+    }
+
+    /// 137：Thinking 的字先攒着（见 thinkingBuffer）
+    private func bufferThinking(_ delta: String, for messageID: String) {
+        if let buffer = thinkingBuffer, buffer.messageID != messageID { flushThinking() }
+        thinkingBuffer = (messageID, (thinkingBuffer?.text ?? "") + delta)
+        let shown = messages.last(where: { $0.id == messageID })?.thoughtSummary
+        if nonBlank(shown) == nil {
+            // 还没有「Thinking」那一行：马上写，让它出来
+            flushThinking()
+        } else if liveThinkingMessageID == messageID, Date.now.timeIntervalSince(lastThinkingFlush) >= 0.05 {
+            // 她正开着看：照旧最多每 0.05 秒写一次
+            flushThinking()
+        }
+    }
+
+    private func flushThinking() {
+        guard let buffer = thinkingBuffer else { return }
+        thinkingBuffer = nil
+        lastThinkingFlush = .now
+        guard !buffer.text.isEmpty else { return }
+        updateMessage(id: buffer.messageID) {
+            $0.thoughtSummary = ($0.thoughtSummary ?? "") + buffer.text
+        }
+        streamRevision += 1
     }
 
     private func updateMessage(id: String, mutate: (inout Message) -> Void) {

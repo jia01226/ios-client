@@ -372,6 +372,8 @@ struct ChatView: View {
                 .presentationDragIndicator(.visible)
                 .presentationContentInteraction(.scrolls)
         }
+        // 137：Thinking 弹窗开着时柯想的字才边想边写进记录（关着时攒着，写完一次放上）
+        .onChange(of: presentedThinkingMessageID) { _, id in vm.liveThinkingMessageID = id }
         .fullScreenCover(isPresented: $tarotOpen) {
             TarotView(line: line).environmentObject(theme)
         }

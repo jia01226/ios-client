@@ -924,6 +924,38 @@ final class ChatForegroundRecoveryTests: XCTestCase {
         await sending.value
     }
 
+    /// 137：柯在想的时候，Thinking 的字不再一小段一小段地改记录（每改一次整页重算）：
+    /// 第一段让「Thinking」那一行出来，之后攒着；点开弹窗先写上、开着时边想边写；写完一次写回
+    func testThinkingDeltasAreBatchedUnlessTheSheetIsOpen() async {
+        let server = ReplyServer(); let vm = await model(server)
+        let sending = await start(vm, server)
+        func thinking() -> String? { vm.messages.first { $0.sender == .ke }?.thoughtSummary }
+        server.receive([.thinkingDelta("她")])
+        await settle()
+        XCTAssertEqual(thinking(), "她", "第一段马上写，「Thinking」那一行出来")
+        let revision = vm.streamRevision
+        server.receive([.thinkingDelta("在"), .thinkingDelta("等"), .thinkingDelta("我")])
+        await settle()
+        XCTAssertEqual(thinking(), "她", "弹窗没开：攒着，不改记录")
+        XCTAssertEqual(vm.streamRevision, revision)
+        vm.liveThinkingMessageID = vm.messages.first { $0.sender == .ke }?.id
+        XCTAssertEqual(thinking(), "她在等我", "点开弹窗先把攒着的写上")
+        try? await Task.sleep(nanoseconds: 60_000_000)
+        server.receive([.thinkingDelta("。")])
+        await settle()
+        XCTAssertEqual(thinking(), "她在等我。", "开着时边想边写")
+        vm.liveThinkingMessageID = nil
+        server.receive([.thinkingDelta("嗯")])
+        await settle()
+        XCTAssertEqual(thinking(), "她在等我。")
+        server.completeOnServer()
+        server.receive([.text("完整回复"), .completed(assistantMessageID: 101, bedroom: nil, status: "done", error: nil, retryable: false, retryScheduled: false)])
+        server.streams[0].finish()
+        await sending.value
+        XCTAssertEqual(thinking(), "她在等我。嗯", "写完一次写回，拉回记录也留着")
+        XCTAssertEqual(timeline(vm).filter { $0.kind == .thinking }.count, 1)
+    }
+
     func testNotificationIntentPersistsAndCanRepeat() {
         let coordinator = ChatNotificationCoordinator()
         XCTAssertNil(coordinator.openRequest)
