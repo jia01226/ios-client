@@ -677,7 +677,7 @@ struct PondCanvas: View {
             UserDefaults.standard.set([verse.en, verse.zh], forKey: verseKey)
         }
         // 有一样没接上就不算拉过，回前台还会再拉
-        let ok = periods.error == nil && book.error == nil && vm.reminderLoadError == nil
+        let ok = periods.error == nil && !book.loadFailed && vm.reminderLoadError == nil
         lastLoad = ok ? .now : nil
     }
 }
