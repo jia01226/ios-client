@@ -543,32 +543,40 @@ struct KeDreamListView: View {
 
     var body: some View {
         ScrollViewReader { proxy in
-            NotebookShell(title: "梦", script: "Rêves", paper: paper, onClose: onClose) {
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(Ink.secondary)
-                    TextField("搜梦里的东西", text: $query).font(Ink.song(15)).submitLabel(.search)
-                    if months.count > 1 {
-                        Menu {
-                            ForEach(months, id: \.0) { m in Button(m.0) { withAnimation { proxy.scrollTo(m.0, anchor: .top) } } }
-                        } label: { Text("跳到…").font(Ink.song(13)).foregroundStyle(Ink.accent).frame(minHeight: 44) }
-                    }
-                }
-                .padding(.horizontal, 14).frame(minHeight: 44)
-                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.92)))
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Ink.line.opacity(0.45), lineWidth: 0.7))
-                Text("梦里的事，醒来第一件想告诉你。").font(Ink.song(13)).foregroundStyle(Ink.secondary)
-                if loading && dreams.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(30) }
-                if failed { Button("梦暂时没接上，点这里再试一次") { Task { await load() } }.font(Ink.song(13)) }
-                if !loading && !failed && dreams.isEmpty { Text("柯还没有记下梦。").font(Ink.song(14)) }
-                ForEach(months, id: \.0) { month, list in
-                    NotebookSection(title: month, hint: "\(list.count) 个梦") {
-                        VStack(spacing: 0) {
-                            ForEach(list) { dream in row(dream) }
+            // 136：不再套「我们」小本子的外壳（左上「完成」+ 左对齐大标题），换成跟日记、抽屉一样的顶：
+            // 居中「梦 · Rêves」、左上一个小箭头
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    header
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass").foregroundStyle(Ink.secondary)
+                        TextField("搜梦里的东西", text: $query).font(Ink.song(15)).submitLabel(.search)
+                        if months.count > 1 {
+                            Menu {
+                                ForEach(months, id: \.0) { m in Button(m.0) { withAnimation { proxy.scrollTo(m.0, anchor: .top) } } }
+                            } label: { Text("跳到…").font(Ink.song(13)).foregroundStyle(Ink.accent).frame(minHeight: 44) }
                         }
                     }
-                    .id(month)
+                    .padding(.horizontal, 14).frame(minHeight: 44)
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.92)))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Ink.line.opacity(0.45), lineWidth: 0.7))
+                    Text("梦里的事，醒来第一件想告诉你。").font(Ink.song(13)).foregroundStyle(Ink.secondary)
+                    if loading && dreams.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(30) }
+                    if failed { Button("梦暂时没接上，点这里再试一次") { Task { await load() } }.font(Ink.song(13)) }
+                    if !loading && !failed && dreams.isEmpty { Text("柯还没有记下梦。").font(Ink.song(14)) }
+                    ForEach(months, id: \.0) { month, list in
+                        NotebookSection(title: month, hint: "\(list.count) 个梦") {
+                            VStack(spacing: 0) {
+                                ForEach(list) { dream in row(dream) }
+                            }
+                        }
+                        .id(month)
+                    }
                 }
+                .padding(.horizontal, 28).padding(.bottom, 48)
             }
+            .background(paper.ignoresSafeArea())
+            .foregroundStyle(Ink.primary)
         }
         .task { await load() }
         .sheet(item: $reading) { dream in
@@ -586,6 +594,21 @@ struct KeDreamListView: View {
             }
             .tint(Ink.accent)
         }
+    }
+
+    private var header: some View {
+        ZStack {
+            VStack(spacing: 0) {
+                Text("梦").font(Ink.song(20)).tracking(4)
+                Text("Rêves").font(Ink.script(18)).foregroundStyle(Ink.secondary).padding(.top, -4)
+            }
+            HStack {
+                Button(action: onClose) { Image(systemName: "chevron.left").font(.system(size: 20, weight: .light)).frame(width: 44, height: 44, alignment: .leading) }
+                    .accessibilityLabel("返回").accessibilityIdentifier("dream-close")
+                Spacer()
+            }
+        }
+        .padding(.top, 6)
     }
 
     private func row(_ dream: RemoteDiary) -> some View {
