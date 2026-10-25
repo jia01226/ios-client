@@ -150,10 +150,15 @@ struct TarotView: View {
 
     private var header: some View {
         ZStack {
-            Text("塔罗").font(TarotTableStyle.title)
+            // 136：跟日记、抽屉、梦一样：居中标题下面一行花体小字，左上的小箭头一样大小粗细
+            VStack(spacing: 0) {
+                Text("塔罗").font(TarotTableStyle.title)
+                Text("Tarot").font(Ink.script(18)).foregroundStyle(TarotTableStyle.muted).padding(.top, -4)
+            }
             HStack(spacing: 4) {
                 Button { operation?.cancel(); dismiss() } label: {
-                    Image(systemName: "chevron.left").frame(width: TarotTableStyle.controlHeight, height: TarotTableStyle.controlHeight)
+                    Image(systemName: "chevron.left").font(.system(size: 20, weight: .light))
+                        .frame(width: TarotTableStyle.controlHeight, height: TarotTableStyle.controlHeight, alignment: .leading)
                 }.accessibilityLabel("返回").accessibilityIdentifier("tarot-close")
                 Spacer()
                 // 136：以前抽过的牌
