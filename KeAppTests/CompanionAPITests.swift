@@ -350,22 +350,6 @@ final class CompanionAPITests: XCTestCase {
         XCTAssertEqual(comment.content, "这里我想陪你多停一会儿。")
     }
 
-    @MainActor func testTimeSpaceKeepsCompletedRemindersInCalendarAndAllowsPartialRefresh() async {
-        CompanionStub.handler = { request in
-            switch request.url!.lastPathComponent {
-            case "anniversaries": return (503, "{}")
-            case "schedule": return (200, #"{"current":[{"id":1,"text":"待处理","scheduled_for":"2020-01-01 08:00:00","status":"pending","outcome":"","outcome_label":"","due":true}],"history":[{"id":2,"text":"已提醒","scheduled_for":"2020-01-02 08:00:00","status":"completed","outcome":"sent","outcome_label":"已发出","due":true}]}"#)
-            default: return (200, "[]")
-            }
-        }
-        let store = TimeDataStore(api: api())
-        await store.refresh()
-        XCTAssertEqual(store.pending.count, 1)
-        XCTAssertEqual(store.reminders.count, 2)
-        XCTAssertTrue(store.anniversaries.isEmpty)
-        XCTAssertEqual(store.error, "纪念日没有刷新成功，请重试。")
-    }
-
     @MainActor func testUsHomeLoadsRealAnniversariesInsteadOfDemoDates() async {
         CompanionStub.handler = { request in
             switch request.url!.lastPathComponent {

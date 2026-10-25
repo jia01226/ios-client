@@ -28,8 +28,6 @@ targets:
     platform: iOS
     sources:
       - path: KeApp
-        excludes:
-          - Features/Us/TimeSpace/TimeHomeView.swift
     info:
       path: KeApp/Info.plist
       properties:
@@ -83,9 +81,6 @@ targets:
     platform: iOS
     sources:
       - path: KeAppTests
-        excludes:
-          - TimeSpaceTests.swift
-          - TimeRenderingPerformanceTests.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: love.jiagude.ke.tests
@@ -101,8 +96,6 @@ targets:
     platform: iOS
     sources:
       - path: KeAppUITests
-        excludes:
-          - TimeSpaceInteractionTests.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: love.jiagude.ke.uitests
