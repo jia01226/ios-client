@@ -67,7 +67,7 @@ struct UsPondView: View {
         .onDisappear { visible = false }
         .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await load() } } }
         .onChange(of: month) { _, m in Task { await love.load(m) } }
-        .sheet(item: $editDay) { day in daySheet(day.date) }
+        .sheet(item: $editDay, onDismiss: { periods.clearStatus() }) { day in daySheet(day.date) }
         .sheet(isPresented: $choosingAnniversary) { anniversarySheet }
         .sheet(isPresented: $managingDates, onDismiss: { Task { await vm.loadReminders() } }) {
             CompanionPages(page: .anniversaries, line: line).environmentObject(Theme.shared)
@@ -200,9 +200,10 @@ struct UsPondView: View {
                     Text("亲密 \(love.monthCount(month)) 次").font(Ink.song(12)).foregroundStyle(Ink.accent).padding(.leading, 8)
                 }
                 Spacer()
-                Button { month = vm.month(byAdding: -1, to: month) } label: { Image(systemName: "chevron.left").font(.system(size: 16, weight: .ultraLight)).frame(width: 44, height: 40) }
+                // 137：点的范围放到 44×44，箭头本身不变
+                Button { month = vm.month(byAdding: -1, to: month) } label: { Image(systemName: "chevron.left").font(.system(size: 16, weight: .ultraLight)).frame(width: 44, height: 44).contentShape(Rectangle()) }
                     .accessibilityLabel("上个月")
-                Button { month = vm.month(byAdding: 1, to: month) } label: { Image(systemName: "chevron.right").font(.system(size: 16, weight: .ultraLight)).frame(width: 44, height: 40) }
+                Button { month = vm.month(byAdding: 1, to: month) } label: { Image(systemName: "chevron.right").font(.system(size: 16, weight: .ultraLight)).frame(width: 44, height: 44).contentShape(Rectangle()) }
                     .accessibilityLabel("下个月")
             }.padding(.top, 6)
             let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
@@ -296,35 +297,59 @@ struct UsPondView: View {
         }
     }
 
+    private static let dayTitleFormatter: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "zh_CN"); f.dateFormat = "M月d日 EEE"
+        return f
+    }()
+
     /// 点一天：排班（沿用原来的排班编辑），月经来了 / 走了。
+    /// 137：最上面写点的是哪一天、右上「关上」；整张面板一个样子（细宋体、粉白强调色）
     private func daySheet(_ date: Date) -> some View {
         VStack(spacing: 0) {
+            HStack(alignment: .center) {
+                Text(Self.dayTitleFormatter.string(from: date)).font(Ink.song(18)).tracking(1.5)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                Button("关上") { editDay = nil }.font(Ink.song(15)).foregroundStyle(Ink.accent)
+                    .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("day-sheet-close")
+            }
+            .padding(.horizontal, 24).padding(.top, 10)
             HStack {
                 Text("月经").font(Ink.song(15))
                 Spacer()
                 PeriodCalendarControls(store: periods)
             }
-            .padding(.horizontal, 24).padding(.top, 18)
+            .padding(.horizontal, 24).padding(.top, 2)
+            // 137：「来了 / 走了」只记今天——点的是别的日子就说一声，免得以为记在了那天
+            if !Calendar.current.isDateInToday(date) {
+                Text("「今天来了」「今天走了」都记在今天，不记在这一天").font(Ink.song(11.5)).foregroundStyle(Ink.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 24)
+            }
             // 126：上次哪天来、哪天走；今天点了「走了」就写「今天走了 · 正在告诉柯 / 已告诉柯」
             Text(periods.summary).font(Ink.song(12)).foregroundStyle(Ink.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 24).padding(.top, 2)
                 .accessibilityIdentifier("period-summary")
+            periodSyncRow
             // 133：亲密记录，柯记的，她也能改
             HStack {
                 Text("亲密").font(Ink.song(15))
                 Spacer()
                 let times = love.count(on: date)
+                // 137：点的范围放到 44×44，加减号本身不变
                 Button { Task { await love.setCount(times - 1, on: date) } } label: {
-                    Image(systemName: "minus").frame(width: 40, height: 36)
+                    Image(systemName: "minus").frame(width: 44, height: 44).contentShape(Rectangle())
                 }.disabled(times == 0).accessibilityLabel("减一次")
                 Text("\(times) 次").font(Ink.song(15)).monospacedDigit().frame(minWidth: 44)
                 Button { Task { await love.setCount(times + 1, on: date) } } label: {
-                    Image(systemName: "plus").frame(width: 40, height: 36)
+                    Image(systemName: "plus").frame(width: 44, height: 44).contentShape(Rectangle())
                 }.accessibilityLabel("加一次")
             }
             .foregroundStyle(Ink.accent)
-            .padding(.horizontal, 24).padding(.top, 10)
+            .padding(.horizontal, 24).padding(.top, 6)
             if let error = love.error {
                 Text(error).font(Ink.song(12)).foregroundStyle(Ink.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 24)
@@ -335,6 +360,29 @@ struct UsPondView: View {
         }
         .presentationDetents([.large])
         .presentationBackground(palette.paper)
+        .foregroundStyle(Ink.primary)
+    }
+
+    /// 137：经期记没记上，在面板里直接说；没告诉上柯的「走了」给一个「再告诉柯一次」
+    @ViewBuilder private var periodSyncRow: some View {
+        if periods.hasUnsentEnd && !periods.saving {
+            Button { Task { await periods.syncEnds() } } label: {
+                Text("再告诉柯一次").font(Ink.song(13)).foregroundStyle(Ink.accent).frame(minHeight: 44)
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 24)
+            .accessibilityIdentifier("period-retry-sync")
+        } else if let status = periods.status {
+            Text(status).font(Ink.song(12)).foregroundStyle(Ink.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 24).padding(.top, 2)
+        }
+        if let error = periods.error {
+            Button { Task { await periods.load() } } label: {
+                Text(error).font(Ink.song(12)).foregroundStyle(Ink.accent).frame(minHeight: 44)
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 24)
+        }
     }
 
     // MARK: 也去看看（锦鲤池）

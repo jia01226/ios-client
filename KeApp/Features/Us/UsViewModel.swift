@@ -3,9 +3,10 @@ import SwiftUI
 // 「我们」的数据和写班表那一页。原来跟旧 UsView 写在一个文件里；旧页面已删，
 // 真正在用的「我们」是 UsPondView（锦鲤池），它用这里的 UsViewModel 和 ScheduleEditorSheet；HomeReminderSettingsView 也用 UsViewModel。
 
+/// 137：只嵌在「我们」点一天的面板里——换成和面板上半截一样的细宋体、粉白强调色；
+/// 哪一天、「关上」都挪到面板最上面了，这里不再有自己的标题日期和「取消」。
 struct ScheduleEditorSheet: View {
     @ObservedObject var model: UsViewModel
-    @Environment(\.dismiss) private var dismiss
     let date: Date
     let onSave: (ShiftDay.Kind?, String?) -> Void
     @State private var selectedShift: ShiftDay.Kind?
@@ -25,23 +26,8 @@ struct ScheduleEditorSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("写班表")
-                        .font(.custom("STSongti-SC-Light", size: 24, relativeTo: .title2))
-                        .tracking(1.8)
-                        .foregroundStyle(UsPalette.ink)
-                    Text(dateLabel)
-                        .font(.custom("STSongti-SC-Light", size: 13, relativeTo: .caption))
-                        .foregroundStyle(UsPalette.mutedInk)
-                }
-                Spacer()
-                Button("取消") { dismiss() }
-                    .font(.custom("STSongti-SC-Light", size: 14, relativeTo: .body))
-                    .foregroundStyle(UsPalette.mutedInk)
-                    .buttonStyle(.plain)
-            }
+        VStack(alignment: .leading, spacing: 18) {
+            Text("排班").font(Ink.song(15)).foregroundStyle(Ink.primary)
 
             ScrollView {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())]) {
@@ -56,69 +42,44 @@ struct ScheduleEditorSheet: View {
                 if selectedShift == .other {
                     HStack(spacing: 10) {
                         Image(systemName: "pencil.line")
-                            .foregroundStyle(UsPalette.gold)
+                            .foregroundStyle(Ink.accent)
                         TextField("写下班次，例如：培训、临时班", text: $note)
                             .textInputAutocapitalization(.never)
                             .submitLabel(.done)
                     }
-                    .font(.custom("STSongti-SC-Light", size: 14, relativeTo: .body))
+                    .font(Ink.song(14))
+                    .foregroundStyle(Ink.primary)
                     .padding(.horizontal, 14)
                     .frame(height: 48)
                     .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(UsPalette.blush.opacity(0.09))
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(Ink.line.opacity(0.8), lineWidth: 0.7)
                     )
                 } else {
                     Text("休息日无需填写，清除当天排班即可。")
-                        .font(.custom("STSongti-SC-Light", size: 13, relativeTo: .caption))
-                        .foregroundStyle(UsPalette.mutedInk)
-                        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                        .font(Ink.song(12))
+                        .foregroundStyle(Ink.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 }
             }
 
             HStack(spacing: 12) {
-                Button {
+                Button("清除排班") {
                     selectedShift = nil
                     note = ""
-                } label: {
-                    Text("清除排班")
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(selectedShift == nil ? UsPalette.coral : UsPalette.mutedInk)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(UsPalette.blush.opacity(selectedShift == nil ? 0.16 : 0.07))
-                )
+                .buttonStyle(KeDrawerButtonStyle())
 
-                Button {
+                Button("保存班表") {
                     onSave(selectedShift, selectedShift == .other ? normalizedNote : nil)
-                } label: {
-                    Text("保存班表")
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(PageColors.calendarText)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(UsPalette.coral.opacity(0.88))
-                )
+                .buttonStyle(KeDrawerButtonStyle(solid: true))
             }
-            .font(.custom("STSongti-SC-Light", size: 15, relativeTo: .body))
         }
         .padding(.horizontal, 24)
-        .padding(.top, 22)
+        .padding(.top, 16)
         .sensoryFeedback(.selection, trigger: selectedShift)
         .accessibilityElement(children: .contain)
-    }
-
-    private var dateLabel: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = "M月d日 EEEE"
-        return formatter.string(from: date)
     }
 
     private var normalizedNote: String? {
@@ -139,19 +100,20 @@ private struct ShiftChoice: View {
                 Image(systemName: icon)
                     .font(.system(size: 19, weight: .light))
                 Text(label)
-                    .font(.custom("STSongti-SC-Light", size: 14, relativeTo: .body))
+                    .font(Ink.song(14))
             }
-            .foregroundStyle(selected ? UsPalette.coral : UsPalette.ink)
+            .foregroundStyle(selected ? Ink.accent : Ink.primary)
             .frame(maxWidth: .infinity)
             .frame(height: 88)
             .background(
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .fill(selected ? UsPalette.blush.opacity(0.18) : UsPalette.paper)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(selected ? Ink.accent.opacity(0.08) : Color.clear)
                     .overlay {
-                        RoundedRectangle(cornerRadius: 15, style: .continuous)
-                            .stroke(selected ? UsPalette.gold.opacity(0.72) : UsPalette.hairline.opacity(0.28), lineWidth: selected ? 1.2 : 0.7)
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(selected ? Ink.accent.opacity(0.7) : Ink.line.opacity(0.8), lineWidth: selected ? 1 : 0.7)
                     }
             )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)

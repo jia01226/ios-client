@@ -162,6 +162,8 @@ final class PeriodStore: ObservableObject {
             status = "这条记录已删除。"
         } catch { status = "这条记录还没删掉，请重试。" }
     }
+    /// 137：「我们」的数据切页不再重建，上一回的提示会一直留着——点一天的面板关上时清掉
+    func clearStatus() { status = nil }
     private func persistEnds() { defaults.set(try? JSONEncoder().encode(pendingEnds), forKey: pendingKey) }
     private func persistRecords() { defaults.set(try? JSONEncoder().encode(records), forKey: recordsKey) }
 }
