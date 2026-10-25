@@ -69,9 +69,10 @@ private struct PeriodHistoryView: View {
                 if let error = store.error { Button(error) { Task { await store.load() } } }
                 ForEach(store.records.sorted { $0.start_date > $1.start_date }) { record in
                     VStack(alignment: .leading, spacing: JournalLayout.smallGap) {
-                        Text(record.start_date + " 来了")
+                        // 137：写「10月2日 来了」，不写「2026-10-02」
+                        Text(store.dayLabel(record.start_date) + " 来了")
                         if let end = store.pendingEnds[record.id] ?? record.end_date {
-                            Text(end + (store.pendingEnds[record.id] == nil ? " 走了" : " 走了 · 待同步"))
+                            Text(store.dayLabel(end) + (store.pendingEnds[record.id] == nil ? " 走了" : " 走了 · 还没告诉上柯"))
                                 .foregroundStyle(theme.pageColor.textSecondary)
                         }
                         if let note = record.note, !note.isEmpty { Text(note).font(theme.font.journalCaption) }

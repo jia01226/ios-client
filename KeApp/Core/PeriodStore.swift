@@ -61,6 +61,13 @@ final class PeriodStore: ObservableObject {
         guard parts.count == 3, let m = Int(parts[1]), let d = Int(parts[2]) else { return key }
         return "\(m)月\(d)日"
     }
+    /// 137：给她看的日子都写「10月2日」；不是今年的再带上年份（「2025年12月30日」）
+    nonisolated static func dayLabel(_ key: String, today: String) -> String {
+        guard key.count >= 4, today.count >= 4, key.prefix(4) != today.prefix(4) else { return monthDay(key) }
+        let short = monthDay(key)
+        return short == key ? key : "\(key.prefix(4))年" + short
+    }
+    func dayLabel(_ key: String) -> String { Self.dayLabel(key, today: today) }
     nonisolated static func dayKey(_ key: String, plus days: Int) -> String? {
         let f = DateFormatter(); f.calendar = Calendar(identifier: .gregorian); f.locale = Locale(identifier: "en_US_POSIX")
         f.timeZone = TimeZone(identifier: "Asia/Shanghai"); f.dateFormat = "yyyy-MM-dd"
@@ -70,12 +77,15 @@ final class PeriodStore: ObservableObject {
     // 上一次还没走，就不能再点「来了」（以前会另开一条，她误点一下就多出一次经期）。
     var canStart: Bool { loaded && !saving && !loading && ongoing == nil && !records.contains { $0.start_date == today } && defaults.string(forKey: startedKey) != today }
     var canEnd: Bool { loaded && !saving && !loading && ongoing != nil }
+    /// 137：有点了「走了」还没告诉上柯的（那条记录还在；记录被删了的不算，免得一直重试一条不存在的）
+    var hasUnsentEnd: Bool { pendingEnds.keys.contains { id in records.contains { $0.id == id } } }
     var summary: String {
         guard loaded else { return error == nil ? "正在看经期记录…" : "经期记录暂未加载" }
         guard let latest else { return "来的那天，记一下就好。" }
         // 126：今天点了「走了」——还在往服务器送就说「正在告诉柯」，服务器记上了就说「已告诉柯」
+        // 137：没送上（没网、服务器没确认）就老实说「还没告诉上柯」，不再一直挂着「正在告诉柯」
         if let end = pendingEnds[latest.id] {
-            return end == today ? "今天走了 · 正在告诉柯" : "\(end) 走了 · 已记本机，待同步给柯"
+            return (end == today ? "今天走了" : dayLabel(end) + " 走了") + " · " + (saving ? "正在告诉柯" : "还没告诉上柯")
         }
         if let end = latest.end_date {
             if end == today { return "今天走了 · 已告诉柯" }
@@ -83,24 +93,28 @@ final class PeriodStore: ObservableObject {
             if let recent = Self.dayKey(end, plus: 3), today <= recent {
                 return "\(Self.monthDay(end)) 走了 · 柯知道了"
             }
-            return "上次 \(latest.start_date) — \(end)"
+            return "上次 \(dayLabel(latest.start_date)) — \(dayLabel(end))"
         }
-        if ongoing == nil { return "上次 \(latest.start_date) 来的，没记哪天走" }
-        return "\(latest.start_date) 来了"
+        if ongoing == nil { return "上次 \(dayLabel(latest.start_date)) 来的，没记哪天走" }
+        return latest.start_date == today ? "今天来了" : "\(dayLabel(latest.start_date)) 来了"
     }
     func load(allowDuringSave: Bool = false) async {
         guard !loading, !saving || allowDuringSave else { return }
         loading = true; error = nil
         let expected = revision
-        defer { loading = false }
+        var fetched = false
         do {
             let rows = try await api.fetchPeriods()
-            guard expected == revision else { return }
-            records = rows; loaded = true
-            // Only an explicit matching end date confirms delivery to the server.
-            for row in rows where pendingEnds[row.id] == row.end_date && row.end_date != nil { pendingEnds.removeValue(forKey: row.id) }
-            persistEnds()
+            if expected == revision {
+                records = rows; loaded = true; fetched = true
+                // Only an explicit matching end date confirms delivery to the server.
+                for row in rows where pendingEnds[row.id] == row.end_date && row.end_date != nil { pendingEnds.removeValue(forKey: row.id) }
+                persistEnds()
+            }
         } catch { self.error = "经期记录暂时没接上，点这里重试。" }
+        loading = false
+        // 137：上次点了「走了」没送到柯那儿的，进「我们」、回前台拉成功后自己再送一次，不用她去历史页点重试
+        if fetched, hasUnsentEnd { await syncEnds() }
     }
     func start() async {
         guard canStart else { return }
@@ -131,7 +145,7 @@ final class PeriodStore: ObservableObject {
                 records = rows; pendingEnds.removeValue(forKey: id); persistEnds(); revision += 1
                 status = "结束日期已同步给柯。"
             } catch {
-                status = "结束日期已记在本机，服务器尚未确认；接通后可重试同步。"
+                status = "走了已记在手机上，还没告诉上柯。"
                 return
             }
         }

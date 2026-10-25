@@ -103,12 +103,36 @@ final class PeriodDisplayTests: XCTestCase {
         api.endWorks = false   // 服务器还没确认
         await store.finish()
         XCTAssertEqual(store.pendingEnds[1], store.today)
-        XCTAssertEqual(store.summary, "今天走了 · 正在告诉柯")
-        // 接通后确认了，就是「已告诉柯」
+        // 137：没送上就不能一直写「正在告诉柯」
+        XCTAssertEqual(store.summary, "今天走了 · 还没告诉上柯")
+        // 再送一次、正在等服务器的时候才是「正在告诉柯」
         api.endWorks = true
-        await store.syncEnds()
+        api.hold = true
+        let sending = Task { await store.syncEnds() }
+        for _ in 0..<20 where !api.isWaiting { await Task.yield() }
+        XCTAssertTrue(api.isWaiting)
+        XCTAssertEqual(store.summary, "今天走了 · 正在告诉柯")
+        api.release()
+        await sending.value
+        // 接通后确认了，就是「已告诉柯」
         XCTAssertTrue(store.pendingEnds.isEmpty)
         XCTAssertEqual(store.summary, "今天走了 · 已告诉柯")
+    }
+
+    /// 137：没告诉上柯的「走了」，下次进「我们」页（load）自己再送，不用她去历史页点重试
+    func testLoadRetriesUnsentEnd() async {
+        let api = DisplayPeriodFake()
+        let store = PeriodStore(api: api, defaults: defaults)
+        api.rows = [RemotePeriod(id: 1, start_date: day(-4, from: store), end_date: nil, note: nil)]
+        await store.load()
+        api.endWorks = false
+        await store.finish()
+        XCTAssertEqual(store.pendingEnds[1], store.today)
+        api.endWorks = true
+        let again = PeriodStore(api: api, defaults: defaults)
+        await again.load()
+        XCTAssertTrue(again.pendingEnds.isEmpty)
+        XCTAssertEqual(again.summary, "今天走了 · 已告诉柯")
     }
 
     func testEarlierEndKeepsTheOldSummaries() async {
@@ -117,7 +141,15 @@ final class PeriodDisplayTests: XCTestCase {
         let start = day(-30, from: store), end = day(-25, from: store)
         api.rows = [RemotePeriod(id: 1, start_date: start, end_date: end, note: nil)]
         await store.load()
-        XCTAssertEqual(store.summary, "上次 \(start) — \(end)")
+        // 137：写「10月2日」，不写「2026-10-02」
+        XCTAssertEqual(store.summary, "上次 \(store.dayLabel(start)) — \(store.dayLabel(end))")
+        XCTAssertFalse(store.summary.contains("-"))
+    }
+
+    func testDayLabelsReadLikeTheRestOfTheApp() {
+        XCTAssertEqual(PeriodStore.dayLabel("2026-10-02", today: "2026-10-25"), "10月2日")
+        XCTAssertEqual(PeriodStore.dayLabel("2025-12-30", today: "2026-01-03"), "2025年12月30日")
+        XCTAssertEqual(PeriodStore.dayLabel("坏的", today: "2026-01-03"), "坏的")
     }
 }
 
