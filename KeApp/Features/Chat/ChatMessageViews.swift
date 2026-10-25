@@ -700,26 +700,38 @@ struct MessageRow: View {
 /// 137：小图标、小字按钮看着多大不变，能点的地方往外多出一圈（凑够 44×44）。
 /// 先垫开、定好能点的形状、再收回来：多出来的那圈不占排版位置，旁边的东西一点不挪
 struct ChatHitSlop: ViewModifier {
-    let horizontal: CGFloat
+    let leading: CGFloat
+    let trailing: CGFloat
     let vertical: CGFloat
 
     init(horizontal: CGFloat, vertical: CGFloat) {
-        self.horizontal = horizontal
+        leading = horizontal
+        trailing = horizontal
+        self.vertical = vertical
+    }
+
+    /// 左右不一样多：挨着别的按钮那一边少伸一点，不抢它的点
+    init(leading: CGFloat, trailing: CGFloat, vertical: CGFloat) {
+        self.leading = leading
+        self.trailing = trailing
         self.vertical = vertical
     }
 
     /// 看着 width×height 的，补到 target×target
     init(visible width: CGFloat, _ height: CGFloat, target: CGFloat) {
-        horizontal = max(0, (target - width) / 2)
+        leading = max(0, (target - width) / 2)
+        trailing = leading
         vertical = max(0, (target - height) / 2)
     }
 
     func body(content: Content) -> some View {
         content
-            .padding(.horizontal, horizontal)
+            .padding(.leading, leading)
+            .padding(.trailing, trailing)
             .padding(.vertical, vertical)
             .contentShape(Rectangle())
-            .padding(.horizontal, -horizontal)
+            .padding(.leading, -leading)
+            .padding(.trailing, -trailing)
             .padding(.vertical, -vertical)
     }
 }

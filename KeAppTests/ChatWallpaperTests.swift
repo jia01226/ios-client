@@ -93,6 +93,24 @@ final class ChatWallpaperTests: XCTestCase {
         XCTAssertEqual(heavy.height, 100)
     }
 
+    /// 137：iPhone 照片是 Display P3：烤的时候不压回 sRGB，很艳的红照旧那么红（换上烤好的那张颜色不跳）
+    func testBakedWallpaperKeepsWideColor() throws {
+        let p3 = try XCTUnwrap(CGColorSpace(name: CGColorSpace.displayP3))
+        let source = try XCTUnwrap(CGContext(data: nil, width: 60, height: 120, bitsPerComponent: 8, bytesPerRow: 0,
+                                             space: p3, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+        source.setFillColor(CGColor(colorSpace: p3, components: [1, 0, 0, 1])!)
+        source.fill(CGRect(x: 0, y: 0, width: 60, height: 120))
+        let red = UIImage(cgImage: try XCTUnwrap(source.makeImage()))
+        let baked = try XCTUnwrap(ChatWallpaperStore.bake(red, blur: 4, dim: 0, shade: [0, 0, 0],
+                                                          screen: CGSize(width: 60, height: 120), screenScale: 1)?.cgImage)
+        var data = [UInt8](repeating: 0, count: 4)
+        let probe = try XCTUnwrap(CGContext(data: &data, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                            space: p3, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        probe.draw(baked, in: CGRect(x: -30, y: -60, width: baked.width, height: baked.height))
+        XCTAssertGreaterThan(data[0], 250, "P3 的红不被压成 sRGB 的红（那样只剩 234 左右）")
+        XCTAssertLessThan(data[1], 15)
+    }
+
     /// 137：换照片、拖滑杆：没烤好之前照旧实时模糊，手停一下就换成烤好的那张
     func testBakedWallpaperFollowsPhotoAndSliders() async throws {
         let suite = "wallpaper-bake-\(UUID())"

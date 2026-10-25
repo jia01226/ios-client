@@ -304,9 +304,13 @@ private struct RemoteMessage: Decodable {
     let toolRuns: [ChatToolRun]?
     /// 121：柯的消息由服务器切好的气泡；她的消息没有这一项
     let segments: RemoteSegments?
+    /// 137：她那句发的时候带的 clientID（服务器没给、给了空字符串都当没有）。
+    /// 本机没等到回执、显示「没发稳」的同一句，拉记录时按它认出来，不再多摆一条
+    let clientMsgID: String?
 
     enum CodingKeys: String, CodingKey {
         case id, author, content, segments
+        case clientMsgID = "client_msg_id"
         case createdAt = "created_at"
         case thinkSummary = "think_summary"
         case thoughtNote = "thought_note"
@@ -318,7 +322,7 @@ private struct RemoteMessage: Decodable {
 
     func appMessage() -> Message {
         let parsedTime = ServerDateParser.parse(createdAt)
-        return Message(
+        var message = Message(
             id: "server-\(id)",
             serverID: id,
             sender: author == "user" ? .me : .ke,
@@ -335,6 +339,8 @@ private struct RemoteMessage: Decodable {
             isStreaming: false,
             deliveryState: .sent
         )
+        if author == "user", let clientID = clientMsgID?.nilIfBlank { message.clientID = clientID }
+        return message
     }
 }
 

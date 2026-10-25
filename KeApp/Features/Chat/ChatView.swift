@@ -213,6 +213,20 @@ struct ChatView: View {
             draft = restored.text
             draftFromFailedID = restored.messageID
         }
+        // 137：输入框里这句是哪句没发稳的放回来的，跟着草稿存在本机：App 被关掉再打开，原样按发送还是重发那一句
+        .onChange(of: draftFromFailedID) { _, id in
+            ChatDraftStore.saveFailedID(id, for: line)
+        }
+        // 137：放回输入框的那句其实已经送到了（接回时对上了任务、拉回的记录里有它）：
+        // 输入框里还是原样的话收起来，不然再按发送柯就收到两遍；她改过的不动
+        .onChange(of: draftFromFailedID.flatMap { vm.unsentMessage(id: $0)?.deliveryState }) { _, state in
+            guard state == .sent, let id = draftFromFailedID, let delivered = vm.unsentMessage(id: id) else { return }
+            if trimmedDraft == delivered.text {
+                presence.didSend()
+                draft = ""
+            }
+            draftFromFailedID = nil
+        }
     }
 
     private var externalSendTaskID: String {
@@ -1074,12 +1088,13 @@ struct ChatView: View {
                             Image(systemName: "doc")
                             Text(attachment.name).lineLimit(1)
                         }
+                        // 137：能点的那圈往左只伸到和名字之间那道缝，不盖住名字（点名字是看大图，不是拿掉）
                         Button {
                             vm.removePendingAttachment(attachment)
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .frame(width: 28, height: 28)
-                                .modifier(ChatHitSlop(visible: 28, 28, target: theme.metric.touchTarget))
+                                .modifier(ChatHitSlop(leading: theme.metric.gapXS, trailing: 8, vertical: 8))
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("移除 \(attachment.name)")
@@ -1099,7 +1114,8 @@ struct ChatView: View {
                         Text(error)
                             .font(theme.font.caption)
                             .foregroundStyle(theme.color.textSecondary)
-                        if vm.canRetryUpload {
+                        // 137：正在上传时「重试」点不动，先不摆出来
+                        if showsUploadRetry {
                             Button {
                                 Task { await vm.retryLastUpload() }
                             } label: {
@@ -1111,12 +1127,14 @@ struct ChatView: View {
                             .foregroundStyle(theme.effectiveAccent)
                         }
                         // 137：不想发这个附件了，点一下收起这条报错
+                        // 能点的那圈往左不伸进「重试」：点在「重试」右边一点算重试，不算收起
                         Button {
                             vm.dismissUploadError()
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .frame(width: 28, height: 28)
-                                .modifier(ChatHitSlop(visible: 28, 28, target: theme.metric.touchTarget))
+                                .modifier(ChatHitSlop(leading: showsUploadRetry ? 0 : theme.metric.gapXS,
+                                                      trailing: 8, vertical: 8))
                         }
                         .buttonStyle(.plain)
                         .font(theme.font.caption)
@@ -2063,6 +2081,13 @@ struct ChatView: View {
         guard draft.isEmpty, !saved.isEmpty else { return }
         presence.adoptRestoredDraft(saved)
         draft = saved
+        // 137：是没发稳那句放回来的话，接着认它（原样按发送 = 重发那一句；长按重发会把输入框里这句一起收走）
+        draftFromFailedID = ChatDraftStore.loadFailedID(line)
+    }
+
+    /// 137：上传报错旁边的「重试」：正在上传（缩图）时点不动，不摆出来
+    private var showsUploadRetry: Bool {
+        vm.canRetryUpload && !vm.isUploading
     }
 
     private var trimmedDraft: String {
@@ -2088,6 +2113,8 @@ struct ChatView: View {
             Task { await vm.resend(messageID: failedID, reduceMotion: reduceMotion) }
             return
         }
+        // 137：那句其实已经送到了（还没来得及收起输入框）：不再发一遍
+        if let failedID, vm.isDeliveredUnsent(of: failedID, text: text) { return }
         Task { await vm.send(text, reduceMotion: reduceMotion) }
     }
 
@@ -2135,8 +2162,10 @@ struct ChatView: View {
 }
 
 /// 137：输入框里没发的字，按线路存在本机（UserDefaults）。发出去、删光就清掉。
+/// 字是没发稳那句放回来的，连那句的本机 id 一起存（删光字时一起清掉）
 enum ChatDraftStore {
     static func key(_ line: ChatLine) -> String { "chat.draft.\(line.rawValue)" }
+    static func failedKey(_ line: ChatLine) -> String { "chat.draft.\(line.rawValue).failedID" }
 
     static func load(_ line: ChatLine, defaults: UserDefaults = .standard) -> String {
         guard isEnabled else { return "" }
@@ -2147,8 +2176,23 @@ enum ChatDraftStore {
         guard isEnabled else { return }
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             defaults.removeObject(forKey: key(line))
+            defaults.removeObject(forKey: failedKey(line))
         } else {
             defaults.set(text, forKey: key(line))
+        }
+    }
+
+    static func loadFailedID(_ line: ChatLine, defaults: UserDefaults = .standard) -> String? {
+        guard isEnabled else { return nil }
+        return defaults.string(forKey: failedKey(line))
+    }
+
+    static func saveFailedID(_ messageID: String?, for line: ChatLine, defaults: UserDefaults = .standard) {
+        guard isEnabled else { return }
+        if let messageID {
+            defaults.set(messageID, forKey: failedKey(line))
+        } else {
+            defaults.removeObject(forKey: failedKey(line))
         }
     }
 

@@ -106,15 +106,20 @@ final class ChatWallpaperStore: ObservableObject {
         let perImagePoint = min(image.scale, fill * perScreenPoint)
         let target = CGSize(width: max(1, (size.width * perImagePoint).rounded()),
                             height: max(1, (size.height * perImagePoint).rounded()))
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        format.opaque = true
-        format.preferredRange = .standard
-        let small = UIGraphicsImageRenderer(size: target, format: format).image { context in
-            context.cgContext.interpolationQuality = .high
-            image.draw(in: CGRect(origin: .zero, size: target))
-        }
-        guard let cgImage = small.cgImage, let sRGB = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+        // 照 Display P3 画、照 P3 存：iPhone 拍的照片颜色比 sRGB 宽，按 sRGB 烤会把很艳的红、绿、橙压灰，
+        // 烤好的那张换上来时颜色就跳一下。还是每个颜色 8 位，占的内存一样
+        guard let p3 = CGColorSpace(name: CGColorSpace.displayP3),
+              let canvas = CGContext(data: nil, width: Int(target.width), height: Int(target.height),
+                                     bitsPerComponent: 8, bytesPerRow: 0, space: p3,
+                                     bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        canvas.interpolationQuality = .high
+        // 换成 UIKit 的坐标（原点在左上）：image.draw 照着照片自己的方向画
+        canvas.translateBy(x: 0, y: target.height)
+        canvas.scaleBy(x: 1, y: -1)
+        UIGraphicsPushContext(canvas)
+        image.draw(in: CGRect(origin: .zero, size: target))
+        UIGraphicsPopContext()
+        guard let cgImage = canvas.makeImage() else { return nil }
         let input = CIImage(cgImage: cgImage)
         let rect = input.extent
         let pixelsPerScreenPoint = Double(perImagePoint / fill)
@@ -126,7 +131,7 @@ final class ChatWallpaperStore: ObservableObject {
         }
         // 不换到线性色彩里算：和屏幕上实时模糊、叠一层黑是同一种算法，颜色深浅一样
         let context = CIContext(options: [.workingColorSpace: NSNull(), .cacheIntermediates: false])
-        guard let result = context.createCGImage(output, from: rect, format: .RGBA8, colorSpace: sRGB) else { return nil }
+        guard let result = context.createCGImage(output, from: rect, format: .RGBA8, colorSpace: p3) else { return nil }
         return UIImage(cgImage: result)
     }
 
