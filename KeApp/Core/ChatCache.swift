@@ -68,8 +68,13 @@ actor ChatCache {
 
     func save(_ messages: [Message], sessionID: Int) {
         guard let fileURL else { return }
+        // 137：她那句没发稳的也存下来（App 被关掉再打开还在，还能长按重发）；
+        // 正在发、柯还没写完的照旧不存，重开以后没有东西能接回它们
         let confirmed = messages
-            .filter { $0.serverID != nil && $0.deliveryState == .sent }
+            .filter {
+                ($0.serverID != nil && $0.deliveryState == .sent)
+                    || ($0.sender == .me && $0.deliveryState == .failed && $0.clientID != nil)
+            }
             .suffix(120)
         let envelope = Envelope(
             sessionID: sessionID,

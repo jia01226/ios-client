@@ -315,6 +315,9 @@ struct MessageRow: View {
     /// 112：长按「下个窗带上 / 取消带上」，按整轮钉住
     var onTogglePin: (Message) -> Void = { _ in }
     var isPinned = false
+    /// 137：她那句没发稳：长按「重发」「删掉」
+    var onResend: (Message) -> Void = { _ in }
+    var onDiscard: (Message) -> Void = { _ in }
     /// 121：时间线里柯的每个气泡各占一格，这里说这一格画第几个；时间那一行只跟在最后一个下面。
     /// nil = 整条画在一起（截图测试、预览用）。
     var part: ChatBubblePart? = nil
@@ -323,6 +326,8 @@ struct MessageRow: View {
     @State private var recallAfterDismiss = false
     @State private var quoteAfterDismiss = false
     @State private var pinAfterDismiss = false
+    @State private var resendAfterDismiss = false
+    @State private var discardAfterDismiss = false
     @State private var notebookText: String?
 
     var body: some View {
@@ -358,7 +363,7 @@ struct MessageRow: View {
             alignment: message.sender == .ke ? .leading : .trailing
         )
         .onLongPressGesture(minimumDuration: 0.45) {
-            guard !message.text.isEmpty || message.canRecall || message.serverID != nil else { return }
+            guard !message.text.isEmpty || message.canRecall || message.serverID != nil || message.canResend else { return }
             actionsPresented = true
         }
         .popover(isPresented: $actionsPresented) {
@@ -430,6 +435,18 @@ struct MessageRow: View {
 
     private var actionsMenu: some View {
         VStack(spacing: 0) {
+            if message.canResend {
+                Button {
+                    resendAfterDismiss = true
+                    actionsPresented = false
+                } label: {
+                    Label("重发", systemImage: "arrow.clockwise")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                }
+                .accessibilityIdentifier("message-action-resend")
+                if !message.text.isEmpty { Divider() }
+            }
             if !message.text.isEmpty {
                 Button {
                     UIPasteboard.general.string = message.text
@@ -472,6 +489,18 @@ struct MessageRow: View {
                         .frame(maxWidth: .infinity, alignment: .leading).padding(14)
                 }.accessibilityIdentifier("message-action-pin")
             }
+            if message.canResend {
+                Divider()
+                Button(role: .destructive) {
+                    discardAfterDismiss = true
+                    actionsPresented = false
+                } label: {
+                    Label("删掉", systemImage: "trash")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                }
+                .accessibilityIdentifier("message-action-discard")
+            }
         }
         .font(theme.font.body)
         .buttonStyle(.plain)
@@ -486,6 +515,14 @@ struct MessageRow: View {
             if pinAfterDismiss {
                 pinAfterDismiss = false
                 onTogglePin(message)
+            }
+            if resendAfterDismiss {
+                resendAfterDismiss = false
+                onResend(message)
+            }
+            if discardAfterDismiss {
+                discardAfterDismiss = false
+                onDiscard(message)
             }
             guard recallAfterDismiss else { return }
             recallAfterDismiss = false

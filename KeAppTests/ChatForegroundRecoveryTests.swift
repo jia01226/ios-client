@@ -824,6 +824,89 @@ final class ChatForegroundRecoveryTests: XCTestCase {
         XCTAssertEqual(vm.messages.last?.deliveryState, .failed)
     }
 
+    /// 137：连不上：头一次和自动重接那一次都断在回执前面，这句「没有发稳」
+    private func failToSend(_ vm: ChatViewModel, _ server: ReplyServer, text: String = "测试一句") async {
+        let base = server.streams.count
+        let sending = Task { await vm.send(text, reduceMotion: true) }
+        await wait { server.streams.count == base + 1 }
+        server.streams[base].finish(throwing: URLError(.networkConnectionLost))
+        await wait { server.streams.count == base + 2 }
+        server.streams[base + 1].finish(throwing: URLError(.networkConnectionLost))
+        await sending.value
+    }
+
+    /// 137：没发稳的那句：字放回输入框、附件放回待发；长按重发沿用原来的 clientID 和附件，
+    /// 放回待发的附件跟着走，气泡只有一条
+    func testUnsentMessageResendsWithSameClientIDAndPayload() async {
+        let server = ReplyServer(); let vm = await model(server)
+        let photo = ChatAttachment(url: "/uploads/photo.jpg", name: "照片.jpg", kind: "image")
+        vm.pendingAttachments = [photo]
+        await failToSend(vm, server)
+        guard let failed = vm.messages.first(where: { $0.sender == .me }) else { return XCTFail("没有她那句") }
+        XCTAssertEqual(failed.deliveryState, .failed)
+        XCTAssertTrue(failed.canResend)
+        XCTAssertFalse(vm.messages.contains { $0.sender == .ke }, "柯的空位收起")
+        XCTAssertFalse(vm.isSending)
+        XCTAssertEqual(vm.restoredDraft?.text, "测试一句", "字放回输入框")
+        XCTAssertEqual(vm.restoredDraft?.messageID, failed.id)
+        XCTAssertEqual(vm.pendingAttachments.map(\.url), [photo.url])
+        XCTAssertTrue(vm.isUnchangedResend(of: failed.id, text: "测试一句"))
+        XCTAssertFalse(vm.isUnchangedResend(of: failed.id, text: "测试一句！"), "改过字就是新的一句")
+        let resending = Task { await vm.resend(messageID: failed.id, reduceMotion: true) }
+        await wait { server.streams.count == 3 }
+        XCTAssertEqual(Set(server.clientIDs).count, 1, "重发沿用原来的 clientID，服务器按它去重")
+        XCTAssertEqual(server.sentTexts, ["测试一句", "测试一句", "测试一句"])
+        XCTAssertEqual(server.sentAttachments[2].map(\.url), [photo.url])
+        XCTAssertTrue(vm.pendingAttachments.isEmpty, "放回待发的附件跟着重发走了")
+        let mine = vm.messages.filter { $0.sender == .me }
+        XCTAssertEqual(mine.count, 1)
+        XCTAssertEqual(mine.first?.deliveryState, .sending)
+        XCTAssertEqual(vm.messages.last?.sender, .ke, "柯的占位跟在后面")
+        server.completeOnServer()
+        server.receive([.receipt(userMessageID: 100, jobID: "job-1", bedroom: nil), .text("完整回复"),
+                        .completed(assistantMessageID: 101, bedroom: nil, status: "done", error: nil, retryable: false, retryScheduled: false)], at: 2)
+        server.streams[2].finish()
+        await resending.value
+        assertComplete(vm)
+    }
+
+    /// 137：没发稳的那句存进缓存：重开 App 还在、不往输入框里塞；能删掉，也能重发（还是原来的 clientID）
+    func testUnsentMessageSurvivesRelaunchAndCanBeDiscardedOrResent() async {
+        let file = "unsent-\(UUID()).json"
+        let server = ReplyServer()
+        func launch() async -> ChatViewModel {
+            let vm = ChatViewModel(monitorConnectivity: false, replyTransport: server, cacheFileName: file,
+                                   replyKeepAlive: FakeKeepAlive(grants: false).provider, replyCompleted: {})
+            await vm.bootstrap()
+            return vm
+        }
+        let first = await launch()
+        await failToSend(first, server, text: "第一句")
+        await failToSend(first, server, text: "第二句")
+        let relaunched = await launch()
+        XCTAssertEqual(relaunched.messages.map(\.text), ["第一句", "第二句"])
+        XCTAssertTrue(relaunched.messages.allSatisfy { $0.deliveryState == .failed && $0.canResend })
+        XCTAssertNil(relaunched.restoredDraft, "重开时不往输入框里塞")
+        guard let second = relaunched.messages.last else { return XCTFail("没有第二句") }
+        await relaunched.discardUnsent(messageID: second.id)
+        XCTAssertEqual(relaunched.messages.map(\.text), ["第一句"])
+        let again = await launch()
+        XCTAssertEqual(again.messages.map(\.text), ["第一句"], "删掉的不再回来")
+        guard let unsent = again.messages.first else { return XCTFail("没有第一句") }
+        let base = server.streams.count
+        let resending = Task { await again.resend(messageID: unsent.id, reduceMotion: true) }
+        await wait { server.streams.count == base + 1 }
+        XCTAssertEqual(server.clientIDs.last, server.clientIDs.first, "重开以后重发也用原来的 clientID")
+        XCTAssertEqual(server.sentTexts.last, "第一句")
+        server.completeOnServer()
+        server.receive([.receipt(userMessageID: 100, jobID: "job-1", bedroom: nil), .text("完整回复"),
+                        .completed(assistantMessageID: 101, bedroom: nil, status: "done", error: nil, retryable: false, retryScheduled: false)], at: base)
+        server.streams[base].finish()
+        await resending.value
+        XCTAssertEqual(again.messages.filter { $0.sender == .me }.count, 1)
+        XCTAssertFalse(again.messages.contains { $0.deliveryState != .sent })
+    }
+
     func testNotificationIntentPersistsAndCanRepeat() {
         let coordinator = ChatNotificationCoordinator()
         XCTAssertNil(coordinator.openRequest)

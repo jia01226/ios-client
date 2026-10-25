@@ -24,6 +24,10 @@ struct ChatView: View {
     @State private var draft = ""
     /// 137：上次没发的草稿只在打开时放回一次
     @State private var didRestoreDraft = false
+    /// 137：输入框里的字是从哪句没发稳的放回来的（原样再按发送 = 重发那一句）
+    @State private var draftFromFailedID: String?
+    /// 137：长按「删掉」没发稳的那句，先问一声
+    @State private var unsentToDiscard: Message?
     @State private var showingCallPlaceholder = false
     @State private var tarotOpen = false
     @State private var showingMemoryUsage = false
@@ -200,6 +204,15 @@ struct ChatView: View {
         .onChange(of: chatNotifications.incoming) { _, _ in
             Task { await vm.resumeFromForeground() }
         }
+        // 137：没发稳的那句放回输入框——她已经在打下一句了就不动
+        .onChange(of: vm.restoredDraft) { _, restored in
+            guard let restored else { return }
+            vm.restoredDraft = nil
+            guard trimmedDraft.isEmpty else { return }
+            presence.adoptRestoredDraft(restored.text)
+            draft = restored.text
+            draftFromFailedID = restored.messageID
+        }
     }
 
     private var externalSendTaskID: String {
@@ -291,6 +304,16 @@ struct ChatView: View {
         .alert("未能撤回", isPresented: Binding(get: { recallError != nil }, set: { if !$0 { recallError = nil } })) {
             Button("知道了", role: .cancel) { recallError = nil }
         } message: { Text(recallError ?? "") }
+        .alert("删掉这句？", isPresented: Binding(get: { unsentToDiscard != nil }, set: { if !$0 { unsentToDiscard = nil } })) {
+            Button("删掉", role: .destructive) {
+                guard let message = unsentToDiscard else { return }
+                unsentToDiscard = nil
+                Task { await vm.discardUnsent(messageID: message.id) }
+            }
+            Button("取消", role: .cancel) { unsentToDiscard = nil }
+        } message: {
+            Text("这句还没发到柯那里，删掉就没有了。")
+        }
         .sheet(isPresented: $showingCallPlaceholder) {
             KeCallPlaceholderCard()
                 .presentationDetents([.height(300)])
@@ -747,6 +770,11 @@ struct ChatView: View {
                     onTogglePin: { message in
                         inputFocused = false
                         togglePin(message)
+                    },
+                    onResend: { message in resendUnsent(message) },
+                    onDiscard: { message in
+                        inputFocused = false
+                        unsentToDiscard = message
                     },
                     onDrawerPan: { pan in handleDrawerPan(pan) },
                     onBackgroundTap: {
@@ -2041,7 +2069,26 @@ struct ChatView: View {
         presence.didSend()
         draft = ""
         scrollToLatestRequest &+= 1
+        // 137：输入框里是没发稳那句放回来的、一个字没改：就是重发那一句（同一个 clientID），不另起一条
+        let failedID = draftFromFailedID
+        draftFromFailedID = nil
+        if let failedID, vm.isUnchangedResend(of: failedID, text: text) {
+            Task { await vm.resend(messageID: failedID, reduceMotion: reduceMotion) }
+            return
+        }
         Task { await vm.send(text, reduceMotion: reduceMotion) }
+    }
+
+    /// 137：长按没发稳的那句点了「重发」。放回输入框的那句原样没动的话一起收走，不然再按发送又是一条
+    private func resendUnsent(_ message: Message) {
+        guard !vm.isRefreshingClaude, !vm.isClearingWindow else { return }
+        if draftFromFailedID == message.id, trimmedDraft == message.text {
+            presence.didSend()
+            draft = ""
+        }
+        if draftFromFailedID == message.id { draftFromFailedID = nil }
+        scrollToLatestRequest &+= 1
+        Task { await vm.resend(messageID: message.id, reduceMotion: reduceMotion) }
     }
 
     private var checkingView: some View {

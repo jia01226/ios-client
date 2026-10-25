@@ -62,6 +62,19 @@ final class ChatViewModel: ObservableObject {
     @Published var replyFailure: ReplyFailure?
     @Published private var visibleSegmentCounts: [String: Int] = [:]
 
+    /// 137：没发出去的那句，要放回输入框的字。ChatView 看到后（输入框空着才放）放进草稿，随即清掉
+    struct RestoredDraft: Equatable {
+        let id = UUID()
+        let messageID: String
+        let text: String
+    }
+    @Published var restoredDraft: RestoredDraft?
+    /// 137：没发稳的那几句当时真发出去的附件（按 clientID），重发时原样带上
+    private var failedSends: [String: [ChatAttachment]] = [:]
+    /// 137：从输入框发的那几句（按 clientID）。只有这些没发稳时才把字放回输入框；
+    /// 塔罗、日记替她说的那句不放
+    private var composerClientIDs: Set<String> = []
+
     private let api: APIClient
     private let replyAPI: any ChatReplyTransport
     private let replyCompleted: @MainActor () -> Void
@@ -901,13 +914,83 @@ final class ChatViewModel: ObservableObject {
               shownAttachments: [ChatAttachment] = []) async {
         guard let sessionID, !isRefreshingClaude, !isClearingWindow else { return }
         let attachments = includePendingAttachments ? pendingAttachments : []
+        guard !text.isEmpty || !attachments.isEmpty else { return }
+        let clientID = "ios-\(UUID().uuidString.lowercased())"
+        if includePendingAttachments {
+            pendingAttachments = []
+            composerClientIDs.insert(clientID)
+        }
         if isSending {
-            if includePendingAttachments { pendingAttachments = [] }
-            await sendWhileReplying(text, sessionID: sessionID, attachments: attachments, shownAttachments: shownAttachments)
+            await sendWhileReplying(text, sessionID: sessionID, clientID: clientID, userLocalID: "user-\(clientID)",
+                                    attachments: attachments, shownAttachments: shownAttachments)
             return
         }
-        guard !text.isEmpty || !attachments.isEmpty else { return }
+        await startReply(text: text, sessionID: sessionID, clientID: clientID, userLocalID: "user-\(clientID)",
+                         attachments: attachments, shownAttachments: shownAttachments, reduceMotion: reduceMotion)
+    }
 
+    /// 137：她那句「没有发稳」，长按点了「重发」（或者放回输入框的那句原样又发了一次）：
+    /// 原样再发一遍，沿用原来的 clientID——服务器按它去重，其实已经收到的不会记两遍。
+    /// 气泡挪到最底下，和刚发的一样。
+    func resend(messageID: String, reduceMotion: Bool = false) async {
+        guard let sessionID, !isRefreshingClaude, !isClearingWindow,
+              let index = messages.firstIndex(where: { $0.id == messageID }),
+              messages[index].canResend, let clientID = messages[index].clientID else { return }
+        let failed = messages[index]
+        let attachments = resendAttachments(for: failed)
+        let sentURLs = Set(attachments.map(\.url))
+        // 失败时放回输入框的附件跟着这句一起走，不再留在输入框里（不然下一句又带一遍）
+        pendingAttachments.removeAll { sentURLs.contains($0.url) }
+        let shown = (failed.attachments ?? []).filter { !sentURLs.contains($0.url) }
+        failedSends[clientID] = nil
+        pendingReceipts[clientID] = nil
+        messages.remove(at: index)
+        messages.removeAll { $0.id == "assistant-\(clientID)" && $0.serverID == nil }
+        // 换个本机 id：在列表里算新插到最底下的一行，不用整个重排
+        let userLocalID = "user-\(clientID)-\(UUID().uuidString.prefix(6).lowercased())"
+        if isSending {
+            await sendWhileReplying(failed.text, sessionID: sessionID, clientID: clientID, userLocalID: userLocalID,
+                                    attachments: attachments, shownAttachments: shown)
+            return
+        }
+        await startReply(text: failed.text, sessionID: sessionID, clientID: clientID, userLocalID: userLocalID,
+                         attachments: attachments, shownAttachments: shown, reduceMotion: reduceMotion)
+    }
+
+    /// 137：输入框里是放回来的那句、一个字没改、附件也一样：按发送就当重发那一句，不另起一条
+    func isUnchangedResend(of messageID: String, text: String) -> Bool {
+        guard let failed = messages.first(where: { $0.id == messageID }), failed.canResend,
+              failed.text == text else { return false }
+        return Set(pendingAttachments.map(\.url)) == Set(resendAttachments(for: failed).map(\.url))
+    }
+
+    /// 137：没发出去的那句不要了：只从这台手机上拿掉（服务器要是其实收到了，拉记录时那条照常出现）
+    func discardUnsent(messageID: String) async {
+        guard let index = messages.firstIndex(where: { $0.id == messageID }),
+              messages[index].canResend else { return }
+        let clientID = messages[index].clientID
+        messages.remove(at: index)
+        if let clientID {
+            failedSends[clientID] = nil
+            pendingReceipts[clientID] = nil
+            messages.removeAll { $0.sender == .ke && $0.clientID == clientID && $0.serverID == nil }
+        }
+        if let sessionID { await cache.save(Self.cacheable(messages), sessionID: sessionID) }
+    }
+
+    /// 137：重发时带的附件：这次运行里记着当时真发出去的那几个；重开 App 以后只剩气泡上画的，
+    /// 塔罗那几张牌是服务器照 [塔罗#id] 自己挂的，不算她发的附件
+    private func resendAttachments(for message: Message) -> [ChatAttachment] {
+        guard let clientID = message.clientID else { return [] }
+        if let sent = failedSends[clientID] { return sent }
+        if let pending = pendingReceipts[clientID] { return pending.attachments }
+        return (message.attachments ?? []).filter { !$0.url.contains("/tarot/cards/") }
+    }
+
+    /// 发一句、等柯回（新发的和重发的都走这里）
+    private func startReply(text: String, sessionID: Int, clientID: String, userLocalID: String,
+                            attachments: [ChatAttachment], shownAttachments: [ChatAttachment],
+                            reduceMotion: Bool) async {
         abandonReplyConnection()
         isSending = true
         statusText = nil
@@ -916,11 +999,8 @@ final class ChatViewModel: ObservableObject {
         landWholeUntil = nil
         // Invalidate any foreground recovery probe that is currently awaiting the network.
         recoveryProbeID = nil
-        if includePendingAttachments { pendingAttachments = [] }
 
         sendHaptics.prepare()
-        let clientID = "ios-\(UUID().uuidString.lowercased())"
-        let userLocalID = "user-\(clientID)"
         let assistantLocalID = "assistant-\(clientID)"
         activeStreamClientID = clientID
         let owner = UUID()
@@ -980,11 +1060,9 @@ final class ChatViewModel: ObservableObject {
 
     /// 她在柯回话途中接着发：消息立刻送到服务器、立刻显示，不再锁发送键。
     /// 服务器把排在前面的几条并进最后一条（status=merged），柯看完一起回。
-    private func sendWhileReplying(_ text: String, sessionID: Int, attachments: [ChatAttachment],
-                                   shownAttachments: [ChatAttachment] = []) async {
+    private func sendWhileReplying(_ text: String, sessionID: Int, clientID: String, userLocalID: String,
+                                   attachments: [ChatAttachment], shownAttachments: [ChatAttachment] = []) async {
         guard !text.isEmpty || !attachments.isEmpty else { return }
-        let clientID = "ios-\(UUID().uuidString.lowercased())"
-        let userLocalID = "user-\(clientID)"
         messages.append(
             Message(
                 id: userLocalID,
@@ -1073,8 +1151,11 @@ final class ChatViewModel: ObservableObject {
                     )
                 )
             }
+            // 137：重发过的那句本机 id 不是「user-clientID」，按 clientID 找她那条
+            let userLocalID = messages.first(where: { $0.clientID == last.clientID && $0.sender == .me })?.id
+                ?? "user-\(last.clientID)"
             pendingReply = PendingReply(clientID: last.clientID,
-                                        userLocalID: "user-\(last.clientID)", assistantLocalID: assistantLocalID,
+                                        userLocalID: userLocalID, assistantLocalID: assistantLocalID,
                                         text: "", attachments: [], reduceMotion: false)
             activeJobID = last.jobID
             await pollForCompletion(
@@ -1639,6 +1720,8 @@ final class ChatViewModel: ObservableObject {
                     if let jobID {
                         activeJobID = jobID
                     }
+                    // 137：服务器收到了，这句之后不会再放回输入框
+                    composerClientIDs.remove(clientID)
                     updateMessage(id: userLocalID) {
                         $0.serverID = userMessageID ?? $0.serverID
                         $0.deliveryState = .sent
@@ -1794,6 +1877,7 @@ final class ChatViewModel: ObservableObject {
             flushBufferedEvents()
             isSending = false
             markFailed(userLocalID: userLocalID, assistantLocalID: assistantLocalID)
+            failedSends[clientID] = attachments
             phase = .needsLogin
 
         } catch {
@@ -1827,8 +1911,15 @@ final class ChatViewModel: ObservableObject {
             } else {
                 isSending = false
                 markFailed(userLocalID: userLocalID, assistantLocalID: assistantLocalID)
-                statusText = "这句没有发稳。内容留在这里，网络恢复后可以再发。"
+                statusText = "这句没有发稳。网络好了，长按它可以重发。"
                 pendingAttachments = mergeAttachments(pendingAttachments, with: attachments)
+                // 137：重发时原样带上这几个附件；从输入框发的，字也放回输入框（她输入框空着才放）
+                failedSends[clientID] = attachments
+                if composerClientIDs.contains(clientID), !text.isEmpty {
+                    restoredDraft = RestoredDraft(messageID: userLocalID, text: text)
+                }
+                // 137：没发稳的这句存进缓存，App 被关掉再打开还在
+                await cache.save(Self.cacheable(messages), sessionID: sessionID)
             }
         }
     }
@@ -2151,6 +2242,9 @@ final class ChatViewModel: ObservableObject {
         recoveryOwner = nil
         recoveryStartedAt = nil
         settledReplyClientIDs.removeAll()
+        failedSends.removeAll()
+        composerClientIDs.removeAll()
+        restoredDraft = nil
         activeStreamClientID = nil
         isSending = false
         sessionID = newSessionID
