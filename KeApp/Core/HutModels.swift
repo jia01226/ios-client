@@ -74,38 +74,3 @@ protocol HutAPI {
     func sendHutLetter(text: String) async throws
 }
 extension APIClient: HutAPI {}
-
-@MainActor
-final class HutViewModel: ObservableObject {
-    @Published private(set) var hut: RemoteHut?
-    @Published private(set) var loading = false
-    @Published private(set) var sending = false
-    @Published private(set) var error: String?
-    @Published private(set) var letterError: String?
-    @Published private(set) var letterSent = false
-    private let api: any HutAPI
-
-    init(api: any HutAPI) { self.api = api }
-    func load() async {
-        guard !loading else { return }
-        loading = true; error = nil
-        defer { loading = false }
-        do { hut = try await api.fetchHut() }
-        catch { self.error = "山屋暂时没接上。稍后再推一次门吧。" }
-    }
-    @discardableResult func send(_ text: String) async -> Bool {
-        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !sending, !value.isEmpty else { return false }
-        sending = true; letterError = nil; letterSent = false
-        defer { sending = false }
-        do {
-            try await api.sendHutLetter(text: value)
-            letterSent = true
-            await load()
-            return true
-        } catch {
-            letterError = "信还没放进去，写下的话留着了，可以重试。"
-            return false
-        }
-    }
-}
