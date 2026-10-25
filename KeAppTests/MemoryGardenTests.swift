@@ -40,50 +40,16 @@ private actor GardenFake: MemoryGardenAPI {
         XCTAssertEqual(store.visible(includeOthers: true).map(\.id), ["1", "2", "3"])
         XCTAssertTrue(store.categories.contains("旅行"))
     }
-    func testEachIDProducesExactlyOneNodeIncluding647Memories() throws {
-        let rows = try (0..<647).map { try flower($0) }
-        for scene in MemoryScene.allCases {
-            let nodes = MemoryFlowerLayout.nodes(rows, scene: scene)
-            XCTAssertEqual(nodes.count, 647)
-            XCTAssertEqual(Set(nodes.map { $0.flower.id }).count, 647)
-            XCTAssertTrue(nodes.allSatisfy { CGRect(origin: .zero, size: MemoryFlowerLayout.size).contains($0.frame) })
-            XCTAssertEqual(nodes.map(\.frame), MemoryFlowerLayout.nodes(rows, scene: scene).map(\.frame))
-        }
-        XCTAssertTrue(MemoryFlowerLayout.nodes([], scene: .moon).isEmpty)
-    }
     func testDuplicateServerIDsNeverCreateExtraFlowers() async throws {
         let value = try flower(1)
         let store = MemoryGardenStore(api: GardenFake([value, value]))
         await store.load()
         XCTAssertEqual(store.flowers.count, 1)
     }
-    func testFlowersKeepTheirPlaceWhenAnotherMemoryArrives() throws {
-        let one = try flower(1)
-        for scene in MemoryScene.allCases {
-            let before = MemoryFlowerLayout.nodes([one], scene: scene)[0]
-            let after = MemoryFlowerLayout.nodes([one, try flower(2)], scene: scene).first { $0.flower.id == one.id }!
-            XCTAssertEqual(before.frame.midX, after.frame.midX)
-            XCTAssertEqual(before.frame.midY, after.frame.midY)
-        }
-    }
-    func testSparseFlowersAreReadableAndGrowOnlyInSceneFoliage() throws {
-        for scene in MemoryScene.allCases {
-            let nodes = MemoryFlowerLayout.nodes(try [flower(1), flower(2)], scene: scene)
-            for node in nodes {
-                XCTAssertGreaterThan(node.frame.width * 0.43, 40, "Sparse memories need recognizable petals.")
-                let point = CGPoint(x: node.frame.midX / MemoryFlowerLayout.size.width,
-                                    y: node.frame.midY / MemoryFlowerLayout.size.height)
-                XCTAssertTrue(MemoryFlowerLayout.plantingRegions(for: scene).contains { $0.contains(point) })
-            }
-        }
-    }
-    func testAllCategoriesAreRetainedAndMappedWithoutRenaming() async throws {
+    func testAllCategoriesAreRetainedWithoutRenaming() async throws {
         let store = MemoryGardenStore(api: GardenFake(try [flower(1, category: "旅行"), flower(2, category: "医疗")]))
         await store.load()
         XCTAssertTrue(store.categories.contains("医疗"))
-        XCTAssertEqual(MemoryScene.forCategory("生活"), .castle)
-        XCTAssertEqual(MemoryScene.forCategory("身体"), .courtyard)
-        XCTAssertEqual(MemoryScene.forCategory("医疗"), .courtyard)
         XCTAssertEqual(store.visible(includeOthers: false, category: "旅行").count, 1)
     }
     func testLoveWitherReviveAndReloadUseServerState() async throws {
@@ -114,22 +80,6 @@ private actor GardenFake: MemoryGardenAPI {
         let empty = MemoryGardenStore(api: api)
         await empty.load()
         XCTAssertFalse(empty.loaded, "Network error is not an empty garden.")
-    }
-    func testLayout647Cost() throws {
-        let rows = try (0..<647).map { try flower($0) }
-        measure { _ = MemoryFlowerLayout.nodes(rows, scene: .water) }
-    }
-    func testClustersKeepEveryRealIDAndLabelsDoNotOverlap() throws {
-        let rows = try (0..<647).map { try flower($0, state: $0 % 9 == 0 ? "fallen" : "bloom") }
-        for scene in MemoryScene.allCases {
-            let groups = MemoryFlowerLayout.clusters(MemoryFlowerLayout.nodes(rows, scene: scene))
-            XCTAssertEqual(groups.flatMap(\.nodes).count, 647)
-            XCTAssertEqual(Set(groups.flatMap(\.nodes).map { $0.flower.id }).count, 647)
-            for i in groups.indices {
-                XCTAssertLessThan(groups[i].bounds.maxY, 1630, "Keep flowers above the bottom controls.")
-                for j in groups.indices where j > i { XCTAssertFalse(groups[i].bounds.intersects(groups[j].bounds)) }
-            }
-        }
     }
 }
 

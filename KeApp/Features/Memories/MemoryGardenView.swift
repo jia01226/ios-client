@@ -11,17 +11,7 @@ struct MemoryTabView: View {
         self.line = line; self.onOpenQuote = onOpenQuote; self.onClose = onClose
         _garden = StateObject(wrappedValue: MemoryGardenStore(api: APIClient(baseURL: line.apiBaseURL)))
     }
-    var body: some View {
-        #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("-preview-flower-study") {
-            ExpeditionMaterialStudy()
-        } else if ProcessInfo.processInfo.arguments.contains("-preview-expedition") {
-            MemoryExpeditionPreview()
-        } else { standardBody }
-        #else
-        standardBody
-        #endif
-    }
+    var body: some View { standardBody }
     private var standardBody: some View {
         NavigationStack {
             VStack(spacing: 0) {
