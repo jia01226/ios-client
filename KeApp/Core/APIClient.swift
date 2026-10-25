@@ -1014,6 +1014,18 @@ actor APIClient {
         return cast
     }
 
+    /// 136：抽过的牌（新的在前）
+    func tarotHistory(limit: Int = 80) async throws -> [TarotHistoryItem] {
+        let (data, _) = try await perform(try makeRequest(path: "/api/tarot/recent", queryItems: [URLQueryItem(name: "n", value: String(limit))]))
+        do { return try decoder.decode([TarotHistoryItem].self, from: data) }
+        catch { throw APIError.decoding(error) }
+    }
+
+    /// 136：某一次的牌，带牌义
+    func tarotCast(id: Int) async throws -> TarotCast {
+        try await readResource("/api/tarot/\(id)")
+    }
+
     /// 塔罗：服务器抽牌落账，返回牌面；柯只断不抽。
     func drawTarot(question: String, spread: String) async throws -> TarotCast {
         var request = try makeRequest(path: "/api/tarot/draw", method: "POST")

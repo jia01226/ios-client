@@ -122,6 +122,11 @@ struct RootTabView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .tarotReadingRequest)) { notification in
             selection = .ke
+            // 136：塔罗交给柯时带着那几张牌（只画在她的气泡上，不随消息发）
+            if let handoff = notification.object as? ChatHandoff, !handoff.text.isEmpty {
+                chatSendRequests.append(ChatSendRequest(line: chatLine, text: handoff.text, attachments: handoff.attachments))
+                return
+            }
             guard let text = notification.object as? String, !text.isEmpty else { return }
             chatSendRequests.append(ChatSendRequest(line: chatLine, text: text))
         }
@@ -364,4 +369,11 @@ struct ChatSendRequest: Identifiable, Equatable {
     let id = UUID()
     let line: ChatLine
     let text: String
+    var attachments: [ChatAttachment] = []
+}
+
+/// 别的页交给聊天发的一句话，外加只画在她气泡上的附件
+struct ChatHandoff {
+    let text: String
+    let attachments: [ChatAttachment]
 }

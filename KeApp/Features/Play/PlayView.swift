@@ -143,6 +143,16 @@ struct TarotCast: Decodable, Identifiable, Sendable {
     /// 引擎的第三视角客观解读（多行）。柯的视角另在聊天里给。
     let objective: String?
 
+    /// 136：交给柯时她那条气泡上立刻画这几张牌。地址、名字和服务器照 [塔罗#id] 挂的完全一样（db.py _tarot_attachments），
+    /// 拉回服务器那份时不跳
+    var chatAttachments: [ChatAttachment] {
+        cards.compactMap { card in
+            guard !card.image.isEmpty else { return nil }
+            let name = "\(card.position)·\(card.cn.isEmpty ? card.name : card.cn)\(card.reversed ? "（逆位）" : "")"
+            return ChatAttachment(url: card.image, name: String(name.trimmingCharacters(in: CharacterSet(charactersIn: "·")).prefix(255)), kind: "image")
+        }
+    }
+
     func readingMessage(question latestQuestion: String) -> String {
         // 122：「夜里」不是问事，不带问题。[塔罗#id] 一字不改——服务器照它把三张牌的三段话展开给柯
         if spread == TarotSpread.night { return "爸比，今晚抽了「夜里」。 [塔罗#\(id)]" }

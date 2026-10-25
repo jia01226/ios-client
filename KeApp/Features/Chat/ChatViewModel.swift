@@ -810,20 +810,23 @@ final class ChatViewModel: ObservableObject {
 
     /// Reserve once before any suspension. A repeated view task cannot send twice.
     /// The root retains unaccepted requests while login/session preparation is pending.
-    func sendExternalMessage(id: UUID, text: String, reduceMotion: Bool = false) async -> Bool {
+    /// shownAttachments：只画在她这条气泡上、不随消息发出去的附件（136：塔罗「交给柯」时那几张牌，
+    /// 服务器照 [塔罗#id] 自己挂同样的几张，拉回来时地址和名字都一样，气泡不跳）
+    func sendExternalMessage(id: UUID, text: String, shownAttachments: [ChatAttachment] = [], reduceMotion: Bool = false) async -> Bool {
         if acceptedExternalMessages.contains(id) { return true }
         guard canAcceptExternalMessage, !text.isEmpty else { return false }
         acceptedExternalMessages.insert(id)
-        await send(text, reduceMotion: reduceMotion, includePendingAttachments: false)
+        await send(text, reduceMotion: reduceMotion, includePendingAttachments: false, shownAttachments: shownAttachments)
         return true
     }
 
-    func send(_ text: String, reduceMotion: Bool = false, includePendingAttachments: Bool = true) async {
+    func send(_ text: String, reduceMotion: Bool = false, includePendingAttachments: Bool = true,
+              shownAttachments: [ChatAttachment] = []) async {
         guard let sessionID, !isRefreshingClaude, !isClearingWindow else { return }
         let attachments = includePendingAttachments ? pendingAttachments : []
         if isSending {
             if includePendingAttachments { pendingAttachments = [] }
-            await sendWhileReplying(text, sessionID: sessionID, attachments: attachments)
+            await sendWhileReplying(text, sessionID: sessionID, attachments: attachments, shownAttachments: shownAttachments)
             return
         }
         guard !text.isEmpty || !attachments.isEmpty else { return }
@@ -856,7 +859,7 @@ final class ChatViewModel: ObservableObject {
                 sender: .me,
                 text: text,
                 time: .now,
-                attachments: attachments,
+                attachments: attachments + shownAttachments,
                 deliveryState: .sending
             )
         )
@@ -900,7 +903,8 @@ final class ChatViewModel: ObservableObject {
 
     /// 她在柯回话途中接着发：消息立刻送到服务器、立刻显示，不再锁发送键。
     /// 服务器把排在前面的几条并进最后一条（status=merged），柯看完一起回。
-    private func sendWhileReplying(_ text: String, sessionID: Int, attachments: [ChatAttachment]) async {
+    private func sendWhileReplying(_ text: String, sessionID: Int, attachments: [ChatAttachment],
+                                   shownAttachments: [ChatAttachment] = []) async {
         guard !text.isEmpty || !attachments.isEmpty else { return }
         let clientID = "ios-\(UUID().uuidString.lowercased())"
         let userLocalID = "user-\(clientID)"
@@ -911,7 +915,7 @@ final class ChatViewModel: ObservableObject {
                 sender: .me,
                 text: text,
                 time: .now,
-                attachments: attachments,
+                attachments: attachments + shownAttachments,
                 deliveryState: .sending
             )
         )

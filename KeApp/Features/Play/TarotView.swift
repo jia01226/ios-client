@@ -25,6 +25,7 @@ struct TarotView: View {
     @State private var operation: Task<Void, Never>?
     @State private var inspectedCard: TarotCard?
     @State private var showBacks = false
+    @State private var showHistory = false
     @State private var confirmRestart = false
     @State private var accessibleIndex = 39
     @State private var draggedIndex: Int?
@@ -92,6 +93,10 @@ struct TarotView: View {
                     }
                     table(width: geometry.size.width - TarotTableStyle.padding * 2)
                     if isNight, let cast, revealed > 0 { nightReadings(cast) }
+                    // 136：翻开以后桌子底下直接写牌义，不用等柯
+                    if !isNight, phase == .done, let cast, let objective = cast.objective, !objective.isEmpty {
+                        TarotMeaningPanel(cast: cast, objective: objective) { inspectedCard = $0 }
+                    }
                     status
                     if let error {
                         Text(error).font(TarotTableStyle.caption).fixedSize(horizontal: false, vertical: true)
@@ -134,6 +139,7 @@ struct TarotView: View {
             Button("继续这一次", role: .cancel) { }
         }
         .sheet(isPresented: $showBacks) { backPicker }
+        .sheet(isPresented: $showHistory) { TarotHistoryView(api: api).environmentObject(theme) }
         .fullScreenCover(item: $inspectedCard) { card in
             TarotCardInspector(cards: cast?.cards ?? [card], initialCard: card, api: api).environmentObject(theme)
                 // 118：看大牌时从左边缘右划，先收这张牌，回到牌桌
@@ -143,16 +149,21 @@ struct TarotView: View {
     }
 
     private var header: some View {
-        HStack {
-            Button { operation?.cancel(); dismiss() } label: {
-                Image(systemName: "chevron.left").frame(width: TarotTableStyle.controlHeight, height: TarotTableStyle.controlHeight)
-            }.accessibilityLabel("返回").accessibilityIdentifier("tarot-close")
-            Spacer()
+        ZStack {
             Text("塔罗").font(TarotTableStyle.title)
-            Spacer()
-            Button("牌背") { showBacks = true }.font(TarotTableStyle.caption)
-                .frame(minWidth: TarotTableStyle.controlHeight, minHeight: TarotTableStyle.controlHeight)
-                .accessibilityIdentifier("tarot-theme")
+            HStack(spacing: 4) {
+                Button { operation?.cancel(); dismiss() } label: {
+                    Image(systemName: "chevron.left").frame(width: TarotTableStyle.controlHeight, height: TarotTableStyle.controlHeight)
+                }.accessibilityLabel("返回").accessibilityIdentifier("tarot-close")
+                Spacer()
+                // 136：以前抽过的牌
+                Button("记录") { questionFocused = false; showHistory = true }.font(TarotTableStyle.caption)
+                    .frame(minWidth: TarotTableStyle.controlHeight, minHeight: TarotTableStyle.controlHeight)
+                    .accessibilityIdentifier("tarot-history")
+                Button("牌背") { showBacks = true }.font(TarotTableStyle.caption)
+                    .frame(minWidth: TarotTableStyle.controlHeight, minHeight: TarotTableStyle.controlHeight)
+                    .accessibilityIdentifier("tarot-theme")
+            }
         }
     }
     private var spreadPicker: some View {
@@ -507,7 +518,7 @@ struct TarotView: View {
         didHandOff = true
         // The deal locks cards at shuffle time; edits to the question never reshuffle them.
         NotificationCenter.default.post(name: .tarotReadingRequest,
-                                        object: cast.readingMessage(question: question))
+                                        object: ChatHandoff(text: cast.readingMessage(question: question), attachments: cast.chatAttachments))
         dismiss()
     }
 }

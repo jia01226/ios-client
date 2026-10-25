@@ -496,10 +496,18 @@ struct MessageRow: View {
     /// 121：第一个气泡（带附件、日记卡）只画在第一格；时间那一行只画在最后一格
     private var showsFirstBubble: Bool { part?.isFirst ?? true }
     private var showsFooter: Bool { part?.isLast ?? true }
-    private var showsAttachments: Bool { showsFirstBubble && !(message.attachments ?? []).isEmpty }
+    private var showsAttachments: Bool { showsFirstBubble && !fileAttachments.isEmpty }
+    /// 136：图（照片、塔罗牌）不再塞进气泡里，单独一组小图画在气泡上面
+    private var imageAttachments: [ChatAttachment] {
+        (message.attachments ?? []).filter { $0.isImage && $0.diaryID == nil && $0.nightID == nil }
+    }
+    private var fileAttachments: [ChatAttachment] {
+        (message.attachments ?? []).filter { !($0.isImage && $0.diaryID == nil && $0.nightID == nil) }
+    }
+    private var showsImages: Bool { showsFirstBubble && !imageAttachments.isEmpty }
 
     private var hasBubbleContent: Bool {
-        !visibleSegments.isEmpty || showsAttachments
+        !visibleSegments.isEmpty || showsAttachments || showsImages
     }
 
 
@@ -508,6 +516,12 @@ struct MessageRow: View {
             alignment: message.sender == .ke ? .leading : .trailing,
             spacing: theme.metric.splitBubbleGap
         ) {
+            if showsImages {
+                let images = imageAttachments
+                ChatImageGroup(attachments: images, trailing: message.sender == .me) { index in
+                    ChatImageRouter.shared.open(images, at: index)
+                }
+            }
             if visibleSegments.isEmpty, showsAttachments {
                 bubbleSurface(text: nil, includesAttachments: true)
             } else {
@@ -530,7 +544,7 @@ struct MessageRow: View {
 
     @ViewBuilder
     private func bubbleSurface(text: String?, includesAttachments: Bool) -> some View {
-        if message.sender == .ke && !(message.attachments ?? []).isEmpty {
+        if message.sender == .ke && includesAttachments && !fileAttachments.isEmpty {
             bubbleContent(text: text, includesAttachments: includesAttachments)
                 .frame(
                     maxWidth: .infinity,
@@ -568,16 +582,8 @@ struct MessageRow: View {
             spacing: theme.metric.gapS
         ) {
             if includesAttachments {
-                if isTarotCardMessage {
-                    HStack(alignment: .top, spacing: theme.metric.gapS) {
-                        ForEach(message.attachments ?? []) { attachment in
-                            tarotCardView(attachment)
-                        }
-                    }
-                } else {
-                    ForEach(message.attachments ?? []) { attachment in
-                        attachmentView(attachment)
-                    }
+                ForEach(fileAttachments) { attachment in
+                    attachmentView(attachment)
                 }
             }
             if let text, !text.isEmpty {
@@ -621,7 +627,7 @@ struct MessageRow: View {
     private var visibleSegments: [ShownSegment] {
         if let part {
             // 121：这一格只画自己那一个气泡，字是时间线切好时就定下的那一份
-            return part.text.map { [ShownSegment(id: part.index, text: $0)] } ?? []
+            return part.text.map(ChatTarotTag.strip).flatMap { $0.isEmpty ? nil : [ShownSegment(id: part.index, text: $0)] } ?? []
         }
         let segments = message.bubbleSegments
         let shown: [String]
@@ -630,71 +636,24 @@ struct MessageRow: View {
         } else {
             shown = segments
         }
-        return shown.enumerated().map { ShownSegment(id: $0.offset, text: $0.element) }
-    }
-
-    /// 柯自己抽的牌：三张以内、都是图、名字带正逆位。整张显示，不裁切，逆位倒着。
-    private var isTarotCardMessage: Bool {
-        let items = message.attachments ?? []
-        return message.sender == .ke && !items.isEmpty && items.count <= 3
-            && items.allSatisfy { $0.isImage && ($0.name.hasSuffix("·正位") || $0.name.hasSuffix("·逆位")) }
-    }
-
-    private func tarotCardView(_ attachment: ChatAttachment) -> some View {
-        Button {
-            onAttachmentTap(attachment)
-        } label: {
-            VStack(spacing: 4) {
-                AuthenticatedAttachmentImage(attachment: attachment, contentMode: .fit)
-                    .aspectRatio(0.58, contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .rotationEffect(.degrees(attachment.name.hasSuffix("·逆位") ? 180 : 0))
-                Text(attachment.name)
-                    .font(theme.font.caption)
-                    .foregroundStyle(theme.chatTextSecondary)
-                .modifier(ChatLegibility())
-                    .lineLimit(1)
-            }
-            .contentShape(Rectangle())
+        // 136：「[塔罗#123]」是给服务器认的，她这边不显示
+        return shown.enumerated().compactMap { item in
+            let text = ChatTarotTag.strip(item.element)
+            return text.isEmpty ? nil : ShownSegment(id: item.offset, text: text)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("打开图片 \(attachment.name)")
     }
 
-    @ViewBuilder
+    /// 图都画在气泡外面了（ChatImageGroup），气泡里只剩文件
     private func attachmentView(_ attachment: ChatAttachment) -> some View {
-        if attachment.isImage {
-            Button {
-                onAttachmentTap(attachment)
-            } label: {
-                AuthenticatedAttachmentImage(
-                    attachment: attachment,
-                    contentMode: .fill
-                )
-                .frame(maxWidth: .infinity)
-                .frame(height: theme.metric.messageImageHeight)
-                .clipShape(RoundedRectangle(
-                    cornerRadius: theme.metric.radiusChip,
-                    style: .continuous
-                ))
-                .contentShape(RoundedRectangle(
-                    cornerRadius: theme.metric.radiusChip,
-                    style: .continuous
-                ))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("打开图片 \(attachment.name.isEmpty ? "预览" : attachment.name)")
-        } else {
-            HStack(spacing: theme.metric.gapS) {
-                Image(systemName: "doc")
-                Text(attachment.name.isEmpty ? "文件" : attachment.name)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-            }
-            .font(theme.font.caption)
-            .foregroundStyle(theme.chatTextSecondary)
-                .modifier(ChatLegibility())
+        HStack(spacing: theme.metric.gapS) {
+            Image(systemName: "doc")
+            Text(attachment.name.isEmpty ? "文件" : attachment.name)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
         }
+        .font(theme.font.caption)
+        .foregroundStyle(theme.chatTextSecondary)
+        .modifier(ChatLegibility())
     }
 
 }
@@ -739,101 +698,6 @@ struct DiaryUnlockCard: View {
         .accessibilityAddTraits(.isButton)
     }
 }
-
-private struct AuthenticatedAttachmentImage: View {
-    @EnvironmentObject private var theme: Theme
-    let attachment: ChatAttachment
-    let contentMode: ContentMode
-    @State private var image: UIImage?
-    @State private var didFail = false
-
-    var body: some View {
-        Group {
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: contentMode)
-            } else if didFail {
-                VStack(spacing: theme.metric.gapS) {
-                    Image(systemName: "photo.badge.exclamationmark")
-                        .font(theme.font.attachmentIcon)
-                    Text("图片没有加载出来")
-                        .font(theme.font.caption)
-                }
-                .foregroundStyle(theme.chatTextSecondary)
-                .modifier(ChatLegibility())
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(theme.color.card.opacity(theme.glass.fixedSurfaceTintOpacity))
-            } else {
-                ProgressView()
-                    .controlSize(.small)
-                    .tint(theme.chatAccent)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-        .task(id: attachment.url) {
-            image = nil
-            didFail = false
-            do {
-                let data = try await APIClient.shared.fetchAttachmentData(at: attachment.url)
-                guard let loaded = UIImage(data: data) else {
-                    didFail = true
-                    return
-                }
-                image = loaded
-            } catch is CancellationError {
-                return
-            } catch {
-                didFail = true
-            }
-        }
-    }
-}
-
-struct AttachmentImageViewer: View {
-    @EnvironmentObject private var theme: Theme
-    let attachment: ChatAttachment
-    let dismiss: () -> Void
-
-    var body: some View {
-        ZStack {
-            theme.color.glassShadow
-                .ignoresSafeArea()
-
-            AuthenticatedAttachmentImage(
-                attachment: attachment,
-                contentMode: .fit
-            )
-            .padding(theme.metric.pagePadding)
-
-            VStack {
-                HStack {
-                    Spacer()
-                    Button(action: dismiss) {
-                        Image(systemName: "xmark")
-                            .font(theme.font.composerIcon)
-                            .foregroundStyle(theme.color.textOnAccent)
-                            .frame(
-                                width: theme.metric.touchTarget,
-                                height: theme.metric.touchTarget
-                            )
-                            .background(CrystalSurface(
-                                cornerRadius: theme.metric.radiusChip,
-                                strength: 1.1,
-                                usesChatControls: true
-                            ))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("关闭图片")
-                }
-                Spacer()
-            }
-            .padding(theme.metric.pagePadding)
-        }
-        .statusBarHidden()
-    }
-}
-
 
 /// 109：柯自己逛小红书、把喜欢的发给她。气泡里的链接点一下就能打开（小红书的链接很长，显示成「去小红书看 ›」）。
 enum ChatLinks {

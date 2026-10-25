@@ -38,7 +38,8 @@ struct NebulaGroup: Identifiable, Equatable {
 
     /// 服务器还没给 group 的（旧服务器、刚记下还没分的）：按原来的分类先放进去，和服务器那边同一张表
     static func groupName(for flower: MemoryFlower) -> String {
-        if let g = flower.group, !g.isEmpty { return g }
+        // 136：服务器还叫「背景」的（家人、从前、她是谁）就是第七团「关于她」，不再是团外面的暗星
+        if let g = flower.group, !g.isEmpty { return g == background ? about.name : g }
         switch flower.category {
         case "医疗", "身体", "健康": return "身体和药"
         case "恋爱": return "亲密时刻"

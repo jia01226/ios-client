@@ -87,13 +87,14 @@ struct TarotCardInspector: View {
 }
 
 /// UIKit provides pinch, pan and edge clamping at the image's actual resolution.
-private struct TarotZoomImage: UIViewRepresentable {
+/// 136：聊天里点开的图也用它（双指放大、双击）
+struct TarotZoomImage: UIViewRepresentable {
     let image: UIImage
     func makeUIView(context: Context) -> TarotZoomScrollView { TarotZoomScrollView() }
     func updateUIView(_ view: TarotZoomScrollView, context: Context) { view.display(image) }
 }
 
-private final class TarotZoomScrollView: UIScrollView, UIScrollViewDelegate {
+final class TarotZoomScrollView: UIScrollView, UIScrollViewDelegate {
     private let picture = UIImageView()
     private var previousSize = CGSize.zero
     override init(frame: CGRect) {

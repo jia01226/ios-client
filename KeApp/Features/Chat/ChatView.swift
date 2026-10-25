@@ -48,7 +48,8 @@ struct ChatView: View {
     @State private var showingDeleteConfirmation = false
     @State private var highlightedMessageID: String?
     @State private var presentedThinkingMessageID: String?
-    @State private var previewedImage: ChatAttachment?
+    /// 136：点开的图（一整组，能左右翻）；格子里点图交到 ChatImageRouter
+    @ObservedObject private var imageRouter = ChatImageRouter.shared
     @State private var expandedModelGroups: Set<String> = []
     @State private var showsScrollToLatest = false
     @State private var scrollToLatestRequest = 0
@@ -121,7 +122,7 @@ struct ChatView: View {
             guard let request = sendRequests.first(where: { $0.line == line }) else { return }
             await vm.prepareExternalSend()
             guard !Task.isCancelled, vm.canAcceptExternalMessage else { return }
-            if await vm.sendExternalMessage(id: request.id, text: request.text, reduceMotion: reduceMotion) {
+            if await vm.sendExternalMessage(id: request.id, text: request.text, shownAttachments: request.attachments, reduceMotion: reduceMotion) {
                 sendRequests.removeAll { $0.id == request.id }
             }
         }
@@ -344,9 +345,9 @@ struct ChatView: View {
         .fullScreenCover(isPresented: $tarotOpen) {
             TarotView(line: line).environmentObject(theme)
         }
-        .fullScreenCover(item: $previewedImage) { attachment in
-            AttachmentImageViewer(attachment: attachment) {
-                previewedImage = nil
+        .fullScreenCover(item: $imageRouter.gallery) { gallery in
+            AttachmentImageViewer(gallery: gallery) {
+                imageRouter.gallery = nil
             }
         }
         // 120：从聊天直接翻开柯刚开锁的那一篇；「目录」回日记目录，左上返回（或从左边缘右划）回聊天
@@ -723,7 +724,7 @@ struct ChatView: View {
                             attachmentsOpen = false
                             openedDiary = DiaryOpenRequest(entryID: id, night: true)
                         } else {
-                            previewedImage = attachment
+                            imageRouter.open([attachment], at: 0)
                         }
                     },
                     onRecall: { message in
@@ -1026,7 +1027,7 @@ struct ChatView: View {
                     HStack(spacing: theme.metric.gapXS) {
                         if attachment.isImage {
                             Button {
-                                previewedImage = attachment
+                                imageRouter.open([attachment], at: 0)
                             } label: {
                                 HStack(spacing: theme.metric.gapXS) {
                                     Image(systemName: "photo")
