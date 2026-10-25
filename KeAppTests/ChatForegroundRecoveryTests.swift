@@ -20,13 +20,23 @@ private final class ReplyServer: ChatReplyTransport {
     var historyReads = 0
     var holdNextHistory = false
     var heldHistory: CheckedContinuation<[Message], Error>?
+    /// 137：没网（连不上服务器）
+    var offline = false
 
-    func activeSession() async throws -> ActiveChatSession { ActiveChatSession(id: 1, model: nil) }
+    func activeSession() async throws -> ActiveChatSession {
+        if offline { throw URLError(.notConnectedToInternet) }
+        return ActiveChatSession(id: 1, model: nil)
+    }
     func activeJobs(sessionID: Int, includeRecentFailures: Bool) async throws -> [ActiveChatJob] {
+        if offline { throw URLError(.notConnectedToInternet) }
         activeReads += 1
         return jobs
     }
     func streamMessage(text: String, sessionID: Int, clientMessageID: String, model: String?, attachments: [ChatAttachment]) async throws -> AsyncThrowingStream<ChatStreamEvent, Error> {
+        if offline {
+            clientIDs.append(clientMessageID); sentTexts.append(text); sentAttachments.append(attachments)
+            throw URLError(.notConnectedToInternet)
+        }
         clientIDs.append(clientMessageID)
         sentTexts.append(text)
         sentAttachments.append(attachments)
@@ -57,6 +67,7 @@ private final class ReplyServer: ChatReplyTransport {
                       error: status == "error" ? "旧连接错误" : nil, retryable: status == "error", nextRetryAt: nil)
     }
     func fetchMessages(sessionID: Int, limit: Int, beforeID: Int?, aroundID: Int?) async throws -> [Message] {
+        if offline { throw URLError(.notConnectedToInternet) }
         historyReads += 1
         if holdNextHistory {
             holdNextHistory = false
@@ -158,12 +169,12 @@ final class ChatForegroundRecoveryTests: XCTestCase {
         await vm.bootstrap()
         return vm
     }
-    private func wait(_ condition: @escaping () -> Bool, file: StaticString = #filePath, line: UInt = #line) async {
-        for _ in 0..<150 {
+    private func wait(_ condition: @escaping () -> Bool, tries: Int = 150, file: StaticString = #filePath, line: UInt = #line) async {
+        for _ in 0..<tries {
             if condition() { return }
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
-        XCTFail("Condition did not become true within 1.5s", file: file, line: line)
+        XCTFail("Condition did not become true within \(Double(tries) / 100)s", file: file, line: line)
     }
     private func start(_ vm: ChatViewModel, _ server: ReplyServer, receipt: Bool = true,
                        reduceMotion: Bool = true) async -> Task<Void, Never> {
@@ -762,6 +773,55 @@ final class ChatForegroundRecoveryTests: XCTestCase {
         XCTAssertEqual(payloads(&whole, Data(raw)), expected)
         XCTAssertEqual(payloads(&whole, Data("data: {\"t\":\"a\"}\n".utf8)), [], "没切完的块留着")
         XCTAssertEqual(payloads(&whole, Data("\n".utf8)), ["{\"t\":\"a\"}"])
+    }
+
+    /// 137：开着 App 时来了推送（柯主动来信）：空着时拉一次记录，这句就出现；正在回的那句不被打断
+    func testForegroundPushPullsNewMessageWithoutInterruptingAReply() async {
+        let coordinator = ChatNotificationCoordinator()
+        coordinator.noteIncoming(); coordinator.noteIncoming()
+        XCTAssertEqual(coordinator.incoming, 2)
+        let server = ReplyServer(); let vm = await model(server)
+        server.history = [Message(id: "server-200", serverID: 200, sender: .ke, text: "想你了", time: .now)]
+        await vm.resumeFromForeground()
+        XCTAssertEqual(vm.messages.map(\.text), ["想你了"])
+        let sending = await start(vm, server)
+        await vm.resumeFromForeground()
+        XCTAssertEqual(server.cancelledStreams, 0)
+        XCTAssertEqual(server.jobReads, 0)
+        XCTAssertTrue(vm.isSending)
+        server.completeOnServer()
+        server.receive([.text("完整回复"), .completed(assistantMessageID: 101, bedroom: nil, status: "done", error: nil, retryable: false, retryScheduled: false)])
+        server.streams[0].finish()
+        await sending.value
+        XCTAssertFalse(vm.isSending)
+    }
+
+    /// 137：没网时打开（只显示本地记录）、中间发了一句没发稳：网络回来自己接上服务器、拉新记录，
+    /// 本机那句没发稳的不被缓存盖掉
+    func testNetworkReturnReconnectsOfflineLaunchAndKeepsUnsentBubble() async {
+        let file = "offline-launch-\(UUID()).json"
+        await ChatCache(fileName: file).save(
+            [Message(id: "server-50", serverID: 50, sender: .ke, text: "缓存里的一句", time: .now.addingTimeInterval(-60))],
+            sessionID: 1)
+        let server = ReplyServer(); server.offline = true
+        let vm = ChatViewModel(monitorConnectivity: false, replyTransport: server, cacheFileName: file,
+                               replyKeepAlive: FakeKeepAlive(grants: false).provider, replyCompleted: {})
+        await vm.bootstrap()
+        XCTAssertEqual(vm.phase, .ready)
+        XCTAssertTrue(vm.isShowingCachedMessages)
+        XCTAssertFalse(vm.canAcceptExternalMessage)
+        await vm.send("地铁里说的", reduceMotion: true)
+        XCTAssertEqual(vm.messages.first { $0.sender == .me }?.deliveryState, .failed)
+        vm.setNetworkPathAvailable(false)
+        server.offline = false
+        server.history = [Message(id: "server-50", serverID: 50, sender: .ke, text: "缓存里的一句", time: .now.addingTimeInterval(-60)),
+                          Message(id: "server-51", serverID: 51, sender: .ke, text: "柯后来说的", time: .now.addingTimeInterval(-30))]
+        vm.setNetworkPathAvailable(true)
+        await wait({ vm.canAcceptExternalMessage }, tries: 250)
+        XCTAssertFalse(vm.isShowingCachedMessages)
+        XCTAssertNil(vm.statusText)
+        XCTAssertEqual(vm.messages.map(\.text), ["缓存里的一句", "柯后来说的", "地铁里说的"])
+        XCTAssertEqual(vm.messages.last?.deliveryState, .failed)
     }
 
     func testNotificationIntentPersistsAndCanRepeat() {

@@ -128,6 +128,8 @@ final class ChatViewModel: ObservableObject {
     private var modelQuotaRequestRevision = 0
     private let networkMonitor = NWPathMonitor()
     private let networkQueue = DispatchQueue(label: "loveapp.chat.connectivity")
+    /// 137：网络回来以后等它稳住一下再接（地铁里网络会来回跳）
+    private var networkReturnTask: Task<Void, Never>?
 
     private struct AttachmentUploadPayload {
         let data: Data
@@ -487,7 +489,72 @@ final class ChatViewModel: ObservableObject {
     }
 
     func setNetworkPathAvailable(_ available: Bool) {
+        let regained = available && !hasNetworkPath
         hasNetworkPath = available
+        guard available else {
+            networkReturnTask?.cancel()
+            networkReturnTask = nil
+            return
+        }
+        // 137：没网时打开的（顶上写着「网络恢复后会自动更新」）：网络回来稳住 1 秒，自己接回服务器，
+        // 她一直停在这页也会更新，不用切出去再回来
+        guard regained, needsReconnectAfterOffline else { return }
+        networkReturnTask?.cancel()
+        networkReturnTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard !Task.isCancelled, let self, self.hasNetworkPath else { return }
+            self.networkReturnTask = nil
+            await self.reconnectAfterOffline()
+        }
+    }
+
+    /// 137：还没接上服务器（没网时打开，只显示本地记录），或者打开时一句也没拉到
+    private var needsReconnectAfterOffline: Bool {
+        guard didBootstrap, !isConnecting else { return false }
+        switch phase {
+        case .ready: return !externalSessionReady || isShowingCachedMessages
+        case .unavailable: return true
+        default: return false
+        }
+    }
+
+    /// 137：网络回来、或者回前台时还没接上服务器：只接会话、拉记录、接回进行中的那句。
+    /// 不像 connect() 那样重读缓存——那会把本机正在发的、没发稳的气泡盖掉。
+    private func reconnectAfterOffline() async {
+        switch phase {
+        case .unavailable:
+            // 本来就没有记录可显示，照「再试一次」从头接
+            await retryBootstrap()
+            return
+        case .ready:
+            break
+        default:
+            return
+        }
+        guard !isConnecting else { return }
+        if externalSessionReady {
+            // 会话早接上了，只是记录没拉下来：照回前台那样拉一次
+            await resumeFromForeground()
+            return
+        }
+        isConnecting = true
+        defer { isConnecting = false }
+        do {
+            let active = try await replyAPI.activeSession()
+            let sameSession = active.id == sessionID
+            prepareForSession(active.id)
+            selectedModel = active.model
+            CompanionPermissionCoordinator.shared.sessionDidBecomeReady()
+            if !sameSession { await loadCache(sessionID: active.id) }
+            await refreshHistory(showFailure: messages.isEmpty)
+            await recoverActiveJobsIfNeeded()
+            externalSessionReady = true
+        } catch APIError.unauthorized {
+            phase = .needsLogin
+            statusText = nil
+        } catch {
+            // 还是连不上：照旧显示本地记录，等下一次网络回来或者回前台
+        }
     }
 
     func bootstrap() async {
@@ -682,6 +749,11 @@ final class ChatViewModel: ObservableObject {
             abandonReplyConnection()
         }
         guard replyTask == nil, activeStreamClientID == nil else { return }
+        // 137：没网时打开的、到现在还没接上服务器：先接上会话（拉记录、接回都在里面）
+        if !externalSessionReady, !isConnecting {
+            await reconnectAfterOffline()
+            return
+        }
         await recoverActiveJobsIfNeeded()
     }
 
@@ -801,7 +873,12 @@ final class ChatViewModel: ObservableObject {
     func prepareExternalSend() async {
         guard !externalSessionReady, phase != .needsLogin else { return }
         // A cached chat may have opened while offline, even if tarot now has a connection.
-        await connect()
+        // 137：已经显示着本地记录的不走 connect()（它会重读缓存，盖掉本机没发稳的气泡）
+        if phase == .ready {
+            await reconnectAfterOffline()
+        } else {
+            await connect()
+        }
     }
 
     var canAcceptExternalMessage: Bool {

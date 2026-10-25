@@ -193,6 +193,10 @@ struct ChatView: View {
         .onChange(of: chatNotifications.openRequest) { _, _ in
             Task { await vm.resumeFromForeground(forceReconnect: true) }
         }
+        // 137：开着 App 时来了推送：不打断正在回的那句，只是空着时拉一次记录
+        .onChange(of: chatNotifications.incoming) { _, _ in
+            Task { await vm.resumeFromForeground() }
+        }
     }
 
     private var externalSendTaskID: String {
