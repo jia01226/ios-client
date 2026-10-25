@@ -77,6 +77,16 @@ final class JournalServiceTests: XCTestCase {
         XCTAssertEqual(resolved.first { $0.id == "ke" }?.title, "柯的生日")
     }
 
+    /// 137：服务器上另加的日子带上（id 是 server-编号）；改过名的固定日子记得上次的 id 就还认得
+    func testAddedAndRenamedAnniversariesStillShow() throws {
+        let json = #"[{"date":"2026-06-25","id":3,"name":"在一起的日子"},{"date":"2026-08-09","id":4,"name":"第一次说喜欢"},{"date":"2026-07-10","id":5,"name":"第一次通话"}]"#
+        let rows = try JSONDecoder().decode([RemoteAnniversary].self, from: Data(json.utf8))
+        XCTAssertEqual(UsViewModel.anniversaries(from: rows).map(\.id), ["together", "server-4", "server-5"])
+        XCTAssertEqual(UsViewModel.anniversaries(from: rows, remembered: ["confession": 4]).map(\.id), ["confession", "together", "server-5"])
+        // 名字对得上的优先：记着的那行已经被别的格认走，就不重复用
+        XCTAssertEqual(UsViewModel.slotRows(rows, remembered: ["confession": 3]).mapValues(\.id), ["together": 3])
+    }
+
     func testFailedPeriodStartIsNotMarkedAsSynced() async {
         let suite = "PeriodTests." + UUID().uuidString
         let defaults = UserDefaults(suiteName: suite)!

@@ -109,6 +109,10 @@ struct UsPondView: View {
             let line = "每年 \(comps.month ?? 0) 月 \(comps.day ?? 0) 日"
             return left == 0 ? ("今天", "", "今天是" + Self.shortName(a), false) : ("\(left)", "天后", line, false)
         }
+        // 137：「管理日期」里加的、还没到的日子（比如「下次见面」）往后数
+        if a.date > Date.now {
+            return ("\(vm.daysAhead(to: a.date))", "天后", "\(comps.year ?? 0) 年 \(comps.month ?? 0) 月 \(comps.day ?? 0) 日", false)
+        }
         // 那天就算第一天，和柯那边说的「今天第 113 天」一样
         return ("\(vm.daysTogether(since: a.date) + 1)", "天", "从 \(comps.year ?? 0) 年 \(comps.month ?? 0) 月 \(comps.day ?? 0) 日那天起", true)
     }
