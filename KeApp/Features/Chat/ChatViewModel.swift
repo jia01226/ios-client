@@ -919,6 +919,8 @@ final class ChatViewModel: ObservableObject {
         if includePendingAttachments {
             pendingAttachments = []
             composerClientIDs.insert(clientID)
+            // 137：超过 29MB、格式不支持这类没法重试的报错，她发出下一句就不再挂着
+            if failedUpload == nil { uploadError = nil }
         }
         if isSending {
             await sendWhileReplying(text, sessionID: sessionID, clientID: clientID, userLocalID: "user-\(clientID)",
@@ -1227,6 +1229,14 @@ final class ChatViewModel: ObservableObject {
     func reportUploadFailure(_ message: String) {
         uploadError = message
         canRetryUpload = failedUpload != nil
+    }
+
+    /// 137：上传报错旁边的「×」：这个附件不要了，报错收起（传失败的那份也一起放下）
+    func dismissUploadError() {
+        guard !isUploading else { return }
+        uploadError = nil
+        failedUpload = nil
+        canRetryUpload = false
     }
 
     func addPhotoAttachment(data: Data, fileName: String, mimeType: String) async {

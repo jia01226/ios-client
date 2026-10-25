@@ -907,6 +907,23 @@ final class ChatForegroundRecoveryTests: XCTestCase {
         XCTAssertFalse(again.messages.contains { $0.deliveryState != .sent })
     }
 
+    /// 137：上传报错能点「×」收起；超过 29MB 这类没法重试的，发出下一句就不再挂着
+    func testUploadErrorCanBeDismissedAndValidationErrorClearsOnSend() async {
+        let server = ReplyServer(); let vm = await model(server)
+        vm.reportUploadFailure("文件需要小于 29MB。")
+        XCTAssertEqual(vm.uploadError, "文件需要小于 29MB。")
+        XCTAssertFalse(vm.canRetryUpload)
+        vm.dismissUploadError()
+        XCTAssertNil(vm.uploadError)
+        vm.reportUploadFailure("一次最多发送 9 个附件。")
+        let sending = await start(vm, server)
+        XCTAssertNil(vm.uploadError)
+        server.completeOnServer()
+        server.receive([.completed(assistantMessageID: 101, bedroom: nil, status: "done", error: nil, retryable: false, retryScheduled: false)])
+        server.streams[0].finish()
+        await sending.value
+    }
+
     func testNotificationIntentPersistsAndCanRepeat() {
         let coordinator = ChatNotificationCoordinator()
         XCTAssertNil(coordinator.openRequest)

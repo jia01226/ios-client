@@ -1111,6 +1111,18 @@ struct ChatView: View {
                             .font(theme.font.caption)
                             .foregroundStyle(theme.effectiveAccent)
                         }
+                        // 137：不想发这个附件了，点一下收起这条报错
+                        Button {
+                            vm.dismissUploadError()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .frame(width: 28, height: 28)
+                        }
+                        .buttonStyle(.plain)
+                        .font(theme.font.caption)
+                        .foregroundStyle(theme.color.textSecondary)
+                        .accessibilityLabel("收起这条上传提示")
+                        .accessibilityIdentifier("dismiss-upload-error")
                     }
                 }
             }
