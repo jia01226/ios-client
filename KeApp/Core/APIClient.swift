@@ -221,10 +221,8 @@ struct ChatModelSection: Identifiable, Hashable, Sendable {
         for group in groups {
             metadata[normalizedGroup(group.id)] = group
         }
-        let visibleOptions = options.filter {
-            !$0.id.lowercased().contains("fable")
-                && !$0.displayName.lowercased().contains("fable")
-        }
+        // 135 她：「把 fable 给我接上吧，app 里面没有这个选项」——以前藏起来了，现在放出来
+        let visibleOptions = options
         let grouped = Dictionary(grouping: visibleOptions) {
             normalizedGroup($0.family ?? $0.group ?? $0.provider ?? "")
         }

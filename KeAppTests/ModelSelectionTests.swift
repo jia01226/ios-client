@@ -68,7 +68,7 @@ final class ModelSelectionTests: XCTestCase {
         XCTAssertEqual(sections[1].options.first?.id, "claude2-subscription-opus-5")
     }
 
-    func testClaudeOptionsCreateAVisibleSectionWithoutFable() {
+    func testClaudeOptionsCreateAVisibleSectionWithFable() {
         let options = [
             ChatModelOption(
                 id: "claude-subscription-opus-5", provider: "claude_subscription", label: "Opus 5",
@@ -90,10 +90,10 @@ final class ModelSelectionTests: XCTestCase {
         let sections = ChatModelSection.make(options: options)
 
         XCTAssertEqual(sections.map(\.id), ["claude_1", "gpt", "deepseek"])
-        XCTAssertEqual(sections[0].options.map(\.id), ["claude-subscription-opus-5"])
+        XCTAssertEqual(sections[0].options.map(\.id), ["claude-subscription-opus-5", "claude-subscription-fable-5"])
         XCTAssertEqual(sections[1].options.map(\.id), ["old-codex"])
         XCTAssertTrue(sections[2].options.isEmpty)
-        XCTAssertFalse(sections.flatMap(\.options).contains { $0.id.contains("fable") })
+        XCTAssertTrue(sections.flatMap(\.options).contains { $0.id.contains("fable") })   // 135 起 Fable 显示
     }
 
     func testUnavailableClaudeMetadataKeepsItsSectionVisible() {
