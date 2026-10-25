@@ -1113,9 +1113,12 @@ struct NotesPage: View {
         problem = nil
         Task {
             do {
-                _ = try await api.saveStickyNote(id: id, content: trimmed)
+                let saved = try await api.saveStickyNote(id: id, content: trimmed)
                 unsent[id] = nil
-                await notes.load()
+                await reloadAfterChange()
+                if !notes.notes.contains(where: { $0.id == saved.id && $0.content == saved.content }) {
+                    problem = id.isEmpty ? "纸条贴上了，还没刷出来，下拉一下就有。" : "纸条改上了，还没刷出来，下拉一下就有。"
+                }
             } catch {
                 unsent[id] = trimmed
                 problem = id.isEmpty ? "纸条没贴上，刚写的还留着，再贴一次。" : "纸条没改上，刚改的还留着，再点它试试。"
@@ -1128,8 +1131,19 @@ struct NotesPage: View {
             do {
                 try await api.deleteStickyNote(id: note.id)
                 unsent[note.id] = nil
-                await notes.load()
+                await reloadAfterChange()
+                if notes.notes.contains(where: { $0.id == note.id }) { problem = "纸条删掉了，还没刷出来，下拉一下就好。" }
             } catch { problem = "纸条没删掉，再试一次。" }
         }
+    }
+    /// 136：贴上、改上、删掉以后，要是正赶上别的同步在跑，这次拉取会被跳过、新纸条不出来，
+    /// 她以为没贴上再贴一张就重了。先等那次走完（最多半分钟）再拉；还是没刷出来就在上面说一声
+    private func reloadAfterChange() async {
+        var waited = 0
+        while notes.loading || notes.saving, waited < 150 {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            waited += 1
+        }
+        await notes.load()
     }
 }
