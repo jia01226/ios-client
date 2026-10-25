@@ -1263,8 +1263,12 @@ final class ChatViewModel: ObservableObject {
             await addAttachment(data: data, fileName: fileName, mimeType: mimeType)
             return
         }
-        guard let image = UIImage(data: data),
-              let jpeg = image.chatUploadJPEGData() else {
+        guard !isUploading else {
+            reportUploadFailure("上一份附件还在上传，请等它完成。")
+            return
+        }
+        let name = "照片-\(UUID().uuidString.prefix(8)).jpg"
+        guard let jpeg = await preparePhoto(named: name, { await ChatPhotoEncoder.jpeg(from: data) }) else {
             if allowed.contains(ext) {
                 await addAttachment(data: data, fileName: fileName, mimeType: mimeType)
                 return
@@ -1272,11 +1276,32 @@ final class ChatViewModel: ObservableObject {
             reportUploadFailure("这张照片的格式暂时不能发送。")
             return
         }
-        await addAttachment(
-            data: jpeg,
-            fileName: "照片-\(UUID().uuidString.prefix(8)).jpg",
-            mimeType: "image/jpeg"
-        )
+        await addAttachment(data: jpeg, fileName: name, mimeType: "image/jpeg")
+    }
+
+    /// 137：拍完照。和相册的一样在后台缩好再传，不在主线程压图
+    func addCameraPhoto(_ image: UIImage) async {
+        guard !isUploading else {
+            reportUploadFailure("上一份附件还在上传，请等它完成。")
+            return
+        }
+        let name = "照片-\(UUID().uuidString.prefix(8)).jpg"
+        guard let jpeg = await preparePhoto(named: name, { await ChatPhotoEncoder.jpeg(from: image) }) else {
+            reportUploadFailure("这张照片没有读取成功，请重新拍一次。")
+            return
+        }
+        await addAttachment(data: jpeg, fileName: name, mimeType: "image/jpeg")
+    }
+
+    /// 137：照片在后台缩好之前，输入框里照样写着「正在上传」，发送键和别的照片先点不了
+    private func preparePhoto(named name: String, _ encode: () async -> Data?) async -> Data? {
+        isUploading = true
+        uploadingFileName = name
+        defer {
+            isUploading = false
+            uploadingFileName = nil
+        }
+        return await encode()
     }
 
     func addFile(url: URL) async {

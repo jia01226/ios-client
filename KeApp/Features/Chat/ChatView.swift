@@ -352,17 +352,8 @@ struct ChatView: View {
         }
         .sheet(isPresented: $showingCamera) {
             CameraPicker { image in
-                guard let data = image.chatUploadJPEGData() else {
-                    vm.reportUploadFailure("这张照片没有读取成功，请重新拍一次。")
-                    return
-                }
-                Task {
-                    await vm.addAttachment(
-                        data: data,
-                        fileName: "照片-\(UUID().uuidString.prefix(8)).jpg",
-                        mimeType: "image/jpeg"
-                    )
-                }
+                // 137：缩边、压 JPEG 在后台做，拍完不再冻一下
+                Task { await vm.addCameraPhoto(image) }
             }
             .ignoresSafeArea()
         }
