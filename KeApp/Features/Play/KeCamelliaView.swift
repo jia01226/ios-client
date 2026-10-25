@@ -184,6 +184,9 @@ struct KeSpaceView: View {
     @State private var diaryFromCard = false
     @State private var pressed: CamelliaEntry?
     @State private var visible = false
+    /// 136：花枝摆动交给系统动画（以前每一帧把整幅画重建一遍：花、挂签、卡片、滤镜都重算，发热费电）
+    @State private var swayed = false
+    private var animating: Bool { visible && !reduceMotion && scenePhase == .active }
     @AppStorage("camellia.perch") private var savedPerch = CamelliaEntry.diary.rawValue
     @AppStorage(CamelliaPalette.storageKey) private var savedPalette = CamelliaPalette.defaultPalette.rawValue
     private var palette: CamelliaPalette { .resolve(savedPalette) }
@@ -212,10 +215,8 @@ struct KeSpaceView: View {
             let s = min(geo.size.width / 390, max(1, geo.size.height - dockInset - moonRoom) / (844 * 0.9))
             let w = 390 * s, h = 844 * s
             ZStack(alignment: .topLeading) {
-                TimelineView(.animation(minimumInterval: nil, paused: !visible || reduceMotion || scenePhase != .active)) { timeline in
-                    artboard(w: w, h: h, s: s, now: timeline.date)
-                }
-                .frame(width: w, height: h)
+                artboard(w: w, h: h, s: s)
+                    .frame(width: w, height: h)
                 .offset(x: (geo.size.width - w) / 2, y: moonRoom)
                 // 126：设计稿里「柯的」不再有顶上的大标题和配色菜单，只剩右上的月牙（RootTabView 画）。
                 // 纸色照样在设置抽屉「素笺」页里选。
@@ -237,8 +238,17 @@ struct KeSpaceView: View {
         }
         .ignoresSafeArea(edges: .top)
         .task { await refresh() }
-        .onAppear { visible = true }
-        .onDisappear { visible = false }
+        .onAppear {
+            visible = true
+            // 花枝以右上为轴轻轻摆：-0.48°…0.58°，9 秒一个来回
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 4.5).repeatForever(autoreverses: true)) { swayed = true }
+        }
+        .onDisappear {
+            visible = false
+            var quiet = Transaction(); quiet.disablesAnimations = true
+            withTransaction(quiet) { swayed = false }
+        }
         .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await refresh() } } }
         .sensoryFeedback(.selection, trigger: open)
         // 塔罗抽完交给柯、抽屉里「去找柯要」：都会回聊天，盖着的页面先收起来
@@ -247,16 +257,16 @@ struct KeSpaceView: View {
             destination(entry).environmentObject(theme)
                 .swipeBackToClose { open = nil }
                 // 朋友圈跟着手机系统（像微信），别的页面跟 App 的昼夜
-                .preferredColorScheme(entry == .moments ? (UIScreen.main.traitCollection.userInterfaceStyle == .dark ? .dark : .light) : (theme.skin == .night ? .dark : .light))
+                // 136：记忆星河、塔罗是黑夜空和深色桌布，顶上的时间电量要白字
+                .preferredColorScheme(entry == .moments ? (UIScreen.main.traitCollection.userInterfaceStyle == .dark ? .dark : .light)
+                                      : (entry == .memory || entry == .tarot) ? .dark : (theme.skin == .night ? .dark : .light))
         }
     }
 
     // MARK: 画布
 
-    private func artboard(w: CGFloat, h: CGFloat, s: CGFloat, now: Date) -> some View {
-        let t = now.timeIntervalSinceReferenceDate
-        // 花枝以右上 (0.95, 0) 为轴轻轻摆：-0.48°…0.58°，9 秒一个来回
-        let sway = reduceMotion ? 0 : -0.48 + (0.58 + 0.48) * (0.5 - 0.5 * cos(t * 2 * .pi / 9))
+    private func artboard(w: CGFloat, h: CGFloat, s: CGFloat) -> some View {
+        let sway = reduceMotion ? 0 : (swayed ? 0.58 : -0.48)
         func r(_ rect: CGRect) -> CGRect { CGRect(x: rect.minX * w, y: rect.minY * h, width: rect.width * w, height: rect.height * h) }
         return ZStack(alignment: .topLeading) {
             ZStack(alignment: .topLeading) {
@@ -281,7 +291,11 @@ struct KeSpaceView: View {
                         .offset(x: sp.x * w - 2.25 * s, y: sp.top * h - 2.25 * s)
                     tag(entry, rect: r(entry.spot.tag), s: s)
                 }
-                butterflyView(w: w, h: h, now: now)
+                // 136：只有蝴蝶和花瓣要一帧帧动，只把它俩放进时间线；一秒 30 下够顺
+                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !animating)) { timeline in
+                    butterflyView(w: w, h: h, now: timeline.date)
+                }
+                .frame(width: w, height: h, alignment: .topLeading)
                 // 点的范围：花和挂签都能点
                 ForEach(CamelliaEntry.allCases) { entry in
                     let hit = r(entry.spot.hit), tagRect = r(entry.spot.tag)
@@ -292,7 +306,10 @@ struct KeSpaceView: View {
             }
             .frame(width: w, height: h, alignment: .topLeading)
             .rotationEffect(.degrees(sway), anchor: UnitPoint(x: 0.95, y: 0))
-            petals(w: w, h: h, now: now)
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !animating)) { timeline in
+                petals(w: w, h: h, now: timeline.date)
+            }
+            .frame(width: w, height: h, alignment: .topLeading)
             card(w: w, h: h, s: s)
         }
         .frame(width: w, height: h, alignment: .topLeading)
@@ -436,11 +453,14 @@ struct KeSpaceView: View {
         return (store.isNew(e) ? "柯刚刚" : "柯最近") + verb
     }
 
-    private static func relative(_ at: String) -> String {
-        guard let date = CompanionDate.parse(at) else { return "" }
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
         let f = RelativeDateTimeFormatter()
         f.locale = Locale(identifier: "zh_CN"); f.unitsStyle = .full
-        return f.localizedString(for: date, relativeTo: Date())
+        return f
+    }()
+    private static func relative(_ at: String) -> String {
+        guard let date = CompanionDate.parse(at) else { return "" }
+        return relativeFormatter.localizedString(for: date, relativeTo: Date())
     }
 
     // MARK: 动作

@@ -78,23 +78,29 @@ struct RemoteMomentComment: Decodable, Identifiable, Sendable {
 }
 
 enum CompanionDate {
-    static var calendar: Calendar {
+    // 136：日历和格式器只建一次（以前每解一个日子都新建，「柯的」页每帧要解好几次）
+    static let calendar: Calendar = {
         var value = Calendar(identifier: .gregorian)
         value.timeZone = TimeZone(identifier: "Asia/Shanghai")!
         value.firstWeekday = 2
         return value
-    }
+    }()
 
-    static func parse(_ value: String) -> Date? {
+    private static let formatters: [DateFormatter] = ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd"].map { format in
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = calendar.timeZone
         formatter.isLenient = false
-        for format in ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd"] {
-            formatter.dateFormat = format
+        formatter.dateFormat = format
+        return formatter
+    }
+    private static let iso = ISO8601DateFormatter()
+
+    static func parse(_ value: String) -> Date? {
+        for formatter in formatters {
             if let date = formatter.date(from: value), formatter.string(from: date) == value { return date }
         }
-        return ISO8601DateFormatter().date(from: value)
+        return iso.date(from: value)
     }
 }
 
