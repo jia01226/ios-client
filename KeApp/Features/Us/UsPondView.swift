@@ -312,10 +312,13 @@ struct UsPondView: View {
                 Text(Self.dayTitleFormatter.string(from: date)).font(Ink.song(18)).tracking(1.5)
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
-                Button("关上") { editDay = nil }.font(Ink.song(15)).foregroundStyle(Ink.accent)
-                    .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("day-sheet-close")
+                // 137：44×44 和点的范围要放在按钮里面，放外面 .plain 只认那两个字
+                Button { editDay = nil } label: {
+                    Text("关上").font(Ink.song(15)).foregroundStyle(Ink.accent)
+                        .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("day-sheet-close")
             }
             .padding(.horizontal, 24).padding(.top, 10)
             HStack {
@@ -369,7 +372,7 @@ struct UsPondView: View {
     @ViewBuilder private var periodSyncRow: some View {
         if periods.hasUnsentEnd && !periods.saving {
             Button { Task { await periods.syncEnds() } } label: {
-                Text("再告诉柯一次").font(Ink.song(13)).foregroundStyle(Ink.accent).frame(minHeight: 44)
+                Text("再告诉柯一次").font(Ink.song(13)).foregroundStyle(Ink.accent).frame(minHeight: 44).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 24)
@@ -380,7 +383,7 @@ struct UsPondView: View {
         }
         if let error = periods.error {
             Button { Task { await periods.load() } } label: {
-                Text(error).font(Ink.song(12)).foregroundStyle(Ink.accent).frame(minHeight: 44)
+                Text(error).font(Ink.song(12)).foregroundStyle(Ink.accent).frame(minHeight: 44).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 24)
