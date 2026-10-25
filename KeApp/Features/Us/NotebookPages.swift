@@ -1094,6 +1094,8 @@ struct NotesPage: View {
         HStack(spacing: 12) {
             Button {
                 problem = nil
+                // 136：还在同步时点的那一下会被跳过，说一声，不悄悄没反应
+                if note.author == .ai, notes.loading || notes.saving { problem = "正在同步，等一下再点一次。"; return }
                 Task { if note.acked { await notes.restore(note) } else { await notes.acknowledge(note) } }
             } label: {
                 Image(systemName: note.acked ? "checkmark.circle.fill" : "circle").font(.system(size: 22))
