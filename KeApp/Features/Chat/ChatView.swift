@@ -898,6 +898,8 @@ struct ChatView: View {
                     Circle()
                         .fill(theme.sendColor)
                 )
+                // 137：圆还是这么大，能点的地方补到 44×44
+                .modifier(ChatHitSlop(visible: 40, 40, target: theme.metric.touchTarget))
             }
             .buttonStyle(PressBounceStyle())
             .disabled(!canSend || vm.isUploading)
@@ -1077,6 +1079,7 @@ struct ChatView: View {
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .frame(width: 28, height: 28)
+                                .modifier(ChatHitSlop(visible: 28, 28, target: theme.metric.touchTarget))
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("移除 \(attachment.name)")
@@ -1097,8 +1100,11 @@ struct ChatView: View {
                             .font(theme.font.caption)
                             .foregroundStyle(theme.color.textSecondary)
                         if vm.canRetryUpload {
-                            Button("重试") {
+                            Button {
                                 Task { await vm.retryLastUpload() }
+                            } label: {
+                                Text("重试")
+                                    .modifier(ChatHitSlop(horizontal: theme.metric.gapS + theme.metric.gapXS, vertical: theme.metric.gapM))
                             }
                             .buttonStyle(.borderless)
                             .font(theme.font.caption)
@@ -1110,6 +1116,7 @@ struct ChatView: View {
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .frame(width: 28, height: 28)
+                                .modifier(ChatHitSlop(visible: 28, 28, target: theme.metric.touchTarget))
                         }
                         .buttonStyle(.plain)
                         .font(theme.font.caption)

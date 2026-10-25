@@ -412,6 +412,8 @@ struct MessageRow: View {
                         .font(theme.font.copyIcon)
                         .frame(width: 24, height: 24)
                         .contentShape(Rectangle())
+                        // 137：图标还是这么大，能点的地方补到 44×44（多出来的不占排版位置）
+                        .modifier(ChatHitSlop(visible: 24, 24, target: theme.metric.touchTarget))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(copied ? "已复制" : "复制消息")
@@ -693,6 +695,33 @@ struct MessageRow: View {
         .modifier(ChatLegibility())
     }
 
+}
+
+/// 137：小图标、小字按钮看着多大不变，能点的地方往外多出一圈（凑够 44×44）。
+/// 先垫开、定好能点的形状、再收回来：多出来的那圈不占排版位置，旁边的东西一点不挪
+struct ChatHitSlop: ViewModifier {
+    let horizontal: CGFloat
+    let vertical: CGFloat
+
+    init(horizontal: CGFloat, vertical: CGFloat) {
+        self.horizontal = horizontal
+        self.vertical = vertical
+    }
+
+    /// 看着 width×height 的，补到 target×target
+    init(visible width: CGFloat, _ height: CGFloat, target: CGFloat) {
+        horizontal = max(0, (target - width) / 2)
+        vertical = max(0, (target - height) / 2)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, horizontal)
+            .padding(.vertical, vertical)
+            .contentShape(Rectangle())
+            .padding(.horizontal, -horizontal)
+            .padding(.vertical, -vertical)
+    }
 }
 
 /// 120：柯开锁了一篇日记——聊天里一张玻璃小卡：小锁打开、「爸爸开锁了」、标题、「点开看 ›」。
