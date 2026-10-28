@@ -40,9 +40,10 @@ struct KeWordsPage: View {
         .task {
             // 124：一打开就把各号额度也读上（30 秒内读过就用现成的），不用干等一分钟
             await vm.loadModelSettings()
-            // 123 她：额度要「实时」，跟 Claude 自己的用量页一样。这页开着就每分钟刷一次，关了就停。
+            // 123 她：额度要「实时」，跟 Claude 自己的用量页一样。这页开着就刷，关了就停。
+            // 138：一分钟一刷还是嫌慢，改成 20 秒（服务器那边也只记 20 秒）
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(60))
+                try? await Task.sleep(for: .seconds(20))
                 guard !Task.isCancelled else { return }
                 await vm.loadModelQuotas(force: true)
             }
