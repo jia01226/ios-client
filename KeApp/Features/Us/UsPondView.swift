@@ -51,21 +51,21 @@ struct UsPondView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 // 右上那枚月牙是 RootTabView 画的（打开设置抽屉），这里左边只放「我们」
-                Text("我们").font(Cool.song(22, .title2)).tracking(5).foregroundStyle(Cool.ink)
+                Text("我们").font(Cool.song(21, .title2)).tracking(7).foregroundStyle(Cool.ink)
                     .frame(minHeight: 44, alignment: .leading)
                     .accessibilityAddTraits(.isHeader)
-                heroBlock.padding(.top, 14)
+                heroBlock.padding(.top, 22)
                 Rectangle().fill(Cool.line).frame(width: 28, height: 1)
-                    .frame(maxWidth: .infinity).padding(.top, 10)
+                    .frame(maxWidth: .infinity).padding(.top, 18)
                     .accessibilityHidden(true)
-                calendarHeader.padding(.top, 18)
+                calendarHeader.padding(.top, 26)
                 if expanded {
                     monthGrid.transition(.opacity)
                 } else {
                     weekStrip.transition(.opacity)
                 }
-                tools.padding(.top, 22)
-                quote.padding(.top, 30)
+                tools.padding(.top, 34)
+                quote.padding(.top, 40)
             }
             .padding(.horizontal, 28)
             .padding(.top, 8)
@@ -94,39 +94,37 @@ struct UsPondView: View {
     private func eyebrow(_ a: Anniversary) -> String { a.id == "together" ? "在一起的日子" : Self.shortName(a) }
 
     private var heroBlock: some View {
-        HStack(alignment: .center, spacing: 0) {
+        // 插画浮在右上，字照常从左排到右：插画在天数旁边，下面两行字从它底下过（不再跟插画抢同一行的宽度）
+        ZStack(alignment: .topTrailing) {
             VStack(alignment: .leading, spacing: 0) {
                 if let a = hero {
                     let n = numbers(a)
                     // 106：点名字换成别的纪念日（还有几天、今天是……）
                     Button { choosingAnniversary = true } label: {
-                        HStack(spacing: 4) {
-                            Text(eyebrow(a)).font(Cool.song(11, .caption)).tracking(1.6)
-                            Image(systemName: "chevron.down").font(.system(size: 8, weight: .light))
-                        }
-                        .foregroundStyle(Cool.mauve)
-                        .frame(minHeight: 32).contentShape(Rectangle())
+                        Text(eyebrow(a)).font(Cool.tiny()).tracking(2.2)
+                            .foregroundStyle(Cool.mauve)
+                            .frame(minHeight: 32).contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("换一个纪念日，现在是\(Self.shortName(a))")
                     .accessibilityIdentifier("us-anniversary-pick")
                     HStack(alignment: .lastTextBaseline, spacing: 6) {
-                        Text(n.number).font(Cool.didot(n.number == "今天" ? 36 : 48, .largeTitle))
+                        Text(n.number).font(Cool.didot(n.number == "今天" ? 34 : 46, .largeTitle))
                             .foregroundStyle(Cool.number).lineLimit(1).minimumScaleFactor(0.6)
                         Text(n.unit).font(Cool.song(12, .footnote)).foregroundStyle(Cool.secondary)
                     }
                     .accessibilityElement(children: .combine)
-                    // 一行放下，放不下就缩一点（不然 390 宽就剩一个「起」字挂在第二行）
-                    Text(n.line).font(Cool.song(12, .footnote)).foregroundStyle(Cool.secondary)
-                        .lineLimit(1).minimumScaleFactor(0.7).padding(.top, 8)
                 }
-                Text(verseEn).font(Cool.didotItalic(13, .footnote)).foregroundStyle(Cool.faint)
+                // 原型那两行：一句中文、一行斜体英文（她：留白克制，日期那行挪到纪念日面板里看）
+                Text(verseZh).font(Cool.song(12, .footnote)).tracking(0.6).lineSpacing(5).foregroundStyle(Cool.secondary)
+                    .lineLimit(2).fixedSize(horizontal: false, vertical: true).padding(.top, 12)
+                Text(verseEn.lowercased()).font(Cool.didotItalic(12, .footnote)).tracking(0.4).lineSpacing(3).foregroundStyle(Cool.faint)
                     .lineLimit(2).fixedSize(horizontal: false, vertical: true).padding(.top, 9)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Image("UsFishCamellia").resizable().scaledToFit()
-                .containerRelativeFrame(.horizontal) { w, _ in min(205, w * 0.47) }
-                .offset(x: 14, y: floating ? -2.5 : 2.5)
+                .containerRelativeFrame(.horizontal) { w, _ in min(190, w * 0.44) }
+                .offset(x: 16, y: floating ? -14 : -9)
                 .opacity(0.92)
                 .accessibilityHidden(true)
         }
@@ -163,7 +161,7 @@ struct UsPondView: View {
 
     private var calendarHeader: some View {
         HStack(alignment: .center, spacing: 8) {
-            Text(expanded ? "日历" : weekTitle).font(Cool.song(13, .subheadline)).tracking(1.6).foregroundStyle(Cool.ink)
+            Text(expanded ? "日历" : weekTitle).font(Cool.song(13, .subheadline)).tracking(2.2).foregroundStyle(Cool.ink)
                 .accessibilityAddTraits(.isHeader)
             if expanded, love.monthCount(month) > 0 {
                 Text("亲密 \(love.monthCount(month)) 次").font(Cool.song(11, .caption)).foregroundStyle(Cool.mauve)
@@ -171,7 +169,7 @@ struct UsPondView: View {
             Spacer(minLength: 4)
             if !expanded, !focusIsThisWeek {
                 Button { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { focus = Calendar.current.startOfDay(for: .now) } } label: {
-                    Text("回到今天").font(Cool.song(11, .caption)).foregroundStyle(Cool.secondary).frame(minHeight: 44).contentShape(Rectangle())
+                    Text("回到今天").font(Cool.tiny(.caption)).foregroundStyle(Cool.secondary).frame(minHeight: 44).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
@@ -180,7 +178,7 @@ struct UsPondView: View {
                     Text(expanded ? "收起月历" : "展开月历")
                     Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.system(size: 9, weight: .light))
                 }
-                .font(Cool.song(11, .caption)).foregroundStyle(Cool.secondary)
+                .font(Cool.tiny(.caption)).tracking(1).foregroundStyle(Cool.secondary)
                 .frame(minHeight: 44).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -193,14 +191,14 @@ struct UsPondView: View {
         HStack(spacing: 0) {
             ForEach(Array(weekDays.enumerated()), id: \.offset) { i, date in
                 VStack(spacing: 4) {
-                    Text(Self.weekdayNames[i]).font(Cool.song(11, .caption2)).foregroundStyle(Cool.secondary)
+                    Text(Self.weekdayNames[i]).font(Cool.tiny()).foregroundStyle(Cool.faint)
                         .accessibilityHidden(true)
                     dayCell(date)
                 }
                 .frame(maxWidth: .infinity)
             }
         }
-        .padding(.top, 6)
+        .padding(.top, 12)
         .padding(.horizontal, -6)
     }
 
@@ -225,7 +223,7 @@ struct UsPondView: View {
             let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
             LazyVGrid(columns: columns, spacing: 2) {
                 ForEach(Self.weekdayNames, id: \.self) {
-                    Text($0).font(Cool.song(11, .caption2)).foregroundStyle(Cool.secondary).frame(height: 24).accessibilityHidden(true)
+                    Text($0).font(Cool.tiny()).foregroundStyle(Cool.faint).frame(height: 24).accessibilityHidden(true)
                 }
                 ForEach(Array(vm.monthCells(for: month).enumerated()), id: \.offset) { _, date in
                     if let date { dayCell(date) } else { Color.clear.frame(height: 52) }
@@ -275,7 +273,7 @@ struct UsPondView: View {
                             .foregroundStyle(Cool.heart).offset(x: 9, y: -2)
                         }
                     }
-                Text(shown ?? " ").font(Cool.song(11, .caption2)).lineLimit(1).minimumScaleFactor(0.7)
+                Text(shown ?? " ").font(Cool.tiny()).tracking(0.5).lineLimit(1).minimumScaleFactor(0.7)
                     .foregroundStyle(Cool.secondary)
             }
             .frame(maxWidth: .infinity, minHeight: 52)
@@ -322,14 +320,14 @@ struct UsPondView: View {
         return Button { open = e } label: {
             HStack(spacing: 6) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(e.title).font(Cool.song(15, .body)).tracking(4).foregroundStyle(Cool.ink)
-                    if let status { Text(status).font(Cool.song(11, .caption2)).foregroundStyle(Cool.mauve) }
+                    Text(e.title).font(Cool.song(14.5, .body)).tracking(5).foregroundStyle(Cool.ink)
+                    if let status { Text(status).font(Cool.tiny()).foregroundStyle(Cool.mauve) }
                 }
                 Spacer(minLength: 4)
-                Image(systemName: "chevron.right").font(.system(size: 11, weight: .light)).foregroundStyle(Cool.faint)
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .ultraLight)).foregroundStyle(Cool.faint)
             }
             .padding(.horizontal, 16)
-            .frame(maxWidth: .infinity, minHeight: 64)
+            .frame(maxWidth: .infinity, minHeight: 66)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -339,13 +337,27 @@ struct UsPondView: View {
 
     // MARK: 柯留下的话（小本子里的寄语）
 
-    private var quote: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("“\(verseZh)”").font(Cool.song(13, .footnote)).tracking(0.7).foregroundStyle(Cool.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("柯留下的话").font(Cool.song(11, .caption2)).tracking(1).foregroundStyle(Cool.secondary)
+    /// 柯最近贴的一张纸条（原型里「柯留下的话」）；他还没贴过就不放
+    private var kesNote: String? {
+        notes.notes.filter { $0.author == .ai }.max { $0.created_at < $1.created_at }?
+            .content.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    @ViewBuilder private var quote: some View {
+        if let note = kesNote, !note.isEmpty {
+            Button { open = .notes } label: {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("“\(note)”").font(Cool.song(13, .footnote)).tracking(0.8).lineSpacing(5)
+                        .foregroundStyle(Cool.secondary).lineLimit(3).multilineTextAlignment(.leading)
+                    Text("柯留下的话").font(Cool.tiny()).tracking(2).foregroundStyle(Cool.faint)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+            .accessibilityHint("打开纸条")
         }
-        .accessibilityElement(children: .combine)
     }
 
     // MARK: 纪念日
@@ -543,12 +555,12 @@ enum PondEntry: String, Identifiable {
 /// 原型里的浅字太淡（班次 #94a1b3 约 2.6:1），这里正文、班次、星期都加深到 4.5:1 以上；只有装饰的斜体英文和箭头用淡色。
 enum Cool {
     static let paper = Color(hex: 0xFCFDFF)
-    static let ink = Color(hex: 0x555F6D)        // 约 6.3:1
-    static let number = Color(hex: 0x5B6A80)     // 约 5.4:1
-    static let secondary = Color(hex: 0x66717F)  // 约 4.8:1
-    static let mauve = Color(hex: 0x7B6782)      // 约 5.2:1
-    static let faint = Color(hex: 0x8D98A8)      // 装饰用
-    static let line = Color(hex: 0xE6EBF2)
+    static let ink = Color(hex: 0x5E6877)        // 约 5.6:1
+    static let number = Color(hex: 0x66748A)     // 约 4.7:1
+    static let secondary = Color(hex: 0x737E8C)  // 约 4.1:1
+    static let mauve = Color(hex: 0x86728C)      // 约 4.6:1
+    static let faint = Color(hex: 0x9CA6B4)      // 装饰用
+    static let line = Color(hex: 0xE9EDF3)
     static let today = Color(hex: 0xEAEFF7)
     static let period = Color(hex: 0xF5E2EC)
     static let heart = Color(hex: 0xB0849F)
@@ -556,9 +568,12 @@ enum Cool {
     static func didot(_ size: CGFloat, _ style: Font.TextStyle) -> Font { .custom("Didot", size: size, relativeTo: style) }
     static func didotItalic(_ size: CGFloat, _ style: Font.TextStyle) -> Font { .custom("Didot-Italic", size: size, relativeTo: style) }
     /// 跟 Ink.song 同一款思源宋体细字，只是跟着系统字号放大
+    /// 思源宋体：13 号以上用极细（原型的宋体是细的），更小的用细一档
     static func song(_ size: CGFloat, _ style: Font.TextStyle) -> Font {
-        .custom(size >= 17 ? "NotoSerifSC-ExtraLight" : "NotoSerifSC-Light", size: size, relativeTo: style)
+        .custom(size >= 13 ? "NotoSerifSC-ExtraLight" : "NotoSerifSC-Light", size: size, relativeTo: style)
     }
+    /// 星期、班次、小标签：原型用的是系统无衬线细字，小字号下比宋体干净
+    static func tiny(_ style: Font.TextStyle = .caption2) -> Font { .system(style).weight(.light) }
 }
 
 // MARK: - 「我们」页的数据，按线路各留一份
