@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>柯 · 我们页审核预览</title>
+  <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="cool.css">
+</head>
+<body class="watercolor">
+  <aside class="studio-nav">
+    <div class="brand"><img src="assets/app-icon.png" alt="柯的新图标"><div>柯<span>我们页 · 审核预览</span></div></div>
+    <p class="nav-caption">我们页审核范围</p>
+    <nav id="catalog" aria-label="设计页面"></nav>
+
+    <div class="studio-foot">基于 claude/ui-studio · bfc8473<br>示例数据 · 尚未修改原生 App</div>
+  </aside>
+  <main class="stage">
+    <header class="stage-head"><span>CAMELLIA / A LITTLE SOFTER</span><button id="notes-toggle" aria-pressed="false">查看布局思路</button></header>
+    <div class="preview-wrap">
+      <section class="phone" aria-label="App 交互预览">
+        <div class="status"><span>9:41</span><span class="status-right">●●● <span>▰</span></span></div>
+        <div id="app"></div>
+        <div class="home-indicator"></div>
+        <div id="toast" role="status"></div>
+        <dialog id="sheet"></dialog>
+      </section>
+      <aside class="design-notes" id="design-notes" hidden><span class="eyebrow">布局思路</span><h2 id="note-title"></h2><div id="note-body"></div></aside>
+    </div>
+    <footer class="stage-foot"><span class="dot"></span> 可点击切页、日期、筛选与新增<span class="foot-divider">/</span>冷白 · 灰粉 · 雾蓝</footer>
+  </main>
+  <script src="assets/lucide.min.js"></script>
+  <script src="app.js"></script>
+<script src="cool.js"></script>
+</body>
+</html>
