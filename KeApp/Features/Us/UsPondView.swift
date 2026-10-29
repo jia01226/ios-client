@@ -3,13 +3,16 @@ import SwiftUI
 import UIKit
 #endif
 
-// 101：「我们」页换成 GPT 的「月下游鱼」（Design/KeUs）：寄语 · 这个月 · 也去看看（锦鲤池）。
-// 数据全是真的：寄语柯写（小本子 verse），在一起天数和纪念日、排班、月经沿用原来的 UsViewModel / PeriodStore，
-// 池子里四个入口：荷包、食单、药盒（小本子）、纸条（便利贴）。底色跟「柯的」同一套四款配色。
+// 140：「我们」页换成清冷水彩（Design/UsWatercolorReview，她 10-29 定的）：
+// 页首团子小鱼依偎无叶山茶、Didot 细数字；日期下面就是班次，不再单列班次卡片；月历在首页原地展开收起；
+// 荷包、食单、药盒、纸条两列纯文字。锦鲤池拿掉了（换之前的样子在 backup/us-pond-before-watercolor-1029 分支）。
+// 数据照旧是真的：纪念日、排班、月经、亲密、寄语都沿用 UsViewModel / PeriodStore / LoveLogStore / 小本子；
+// 点一天还是打开原来那张当天面板（排班、月经来了走了、亲密几次）。
 
 struct UsPondView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var typeSize
     let line: ChatLine
     /// 137：几样数据按线路各留一份（UsPondStores），切到别的页再回来不重建，先画上次的
     private let stores: UsPondStores
@@ -19,20 +22,19 @@ struct UsPondView: View {
     @ObservedObject private var book: NotebookStore
     /// 133：亲密记录（132 错加在旧的 UsView 上了，她这页看不到）
     @ObservedObject private var love: LoveLogStore
-    @AppStorage(CamelliaPalette.storageKey) private var savedPalette = CamelliaPalette.defaultPalette.rawValue
     @State private var month = Calendar.current.dateInterval(of: .month, for: .now)?.start ?? .now
+    /// 140：周历显示哪一天所在的那一周（默认今天；点过哪天、月历里翻过去点了哪天，收起后就回到那一周）
+    @State private var focus = Calendar.current.startOfDay(for: .now)
+    @State private var expanded = false
+    @State private var floating = false
     @State private var editDay: PondDay?
     @State private var open: PondEntry?
-    @State private var visible = false
-    /// 137：池子滑到眼前了没有（在日历下面，没滑到就不画鱼）
-    @State private var pondShowing = false
-    @State private var ripples: [PondRipple] = []
     @State private var choosingAnniversary = false
     @State private var managingDates = false
     @AppStorage("us.hero.anniversary") private var heroID = "together"
     /// 126：底栏浮在页面上，滚到最底时让出它那一截
     @Environment(\.floatingDockInset) private var dockInset
-    private var palette: CamelliaPalette { .resolve(savedPalette) }
+    private var paper: Color { Cool.paper }
 
     init(line: ChatLine) {
         self.line = line
@@ -46,31 +48,34 @@ struct UsPondView: View {
     }
 
     var body: some View {
-        GeometryReader { geo in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    // 126：顶上不放标题，右上那枚月牙（RootTabView 画的）下面再起寄语
-                    verse.padding(.horizontal, 28).padding(.top, 46)
-                    calendar.padding(.horizontal, 28).padding(.top, 18)
-                    Text("往下滑，去池子边 ⌄").font(Ink.song(11.5)).tracking(2).foregroundStyle(Ink.secondary)
-                        .frame(maxWidth: .infinity).padding(.top, 14).padding(.bottom, 4)
-                        .accessibilityHidden(true)
-                    sectionTitle("也去看看", "ALSO HERE").padding(.horizontal, 28).padding(.top, 10)
-                    pond(width: geo.size.width, height: max(geo.size.width * 1.25, geo.size.height - 60), viewport: geo.size.height)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                // 右上那枚月牙是 RootTabView 画的（打开设置抽屉），这里左边只放「我们」
+                Text("我们").font(Cool.song(22, .title2)).tracking(5).foregroundStyle(Cool.ink)
+                    .frame(minHeight: 44, alignment: .leading)
+                    .accessibilityAddTraits(.isHeader)
+                heroBlock.padding(.top, 14)
+                Rectangle().fill(Cool.line).frame(width: 28, height: 1)
+                    .frame(maxWidth: .infinity).padding(.top, 10)
+                    .accessibilityHidden(true)
+                calendarHeader.padding(.top, 18)
+                if expanded {
+                    monthGrid.transition(.opacity)
+                } else {
+                    weekStrip.transition(.opacity)
                 }
-                .padding(.bottom, 12 + dockInset)
+                tools.padding(.top, 22)
+                quote.padding(.top, 30)
             }
-            .scrollIndicators(.hidden)
+            .padding(.horizontal, 28)
+            .padding(.top, 8)
+            .padding(.bottom, 28 + dockInset)
         }
-        .background(ZStack {
-            palette.paper
-            Image("KeUsWater").resizable().scaledToFill().saturation(palette.mistSaturation).colorMultiply(palette.mistTint).opacity(palette.mistOpacity * palette.pondWash)
-        }.ignoresSafeArea())
-        .foregroundStyle(Ink.primary)
+        .scrollIndicators(.hidden)
+        .background(paper.ignoresSafeArea())
+        .foregroundStyle(Cool.ink)
         // 137：切过来照样刷新；回前台 5 分钟内拉过就不再整页重拉（没告诉上柯的「走了」还是会再送）
         .task { await stores.refresh(month: month) }
-        .onAppear { visible = true }
-        .onDisappear { visible = false }
         .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await stores.refresh(month: month, onlyIfStale: true) } } }
         .onChange(of: month) { _, m in Task { await love.load(m) } }
         .sheet(item: $editDay, onDismiss: { periods.clearStatus() }) { day in daySheet(day.date) }
@@ -81,17 +86,269 @@ struct UsPondView: View {
         .fullScreenCover(item: $open) { entry in page(entry).swipeBackToClose { open = nil; Task { await book.load(); await notes.load() } } }
     }
 
-    // MARK: 寄语
+    // MARK: 页首：在一起的日子 + 团子小鱼
 
-    private func sectionTitle(_ zh: String, _ en: String) -> some View {
-        HStack(spacing: 8) {
-            Text(zh).font(Ink.song(15)).tracking(2.5)
-            Text("·").font(Ink.song(13))
-            Text(en).font(Ink.latin(10)).tracking(2.2)
-            Rectangle().fill(Ink.line.opacity(0.8)).frame(height: 0.7)
+    private var verseEn: String { book.snapshot?.verse?.en ?? stores.savedVerse?.en ?? "With you, even ordinary days shine." }
+    private var verseZh: String { book.snapshot?.verse?.zh ?? stores.savedVerse?.zh ?? "和你一起，平常的日子也有光。" }
+
+    private func eyebrow(_ a: Anniversary) -> String { a.id == "together" ? "在一起的日子" : Self.shortName(a) }
+
+    private var heroBlock: some View {
+        HStack(alignment: .center, spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                if let a = hero {
+                    let n = numbers(a)
+                    // 106：点名字换成别的纪念日（还有几天、今天是……）
+                    Button { choosingAnniversary = true } label: {
+                        HStack(spacing: 4) {
+                            Text(eyebrow(a)).font(Cool.song(11, .caption)).tracking(1.6)
+                            Image(systemName: "chevron.down").font(.system(size: 8, weight: .light))
+                        }
+                        .foregroundStyle(Cool.mauve)
+                        .frame(minHeight: 32).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("换一个纪念日，现在是\(Self.shortName(a))")
+                    .accessibilityIdentifier("us-anniversary-pick")
+                    HStack(alignment: .lastTextBaseline, spacing: 6) {
+                        Text(n.number).font(Cool.didot(n.number == "今天" ? 36 : 48, .largeTitle))
+                            .foregroundStyle(Cool.number).lineLimit(1).minimumScaleFactor(0.6)
+                        Text(n.unit).font(Cool.song(12, .footnote)).foregroundStyle(Cool.secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                    // 一行放下，放不下就缩一点（不然 390 宽就剩一个「起」字挂在第二行）
+                    Text(n.line).font(Cool.song(12, .footnote)).foregroundStyle(Cool.secondary)
+                        .lineLimit(1).minimumScaleFactor(0.7).padding(.top, 8)
+                }
+                Text(verseEn).font(Cool.didotItalic(13, .footnote)).foregroundStyle(Cool.faint)
+                    .lineLimit(2).fixedSize(horizontal: false, vertical: true).padding(.top, 9)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Image("UsFishCamellia").resizable().scaledToFit()
+                .containerRelativeFrame(.horizontal) { w, _ in min(205, w * 0.47) }
+                .offset(x: 14, y: floating ? -2.5 : 2.5)
+                .opacity(0.92)
+                .accessibilityHidden(true)
         }
-        .foregroundStyle(Ink.primary)
+        // 小鱼轻轻浮着；系统开了「减弱动态效果」就不动
+        .onAppear {
+            guard !reduceMotion, !floating else { return }
+            withAnimation(.easeInOut(duration: 3.4).repeatForever(autoreverses: true)) { floating = true }
+        }
     }
+
+    // MARK: 这一周 / 月历（原地展开）
+
+    private static var mondayCalendar: Calendar { var c = Calendar.current; c.firstWeekday = 2; return c }
+    private static let monthNames = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"]
+    private static let weekdayNames = ["一", "二", "三", "四", "五", "六", "日"]
+
+    private var weekDays: [Date] {
+        let c = Self.mondayCalendar
+        let start = c.dateInterval(of: .weekOfYear, for: focus)?.start ?? focus
+        return (0..<7).compactMap { c.date(byAdding: .day, value: $0, to: start) }
+    }
+    private var focusIsThisWeek: Bool { Self.mondayCalendar.isDate(focus, equalTo: .now, toGranularity: .weekOfYear) }
+    private var weekTitle: String {
+        let m = Calendar.current.component(.month, from: focus)
+        return Self.monthNames[m - 1] + (focusIsThisWeek ? " · 这一周" : " · 那一周")
+    }
+
+    private func toggleMonth() {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
+            if !expanded { month = vm.startOfMonth(for: focus) }
+            expanded.toggle()
+        }
+    }
+
+    private var calendarHeader: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Text(expanded ? "日历" : weekTitle).font(Cool.song(13, .subheadline)).tracking(1.6).foregroundStyle(Cool.ink)
+                .accessibilityAddTraits(.isHeader)
+            if expanded, love.monthCount(month) > 0 {
+                Text("亲密 \(love.monthCount(month)) 次").font(Cool.song(11, .caption)).foregroundStyle(Cool.mauve)
+            }
+            Spacer(minLength: 4)
+            if !expanded, !focusIsThisWeek {
+                Button { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { focus = Calendar.current.startOfDay(for: .now) } } label: {
+                    Text("回到今天").font(Cool.song(11, .caption)).foregroundStyle(Cool.secondary).frame(minHeight: 44).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            Button(action: toggleMonth) {
+                HStack(spacing: 4) {
+                    Text(expanded ? "收起月历" : "展开月历")
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.system(size: 9, weight: .light))
+                }
+                .font(Cool.song(11, .caption)).foregroundStyle(Cool.secondary)
+                .frame(minHeight: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(expanded ? "收起月历" : "展开月历")
+            .accessibilityIdentifier("us-month-toggle")
+        }
+    }
+
+    private var weekStrip: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(weekDays.enumerated()), id: \.offset) { i, date in
+                VStack(spacing: 4) {
+                    Text(Self.weekdayNames[i]).font(Cool.song(11, .caption2)).foregroundStyle(Cool.secondary)
+                        .accessibilityHidden(true)
+                    dayCell(date)
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.top, 6)
+        .padding(.horizontal, -6)
+    }
+
+    private var monthGrid: some View {
+        VStack(spacing: 0) {
+            HStack {
+                // 137：点的范围放到 44×44，箭头本身不变
+                Button { month = vm.month(byAdding: -1, to: month) } label: {
+                    Image(systemName: "chevron.left").font(.system(size: 14, weight: .ultraLight)).frame(width: 44, height: 44).contentShape(Rectangle())
+                }
+                .accessibilityLabel("上个月")
+                Spacer()
+                Text(Self.yearMonth(month)).font(Cool.didot(15, .subheadline)).foregroundStyle(Cool.secondary)
+                    .accessibilityLabel(vm.monthTitle(for: month))
+                Spacer()
+                Button { month = vm.month(byAdding: 1, to: month) } label: {
+                    Image(systemName: "chevron.right").font(.system(size: 14, weight: .ultraLight)).frame(width: 44, height: 44).contentShape(Rectangle())
+                }
+                .accessibilityLabel("下个月")
+            }
+            .foregroundStyle(Cool.secondary)
+            let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
+            LazyVGrid(columns: columns, spacing: 2) {
+                ForEach(Self.weekdayNames, id: \.self) {
+                    Text($0).font(Cool.song(11, .caption2)).foregroundStyle(Cool.secondary).frame(height: 24).accessibilityHidden(true)
+                }
+                ForEach(Array(vm.monthCells(for: month).enumerated()), id: \.offset) { _, date in
+                    if let date { dayCell(date) } else { Color.clear.frame(height: 52) }
+                }
+            }
+            .padding(.horizontal, -6)
+            if !vm.isCurrentMonth(month) {
+                Button("回到本月") { month = vm.startOfMonth(for: .now) }
+                    .font(Cool.song(12, .caption)).foregroundStyle(Cool.secondary).frame(minHeight: 44)
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private static func yearMonth(_ date: Date) -> String {
+        let c = Calendar.current
+        return "\(c.component(.year, from: date)) / " + String(format: "%02d", c.component(.month, from: date))
+    }
+
+    /// 一天：Didot 数字，下面就是班次；今天淡蓝圆底，月经淡粉圆底，纪念日 ☾、亲密小心挂在右上
+    private func dayCell(_ date: Date) -> some View {
+        let isToday = Calendar.current.isDateInToday(date)
+        let period = isPeriod(date)
+        let times = love.count(on: date)
+        let anniversary = isAnniversary(date)
+        let shift = vm.shift(on: date).map { vm.shiftDisplay($0, on: date) }
+        // 字调到很大时，班次只写第一个字（白 / 夜 / 休），七格不挤爆
+        let shown = shift.map { typeSize >= .accessibility1 ? String($0.prefix(1)) : $0 }
+        return Button {
+            focus = Calendar.current.startOfDay(for: date)
+            editDay = PondDay(date: date)
+        } label: {
+            VStack(spacing: 3) {
+                Text("\(Calendar.current.component(.day, from: date))")
+                    .font(Cool.didot(17, .body)).monospacedDigit()
+                    .foregroundStyle(isToday ? Cool.ink : Cool.number)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                    .frame(width: 32, height: 32)
+                    .background(Circle().fill(period ? Cool.period : (isToday ? Cool.today : .clear)))
+                    .overlay(Circle().stroke(isToday && period ? Cool.number.opacity(0.45) : .clear, lineWidth: 0.8))
+                    .overlay(alignment: .topTrailing) {
+                        if anniversary || times > 0 {
+                            HStack(spacing: 1) {
+                                if anniversary { Text("☾").font(.system(size: 9)) }
+                                if times > 0 { Image(systemName: "heart.fill").font(.system(size: 6)) }
+                            }
+                            .foregroundStyle(Cool.heart).offset(x: 9, y: -2)
+                        }
+                    }
+                Text(shown ?? " ").font(Cool.song(11, .caption2)).lineLimit(1).minimumScaleFactor(0.7)
+                    .foregroundStyle(Cool.secondary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(vm.calendarDayAccessibilityLabel(date) + (period ? "，月经" : "") + (anniversary ? "，纪念日" : "")
+                            + (times > 0 ? "，亲密 \(times) 次" : ""))
+        .accessibilityHint("打开这一天：排班、月经、亲密")
+        .accessibilityIdentifier(vm.calendarDayIdentifier(date))
+        .contextMenu {
+            Text(times > 0 ? "这天亲密 \(times) 次" : "这天还没有亲密记录")
+            Button { Task { await love.setCount(times + 1, on: date) } } label: { Label("加一次", systemImage: "plus") }
+            if times > 0 { Button { Task { await love.setCount(times - 1, on: date) } } label: { Label("减一次", systemImage: "minus") } }
+        }
+    }
+
+    // MARK: 四个入口（两列纯文字）
+
+    private var tools: some View {
+        let rows: [[PondEntry]] = [[.purse, .menu], [.meds, .notes]]
+        return VStack(spacing: 0) {
+            Rectangle().fill(Cool.line).frame(height: 1)
+            ForEach(rows, id: \.first) { row in
+                HStack(spacing: 0) {
+                    toolButton(row[0])
+                    Rectangle().fill(Cool.line).frame(width: 1, height: 18).accessibilityHidden(true)
+                    toolButton(row[1])
+                }
+                Rectangle().fill(Cool.line).frame(height: 1)
+            }
+        }
+    }
+
+    /// 药盒有没吃的那顿才在下面写一小行（「晚上的还没吃」），别的入口只有名字
+    private var medsPending: String? {
+        guard let s = book.snapshot, !s.meds.rx.isEmpty else { return nil }
+        let left = (s.meds.order ?? []).filter { !(s.meds.today[$0]?.taken ?? false) }
+        return left.first.map { "\($0)的还没吃" }
+    }
+
+    private func toolButton(_ e: PondEntry) -> some View {
+        let status = e == .meds ? medsPending : nil
+        return Button { open = e } label: {
+            HStack(spacing: 6) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(e.title).font(Cool.song(15, .body)).tracking(4).foregroundStyle(Cool.ink)
+                    if let status { Text(status).font(Cool.song(11, .caption2)).foregroundStyle(Cool.mauve) }
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right").font(.system(size: 11, weight: .light)).foregroundStyle(Cool.faint)
+            }
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, minHeight: 64)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(e.title + (status.map { "，" + $0 } ?? ""))
+        .accessibilityIdentifier("us-entry-\(e.rawValue)")
+    }
+
+    // MARK: 柯留下的话（小本子里的寄语）
+
+    private var quote: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("“\(verseZh)”").font(Cool.song(13, .footnote)).tracking(0.7).foregroundStyle(Cool.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("柯留下的话").font(Cool.song(11, .caption2)).tracking(1).foregroundStyle(Cool.secondary)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: 纪念日
 
     // 106：她选了方案 B——寄语收成一行小字，纪念日放大当主角，点名字换成别的纪念日。
     private var hero: Anniversary? { vm.anniversaries.first { $0.id == heroID } ?? vm.anniversaries.first }
@@ -112,44 +369,6 @@ struct UsPondView: View {
         }
         // 那天就算第一天，和柯那边说的「今天第 113 天」一样
         return ("\(vm.daysTogether(since: a.date) + 1)", "天", "从 \(comps.year ?? 0) 年 \(comps.month ?? 0) 月 \(comps.day ?? 0) 日那天起", true)
-    }
-
-    private var verse: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            // 137：还没拉到时先用手机里留的上次那句，不先闪英文默认那句
-            Text(book.snapshot?.verse?.en ?? stores.savedVerse?.en ?? "With you, even ordinary days shine.")
-                .font(Ink.script(18)).foregroundStyle(Ink.secondary).lineLimit(1).minimumScaleFactor(0.6)
-            Text(book.snapshot?.verse?.zh ?? stores.savedVerse?.zh ?? "和你一起，平常的日子也有光。")
-                .font(Ink.song(12)).tracking(1.2).foregroundStyle(Ink.secondary)
-            if let a = hero {
-                let n = numbers(a)
-                HStack(alignment: .bottom) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Button { choosingAnniversary = true } label: {
-                            HStack(spacing: 5) {
-                                Text(Self.shortName(a)).font(Ink.song(15)).tracking(3)
-                                Image(systemName: "chevron.down").font(.system(size: 11))
-                            }.frame(minHeight: 40)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("换一个纪念日，现在是\(Self.shortName(a))")
-                        .accessibilityIdentifier("us-anniversary-pick")
-                        HStack(alignment: .lastTextBaseline, spacing: 4) {
-                            Text(n.number).font(Ink.latin(n.number == "今天" ? 56 : 76)).monospacedDigit()
-                                .lineLimit(1).minimumScaleFactor(0.5)
-                            Text(n.unit).font(Ink.song(16)).tracking(1.5)
-                        }
-                        Text(n.line).font(Ink.song(11.5)).tracking(0.6).foregroundStyle(Ink.secondary)
-                    }
-                    Spacer()
-                    Image("KeUsMoon").resizable().scaledToFit().frame(width: 58, height: 58)
-                        .saturation(0.15).opacity(0.55).padding(.bottom, 26)
-                        .accessibilityHidden(true)
-                }
-                .padding(.top, 10)
-                .accessibilityElement(children: .contain)
-            }
-        }
     }
 
     private var anniversarySheet: some View {
@@ -191,97 +410,7 @@ struct UsPondView: View {
         .foregroundStyle(Ink.primary)
     }
 
-    // MARK: 这个月
-
-    private var calendar: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            sectionTitle("这个月", "NOTRE MOIS")
-            HStack {
-                Text(vm.monthTitle(for: month)).font(Ink.song(16)).tracking(1.8)
-                if love.monthCount(month) > 0 {
-                    Text("亲密 \(love.monthCount(month)) 次").font(Ink.song(12)).foregroundStyle(Ink.accent).padding(.leading, 8)
-                }
-                Spacer()
-                // 137：点的范围放到 44×44，箭头本身不变
-                Button { month = vm.month(byAdding: -1, to: month) } label: { Image(systemName: "chevron.left").font(.system(size: 16, weight: .ultraLight)).frame(width: 44, height: 44).contentShape(Rectangle()) }
-                    .accessibilityLabel("上个月")
-                Button { month = vm.month(byAdding: 1, to: month) } label: { Image(systemName: "chevron.right").font(.system(size: 16, weight: .ultraLight)).frame(width: 44, height: 44).contentShape(Rectangle()) }
-                    .accessibilityLabel("下个月")
-            }.padding(.top, 6)
-            let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
-            LazyVGrid(columns: columns, spacing: 2) {
-                ForEach(["一", "二", "三", "四", "五", "六", "日"], id: \.self) {
-                    Text($0).font(Ink.song(12)).foregroundStyle(Ink.secondary).frame(height: 26)
-                }
-                ForEach(Array(vm.monthCells(for: month).enumerated()), id: \.offset) { _, date in
-                    if let date { dayCell(date) } else { Color.clear.frame(height: 44) }
-                }
-            }
-            .padding(.top, 2)
-            HStack {
-                Button { editDay = PondDay(date: Calendar.current.startOfDay(for: .now)) } label: {
-                    Text("\(Calendar.current.component(.day, from: .now))日 · 今日记事").font(Ink.song(12)).tracking(0.8)
-                }.frame(minHeight: 36)
-                Spacer()
-                legend(Circle().fill(Ink.accent), "今天")
-                legend(Circle().fill(Ink.periodFill), "月经")
-                legend(Text("☾").font(.system(size: 11)).foregroundStyle(Ink.accent), "纪念日")
-                legend(Image(systemName: "heart.fill").font(.system(size: 7)).foregroundStyle(Ink.accent), "亲密")
-            }
-            .padding(.top, 6)
-            .overlay(alignment: .top) { Rectangle().fill(Ink.line.opacity(0.5)).frame(height: 0.7) }
-            if !vm.isCurrentMonth(month) {
-                Button("回到本月") { month = vm.startOfMonth(for: .now) }.font(Ink.song(12)).frame(minHeight: 32)
-            }
-        }
-    }
-
-    private func legend<V: View>(_ mark: V, _ title: String) -> some View {
-        HStack(spacing: 4) { mark.frame(width: 7, height: 7); Text(title).font(.system(size: 10)).foregroundStyle(Ink.secondary) }
-            .padding(.leading, 8)
-    }
-
-    private func dayCell(_ date: Date) -> some View {
-        let isToday = Calendar.current.isDateInToday(date)
-        let period = isPeriod(date)
-        let shift = vm.shift(on: date).map { vm.shiftDisplay($0, on: date) }
-        return Button { editDay = PondDay(date: date) } label: {
-            VStack(spacing: 2) {
-                Text("\(Calendar.current.component(.day, from: date))")
-                    .font(Ink.latin(14)).monospacedDigit()
-                    .foregroundStyle(isToday ? Color.white : Ink.primary)
-                    .frame(width: 28, height: 28)
-                    .background(Circle().fill(isToday ? Ink.accent : (period ? Ink.periodFill : .clear)))
-                    .overlay(alignment: .topTrailing) {
-                        if isAnniversary(date) { Text("☾").font(.system(size: 10)).foregroundStyle(Ink.accent).offset(x: 7, y: -3) }
-                    }
-                    .overlay(alignment: .bottomTrailing) {
-                        // 133 亲密记录：那天一颗小心和几次
-                        let times = love.count(on: date)
-                        if times > 0 {
-                            HStack(spacing: 1) {
-                                Image(systemName: "heart.fill").font(.system(size: 7))
-                                Text("\(times)").font(.system(size: 9, weight: .semibold)).monospacedDigit()
-                            }
-                            .foregroundStyle(Ink.accent).offset(x: 12, y: 3)
-                        }
-                    }
-                Text(shift ?? " ").font(Ink.song(9.5)).lineLimit(1).minimumScaleFactor(0.7).foregroundStyle(Ink.secondary)
-            }
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(vm.calendarDayAccessibilityLabel(date) + (period ? "，月经" : "") + (isAnniversary(date) ? "，纪念日" : "")
-                            + (love.count(on: date) > 0 ? "，亲密 \(love.count(on: date)) 次" : ""))
-        .accessibilityIdentifier(vm.calendarDayIdentifier(date))
-        .contextMenu {
-            let times = love.count(on: date)
-            Text(times > 0 ? "这天亲密 \(times) 次" : "这天还没有亲密记录")
-            Button { Task { await love.setCount(times + 1, on: date) } } label: { Label("加一次", systemImage: "plus") }
-            if times > 0 { Button { Task { await love.setCount(times - 1, on: date) } } label: { Label("减一次", systemImage: "minus") } }
-        }
-    }
+    // MARK: 当天面板
 
     private func isPeriod(_ date: Date) -> Bool {
         let key = HomeReminderCoordinator.dayKey(date)
@@ -364,7 +493,7 @@ struct UsPondView: View {
             }
         }
         .presentationDetents([.large])
-        .presentationBackground(palette.paper)
+        .presentationBackground(paper)
         .foregroundStyle(Ink.primary)
     }
 
@@ -390,67 +519,13 @@ struct UsPondView: View {
         }
     }
 
-    // MARK: 也去看看（锦鲤池）
-
-    private func pond(width: CGFloat, height: CGFloat, viewport: CGFloat) -> some View {
-        let snap = book.snapshot
-        // 137：池子在日历下面——没滑到眼前、或者荷包这些整页、点一天的面板盖着时，鱼不游（以前一进页面就全速画）
-        let paused = !visible || !pondShowing || open != nil || editDay != nil || reduceMotion || scenePhase != .active
-        return ZStack(alignment: .topLeading) {
-            PondCanvas(paused: paused, reduceMotion: reduceMotion, ripples: ripples)
-                .frame(width: width, height: height)
-                .contentShape(Rectangle())
-                .onTapGesture(coordinateSpace: .local) { p in
-                    ripples.append(PondRipple(x: p.x / width, y: p.y / height, start: Date()))
-                    if ripples.count > 8 { ripples.removeFirst() }
-                }
-                .accessibilityHidden(true)
-            entry(.purse, x: 0.12, y: 0.07, width: width, height: height,
-                  badge: snap.map { p in p.purse.cap_cents > 0 ? "还能花 ¥\(max(0, (p.purse.left_cents ?? 0)) / 100)" : "这个月花了 ¥\(p.purse.spent_cents / 100)" })
-            entry(.menu, x: 0.62, y: 0.28, width: width, height: height,
-                  badge: snap?.menu.meals.first.map { $0.title })
-            entry(.notes, x: 0.14, y: 0.50, width: width, height: height,
-                  badge: { let n = notes.notes.filter { !$0.acked }.count; return n > 0 ? "\(n) 张贴着" : nil }())
-            entry(.meds, x: 0.62, y: 0.72, width: width, height: height,
-                  badge: snap.flatMap { s in
-                      let left = (s.meds.order ?? []).filter { !(s.meds.today[$0]?.taken ?? false) }
-                      return s.meds.rx.isEmpty ? nil : (left.isEmpty ? "今天的都吃了" : "\(left.first!)的还没吃")
-                  })
-        }
-        .frame(width: width, height: height)
-        .onGeometryChange(for: Bool.self) { proxy in
-            let frame = proxy.frame(in: .scrollView)
-            return frame.maxY > 0 && frame.minY < viewport
-        } action: { pondShowing = $0 }
-    }
-
-    private func entry(_ e: PondEntry, x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat, badge: String?) -> some View {
-        Button { open = e } label: {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(e.title).font(Ink.song(19)).tracking(2.5).shadow(color: .white, radius: 6)
-                Rectangle().fill(Ink.accent.opacity(0.7)).frame(width: 9, height: 0.7).padding(.vertical, 3)
-                Text(e.sub).font(Ink.latin(12)).italic().foregroundStyle(Ink.accent)
-                if let badge { Text(badge).font(.system(size: 10.5)).foregroundStyle(Ink.secondary).padding(.top, 2) }
-                Text(e.title).font(Ink.song(16)).tracking(2.5)
-                    .scaleEffect(x: 1, y: -0.65).opacity(0.12).blur(radius: 0.4)
-                    .accessibilityHidden(true)
-            }
-            .padding(10)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .offset(x: x * width, y: y * height)
-        .accessibilityLabel(e.title + (badge.map { "，" + $0 } ?? ""))
-        .accessibilityIdentifier("us-entry-\(e.rawValue)")
-    }
-
     @ViewBuilder private func page(_ e: PondEntry) -> some View {
         let close = { open = nil; Task { await book.load(); await notes.load() } }
         switch e {
-        case .purse: PursePage(store: book, paper: palette.paper, onClose: close)
-        case .menu: MenuPage(store: book, paper: palette.paper, onClose: close)
-        case .meds: MedsPage(store: book, paper: palette.paper, onClose: close)
-        case .notes: NotesPage(notes: notes, api: book.api, paper: palette.paper, onClose: close)
+        case .purse: PursePage(store: book, paper: paper, onClose: close)
+        case .menu: MenuPage(store: book, paper: paper, onClose: close)
+        case .meds: MedsPage(store: book, paper: paper, onClose: close)
+        case .notes: NotesPage(notes: notes, api: book.api, paper: paper, onClose: close)
         }
     }
 }
@@ -464,156 +539,25 @@ enum PondEntry: String, Identifiable {
     var sub: String { ["purse": "Bourse", "menu": "Menu", "notes": "Billets", "meds": "Remèdes"][rawValue]! }
 }
 
-struct PondRipple: Equatable { let x: CGFloat; let y: CGFloat; let start: Date }
-
-// MARK: - 锦鲤池画布
-
-/// 两条锦鲤沿脊线摆尾（照 Design/KeUs/fish-motion.js：头先转、肩轻摆、尾巴一波一波往后传，推一下滑一段），
-/// 花瓣落到水上漾开一圈，点水面也漾一圈。鱼图事先切成一条一条，每帧只做斜切，不重画整张图。
-struct PondCanvas: View {
-    let paused: Bool
-    let reduceMotion: Bool
-    let ripples: [PondRipple]
-
-    var body: some View {
-        // 137：一秒 30 下够顺（和「柯的」的蝴蝶一样）
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: paused)) { timeline in
-            Canvas(rendersAsynchronously: false) { ctx, size in
-                draw(&ctx, size: size, now: timeline.date)
-            }
-        }
-    }
-
-    private func draw(_ ctx: inout GraphicsContext, size: CGSize, now: Date) {
-        let t = reduceMotion ? 12.0 : now.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 10_000)
-        for index in 0..<2 { fish(&ctx, index: index, t: t, size: size) }
-        petals(&ctx, t: t, size: size)
-        for r in ripples {
-            let age = now.timeIntervalSince(r.start)
-            guard age >= 0, age < 3.4 else { continue }
-            ring(&ctx, at: CGPoint(x: r.x * size.width, y: r.y * size.height), age: age, duration: 3.4)
-        }
-    }
-
-    private func ring(_ ctx: inout GraphicsContext, at p: CGPoint, age: Double, duration: Double) {
-        for k in 0..<2 {
-            let a = age - Double(k) * 0.45
-            guard a > 0 else { continue }
-            let f = a / duration, rad = 8 + 46 * f
-            ctx.stroke(Path(ellipseIn: CGRect(x: p.x - rad, y: p.y - rad * 0.42, width: rad * 2, height: rad * 0.84)),
-                       with: .color(Color.white.opacity(0.75 * (1 - f))), lineWidth: 1)
-        }
-    }
-
-    // —— 鱼 ——
-    private static let slices = 24
-    private static let strips: [Image] = {
-        #if canImport(UIKit)
-        guard let cg = UIImage(named: "KeUsKoi")?.cgImage else { return [] }
-        let h = cg.height / slices
-        return (0..<slices).compactMap { j in
-            cg.cropping(to: CGRect(x: 0, y: j * h, width: cg.width, height: j == slices - 1 ? cg.height - j * h : h + 1))
-                .map { Image(decorative: $0, scale: 1) }
-        }
-        #else
-        return []
-        #endif
-    }()
-    private static let aspect: CGFloat = 853.0 / 1844.0
-
-    private struct Point { var x: Double; var y: Double }
-    private static func position(_ t: Double, _ i: Int) -> Point {
-        let fq = i == 1 ? 0.61 : 0.73, r = t * fq + Double(i) * 2.3
-        let a = t * (i == 1 ? 0.082 : 0.088) + 0.035 * sin(r) + 0.008 * sin(2 * r) + 0.4 + Double(i) * 2.8
-        let rx = 0.215 + 0.025 * sin(t * 0.11 + Double(i)), ry = 0.265 + 0.025 * cos(t * 0.095 + Double(i) * 1.7)
-        return Point(x: 0.51 + rx * cos(a) + 0.022 * sin(2 * a + 0.2), y: 0.49 + ry * sin(a) + 0.024 * cos(2 * a))
-    }
-
-    private func fish(_ ctx: inout GraphicsContext, index i: Int, t: Double, size: CGSize) {
-        let strips = Self.strips
-        guard strips.count == Self.slices else { return }
-        let W = Double(size.width), H = Double(size.height)
-        let length = W * (i == 1 ? 0.235 : 0.28), breadthBase = length * Self.aspect
-        let p = Self.position(t, i), q = Self.position(t + 0.12, i), ahead = Self.position(t + 1.2, i)
-        let heading = atan2((q.y - p.y) * H, (q.x - p.x) * W)
-        let next = atan2((ahead.y - q.y) * H, (ahead.x - q.x) * W)
-        let turn = atan2(sin(next - heading), cos(next - heading))
-        let r = t * (i == 1 ? 0.61 : 0.73) + Double(i) * 2.3
-        let effort = 0.13 + 0.87 * pow((1 + cos(r)) / 2, 3)
-        let beat = t * (i == 1 ? 2.48 : 2.72) + 0.28 * sin(r) + Double(i) * 1.9
-        let nose = turn * 0.65 + (0.065 + 0.145 * effort) * sin(beat + 0.4)
-        let n = Self.slices
-        var points = [Point(x: 0, y: 0)]
-        for j in 1...n {
-            let f = (Double(j) - 0.5) / Double(n)
-            let tail = max(0, (f - 0.18) / 0.82)
-            let amp = (0.03 + 0.98 * pow(tail, 1.7)) * (0.24 + 0.76 * effort)
-            let headArc = 0.27 * (0.45 + 0.55 * effort) * exp(-pow((f - 0.12) / 0.2, 2)) * sin(beat + 0.85)
-            let bend = headArc + amp * sin(beat - tail * 4.6) - turn * tail * 2.1
-            let prev = points[j - 1], step = length / Double(n)
-            points.append(Point(x: prev.x + sin(bend) * step, y: prev.y + cos(bend) * step))
-        }
-        let anchor = points[Int((Double(n) * 0.32).rounded())]
-        var g = ctx
-        g.opacity = i == 1 ? 0.77 : 0.86
-        g.translateBy(x: p.x * W, y: p.y * H)
-        g.rotate(by: .radians(heading + .pi / 2 + nose))
-        let dh = length / Double(n)
-        for j in 0..<n {
-            let a = Point(x: points[j].x - anchor.x, y: points[j].y - anchor.y)
-            let b = Point(x: points[j + 1].x - anchor.x, y: points[j + 1].y - anchor.y)
-            let f = Double(j) / Double(n)
-            let fins = exp(-pow((f - 0.31) / 0.09, 2))
-            let breadth = breadthBase * (1 + fins * 0.045 * sin(beat - 0.8))
-            var s = g
-            s.concatenate(CGAffineTransform(a: 1, b: 0, c: (b.x - a.x) / dh, d: (b.y - a.y) / dh, tx: a.x, ty: a.y))
-            s.draw(strips[j], in: CGRect(x: -breadth / 2, y: 0, width: breadth, height: dh + 0.6))
-        }
-    }
-
-    // —— 花瓣：沿错开的弧线飘下来，落水漾一圈，漂一会儿淡掉 ——
-    /// 137：花瓣原图 1254×1254，画出来才二十几点——先缩成 128 像素的小图，不用每帧从大图缩
-    private static let petal: Image = {
-        #if canImport(UIKit)
-        if let big = UIImage(named: "KeUsPetal") {
-            let format = UIGraphicsImageRendererFormat(); format.scale = 1; format.opaque = false
-            let side: CGFloat = 128
-            let small = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { _ in
-                big.draw(in: CGRect(x: 0, y: 0, width: side, height: side))
-            }
-            return Image(uiImage: small)
-        }
-        #endif
-        return Image("KeUsPetal")
-    }()
-    private static let routes: [[(Double, Double)]] = [
-        [(0.18, -0.08), (0.08, 0.22), (0.30, 0.38)], [(0.82, -0.08), (0.95, 0.18), (0.72, 0.30)],
-        [(0.55, -0.08), (0.40, 0.25), (0.48, 0.56)], [(0.30, -0.08), (0.22, 0.40), (0.38, 0.82)],
-        [(0.92, -0.06), (0.80, 0.45), (0.86, 0.62)]
-    ]
-    private func petals(_ ctx: inout GraphicsContext, t: Double, size: CGSize) {
-        guard !reduceMotion else { return }
-        let gap = 3.1, fall = 5.2, rest = 6.0, fade = 2.4, total = fall + rest + fade
-        let newest = Int(floor(t / gap))
-        let image = Self.petal
-        for k in 0..<Int(ceil(total / gap)) {
-            let n = newest - k, age = t - Double(n) * gap
-            guard age >= 0, age < total else { continue }
-            let route = Self.routes[((n % 5) + 5) % 5]
-            let f = min(age / fall, 1), e = f * f * (3 - 2 * f), one = 1 - e
-            let x = one * one * route[0].0 + 2 * one * e * route[1].0 + e * e * route[2].0 + sin(age * 1.7 + Double(n)) * 0.007 * (1 - e)
-            let y = one * one * route[0].1 + 2 * one * e * route[1].1 + e * e * route[2].1
-            let landed = max(0, age - fall)
-            let opacity = 0.75 * min(1, age / 2) * (1 - max(0, min(1, (age - fall - rest) / fade)))
-            let p = CGPoint(x: x * size.width + sin(landed * 0.25) * 2, y: y * size.height)
-            if landed > 0 && landed < 3.6 { ring(&ctx, at: p, age: landed, duration: 4.2) }
-            var g = ctx
-            g.opacity = opacity
-            g.translateBy(x: p.x, y: p.y)
-            g.rotate(by: .degrees(Double(n * 47 % 360) + age * (landed > 0 ? 2 : 28)))
-            let w = size.width * (0.05 + Double(n % 3) * 0.008)
-            g.draw(image, in: CGRect(x: -w / 2, y: -w / 2, width: w, height: w))
-        }
+/// 140：「我们」页清冷水彩的颜色和字（Design/UsWatercolorReview/cool.css）。
+/// 原型里的浅字太淡（班次 #94a1b3 约 2.6:1），这里正文、班次、星期都加深到 4.5:1 以上；只有装饰的斜体英文和箭头用淡色。
+enum Cool {
+    static let paper = Color(hex: 0xFCFDFF)
+    static let ink = Color(hex: 0x555F6D)        // 约 6.3:1
+    static let number = Color(hex: 0x5B6A80)     // 约 5.4:1
+    static let secondary = Color(hex: 0x66717F)  // 约 4.8:1
+    static let mauve = Color(hex: 0x7B6782)      // 约 5.2:1
+    static let faint = Color(hex: 0x8D98A8)      // 装饰用
+    static let line = Color(hex: 0xE6EBF2)
+    static let today = Color(hex: 0xEAEFF7)
+    static let period = Color(hex: 0xF5E2EC)
+    static let heart = Color(hex: 0xB0849F)
+    /// Didot 是 iOS 自带的；跟着系统字号放大
+    static func didot(_ size: CGFloat, _ style: Font.TextStyle) -> Font { .custom("Didot", size: size, relativeTo: style) }
+    static func didotItalic(_ size: CGFloat, _ style: Font.TextStyle) -> Font { .custom("Didot-Italic", size: size, relativeTo: style) }
+    /// 跟 Ink.song 同一款思源宋体细字，只是跟着系统字号放大
+    static func song(_ size: CGFloat, _ style: Font.TextStyle) -> Font {
+        .custom(size >= 17 ? "NotoSerifSC-ExtraLight" : "NotoSerifSC-Light", size: size, relativeTo: style)
     }
 }
 
