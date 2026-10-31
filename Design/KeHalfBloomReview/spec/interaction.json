@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "date": "2026-10-31",
+  "scope": "柯的入口页设计交接；详情为现有功能核对占位",
+  "entries": [
+    {
+      "id": "diary",
+      "label": "日记",
+      "view": "KeDiaryListView",
+      "file": "KeApp/Features/Play/KeDiaryListView.swift",
+      "index": 0,
+      "angleDegrees": 0
+    },
+    {
+      "id": "dream",
+      "label": "梦",
+      "view": "KeDreamListView",
+      "file": "KeApp/Features/Play/KeCamelliaView.swift",
+      "index": 1,
+      "angleDegrees": 60
+    },
+    {
+      "id": "moments",
+      "label": "朋友圈",
+      "view": "MomentsView",
+      "file": "KeApp/Features/Play/MomentsView.swift",
+      "index": 2,
+      "angleDegrees": 120
+    },
+    {
+      "id": "memory",
+      "label": "记忆",
+      "view": "MemoryTabView",
+      "file": "KeApp/Features/Memories/MemoryGardenView.swift",
+      "index": 3,
+      "angleDegrees": 180
+    },
+    {
+      "id": "drawer",
+      "label": "抽屉",
+      "view": "KeDrawerPage",
+      "file": "KeApp/Features/Play/KeDrawerPage.swift",
+      "index": 4,
+      "angleDegrees": 240
+    },
+    {
+      "id": "tarot",
+      "label": "塔罗",
+      "view": "TarotView",
+      "file": "KeApp/Features/Play/TarotView.swift",
+      "index": 5,
+      "angleDegrees": 300
+    }
+  ],
+  "rotation": {
+    "stepDegrees": 60,
+    "anchor": [
+      0.5,
+      0.5
+    ],
+    "centerAtContainerRightEdge": true,
+    "snap": "round(angle/60)*60",
+    "onTapMenu": "shortest path, select only",
+    "onTapFlower": "next entry",
+    "onDragEnd": "snap; suppress synthesized click",
+    "enter": "separate lower action button",
+    "reducedMotion": "no transform transition"
+  },
+  "layout": {
+    "phoneMaxWidth": 390,
+    "stageHeight": 620,
+    "flowerSize": 520,
+    "flowerSizeAtWidthLE350": 420,
+    "flowerTop": 80,
+    "flowerTopAtWidthLE350": 125,
+    "menuTop": 141,
+    "menuLeft": 31,
+    "menuLeftAtWidthLE350": 25,
+    "menuMinHeight": 56,
+    "menuGap": 3
+  },
+  "colors": {
+    "cream": "#fffcf7",
+    "pink": "#fff4f5",
+    "ink": "#62545a",
+    "muted": "#89777d",
+    "selectedDot": "#bd8d97"
+  },
+  "state": {
+    "entryId": "stable string; never persist array index for native navigation",
+    "tone": [
+      "cream",
+      "pink"
+    ]
+  },
+  "nativeBaselineInspected": "ffb71d8544e09f5d6d92d305b8d57a387b053f8b"
+}

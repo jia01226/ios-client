@@ -1,0 +1,24 @@
+{
+  "checkedAt": "2026-10-31T11:52:36.903Z",
+  "environment": "Desktop Chrome / Playwright, headless",
+  "passed": [
+    "six menu-to-route mappings",
+    "detail and return preserve selection",
+    "drag snaps to tarot without extra click",
+    "keyboard wraps in both directions for two revolutions",
+    "320/390/430 viewport widths without document overflow",
+    "44px menu targets without overlap",
+    "pink theme",
+    "reduced motion",
+    "no JavaScript errors",
+    "no external requests"
+  ],
+  "notVerified": [
+    "native SwiftUI implementation",
+    "iPhone touch feel and performance",
+    "VoiceOver on iOS",
+    "native Dynamic Type",
+    "real APIs, authentication, locked content and tarot handoff"
+  ],
+  "errors": []
+}

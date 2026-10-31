@@ -1,0 +1,16 @@
+{
+  "method": "OpenAI built-in image_gen; generated from the prior watercolor flower as a color/texture reference",
+  "use": "single centered front-view camellia, cropped by the UI and rotated",
+  "master": "assets/camellia-master.png",
+  "preview": "assets/camellia-preview.png",
+  "previewPreparation": "sips resize to 620px; alpha preserved",
+  "geometryCheck": {
+    "yellowPollenCentroidPercent": [
+      50.2,
+      50.2
+    ],
+    "note": "Measurement of the generated 620px image, not an exact symmetry guarantee"
+  },
+  "prompt": "Create a replacement watercolor camellia flower for a rotating circular UI. Input image is a color and watercolor-texture reference ONLY: correct its tilted side-facing structure. CRITICAL GEOMETRY: exact straight overhead orthographic view down the flower axis; a flat radially balanced open camellia rosette with no up/down orientation. Perfectly centered circular overall silhouette, same radius in all directions, exactly centered at (50%,50%) in a square image, equal transparent margins of about 6% each side. Petals are broad softly rounded overlapping camellia petals arranged in 3 balanced concentric whorls around the exact center, approximately 5-fold radial structure with subtle handpainted variation, NOT an asymmetric cup. The yellow stamens are seen from their tips directly overhead as a small circular cluster of round pollen dots around the exact canvas center, absolutely NO long yellow stems extending upward or fanning out in one direction. All 360 degrees equally upright: no perspective foreshortening, no tilted bowl, no sideways protruding center, no top-lit shadow direction. Keep original creamy blush pink and pale peach-pink watercolor washes, subtle darker pink at petal bases, delicate paper grain, fine irregular natural watercolor edges. Preserve camellia identity, not a daisy, not geometric mandala, not a rose spiral. A single complete blossom only, no leaves, stem, fish, other objects or text. True transparent background, no halo or glow. This flower must look stable and centered at rotations of 0,72,144,216,288 degrees.",
+  "note": "Prompt records the original five-entry artwork generation; this delivery uses six UI entries at 60-degree intervals. The same centered art is reused."
+}
