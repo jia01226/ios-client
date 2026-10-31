@@ -1,10 +1,7 @@
 import SwiftUI
 import UIKit
 
-// 98：「柯的」一页是一枝山茶。六朵花是六个入口：日记、梦、抽屉、塔罗、朋友圈、记忆。
-// 一只蝴蝶代表柯：他留了新东西（写了日记、做了梦、发了朋友圈、新记了一件事），蝴蝶就飞去停在那朵花上，
-// 底下的卡片写的也是这一条——蝴蝶和卡片永远读同一条真实内容。
-// 素材与坐标来自 Design/KeCamellia（GPT 交付，spec/layout.json、spec/motion.json）。画布 390×844，整体等比缩放。
+// 98：「柯的」六个入口：日记、梦、抽屉、塔罗、朋友圈、记忆。140 起是半朵山茶，见下面 KeSpaceView。
 
 enum CamelliaEntry: String, CaseIterable, Identifiable {
     case diary, dream, drawer, tarot, moments, memory
@@ -19,40 +16,34 @@ enum CamelliaEntry: String, CaseIterable, Identifiable {
         case .memory: "记忆"
         }
     }
-    var flowerAsset: String {
+    var english: String {
         switch self {
-        case .diary: "KeCamelliaDiary"
-        case .dream: "KeCamelliaDream"
-        case .drawer: "KeCamelliaDrawer"
-        case .tarot: "KeCamelliaTarot"
-        case .moments: "KeCamelliaMoments"
-        case .memory: "KeCamelliaMemory"
+        case .diary: "Dear diary"
+        case .dream: "In dreams"
+        case .drawer: "Kept close"
+        case .tarot: "Written in stars"
+        case .moments: "Little moments"
+        case .memory: "To remember"
         }
     }
-    var tagAsset: String { "KeCamelliaTag" + rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
-
-    struct Spot {
-        let frame: CGRect      // 花图层（含透明边）
-        let hit: CGRect        // 点花的范围
-        let tag: CGRect        // 挂签
-        let string: (x: CGFloat, top: CGFloat, bottom: CGFloat)
-        let perch: CGPoint     // 蝴蝶停在这朵花上的位置
-    }
-    /// 来自 spec/layout.json，全部是画布比例（0…1）
-    var spot: Spot {
+    var tagline: String {
         switch self {
-        case .diary: Spot(frame: CGRect(x: 0.6613, y: 0.0733, width: 0.2974, height: 0.1374), hit: CGRect(x: 0.70, y: 0.091, width: 0.22, height: 0.102),
-                          tag: CGRect(x: 0.8086, y: 0.2302, width: 0.0821, height: 0.0806), string: (0.8496, 0.1968, 0.2338), perch: CGPoint(x: 0.745, y: 0.113))
-        case .dream: Spot(frame: CGRect(x: 0.5113, y: 0.2013, width: 0.2974, height: 0.1374), hit: CGRect(x: 0.55, y: 0.219, width: 0.22, height: 0.102),
-                          tag: CGRect(x: 0.6432, y: 0.3501, width: 0.0821, height: 0.0616), string: (0.6842, 0.3167, 0.3536), perch: CGPoint(x: 0.595, y: 0.241))
-        case .drawer: Spot(frame: CGRect(x: 0.3162, y: 0.3319, width: 0.3077, height: 0.1422), hit: CGRect(x: 0.36, y: 0.352, width: 0.22, height: 0.102),
-                           tag: CGRect(x: 0.462, y: 0.4841, width: 0.0821, height: 0.0806), string: (0.503, 0.4507, 0.4877), perch: CGPoint(x: 0.405, y: 0.374))
-        case .tarot: Spot(frame: CGRect(x: 0.6864, y: 0.3956, width: 0.2872, height: 0.1327), hit: CGRect(x: 0.72, y: 0.411, width: 0.22, height: 0.102),
-                          tag: CGRect(x: 0.789, y: 0.538, width: 0.0821, height: 0.0806), string: (0.83, 0.5046, 0.5416), perch: CGPoint(x: 0.765, y: 0.433))
-        case .moments: Spot(frame: CGRect(x: 0.1087, y: 0.5081, width: 0.3026, height: 0.1398), hit: CGRect(x: 0.15, y: 0.527, width: 0.22, height: 0.102),
-                            tag: CGRect(x: 0.219, y: 0.6479, width: 0.0821, height: 0.0995), string: (0.26, 0.6145, 0.6514), perch: CGPoint(x: 0.195, y: 0.549))
-        case .memory: Spot(frame: CGRect(x: 0.1923, y: 0.2222, width: 0.2154, height: 0.0995), hit: CGRect(x: 0.19, y: 0.221, width: 0.22, height: 0.102),
-                           tag: CGRect(x: 0.248, y: 0.348, width: 0.0821, height: 0.0806), string: (0.289, 0.3146, 0.3516), perch: CGPoint(x: 0.235, y: 0.243))
+        case .diary: "把今天，慢慢写给你。"
+        case .dream: "昨晚的梦里，也有你。"
+        case .drawer: "悄悄收好的小小珍藏。"
+        case .tarot: "抽一张，和你慢慢聊。"
+        case .moments: "一些想和你分享的小事。"
+        case .memory: "你说过的话，我记着。"
+        }
+    }
+    var action: String {
+        switch self {
+        case .diary: "翻开日记"
+        case .dream: "走进梦里"
+        case .drawer: "打开抽屉"
+        case .tarot: "进入塔罗"
+        case .moments: "看看动态"
+        case .memory: "翻阅记忆"
         }
     }
 }
@@ -67,8 +58,7 @@ struct CamelliaEvent: Equatable {
 }
 
 @MainActor final class KeCamelliaStore: ObservableObject {
-    /// 137：每条线路一份（连同朋友圈那份、同一个 APIClient）。以前每次切到「柯的」都整页重建、重新联网，
-    /// 底下那张卡片要等好几秒；现在切回来蝴蝶和卡片先停在上次那条，再在后台刷新。
+    /// 137：每条线路一份（连同朋友圈那份、同一个 APIClient）。切回来先画上次那条，再在后台刷新。
     private static var all: [String: (camellia: KeCamelliaStore, moments: MomentsStore)] = [:]
     static func shared(_ line: ChatLine) -> (camellia: KeCamelliaStore, moments: MomentsStore) {
         if let stores = all[line.rawValue] { return stores }
@@ -104,7 +94,7 @@ struct CamelliaEvent: Equatable {
         async let drawerPage = try? api.fetchDrawer()
         async let garden = try? api.memoryGarden()
         let (diaryRows, moments, drawer, page) = await (diaries, momentRows, drawerPage, garden)
-        // 哪一样没接上，那一朵就留着上次的，不让蝴蝶和卡片突然没了
+        // 哪一样没接上，就留着上次的，不让那行字突然没了
         var found = latest
         let ke: Set<String> = ["柯", "ke", "ai", "assistant"]
         if let rows = diaryRows {
@@ -124,7 +114,7 @@ struct CamelliaEvent: Equatable {
                 }
             }
         }
-        // 110：柯往抽屉里放了便签、小画，蝴蝶也去抽屉那朵停一停（不推送）
+        // 110：柯往抽屉里放了便签、小画，也算（不推送）
         if let drawer {
             found[.drawer] = nil
             for item in drawer.outside {
@@ -157,7 +147,7 @@ struct CamelliaEvent: Equatable {
         defaults.set(at, forKey: seenKey(entry))
         objectWillChange.send()
     }
-    /// 蝴蝶该去哪：还没看过的里面最新的一条；都看过了，就是最新的一条（静静停着，不再飞）。
+    /// 还没看过的里面最新的一条；都看过了，就是最新的一条。
     var current: CamelliaEvent? {
         let all = latest.values.sorted { ($0.at, $0.entry.rawValue) > ($1.at, $1.entry.rawValue) }
         return all.first(where: isNew) ?? all.first
@@ -168,37 +158,12 @@ struct CamelliaEvent: Equatable {
     }
 }
 
-// MARK: - 蝴蝶的飞行（只跟时间有关，画面每帧读）
-
-final class CamelliaButterfly {
-    private(set) var perch: CamelliaEntry
-    private var from: CGPoint
-    private var to: CGPoint
-    private var start = Date.distantPast
-    let duration = 3.0
-    private var side: CGFloat = 1
-    init(perch: CamelliaEntry) { self.perch = perch; from = perch.spot.perch; to = perch.spot.perch }
-
-    func fly(to entry: CamelliaEntry, instantly: Bool) {
-        let now = Date()
-        let here = position(at: now).point
-        perch = entry
-        from = here; to = entry.spot.perch
-        side = to.x >= from.x ? -1 : 1
-        start = instantly ? .distantPast : now
-    }
-    var flying: Bool { Date().timeIntervalSince(start) < duration }
-    /// 位置：直线插值 + 一道弧（motion.json：side*0.105*sin(πt), -0.06*sin(πt)）
-    func position(at date: Date) -> (point: CGPoint, flying: Bool) {
-        let raw = date.timeIntervalSince(start) / duration
-        guard raw < 1 else { return (to, false) }
-        let t = max(0, raw), e = t * t * (3 - 2 * t), arc = sin(Double.pi * t)
-        return (CGPoint(x: from.x + (to.x - from.x) * e + side * 0.105 * arc, y: from.y + (to.y - from.y) * e - 0.06 * arc), true)
-    }
-}
-
 // MARK: - 页面
 
+/// 140：「柯的」换成半朵山茶（Design/KeHalfBloomReview，她 10-31 定的）：右边半朵大花，左边六个入口。
+/// 转花只是选（松手吸到最近一档，每档 60°）；点名字花转过去、转完直接进（她：「直接点，然后花转动」）。
+/// 柯留下的新东西收成下面一行字（以前的卡片），名字旁边一个小点，都是真数据，看过就没了。
+/// 换之前的花枝蝴蝶在 backup/ke-camellia-before-halfbloom-1031 分支。
 struct KeSpaceView: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
@@ -214,26 +179,24 @@ struct KeSpaceView: View {
     var onOpenQuote: (AppQuote) -> Void
     @ObservedObject private var store: KeCamelliaStore
     @ObservedObject private var moments: MomentsStore
-    @State private var butterfly: CamelliaButterfly
-    @State private var shown: CamelliaEvent?
     @State private var open: CamelliaEntry?
-    /// 123：日记是从底下那张卡片点开的（卡片写的是一篇日记，就落在「日记」那一栏；点花照她上次停的那一栏）
+    /// 123：日记是从下面那行字点开的（写的是一篇日记，就落在「日记」那一栏）
     @State private var diaryFromCard = false
-    @State private var pressed: CamelliaEntry?
-    @State private var visible = false
-    /// 136：花枝摆动交给系统动画（以前每一帧把整幅画重建一遍：花、挂签、卡片、滤镜都重算，发热费电）
-    @State private var swayed = false
-    private var animating: Bool { visible && !reduceMotion && scenePhase == .active }
-    @AppStorage("camellia.perch") private var savedPerch = CamelliaEntry.diary.rawValue
-    @AppStorage(CamelliaPalette.storageKey) private var savedPalette = CamelliaPalette.defaultPalette.rawValue
-    private var palette: CamelliaPalette { .resolve(savedPalette) }
-
-    /// 126：挂签上的字、卡片标题跟着纸色走（粉白 = #564653 / #7A6572；别的纸色还是原来的蓝墨）
-    private var ink: Color { palette.inks.camelliaInk }
-    private var muted: Color { palette.inks.camelliaMuted }
-    /// 126：底栏浮在画上，画布按让出底栏后的高度缩放，卡片不被底栏挡住
+    /// 记的是入口的名字，不是下标
+    @AppStorage("camellia.selected") private var savedSelection = CamelliaEntry.diary.rawValue
+    /// 转过的总档数（能连着转好几圈，不取模），花的角度 = 档数 × 60°
+    @State private var step: Int
+    @State private var rotation: Double
+    @State private var lastAngle: Double?
+    @GestureState private var dragging = false
+    @State private var entering: Task<Void, Never>?
+    /// 126：底栏浮在页面上，让出它那一截
     @Environment(\.floatingDockInset) private var dockInset
-    private static let moonRoom: CGFloat = 26
+
+    private static let order: [CamelliaEntry] = [.diary, .dream, .moments, .memory, .drawer, .tarot]
+    private static let stepAngle = 60.0
+    private static func wrap(_ n: Int) -> Int { ((n % order.count) + order.count) % order.count }
+    private var selected: CamelliaEntry { Self.order[Self.wrap(step)] }
 
     init(line: ChatLine, onOpenQuote: @escaping (AppQuote) -> Void) {
         self.line = line; self.onOpenQuote = onOpenQuote
@@ -241,56 +204,49 @@ struct KeSpaceView: View {
         let stores = KeCamelliaStore.shared(line)
         _store = ObservedObject(wrappedValue: stores.camellia)
         _moments = ObservedObject(wrappedValue: stores.moments)
-        let saved = CamelliaEntry(rawValue: UserDefaults.standard.string(forKey: "camellia.perch") ?? "") ?? .diary
-        _butterfly = State(initialValue: CamelliaButterfly(perch: saved))
-        // 切回来时卡片先写上次那条（蝴蝶就停在那朵上时才写，两边永远是同一条）
-        _shown = State(initialValue: stores.camellia.current.flatMap { $0.entry == saved ? $0 : nil })
+        let saved = CamelliaEntry(rawValue: UserDefaults.standard.string(forKey: "camellia.selected") ?? "") ?? .diary
+        let index = Self.order.firstIndex(of: saved) ?? 0
+        _step = State(initialValue: index)
+        _rotation = State(initialValue: Double(index) * Self.stepAngle)
     }
 
     var body: some View {
         GeometryReader { geo in
-            // 画布等比缩放：宽度铺满；太高就按高度缩（底部原本的导航那一截不用，只到卡片下沿）
-            // 126：顶上让出一点给右上的月牙（设计稿里月牙那一行在花枝上面），底下让出浮着的底栏
-            let moonRoom = Self.moonRoom
-            let s = min(geo.size.width / 390, max(1, geo.size.height - dockInset - moonRoom) / (844 * 0.9))
-            let w = 390 * s, h = 844 * s
+            let w = geo.size.width, usable = geo.size.height - dockInset
+            // 花的中心在屏幕右边缘，只露半朵；窄屏、矮屏跟着缩
+            let flower = min(w * 1.33, usable * 0.66, 590)
+            let center = CGPoint(x: w, y: min(usable * 0.56, usable - flower * 0.44))
             ZStack(alignment: .topLeading) {
-                artboard(w: w, h: h, s: s)
-                    .frame(width: w, height: h)
-                .offset(x: (geo.size.width - w) / 2, y: moonRoom)
-                // 126：设计稿里「柯的」不再有顶上的大标题和配色菜单，只剩右上的月牙（RootTabView 画）。
-                // 纸色照样在设置抽屉「素笺」页里选。
-            }
-        }
-        // 126：纸和雾一直铺到屏幕底（底栏浮在上面，外面不留一截别的底色）
-        .background {
-            ZStack {
-                palette.paper
-                GeometryReader { bg in
-                    Image("KeCamelliaBackground").resizable().scaledToFill()
-                        .frame(width: bg.size.width, height: bg.size.height).clipped()
-                        .saturation(palette.mistSaturation).opacity(palette.mistOpacity)
-                        .blendMode(.multiply)
+                bloom(size: flower, center: center)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("A world in bloom.").font(.custom("Baskerville-Italic", size: 26, relativeTo: .title))
+                        .foregroundStyle(Cool.ink).accessibilityAddTraits(.isHeader)
+                    Text("慢慢转，慢慢认识我。").font(Cool.song(12.5, .footnote)).tracking(1).foregroundStyle(Cool.secondary)
+                        .padding(.top, 12)
+                    Spacer(minLength: 14)
+                    // 矮屏（SE 这种）每行收紧一点，下面那行字和「翻开」别被底栏挡住
+                    ForEach(Self.order) { name($0, compact: usable < 640) }
+                    Spacer(minLength: usable < 640 ? 6 : 14)
+                    below
                 }
+                .padding(.leading, 30)
+                .padding(.top, usable < 640 ? 44 : 56)
+                .padding(.bottom, (usable < 640 ? 8 : 26) + dockInset)
+                .frame(width: min(w * 0.62, 260), alignment: .leading)
+                .frame(maxHeight: .infinity, alignment: .topLeading)
+                Text("轻轻转动花朵").font(Cool.tiny()).tracking(1.5).foregroundStyle(Cool.faint)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .padding(.trailing, 24).padding(.bottom, 30 + dockInset)
+                    .allowsHitTesting(false).accessibilityHidden(true)
             }
-            .ignoresSafeArea()
-            .accessibilityHidden(true)
+            .coordinateSpace(name: "bloom")
         }
-        .ignoresSafeArea(edges: .top)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+        .background(Cool.paper.ignoresSafeArea())
         .task { await refresh() }
-        .onAppear {
-            visible = true
-            // 花枝以右上为轴轻轻摆：-0.48°…0.58°，9 秒一个来回
-            guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 4.5).repeatForever(autoreverses: true)) { swayed = true }
-        }
-        .onDisappear {
-            visible = false
-            var quiet = Transaction(); quiet.disablesAnimations = true
-            withTransaction(quiet) { swayed = false }
-        }
         .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await refresh(onlyIfStale: true) } } }
-        .sensoryFeedback(.selection, trigger: open)
+        .onChange(of: dragging) { _, now in if !now { settle() } }   // 手势被系统取消也算松手
+        .sensoryFeedback(.selection, trigger: step)
         // 塔罗抽完交给柯、抽屉里「去找柯要」：都会回聊天，盖着的页面先收起来
         .onReceive(NotificationCenter.default.publisher(for: .tarotReadingRequest)) { _ in open = nil }
         .fullScreenCover(item: $open) { entry in
@@ -303,181 +259,122 @@ struct KeSpaceView: View {
         }
     }
 
-    // MARK: 画布
+    // MARK: 花
 
-    private func artboard(w: CGFloat, h: CGFloat, s: CGFloat) -> some View {
-        let sway = reduceMotion ? 0 : (swayed ? 0.58 : -0.48)
-        func r(_ rect: CGRect) -> CGRect { CGRect(x: rect.minX * w, y: rect.minY * h, width: rect.width * w, height: rect.height * h) }
-        return ZStack(alignment: .topLeading) {
-            ZStack(alignment: .topLeading) {
-                ZStack(alignment: .topLeading) {
-                    Image("KeCamelliaStem").resizable().frame(width: w, height: 0.8318 * h).accessibilityHidden(true)
-                    ForEach(CamelliaEntry.allCases) { entry in
-                        let f = r(entry.spot.frame)
-                        Image(entry.flowerAsset).resizable().frame(width: f.width, height: f.height)
-                            .scaleEffect(pressed == entry ? 0.97 : 1)
-                            .offset(x: f.minX, y: f.minY)
-                            .accessibilityHidden(true)
+    private func bloom(size: CGFloat, center: CGPoint) -> some View {
+        Image("KeHalfBloom").resizable().frame(width: size, height: size)   // 方形母版，不裁，绕几何中心转
+            .rotationEffect(.degrees(rotation), anchor: .center)
+            .contentShape(Circle())
+            .onTapGesture { if lastAngle == nil { turn(to: step + 1) } }    // 点花：往前走一档，只选不进
+            .gesture(
+                DragGesture(minimumDistance: 6, coordinateSpace: .named("bloom"))
+                    .updating($dragging) { _, state, _ in state = true }
+                    .onChanged { value in
+                        entering?.cancel()
+                        let angle = atan2(value.location.y - center.y, value.location.x - center.x) * 180 / .pi
+                        if let last = lastAngle {
+                            var delta = angle - last
+                            if delta > 180 { delta -= 360 } else if delta < -180 { delta += 360 }   // 跨 ±180° 别跳一圈
+                            rotation += delta
+                            step = Int((rotation / Self.stepAngle).rounded())
+                        }
+                        lastAngle = angle
+                    }
+            )
+            .position(center)
+            .accessibilityHidden(true)   // VoiceOver 直接选左边六个入口，不用转
+    }
+
+    /// 松手：吸到最近一档
+    private func settle() {
+        lastAngle = nil
+        withAnimation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.86)) { rotation = Double(step) * Self.stepAngle }
+        savedSelection = selected.rawValue
+    }
+
+    private func turn(to target: Int) {
+        step = target
+        settle()
+    }
+
+    /// 点名字：花走最短的路转过去，转完直接进；已经选中的、或者减弱动态，马上进
+    private func tapName(_ entry: CamelliaEntry) {
+        entering?.cancel()
+        guard let index = Self.order.firstIndex(of: entry) else { return }
+        let n = Self.order.count
+        let diff = ((index - Self.wrap(step) + n / 2) % n + n) % n - n / 2
+        let moved = diff != 0
+        turn(to: step + diff)
+        guard moved, !reduceMotion else { go(entry); return }
+        entering = Task {
+            try? await Task.sleep(for: .milliseconds(420))
+            guard !Task.isCancelled else { return }
+            go(entry)
+        }
+    }
+
+    // MARK: 左边
+
+    private func name(_ entry: CamelliaEntry, compact: Bool) -> some View {
+        let on = entry == selected
+        let fresh = store.latest[entry].map(store.isNew) ?? false
+        return Button { tapName(entry) } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(entry.label).font(Cool.song(on ? 21 : 15, on ? .title3 : .body)).tracking(on ? 3 : 2)
+                        .foregroundStyle(on ? Cool.ink : Cool.secondary)
+                    if on {
+                        Text(entry.english).font(.custom("Baskerville-Italic", size: 12, relativeTo: .caption))
+                            .tracking(0.3).foregroundStyle(Cool.faint)
                     }
                 }
-                .frame(width: w, height: h, alignment: .topLeading)
-                .modifier(CamelliaSoftArtwork(scale: s))
-                // 挂线和挂签画在花的前面，字不会被花挡住
-                ForEach(CamelliaEntry.allCases) { entry in
-                    let sp = entry.spot.string
-                    Path { p in p.move(to: CGPoint(x: sp.x * w, y: sp.top * h)); p.addLine(to: CGPoint(x: sp.x * w, y: sp.bottom * h)) }
-                        .stroke(Color(red: 0.44, green: 0.55, blue: 0.7).opacity(0.7), lineWidth: 0.8)
-                    Circle().fill(Color(red: 0.36, green: 0.47, blue: 0.63)).frame(width: 4.5 * s, height: 4.5 * s)
-                        .offset(x: sp.x * w - 2.25 * s, y: sp.top * h - 2.25 * s)
-                    tag(entry, rect: r(entry.spot.tag), s: s)
-                }
-                // 136：只有蝴蝶和花瓣要一帧帧动，只把它俩放进时间线；一秒 30 下够顺
-                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !animating)) { timeline in
-                    butterflyView(w: w, h: h, now: timeline.date)
-                }
-                .frame(width: w, height: h, alignment: .topLeading)
-                // 点的范围：花和挂签都能点
-                ForEach(CamelliaEntry.allCases) { entry in
-                    let hit = r(entry.spot.hit), tagRect = r(entry.spot.tag)
-                    tapArea(entry).frame(width: hit.width, height: hit.height).offset(x: hit.minX, y: hit.minY)
-                    tapArea(entry).frame(width: max(44, tagRect.width + 16), height: max(44, tagRect.height))
-                        .offset(x: tagRect.midX - max(44, tagRect.width + 16) / 2, y: tagRect.minY)
-                }
+                if fresh { Circle().fill(Cool.mauve).frame(width: 5, height: 5).accessibilityHidden(true) }
             }
-            .frame(width: w, height: h, alignment: .topLeading)
-            .rotationEffect(.degrees(sway), anchor: UnitPoint(x: 0.95, y: 0))
-            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !animating)) { timeline in
-                petals(w: w, h: h, now: timeline.date)
+            .overlay(alignment: .leading) {
+                if on { Circle().fill(Cool.heart).frame(width: 5, height: 5).offset(x: -13).accessibilityHidden(true) }
             }
-            .frame(width: w, height: h, alignment: .topLeading)
-            card(w: w, h: h, s: s)
+            .frame(minWidth: 88, minHeight: on ? (compact ? 50 : 62) : (compact ? 44 : 48), alignment: .leading)
+            .contentShape(Rectangle())
         }
-        .frame(width: w, height: h, alignment: .topLeading)
+        .buttonStyle(.plain)
+        .accessibilityLabel(entry.label + (fresh ? "，有新的" : ""))
+        .accessibilityAddTraits(on ? .isSelected : [])
+        .accessibilityIdentifier("camellia-\(entry.rawValue)")
     }
 
-    private func tag(_ entry: CamelliaEntry, rect: CGRect, s: CGFloat) -> some View {
-        Image(entry.tagAsset).resizable().frame(width: rect.width, height: rect.height)
-            .overlay(alignment: .top) {
-                VStack(spacing: 1 * s) {
-                    ForEach(Array(entry.label.enumerated()), id: \.offset) { _, ch in
-                        // These labels belong to fixed-size illustrated tags; their full names
-                        // remain available on the independent, minimum-44pt accessible buttons.
-                        Text(String(ch)).font(.custom("NotoSerifSC-Regular", fixedSize: 13.5 * s))
-                    }
-                }
-                .foregroundStyle(ink)
-                .padding(.top, 12 * s)
-            }
-            .overlay(alignment: .topTrailing) {
-                if let event = store.latest[entry], store.isNew(event) {
-                    Circle().fill(Color(red: 0.42, green: 0.55, blue: 0.85)).frame(width: 6 * s, height: 6 * s).offset(x: 2 * s, y: -2 * s)
-                }
-            }
-            .offset(x: rect.minX, y: rect.minY)
-            .accessibilityHidden(true)
-    }
-
-    private func tapArea(_ entry: CamelliaEntry) -> some View {
-        Button { go(entry) } label: { Color.clear.contentShape(Rectangle()) }
-            .buttonStyle(CamelliaPress(entry: entry, pressed: $pressed))
-            .accessibilityLabel(entry.label + ((store.latest[entry].map(store.isNew) ?? false) ? "，有新的" : ""))
-            .accessibilityAddTraits(.isButton)
-            .accessibilityIdentifier("camellia-\(entry.rawValue)")
-    }
-
-    private func butterflyView(w: CGFloat, h: CGFloat, now: Date) -> some View {
-        let (p, flying) = butterfly.position(at: now)
-        let t = now.timeIntervalSinceReferenceDate
-        let period = flying ? 0.22 : 1.9
-        let phase = reduceMotion ? 0.3 : 0.5 - 0.5 * cos(t * 2 * .pi / period)
-        let spread = 12 + (66 - 12) * phase
-        let bw = 0.16 * w, bh = 0.0739 * h
-        return ZStack {
-            Image("KeCamelliaWingLeft").resizable()
-                .rotation3DEffect(.degrees(spread), axis: (x: 0, y: 1, z: 0), anchor: UnitPoint(x: 0.48, y: 0.51), perspective: 0.4)
-            Image("KeCamelliaWingRight").resizable()
-                .rotation3DEffect(.degrees(-spread), axis: (x: 0, y: 1, z: 0), anchor: UnitPoint(x: 0.51, y: 0.51), perspective: 0.4)
-            Image("KeCamelliaBody").resizable().frame(width: bw * 0.84, height: bh * 0.84)
-                .offset(x: (0.08 + 0.42 - 0.5) * bw, y: (0.025 + 0.42 - 0.5) * bh)
-        }
-        .frame(width: bw, height: bh)
-        .compositingGroup()
-        .saturation(0.42).contrast(0.8).brightness(0.08).opacity(0.64)
-        .rotationEffect(.degrees(-25))
-        .position(x: p.x * w, y: p.y * h)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-
-    /// 偶尔飘一片花瓣：5.5 秒一片，11 秒落完，同时最多三片
-    private func petals(w: CGFloat, h: CGFloat, now: Date) -> some View {
-        let t = now.timeIntervalSinceReferenceDate
-        let names = ["KeCamelliaPetal01", "KeCamelliaPetal02", "KeCamelliaPetal03"]
-        let newest = Int(floor(t / 5.5))
-        return ZStack(alignment: .topLeading) {
-            if !reduceMotion {
-                ForEach(0..<2, id: \.self) { k in
-                    let n = newest - k
-                    let age = (t - Double(n) * 5.5) / 11
-                    var rng = GalaxyRandom(seed: UInt32(truncatingIfNeeded: n &* 2_654_435_761))
-                    let x0 = 0.35 + rng.next() * 0.6, y0 = 0.02 + rng.next() * 0.25
-                    let size = (0.035 + rng.next() * 0.03) * w
-                    let rot = -15 + (80 + 15) * age + rng.next() * 40
-                    let name = names[Int(rng.next() * 3) % 3]
-                    Image(name).resizable().frame(width: size, height: size)
-                        .rotationEffect(.degrees(rot))
-                        .opacity(0.55 * min(1, age * 6) * min(1, (1 - age) * 4))
-                        .offset(x: (x0 - 0.18 * age + 0.02 * sin(age * 9)) * w, y: (y0 + 0.65 * age) * h)
-                }
-            }
-        }
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-
-    // MARK: 卡片
-
-    private func card(w: CGFloat, h: CGFloat, s: CGFloat) -> some View {
-        let fs = CGSize(width: 0.3282 * w, height: 0.1517 * h)
-        let center = CGPoint(x: 0.2366 * w, y: 0.825 * h)
-        return Group {
-            if let event = shown {
+    /// 他有还没看过的就写一行（以前底下那张卡片），点了直接到那里；没有就是这一格自己的话
+    @ViewBuilder private var below: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let event = store.current, store.isNew(event) {
                 Button { go(event.entry, fromCard: true) } label: {
-                    HStack(alignment: .center, spacing: 0) {
-                        ZStack {
-                            Image(event.entry.flowerAsset).resizable().scaledToFill()
-                                .frame(width: fs.width * 0.5, height: fs.width * 0.5)
-                                .clipShape(Rectangle().rotation(.degrees(45)).scale(0.72))
-                                .modifier(CamelliaSoftArtwork(scale: s))
-                            Image("KeCamelliaDiamondFrame").resizable().frame(width: fs.width, height: fs.height)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(headline(event)).font(Cool.song(12.5, .footnote)).tracking(0.8).foregroundStyle(Cool.mauve)
+                        let text = event.excerpt.isEmpty ? event.title : event.excerpt
+                        if !text.isEmpty {
+                            Text(text).font(Cool.tiny()).foregroundStyle(Cool.secondary).lineLimit(2)
+                                .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
                         }
-                        .frame(width: fs.width, height: fs.height)
-                        VStack(alignment: .leading, spacing: 8 * s) {
-                            Text(headline(event)).font(.custom("NotoSerifSC-Regular", size: 14 * s)).tracking(2)
-                                .foregroundStyle(ink)
-                            Rectangle().fill(ink.opacity(0.5)).frame(height: 0.8)
-                            Text(event.excerpt.isEmpty ? event.title : event.excerpt)
-                                .font(.custom("NotoSerifSC-Regular", size: 13.5 * s)).lineLimit(2)
-                                .foregroundStyle(ink)
-                            Text(Self.relative(event.at)).font(.custom("NotoSerifSC-Regular", size: 10.5 * s))
-                                .foregroundStyle(muted)
-                        }
-                        .multilineTextAlignment(.leading)
-                        .padding(.trailing, 0.06 * w)
                     }
+                    .frame(minHeight: 44, alignment: .leading).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityElement(children: .combine)
                 .accessibilityHint("打开" + event.entry.label)
                 .accessibilityIdentifier("camellia-card")
-                .transition(.opacity)
-                .id(event.entry.rawValue + event.at)
+            } else {
+                Text(selected.tagline).font(Cool.song(12.5, .footnote)).tracking(0.8).foregroundStyle(Cool.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            Button { go(selected) } label: {
+                HStack(spacing: 14) {
+                    Text(selected.action).font(Cool.song(14, .subheadline)).tracking(2)
+                    Image(systemName: "arrow.up.right").font(.system(size: 13, weight: .ultraLight))
+                }
+                .foregroundStyle(Cool.ink).frame(minHeight: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("camellia-enter")
         }
-        .frame(width: w * 0.92, alignment: .leading)
-        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-        .position(x: center.x - fs.width / 2 + w * 0.46, y: center.y)
-        .animation(.easeInOut(duration: 0.5), value: shown)
     }
 
     private func headline(_ e: CamelliaEvent) -> String {
@@ -490,39 +387,19 @@ struct KeSpaceView: View {
         case .drawer: verb = "往抽屉里放了东西"
         case .tarot: verb = "留了一张牌"
         }
-        return (store.isNew(e) ? "柯刚刚" : "柯最近") + verb
-    }
-
-    private static let relativeFormatter: RelativeDateTimeFormatter = {
-        let f = RelativeDateTimeFormatter()
-        f.locale = Locale(identifier: "zh_CN"); f.unitsStyle = .full
-        return f
-    }()
-    private static func relative(_ at: String) -> String {
-        guard let date = CompanionDate.parse(at) else { return "" }
-        return relativeFormatter.localizedString(for: date, relativeTo: Date())
+        return "柯刚刚" + verb
     }
 
     // MARK: 动作
 
     private func refresh(onlyIfStale: Bool = false) async {
         await store.load(onlyIfStale: onlyIfStale)
-        guard let event = store.current else { return }
-        // 蝴蝶和卡片绑定同一条：落定的时候一起换
-        if butterfly.perch != event.entry {
-            butterfly.fly(to: event.entry, instantly: reduceMotion || !visible)
-            savedPerch = event.entry.rawValue
-            if !reduceMotion && visible {
-                try? await Task.sleep(for: .seconds(butterfly.duration))
-            }
-        }
-        shown = event
     }
 
     private func go(_ entry: CamelliaEntry, fromCard: Bool = false) {
+        entering?.cancel()
         diaryFromCard = fromCard && entry == .diary
         store.markSeen(entry)
-        if let event = store.current { shown = event }
         open = entry
     }
 
@@ -537,18 +414,6 @@ struct KeSpaceView: View {
         case .memory:
             MemoryTabView(line: line, onOpenQuote: { quote in open = nil; onOpenQuote(quote) }, onClose: { open = nil })
         }
-    }
-}
-
-/// 按下去花轻轻一缩
-private struct CamelliaPress: ButtonStyle {
-    let entry: CamelliaEntry
-    @Binding var pressed: CamelliaEntry?
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .onChange(of: configuration.isPressed) { _, down in
-                withAnimation(.easeOut(duration: 0.1)) { pressed = down ? entry : nil }
-            }
     }
 }
 

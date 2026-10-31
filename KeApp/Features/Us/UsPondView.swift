@@ -50,11 +50,8 @@ struct UsPondView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                // 右上那枚月牙是 RootTabView 画的（打开设置抽屉），这里左边只放「我们」
-                Text("我们").font(Cool.song(21, .title2)).tracking(7).foregroundStyle(Cool.ink)
-                    .frame(minHeight: 44, alignment: .leading)
-                    .accessibilityAddTraits(.isHeader)
-                heroBlock.padding(.top, 22)
+                // 10-31 她：最上面不要标题。右上那枚月牙是 RootTabView 画的，页面从它下面起
+                heroBlock.padding(.top, 48)
                 Rectangle().fill(Cool.line).frame(width: 28, height: 1)
                     .frame(maxWidth: .infinity).padding(.top, 18)
                     .accessibilityHidden(true)
