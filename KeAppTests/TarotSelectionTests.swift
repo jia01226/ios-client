@@ -281,4 +281,27 @@ final class TarotSelectionTests: XCTestCase {
         let width: CGFloat = 353, height = width * TarotTableStyle.stageHeight
         XCTAssertEqual(TarotFan.placement(77, width: width, height: height, lifted: false).angle, 2 * Double.pi, accuracy: 1e-9)
     }
+
+    /// 10-31 转牌扇：半圆里一次摊 24 张，画在哪认在哪，转到外面的认不到
+    func testTurnedFanFindsTheCardDrawnUnderTheFinger() {
+        let width: CGFloat = 430, height: CGFloat = 400
+        let visible = TarotFan.visible(deckSize: 78)
+        XCTAssertEqual(visible, 24)
+        XCTAssertEqual(TarotFan.maxShift(deckSize: 78), 54)
+        for shift in [0.0, 10.5, 54.0] {
+            for index in 0..<78 where TarotFan.onFan(index, deckSize: 78, visible: visible, shift: shift) {
+                let (center, angle) = TarotFan.placement(index, width: width, height: height, lifted: false, deckSize: 78, visible: visible, shift: shift)
+                // 按在这张露出来的那一条上（靠外的一端，后面的牌盖不到）
+                let halfLength = Double(width * TarotTableStyle.fanCardWidth / TarotTableStyle.cardAspect / 2)
+                let tip = CGPoint(x: center.x + CGFloat(cos(angle) * halfLength * 0.9), y: center.y + CGFloat(sin(angle) * halfLength * 0.9))
+                let hit = TarotFan.card(at: tip, width: width, height: height, picks: [], preview: nil, deckSize: 78, visible: visible, shift: shift)
+                XCTAssertNotNil(hit)
+                XCTAssertLessThanOrEqual(abs((hit ?? -99) - index), 1, "shift \(shift) index \(index)")
+            }
+        }
+        XCTAssertFalse(TarotFan.onFan(0, deckSize: 78, visible: visible, shift: 54))
+        XCTAssertFalse(TarotFan.onFan(77, deckSize: 78, visible: visible, shift: 0))
+        // 夜里 22 张一屏摊得下，不用转
+        XCTAssertEqual(TarotFan.maxShift(deckSize: 22), 0)
+    }
 }

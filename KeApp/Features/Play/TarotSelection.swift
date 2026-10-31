@@ -96,11 +96,23 @@ enum TarotFan {
     /// 整副 78 张。122：「夜里」那副只有 22 张大牌——摆法和认牌都按这一副实际几张摊满半圆，
     /// 张数少了每张就露得宽一些（22 张时每张露出约 17 点，78 张时约 5 点），认牌规矩不变。
     static let count = 78
+    /// 10-31 她：「很多想选的牌选不到，很细太小，点不到」。78 张挤一个半圆每张只露 5 点。
+    /// 改成半圆里一次摊 24 张（每张露 16～18 点），左右滑转动牌扇，转得到每一张。夜里 22 张一屏摊得下，不用转。
+    static let visibleCount = 24
+    static func visible(deckSize: Int) -> Int { min(deckSize, visibleCount) }
+    /// 牌扇最多转多少张：第 shift 张在最左边
+    static func maxShift(deckSize: Int) -> Double { Double(max(deckSize - visible(deckSize: deckSize), 0)) }
+    /// 这张现在在不在半圆里（转到外面的不画、不认）
+    static func onFan(_ index: Int, deckSize: Int, visible: Int, shift: Double) -> Bool {
+        let at = Double(index) - shift
+        return at > -0.6 && at < Double(max(visible, 1) - 1) + 0.6
+    }
 
     /// 第 index 张在牌扇里的中心点，和从扇心朝外的角度（弧度：π 最左，3π/2 正上，2π 最右）。
+    /// visible 不传就是整副摊满半圆；shift 是牌扇转过了几张。
     static func placement(_ index: Int, width: CGFloat, height: CGFloat, lifted: Bool,
-                          deckSize: Int = count) -> (center: CGPoint, angle: Double) {
-        let angle = Double.pi + Double(index) / Double(max(deckSize - 1, 1)) * Double.pi
+                          deckSize: Int = count, visible: Int? = nil, shift: Double = 0) -> (center: CGPoint, angle: Double) {
+        let angle = Double.pi + (Double(index) - shift) / Double(max((visible ?? deckSize) - 1, 1)) * Double.pi
         let radius = Double(width * (TarotTableStyle.fanRadius + (lifted ? TarotTableStyle.previewLift : 0)))
         let center = CGPoint(x: width / 2 + CGFloat(cos(angle) * radius),
                              y: height - width * TarotTableStyle.fanBottom + CGFloat(sin(angle) * radius))
@@ -111,7 +123,8 @@ enum TarotFan {
     /// 叠的次序和画的一样：抬起的那张最上面，其余后面的盖住前面的；已经放上桌的不算。
     /// liftAware 为 false（左右滑着换牌）时当作都没抬起：抬起那张就挡不住手指往旁边换。
     static func card(at point: CGPoint, width: CGFloat, height: CGFloat,
-                     picks: [Int], preview: Int?, liftAware: Bool = true, deckSize: Int = count) -> Int? {
+                     picks: [Int], preview: Int?, liftAware: Bool = true, deckSize: Int = count,
+                     visible: Int? = nil, shift: Double = 0) -> Int? {
         let halfWidth = Double(width * TarotTableStyle.fanCardWidth / 2)
         let halfLength = halfWidth / Double(TarotTableStyle.cardAspect)
         let slop = Double(TarotTableStyle.fanTouchSlop)
@@ -119,9 +132,9 @@ enum TarotFan {
         let lifted = liftAware ? preview.flatMap { picks.contains($0) || !deck.contains($0) ? nil : $0 } : nil
         var order = Array(deck.reversed())
         if let lifted { order.removeAll { $0 == lifted }; order.insert(lifted, at: 0) }
-        for index in order where !picks.contains(index) {
+        for index in order where !picks.contains(index) && onFan(index, deckSize: deckSize, visible: visible ?? deckSize, shift: shift) {
             let isLifted = index == lifted
-            let (center, angle) = placement(index, width: width, height: height, lifted: isLifted, deckSize: deckSize)
+            let (center, angle) = placement(index, width: width, height: height, lifted: isLifted, deckSize: deckSize, visible: visible, shift: shift)
             let dx = Double(point.x - center.x), dy = Double(point.y - center.y)
             // 牌的长边顺着扇心往外：沿 angle 是长，横过来是宽
             let along = dx * cos(angle) + dy * sin(angle)

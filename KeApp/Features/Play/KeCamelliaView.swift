@@ -212,31 +212,33 @@ struct KeSpaceView: View {
 
     var body: some View {
         GeometryReader { geo in
+            // 10-31 她：「感觉不大一样，是字体大小吗」——原型是一张 390×620 的版，这里整张按屏宽等比放大（矮屏跟着缩）
             let w = geo.size.width, usable = geo.size.height - dockInset
-            // 花的中心在屏幕右边缘，只露半朵；窄屏、矮屏跟着缩
-            let flower = min(w * 1.33, usable * 0.66, 590)
-            let center = CGPoint(x: w, y: min(usable * 0.56, usable - flower * 0.44))
+            let top: CGFloat = 40
+            let s = min(w / 390, max(0.7, (usable - top - 10) / 620))
+            let flower = 520 * s
+            let center = CGPoint(x: w, y: top + 340 * s)
             ZStack(alignment: .topLeading) {
                 bloom(size: flower, center: center)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("A world in bloom.").font(.custom("Baskerville-Italic", size: 26, relativeTo: .title))
+                    Text("A world in bloom.").font(.custom("Baskerville-Italic", size: 25 * s, relativeTo: .title))
                         .foregroundStyle(Cool.ink).accessibilityAddTraits(.isHeader)
-                    Text("慢慢转，慢慢认识我。").font(Cool.song(12.5, .footnote)).tracking(1).foregroundStyle(Cool.secondary)
-                        .padding(.top, 12)
-                    Spacer(minLength: 14)
-                    // 矮屏（SE 这种）每行收紧一点，下面那行字和「翻开」别被底栏挡住
-                    ForEach(Self.order) { name($0, compact: usable < 640) }
-                    Spacer(minLength: usable < 640 ? 6 : 14)
-                    below
+                    Text("慢慢转，慢慢认识我。").font(.custom("NotoSerifSC-Light", size: 12 * s, relativeTo: .footnote))
+                        .tracking(1).foregroundStyle(Cool.secondary).padding(.top, 10 * s)
                 }
-                .padding(.leading, 30)
-                .padding(.top, usable < 640 ? 44 : 56)
-                .padding(.bottom, (usable < 640 ? 8 : 26) + dockInset)
-                .frame(width: min(w * 0.62, 260), alignment: .leading)
-                .frame(maxHeight: .infinity, alignment: .topLeading)
-                Text("轻轻转动花朵").font(Cool.tiny()).tracking(1.5).foregroundStyle(Cool.faint)
+                .padding(.leading, 31 * s).padding(.top, top)
+                VStack(alignment: .leading, spacing: 3 * s) {
+                    ForEach(Self.order) { name($0, s: s) }
+                }
+                .padding(.leading, 31 * s).padding(.top, top + 137 * s)
+                below(s: s)
+                    .frame(maxWidth: w - 56 * s, alignment: .leading)
+                    .padding(.leading, 32 * s)
+                    .frame(maxHeight: .infinity, alignment: .bottomLeading)
+                    .padding(.bottom, dockInset + 18 * s)
+                Text("轻轻转动花朵").font(Cool.tiny()).tracking(1).foregroundStyle(Cool.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                    .padding(.trailing, 24).padding(.bottom, 30 + dockInset)
+                    .padding(.trailing, 28 * s).padding(.bottom, dockInset + 10 * s)
                     .allowsHitTesting(false).accessibilityHidden(true)
             }
             .coordinateSpace(name: "bloom")
@@ -245,7 +247,7 @@ struct KeSpaceView: View {
         .background(Cool.paper.ignoresSafeArea())
         .task { await refresh() }
         .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await refresh(onlyIfStale: true) } } }
-        .onChange(of: dragging) { _, now in if !now { settle() } }   // 手势被系统取消也算松手
+        .onChange(of: dragging) { _, now in if !now, lastAngle != nil { settle() } }   // 手势被系统取消也算松手
         .sensoryFeedback(.selection, trigger: step)
         // 塔罗抽完交给柯、抽屉里「去找柯要」：都会回聊天，盖着的页面先收起来
         .onReceive(NotificationCenter.default.publisher(for: .tarotReadingRequest)) { _ in open = nil }
@@ -271,24 +273,37 @@ struct KeSpaceView: View {
                     .updating($dragging) { _, state, _ in state = true }
                     .onChanged { value in
                         entering?.cancel()
-                        let angle = atan2(value.location.y - center.y, value.location.x - center.x) * 180 / .pi
+                        let angle = Self.angle(of: value.location, around: center)
                         if let last = lastAngle {
-                            var delta = angle - last
-                            if delta > 180 { delta -= 360 } else if delta < -180 { delta += 360 }   // 跨 ±180° 别跳一圈
-                            rotation += delta
+                            rotation += Self.shortest(angle - last)
                             step = Int((rotation / Self.stepAngle).rounded())
                         }
                         lastAngle = angle
+                    }
+                    .onEnded { value in
+                        // 甩一下：按手指要滑到的地方多转一点，最多多转两档
+                        let flung = Self.shortest(Self.angle(of: value.predictedEndLocation, around: center)
+                                                  - Self.angle(of: value.location, around: center))
+                        step = Int(((rotation + max(-120, min(120, flung))) / Self.stepAngle).rounded())
+                        settle()
                     }
             )
             .position(center)
             .accessibilityHidden(true)   // VoiceOver 直接选左边六个入口，不用转
     }
 
-    /// 松手：吸到最近一档
+    private static func angle(of point: CGPoint, around center: CGPoint) -> Double {
+        atan2(point.y - center.y, point.x - center.x) * 180 / .pi
+    }
+    /// 跨 ±180° 别跳一圈
+    private static func shortest(_ delta: Double) -> Double {
+        delta > 180 ? delta - 360 : (delta < -180 ? delta + 360 : delta)
+    }
+
+    /// 松手：吸到最近一档。原型那条曲线，0.65 秒慢慢收住
     private func settle() {
         lastAngle = nil
-        withAnimation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.86)) { rotation = Double(step) * Self.stepAngle }
+        withAnimation(reduceMotion ? nil : .timingCurve(0.2, 0.75, 0.25, 1, duration: 0.65)) { rotation = Double(step) * Self.stepAngle }
         savedSelection = selected.rawValue
     }
 
@@ -307,7 +322,7 @@ struct KeSpaceView: View {
         turn(to: step + diff)
         guard moved, !reduceMotion else { go(entry); return }
         entering = Task {
-            try? await Task.sleep(for: .milliseconds(420))
+            try? await Task.sleep(for: .milliseconds(460))
             guard !Task.isCancelled else { return }
             go(entry)
         }
@@ -315,26 +330,29 @@ struct KeSpaceView: View {
 
     // MARK: 左边
 
-    private func name(_ entry: CamelliaEntry, compact: Bool) -> some View {
+    /// 每行高度固定：换选中时整列不跳。选中的字渐变放大、往右挪一点；字按大号排、没选中时缩小，缩放不发虚
+    private func name(_ entry: CamelliaEntry, s: CGFloat) -> some View {
         let on = entry == selected
         let fresh = store.latest[entry].map(store.isNew) ?? false
         return Button { tapName(entry) } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(entry.label).font(Cool.song(on ? 21 : 15, on ? .title3 : .body)).tracking(on ? 3 : 2)
+            VStack(alignment: .leading, spacing: 3 * s) {
+                HStack(spacing: 8) {
+                    Text(entry.label).font(.custom("NotoSerifSC-Light", size: 22 * s, relativeTo: .title3)).tracking(3)
+                        .lineLimit(1).fixedSize()
+                        .scaleEffect(on ? 1 : 16.0 / 22, anchor: .leading)
                         .foregroundStyle(on ? Cool.ink : Cool.secondary)
-                    if on {
-                        Text(entry.english).font(.custom("Baskerville-Italic", size: 12, relativeTo: .caption))
-                            .tracking(0.3).foregroundStyle(Cool.faint)
-                    }
+                    if fresh { Circle().fill(Cool.mauve).frame(width: 5, height: 5).accessibilityHidden(true) }
                 }
-                if fresh { Circle().fill(Cool.mauve).frame(width: 5, height: 5).accessibilityHidden(true) }
+                Text(entry.english).font(.custom("Baskerville-Italic", size: 12 * s, relativeTo: .caption))
+                    .foregroundStyle(Cool.secondary).lineLimit(1).fixedSize().opacity(on ? 1 : 0)
             }
+            .offset(x: on ? 7 * s : 0)
             .overlay(alignment: .leading) {
-                if on { Circle().fill(Cool.heart).frame(width: 5, height: 5).offset(x: -13).accessibilityHidden(true) }
+                Circle().fill(Cool.heart).frame(width: 4, height: 4).offset(x: -9 * s).opacity(on ? 1 : 0).accessibilityHidden(true)
             }
-            .frame(minWidth: 88, minHeight: on ? (compact ? 50 : 62) : (compact ? 44 : 48), alignment: .leading)
+            .frame(width: 112 * s, height: 56 * s, alignment: .leading)
             .contentShape(Rectangle())
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.35), value: on)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(entry.label + (fresh ? "，有新的" : ""))
@@ -343,12 +361,12 @@ struct KeSpaceView: View {
     }
 
     /// 他有还没看过的就写一行（以前底下那张卡片），点了直接到那里；没有就是这一格自己的话
-    @ViewBuilder private var below: some View {
-        VStack(alignment: .leading, spacing: 10) {
+    @ViewBuilder private func below(s: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 5 * s) {
             if let event = store.current, store.isNew(event) {
                 Button { go(event.entry, fromCard: true) } label: {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(headline(event)).font(Cool.song(12.5, .footnote)).tracking(0.8).foregroundStyle(Cool.mauve)
+                        Text(headline(event)).font(.custom("NotoSerifSC-Light", size: 12 * s, relativeTo: .footnote)).tracking(0.5).foregroundStyle(Cool.mauve)
                         let text = event.excerpt.isEmpty ? event.title : event.excerpt
                         if !text.isEmpty {
                             Text(text).font(Cool.tiny()).foregroundStyle(Cool.secondary).lineLimit(2)
@@ -362,13 +380,13 @@ struct KeSpaceView: View {
                 .accessibilityHint("打开" + event.entry.label)
                 .accessibilityIdentifier("camellia-card")
             } else {
-                Text(selected.tagline).font(Cool.song(12.5, .footnote)).tracking(0.8).foregroundStyle(Cool.secondary)
+                Text(selected.tagline).font(.custom("NotoSerifSC-Light", size: 12 * s, relativeTo: .footnote)).tracking(0.5).foregroundStyle(Cool.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Button { go(selected) } label: {
-                HStack(spacing: 14) {
-                    Text(selected.action).font(Cool.song(14, .subheadline)).tracking(2)
-                    Image(systemName: "arrow.up.right").font(.system(size: 13, weight: .ultraLight))
+                HStack(spacing: 20 * s) {
+                    Text(selected.action).font(.custom("NotoSerifSC-Light", size: 14 * s, relativeTo: .subheadline)).tracking(2)
+                    Image(systemName: "arrow.up.right").font(.system(size: 13 * s, weight: .ultraLight))
                 }
                 .foregroundStyle(Cool.ink).frame(minHeight: 44).contentShape(Rectangle())
             }

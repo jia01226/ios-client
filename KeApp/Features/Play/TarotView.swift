@@ -38,7 +38,12 @@ struct TarotView: View {
         var movedAt = Date.distantPast
         var start: CGPoint?
         var scrubbing = false
+        var lastX: CGFloat = 0
+        var coasting: Task<Void, Never>?
     }
+    /// 10-31：牌扇转过了几张（可以是小数，跟着手指走）
+    @State private var fanShift = 0.0
+    private var fanVisible: Int { TarotFan.visible(deckSize: selection.deckSize) }
     @AppStorage("tarot.tableBack.v91") private var backID = "butterfly"
     @FocusState private var questionFocused: Bool
     private enum Phase { case idle, shuffling, selecting, submitting, revealing, done }
@@ -252,17 +257,20 @@ struct TarotView: View {
                 .simultaneousGesture(DragGesture(minimumDistance: TarotTableStyle.gap, coordinateSpace: .named("tarot-table"))
                     .onChanged { value in
                         fanTouch.movedAt = Date()
-                        // 这一下一开始往哪边走就定了：横着走是换牌，竖着走是在翻页面
+                        // 这一下一开始往哪边走就定了：横着走是转牌扇，竖着走是在翻页面
                         if fanTouch.start != value.startLocation {
                             fanTouch.start = value.startLocation
                             fanTouch.scrubbing = abs(value.translation.width) > abs(value.translation.height)
+                            fanTouch.lastX = value.location.x
+                            fanTouch.coasting?.cancel()
                         }
-                        guard fanTouch.scrubbing, phase == .selecting, !selection.submitted,
-                              let index = fanCard(value.location, width: width, height: height, liftAware: false),
-                              index != selection.preview else { return }
-                        withAnimation(reduceMotion ? nil : .easeInOut(duration: TarotTableStyle.liftDuration)) { selection.previewCard(index) }
+                        guard fanTouch.scrubbing, phase == .selecting, !selection.submitted else { return }
+                        turnFan(by: (value.location.x - fanTouch.lastX), width: width)
+                        fanTouch.lastX = value.location.x
                     }
-                    .onEnded { _ in
+                    .onEnded { value in
+                        let flick = value.predictedEndLocation.x - value.location.x
+                        if fanTouch.scrubbing, !reduceMotion, abs(flick) > 30 { coastFan(flick, width: width) }
                         fanTouch.movedAt = Date(); fanTouch.start = nil; fanTouch.scrubbing = false
                     })
                 .accessibilityElement().accessibilityLabel("半圆牌扇，\(selection.deckSize) 张牌")
@@ -271,6 +279,7 @@ struct TarotView: View {
                 .accessibilityAdjustableAction { direction in
                     let step = direction == .increment ? 1 : -1
                     accessibleIndex = min(selection.deckSize - 1, max(0, accessibleIndex + step))
+                    fanShift = min(TarotFan.maxShift(deckSize: selection.deckSize), max(0, Double(accessibleIndex) - Double(fanVisible) / 2))
                 }
                 .accessibilityAction { tap(accessibleIndex) }
                 .accessibilityIdentifier("tarot-fan")
@@ -278,8 +287,9 @@ struct TarotView: View {
                 .position(x: width / 2, y: height - width * TarotTableStyle.fanHitHeight / 2)
         }
         .frame(width: width, height: height).coordinateSpace(name: "tarot-table")
-        // 120：抬起的那张一换就轻轻震一下，左右滑的时候一张一张数得出来
+        // 抬起一张轻轻震一下；转牌扇每过三张震一下，手里数得出来在转
         .sensoryFeedback(.selection, trigger: selection.preview)
+        .sensoryFeedback(.selection, trigger: Int(fanShift) / 3)
         .padding(.top, TarotTableStyle.gap)
     }
 
@@ -287,7 +297,10 @@ struct TarotView: View {
         let slot = selection.picks.firstIndex(of: index)
         let lifted = selection.preview == index
         // 120：和认牌用同一套摆法（TarotFan），画在哪就认在哪
-        let (fanPoint, angle) = TarotFan.placement(index, width: width, height: height, lifted: lifted, deckSize: selection.deckSize)
+        let (fanPoint, angle) = TarotFan.placement(index, width: width, height: height, lifted: lifted, deckSize: selection.deckSize,
+                                                   visible: fanOpen ? fanVisible : nil, shift: fanOpen ? fanShift : 0)
+        // 转到半圆外面的不画（还没摊开时都在牌堆里，照画）
+        let onFan = !fanOpen || slot != nil || TarotFan.onFan(index, deckSize: selection.deckSize, visible: fanVisible, shift: fanShift)
         let stackPoint = CGPoint(x: width / 2 + (shuffleOffset ? (index.isMultiple(of: 2) ? width * TarotTableStyle.shuffleSeparation : -width * TarotTableStyle.shuffleSeparation) : 0),
                                  y: height - width * TarotTableStyle.stackY + CGFloat(index % 4) * TarotTableStyle.hairline)
         let point = slot.map { slotPoint($0, width: width) } ?? (fanOpen ? fanPoint : stackPoint)
@@ -329,6 +342,7 @@ struct TarotView: View {
             .rotationEffect(.degrees(rotation))
             .position(x: point.x + (draggedIndex == index ? dragOffset.width : 0),
                       y: point.y + (draggedIndex == index ? dragOffset.height : 0))
+            .opacity(onFan ? 1 : 0)
             .zIndex(slot.map { Double(100 + $0) } ?? (lifted ? 90 : Double(index)))
     }
 
@@ -397,7 +411,7 @@ struct TarotView: View {
                 Button("第 \(preview + 1) 张 · 再点一下放上桌") { tap(preview) }
                     .accessibilityIdentifier("tarot-confirm-preview")
             } else {
-                Text(phase == .idle ? "先洗牌，再凭感觉选。" : phase == .shuffling ? "洗牌中…" : phase == .done ? "牌已翻开，交给柯来解。" : selection.submitted ? "牌已经选定，正在等它翻开。" : selection.isFull ? "拖回牌扇可以重选" : "点一下抬起，再点它放上桌；左右滑可以换")
+                Text(phase == .idle ? "先洗牌，再凭感觉选。" : phase == .shuffling ? "洗牌中…" : phase == .done ? "牌已翻开，交给柯来解。" : selection.submitted ? "牌已经选定，正在等它翻开。" : selection.isFull ? "拖回牌扇可以重选" : "左右滑转动牌扇，点一张抬起，再点它放上桌")
             }
         }.font(TarotTableStyle.caption).foregroundStyle(TarotTableStyle.muted)
             .frame(minHeight: TarotTableStyle.controlHeight)
@@ -450,7 +464,26 @@ struct TarotView: View {
     }
     private func fanCard(_ point: CGPoint, width: CGFloat, height: CGFloat, liftAware: Bool) -> Int? {
         TarotFan.card(at: point, width: width, height: height,
-                      picks: selection.picks, preview: selection.preview, liftAware: liftAware, deckSize: selection.deckSize)
+                      picks: selection.picks, preview: selection.preview, liftAware: liftAware, deckSize: selection.deckSize,
+                      visible: fanVisible, shift: fanShift)
+    }
+    /// 手指往右滑，牌跟着往右走。滑过半圆的弧长 = 转过 fanVisible 张
+    private func turnFan(by dx: CGFloat, width: CGFloat) {
+        let perCard = Double.pi * Double(width * TarotTableStyle.fanRadius) / Double(max(fanVisible - 1, 1))
+        fanShift = min(TarotFan.maxShift(deckSize: selection.deckSize), max(0, fanShift - Double(dx) / perCard))
+    }
+    /// 甩一下：一帧一帧慢慢停（不用系统动画，那样牌会走直线切过半圆）
+    private func coastFan(_ flick: CGFloat, width: CGFloat) {
+        fanTouch.coasting?.cancel()
+        fanTouch.coasting = Task { @MainActor in
+            var left = flick * 0.5
+            while abs(left) > 0.5, !Task.isCancelled {
+                let dx = left * 0.12
+                turnFan(by: dx, width: width)
+                left -= dx
+                try? await Task.sleep(nanoseconds: 16_000_000)
+            }
+        }
     }
     private func tap(_ index: Int) {
         guard phase == .selecting else { return }
@@ -482,6 +515,7 @@ struct TarotView: View {
             try Task.checkCancellation()
             deal = newDeal
             selection = TarotSelection(deckSize: newDeal.deck_size, requiredCount: newDeal.positions.count)
+            fanShift = 0
             accessibleIndex = newDeal.deck_size / 2
             withAnimation(reduceMotion ? nil : .easeInOut(duration: TarotTableStyle.unfoldDuration)) { fanOpen = true; shuffleOffset = false }
             try await pause(TarotTableStyle.unfoldDuration)
@@ -518,6 +552,7 @@ struct TarotView: View {
         openedNight = []; accessibleIndex = TarotSpread.deckSize(spread) / 2
         withAnimation(motion) {
             selection = TarotSelection(deckSize: TarotSpread.deckSize(spread), requiredCount: TarotSpread.cardCount(spread) ?? 3)
+            fanShift = 0
             fanOpen = false
         }
     }
