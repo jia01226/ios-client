@@ -62,6 +62,10 @@ private actor FakeBook: NotebookAPI {
         sent.append("cap \(yuan)")
         try await gate()
     }
+    func setNotebookShopCap(yuan: Double) async throws {
+        sent.append("shop cap \(yuan)")
+        try await gate()
+    }
     private func gate() async throws {
         if let error = failNextWrite { failNextWrite = nil; throw error }
         guard holdWrites else { return }

@@ -1198,6 +1198,11 @@ actor APIClient {
         try await writeResource("/api/notebook/settings", body: ["cap": yuan])
     }
 
+    /// 144：网购额度（拼多多、抖音、小红书……合一份）
+    func setNotebookShopCap(yuan: Double) async throws {
+        try await writeResource("/api/notebook/settings", body: ["shop_cap": yuan])
+    }
+
     // MARK: 121 攒钱罐（荷包里的「攒钱」页）。回来的金额都是分；发出去的 amount / target 是元，可以带小数。
     // 不对的时候服务器回 400/404 {"error": "中文原因"}，perform 里会变成 APIError.badStatus，原话照给她看。
     // 原来荷包里那条「一起存」（/api/notebook/save）挪到这里了，旧的那个入口不再用。

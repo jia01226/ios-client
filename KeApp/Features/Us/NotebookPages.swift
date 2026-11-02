@@ -52,6 +52,18 @@ struct NotebookSnapshot: Decodable, Equatable, Sendable {
         let spends: [NotebookItem]
         let asks: [NotebookItem]
         let savings: [NotebookSavings]
+        /// 144：网购那份额度（拼多多、抖音、小红书……合一份），柯也照这个算；旧服务器没有就是 nil
+        let shop: Shop?
+    }
+    struct Shop: Decodable, Equatable, Sendable {
+        struct Split: Decodable, Equatable, Sendable {
+            let name: String
+            let cents: Int
+        }
+        let cap_cents: Int
+        let spent_cents: Int
+        let left_cents: Int?
+        let split: [Split]
     }
     struct Menu: Decodable, Equatable, Sendable {
         let meals: [NotebookItem]
@@ -82,6 +94,7 @@ protocol NotebookAPI: Sendable {
     func deleteNotebookItem(id: Int) async throws
     func setNotebookDose(when: String, taken: Bool) async throws
     func setNotebookCap(yuan: Double) async throws
+    func setNotebookShopCap(yuan: Double) async throws
 }
 extension APIClient: NotebookAPI {}
 
@@ -196,6 +209,13 @@ extension APIClient: NotebookAPI {}
         catch { notice = "每月上限没改上" + (Self.reason(error).map { "：" + $0 } ?? "，再改一次。") }
     }
 
+    func setShopCap(yuan: Double) async {
+        notice = nil
+        let book = book
+        do { try await run { try await book.setNotebookShopCap(yuan: yuan) } }
+        catch { notice = "网购额度没改上" + (Self.reason(error).map { "：" + $0 } ?? "，再改一次。") }
+    }
+
     /// 药盒今天这一格：她刚点的先算数
     func doseTaken(_ when: String) -> Bool {
         checking["dose:" + when] ?? snapshot?.meds.today[when]?.taken ?? false
@@ -283,7 +303,9 @@ struct AuthorTag: View {
 /// 121：攒钱那页（NotebookJars.swift）也用这两个，不再是 private
 func yuan(_ cents: Int?) -> String {
     guard let cents else { return "" }
+    // 144：有零头就写满两位（¥25.50），不再一笔 ¥25.5 一笔 ¥4.17
     let f = NumberFormatter(); f.numberStyle = .decimal; f.maximumFractionDigits = cents % 100 == 0 ? 0 : 2
+    f.minimumFractionDigits = f.maximumFractionDigits
     return "¥" + (f.string(from: NSNumber(value: Double(cents) / 100)) ?? "\(cents / 100)")
 }
 func shortDay(_ day: String?) -> String {
@@ -687,6 +709,8 @@ struct PursePage: View {
     @State private var draft: NotebookDraft?
     @State private var editingCap = false
     @State private var capText = ""
+    @State private var editingShopCap = false
+    @State private var shopCapText = ""
     /// 121：点开的那个罐子（盖在荷包上面一层，左边缘右划先收它）
     @State private var openJar: Int?
 
@@ -730,6 +754,11 @@ struct PursePage: View {
             Button("取消", role: .cancel) {}
             Button("保存") { saveCap() }
         } message: { Text("这个月最多花多少，柯也会照这个数提醒你。") }
+        .alert("网购额度", isPresented: $editingShopCap) {
+            TextField("比如 800", text: $shopCapText).keyboardType(.decimalPad)
+            Button("取消", role: .cancel) {}
+            Button("保存") { saveShopCap() }
+        } message: { Text("拼多多、抖音、小红书这些加起来，这个月最多花多少。柯照这个数帮你算。") }
         .alert("没有成功", isPresented: Binding(get: { jars.notice != nil }, set: { if !$0 { jars.notice = nil } })) {
             Button("知道了", role: .cancel) { jars.notice = nil }
         } message: { Text(jars.notice ?? "") }
@@ -745,6 +774,14 @@ struct PursePage: View {
             return
         }
         Task { await store.setCap(yuan: v) }
+    }
+    private func saveShopCap() {
+        let text = shopCapText.trimmingCharacters(in: .whitespaces)
+        guard let v = Double(text) ?? JarText.parseYuan(text), v.isFinite, v >= 0 else {
+            store.notice = "网购额度写一个数就好，比如 800。"
+            return
+        }
+        Task { await store.setShopCap(yuan: v) }
     }
 
     /// 121：标题下面一行「花钱｜攒钱」：选中的字深一点、底下一道细墨线，跟着滑过去
@@ -763,6 +800,7 @@ struct PursePage: View {
     @ViewBuilder private var spendPane: some View {
         if let p = store.snapshot?.purse {
             summary(p).notebookCard()
+            if let s = p.shop { shopCard(s).notebookCard() }
             NotebookSection(title: "问过柯的", hint: "几百块以上，先问再买") {
                 VStack(spacing: 0) {
                     ForEach(p.asks) { a in
@@ -778,7 +816,8 @@ struct PursePage: View {
             NotebookSection(title: "这个月的流水", hint: "点一条可以改") {
                 VStack(spacing: 0) {
                     ForEach(p.spends) { s in
-                        NotebookRow(title: s.title, trailing: yuan(s.amount_cents), detail: shortDay(s.day),
+                        NotebookRow(title: s.title, trailing: yuan(s.amount_cents),
+                                    detail: shortDay(s.day) + ((s.place ?? "").isEmpty ? "" : " · " + (s.place ?? "")),
                                     quote: s.note, author: s.author, editedBy: s.edited_by) { draft = spendDraft(s) }
                     }
                     if p.spends.isEmpty { empty("这个月还没有记过一笔") }
@@ -836,9 +875,61 @@ struct PursePage: View {
             }
         }
     }
+    /// 144：她要看到网购额度（拼多多、抖音、小红书……合一份）。样子跟上面那张一样，数字小一号；底下一行分到每一家。
+    @ViewBuilder private func shopCard(_ s: NotebookSnapshot.Shop) -> some View {
+        let split = s.split.map { $0.name + " " + yuan($0.cents) }.joined(separator: " · ")
+        if s.cap_cents > 0 {
+            let q = PurseQuota(cap: s.cap_cents, spent: s.spent_cents, left: s.left_cents)
+            VStack(alignment: .leading, spacing: 10) {
+                Text(q.over ? "网购这个月多花了一点" : "网购还能花")
+                    .font(Ink.song(14)).tracking(1).foregroundStyle(Ink.secondary)
+                if q.over {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("超出").font(Ink.song(17))
+                        Text(yuan(-q.left)).font(Ink.latin(30)).monospacedDigit()
+                    }
+                    .foregroundStyle(Ink.negative)
+                } else {
+                    Text(yuan(q.left)).font(Ink.latin(30)).monospacedDigit()
+                }
+                NotebookBar(value: q.over ? 1 : q.leftRatio, color: q.color)
+                    .padding(.top, 4)
+                Button { shopCapText = String(s.cap_cents / 100); editingShopCap = true } label: {
+                    HStack {
+                        Text("已花 " + yuan(s.spent_cents))
+                        Spacer(minLength: 8)
+                        Text("网购额度 " + yuan(s.cap_cents))
+                    }
+                    .font(Ink.song(13)).monospacedDigit().foregroundStyle(Ink.secondary)
+                    .frame(minHeight: 44).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("点一下改网购额度")
+                .accessibilityIdentifier("purse-shop-cap")
+                if !split.isEmpty {
+                    Text(split).font(Ink.song(12)).monospacedDigit().foregroundStyle(Ink.secondary)
+                        .padding(.top, -8)
+                }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("网购额度还没设").font(Ink.song(17))
+                Text("拼多多、抖音、小红书加起来，这个月已花 " + yuan(s.spent_cents))
+                    .font(Ink.song(13)).monospacedDigit().foregroundStyle(Ink.secondary)
+                if !split.isEmpty {
+                    Text(split).font(Ink.song(12)).monospacedDigit().foregroundStyle(Ink.secondary)
+                }
+                Button("设一个") { shopCapText = ""; editingShopCap = true }
+                    .buttonStyle(InkPillStyle(filled: true))
+                    .frame(maxWidth: 160)
+                    .accessibilityIdentifier("purse-shop-cap-set")
+            }
+        }
+    }
     private func spendDraft(_ i: NotebookItem?) -> NotebookDraft {
         NotebookDraft(kind: "spend", item: i, heading: i == nil ? "记一笔" : "改一笔",
-                      fields: [(.title, "买了什么"), (.amount, "多少钱"), (.day, "哪天（比如 10.14，不填就是今天）"), (.note, "备注")])
+                      fields: [(.title, "买了什么"), (.amount, "多少钱"), (.place, "在哪买的（拼多多、抖音、小红书…不填也行）"),
+                               (.day, "哪天（比如 10.14，不填就是今天）"), (.note, "备注")])
     }
     private func askDraft(_ i: NotebookItem?) -> NotebookDraft {
         NotebookDraft(kind: "ask", item: i, heading: i == nil ? "问柯一件" : "改一件",
