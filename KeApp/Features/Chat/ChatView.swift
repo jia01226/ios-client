@@ -32,6 +32,8 @@ struct ChatView: View {
     @State private var tarotOpen = false
     @State private var showingMemoryUsage = false
     @State private var showingUsageDashboard = false
+    /// 145：工坊（修 App、查问题的那扇 Claude 窗）
+    @State private var workshopOpen = false
     @State private var quoteToSave: Message?
     @ObservedObject private var quotesStore: AppQuotesStore
     @Binding var quoteOpenRequest: QuoteOpenRequest?
@@ -379,6 +381,9 @@ struct ChatView: View {
         }
         // 137：Thinking 弹窗开着时柯想的字才边想边写进记录（关着时攒着，写完一次放上）
         .onChange(of: presentedThinkingMessageID) { _, id in vm.liveThinkingMessageID = id }
+        .fullScreenCover(isPresented: $workshopOpen) {
+            WorkshopView(api: APIClient.shared) { workshopOpen = false }
+        }
         .fullScreenCover(isPresented: $tarotOpen) {
             TarotView(line: line).environmentObject(theme)
         }
@@ -705,6 +710,9 @@ struct ChatView: View {
             settingsPage = .appearance
         case .usage:
             showingUsageDashboard = true
+            return
+        case .workshop:
+            workshopOpen = true
             return
         case .all:
             settingsPage = .root

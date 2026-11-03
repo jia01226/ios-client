@@ -1203,6 +1203,66 @@ actor APIClient {
         try await writeResource("/api/notebook/settings", body: ["shop_cap": yuan])
     }
 
+    // MARK: 145 工坊：App 里那扇 Claude Code 窗（跟柯的聊天分开）
+
+    func fetchWorkshop() async throws -> WorkshopSnapshot { try await readResource("/api/workshop") }
+
+    func sendWorkshop(text: String, model: String?) async throws -> WorkshopSendResult {
+        var request = try makeRequest(path: "/api/workshop/send", method: "POST")
+        var body: [String: Any] = ["text": text]
+        if let model { body["model"] = model }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, _) = try await perform(request)
+        if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let message = obj["error"] as? String {
+            throw APIError.serverMessage(message)
+        }
+        do { return try decoder.decode(WorkshopSendResult.self, from: data) }
+        catch { throw APIError.decoding(error) }
+    }
+
+    func stopWorkshop() async throws { try await writeResource("/api/workshop/stop", body: [:]) }
+
+    func setWorkshopModel(_ id: String) async throws { try await writeResource("/api/workshop/model", body: ["model": id]) }
+
+    func newWorkshop() async throws { try await writeResource("/api/workshop/new", body: [:]) }
+
+    /// 这一轮的字和每一步：服务器一条连接最多挂两分半，发「reconnect」后 App 带着 seq 再连
+    func workshopEvents(jobID: String, after: Int) async throws -> AsyncThrowingStream<WorkshopEvent, Error> {
+        var request = try makeRequest(path: "/api/workshop/events", queryItems: [
+            URLQueryItem(name: "job_id", value: jobID), URLQueryItem(name: "after", value: String(after)),
+        ])
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        return AsyncThrowingStream { continuation in
+            let worker = Task {
+                let eventSource = EventSource(
+                    eventParser: ChatSSEParser(),
+                    timeoutIntervalForRequest: 40,
+                    timeoutIntervalForResource: 300
+                )
+                for await event in eventSource.dataTask(for: request).events() {
+                    if Task.isCancelled { break }
+                    switch event {
+                    case .open:
+                        continue
+                    case let .event(serverEvent):
+                        guard let data = serverEvent.data, let parsed = WorkshopEvent(json: data) else { continue }
+                        continuation.yield(parsed)
+                    case let .error(error):
+                        continuation.finish(throwing: APIError.transport(error))
+                        return
+                    case .closed:
+                        continuation.finish()
+                        return
+                    }
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { @Sendable _ in worker.cancel() }
+        }
+    }
+
     // MARK: 121 攒钱罐（荷包里的「攒钱」页）。回来的金额都是分；发出去的 amount / target 是元，可以带小数。
     // 不对的时候服务器回 400/404 {"error": "中文原因"}，perform 里会变成 APIError.badStatus，原话照给她看。
     // 原来荷包里那条「一起存」（/api/notebook/save）挪到这里了，旧的那个入口不再用。

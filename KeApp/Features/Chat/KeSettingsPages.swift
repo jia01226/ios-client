@@ -384,6 +384,8 @@ struct KeWordsPage: View {
     private var more: some View {
         VStack(alignment: .leading, spacing: 2) {
             KeDrawerSectionTitle("更多")
+            // 145：工坊——修 App、查问题的那扇 Claude 窗，跟柯分开
+            toolLink("工坊 · 修 App、查问题", icon: "hammer", tool: .workshop)
             toolLink("查找聊天记录", icon: "magnifyingglass", tool: .search)
             toolLink("按日期查找", icon: "calendar", tool: .dates)
             toolLink("聊天字形", icon: "textformat", tool: .fonts)

@@ -56,7 +56,7 @@ enum KeSettingsTab: String, CaseIterable, Identifiable {
 
 /// 话笺里「更多」能回到原来功能区的那些页，原来的功能一个不少。
 enum KeDrawerTool {
-    case search, dates, fonts, appearance, usage, all
+    case search, dates, fonts, appearance, usage, all, workshop
 }
 
 // MARK: - 滑杆按住时别把横向拖动当成「收回抽屉」
