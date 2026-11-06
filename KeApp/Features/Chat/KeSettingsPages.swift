@@ -572,6 +572,7 @@ struct KeWindowPage: View {
             if let window = store.window {
                 capacity(window)
                 actions
+                windowSwitch
                 pinned(window.pins)
             } else if let error = store.windowError {
                 KeDrawerHint(error)
@@ -632,6 +633,43 @@ struct KeWindowPage: View {
             }
         }
         .padding(.bottom, 6)
+    }
+
+    /// 11-06：她要自己换窗——列出现有的窗户，点一下就切过去。
+    private var windowSwitch: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            KeDrawerSectionTitle("换一扇窗")
+                .padding(.top, 14)
+            if store.sessions.isEmpty {
+                KeDrawerHint("没读到别的窗，下拉再试一次。")
+            } else {
+                ForEach(store.sessions) { session in
+                    Button {
+                        Task { await store.switchTo(session.id) }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text(session.name ?? "窗 \(session.id)")
+                                .font(.system(size: 14))
+                            Spacer()
+                            if session.id == store.currentSessionID {
+                                Text("现在这扇")
+                                    .font(.system(size: 11))
+                            } else if let n = session.n {
+                                Text("\(n) 条")
+                                    .font(.system(size: 11))
+                            }
+                        }
+                    }
+                    .buttonStyle(KeDrawerButtonStyle(solid: session.id == store.currentSessionID))
+                }
+            }
+            if let hint = store.switchHint {
+                KeDrawerHint(hint)
+            } else {
+                KeDrawerHint("点一下切过去；回聊天页下拉刷新，跟过去的就是那扇窗。旧窗原样留着。")
+            }
+        }
+        .task { await store.loadSessions() }
     }
 
     private var actions: some View {

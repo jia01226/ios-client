@@ -25,6 +25,11 @@ final class KeWindowStore: ObservableObject {
     @Published private(set) var pinError: String?
     @Published private(set) var pinningIDs: Set<Int> = []
 
+    // 11-06 她自己换窗
+    @Published private(set) var sessions: [KeChatSessionSummary] = []
+    @Published private(set) var currentSessionID: Int?
+    @Published private(set) var switchHint: String?
+
     private let api: APIClient
     private var pollTask: Task<Void, Never>?
     private var saveTask: Task<Void, Never>?
@@ -39,6 +44,30 @@ final class KeWindowStore: ObservableObject {
     var pinnedMessageIDs: Set<Int> { window?.pinnedMessageIDs ?? [] }
     var pinnedStartIDs: Set<Int> { Set(window?.pins.items.map(\.startID) ?? []) }
     var isJobRunning: Bool { window?.job?.isRunning ?? false }
+
+    // MARK: 窗户（11-06 她自己切）
+
+    func loadSessions() async {
+        do {
+            let active = try await api.activeSession()
+            currentSessionID = active.id
+            sessions = try await api.fetchChatSessions()
+            if switchHint == nil { switchHint = nil }
+        } catch {
+            switchHint = "没读到窗户列表"
+        }
+    }
+
+    func switchTo(_ id: Int) async {
+        do {
+            let active = try await api.switchChatSession(id: id)
+            currentSessionID = active.id
+            let name = sessions.first(where: { $0.id == id })?.name ?? "窗 \(id)"
+            switchHint = "切到「\(name)」了。回聊天页下拉刷新，就接上这扇窗。"
+        } catch {
+            switchHint = "没切过去：\(Self.message(for: error))"
+        }
+    }
 
     // MARK: 窗口
 

@@ -114,6 +114,19 @@ struct ActiveChatSession: Decodable, Sendable {
     let model: String?
 }
 
+/// 11-06 她要能在 App 里自己换窗：一扇窗 = 一个会话（12 是长窗，13 是试穿那些）。
+struct KeChatSessionSummary: Decodable, Identifiable, Sendable, Hashable {
+    let id: Int
+    let name: String?
+    let lastAt: String?
+    let n: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, n
+        case lastAt = "last_at"
+    }
+}
+
 struct ChatModelOption: Decodable, Identifiable, Hashable, Sendable {
     let id: String
     let provider: String?
@@ -446,6 +459,29 @@ actor APIClient {
 
     func activeSessionID() async throws -> Int {
         try await activeSession().id
+    }
+
+    /// 11-06：她能自己切窗。列出现有的窗户，切过去以后聊天页跟着走。
+    func fetchChatSessions() async throws -> [KeChatSessionSummary] {
+        let request = try makeRequest(path: "/api/sessions")
+        let (data, _) = try await perform(request)
+        do {
+            return try decoder.decode([KeChatSessionSummary].self, from: data)
+        } catch {
+            throw APIError.decoding(error)
+        }
+    }
+
+    func switchChatSession(id: Int) async throws -> ActiveChatSession {
+        var request = try makeRequest(path: "/api/sessions/active", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["id": id])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, _) = try await perform(request)
+        do {
+            return try decoder.decode(ActiveChatSession.self, from: data)
+        } catch {
+            throw APIError.decoding(error)
+        }
     }
 
     func fetchModels() async throws -> ChatModelCatalog {
