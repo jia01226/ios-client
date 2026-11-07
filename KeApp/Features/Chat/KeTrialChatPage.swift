@@ -18,7 +18,8 @@ struct KeTrialChatPage: View {
                 selectedLine: $line,
                 quoteOpenRequest: $quoteOpenRequest,
                 sendRequests: $sendRequests,
-                pinnedSession: sessionID
+                pinnedSession: sessionID,
+                cacheFileName: "chat-trial-\(sessionID).json"
             )
             .environment(\.floatingDockInset, 0)
 
