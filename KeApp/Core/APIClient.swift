@@ -531,6 +531,19 @@ actor APIClient {
         }
     }
 
+    /// 11-07：只给这扇窗换模型，不改「当前会话」——试穿页专用。
+    func setSessionModel(id: Int, model: String) async throws -> ActiveChatSession {
+        var request = try makeRequest(path: "/api/sessions/model", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["id": id, "model": model])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, _) = try await perform(request)
+        do {
+            return try decoder.decode(ActiveChatSession.self, from: data)
+        } catch {
+            throw APIError.decoding(error)
+        }
+    }
+
     func clearChatWindow(sessionID: Int, requestID: String) async throws -> Int {
         struct Result: Decodable { let ok: Bool; let id: Int }
         var request = try makeRequest(path: "/api/sessions/clear-window", method: "POST")

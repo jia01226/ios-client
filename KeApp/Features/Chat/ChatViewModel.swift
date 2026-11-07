@@ -1510,7 +1510,13 @@ final class ChatViewModel: ObservableObject {
         modelError = nil
         defer { isSelectingModel = false }
         do {
-            let active = try await api.selectModel(sessionID: sessionID, model: model)
+            // 11-07：试穿页只换它自己的模型，不能把她主窗的「当前会话」顶掉
+            let active: ActiveChatSession
+            if pinnedSession != nil {
+                active = try await api.setSessionModel(id: sessionID, model: model)
+            } else {
+                active = try await api.selectModel(sessionID: sessionID, model: model)
+            }
             selectedModel = active.model ?? model
             // 124：换了模型也先留着各号的额度，重读回来再换，别让那几行字一闪没了
             await loadModelQuotas(force: true)
