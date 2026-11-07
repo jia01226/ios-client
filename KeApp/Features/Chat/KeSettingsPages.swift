@@ -566,13 +566,13 @@ struct KeVisitsPage: View {
 struct KeWindowPage: View {
     @ObservedObject var store: KeWindowStore
     let onStartPick: () -> Void
+    @State private var trialOpen = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             if let window = store.window {
                 capacity(window)
                 actions
-                windowSwitch
                 pinned(window.pins)
             } else if let error = store.windowError {
                 KeDrawerHint(error)
@@ -588,6 +588,9 @@ struct KeWindowPage: View {
             }
         }
         .task { await store.loadWindow() }
+        .fullScreenCover(isPresented: $trialOpen) {
+            KeTrialChatPage(sessionID: 13, title: "试穿窗 · 收起")
+        }
     }
 
     private func capacity(_ window: KeWindowState) -> some View {
@@ -684,6 +687,11 @@ struct KeWindowPage: View {
             .disabled(store.isJobRunning || store.washPhase == .running)
             KeDrawerHint("冲掉查东西留下的大块头，原话一个字不动")
             washStatus
+
+            Button("单独开一页试穿（不碰这扇窗）") { trialOpen = true }
+                .buttonStyle(KeDrawerButtonStyle())
+                .padding(.top, 10)
+            KeDrawerHint("开一页独立的聊天，跟长窗分开记；试完关掉就回来。")
 
             Button("让柯换个窗", action: onStartPick)
                 .buttonStyle(KeDrawerButtonStyle(solid: true))

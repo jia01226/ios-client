@@ -92,10 +92,10 @@ struct ChatView: View {
     @State private var chromeTopEdge: CGFloat = 0
     @State private var composerTopEdge: CGFloat = 0
 
-    init(line: ChatLine, selectedLine: Binding<ChatLine>, quoteOpenRequest: Binding<QuoteOpenRequest?> = .constant(nil), sendRequests: Binding<[ChatSendRequest]> = .constant([])) {
+    init(line: ChatLine, selectedLine: Binding<ChatLine>, quoteOpenRequest: Binding<QuoteOpenRequest?> = .constant(nil), sendRequests: Binding<[ChatSendRequest]> = .constant([]), pinnedSession: Int? = nil) {
         self.line = line
         _selectedLine = selectedLine
-        _vm = StateObject(wrappedValue: ChatViewModel(line: line))
+        _vm = StateObject(wrappedValue: ChatViewModel(line: line, pinnedSession: pinnedSession))
         // 115：设置抽屉、换窗、钉住要打这条线自己的服务器（/ke-test1/…），不能用默认那个
         _keWindow = StateObject(wrappedValue: KeWindowStore(api: APIClient(baseURL: line.apiBaseURL)))
         _presence = StateObject(wrappedValue: ComposerPresenceReporter.live(api: APIClient(baseURL: line.apiBaseURL)))

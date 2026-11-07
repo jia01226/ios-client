@@ -186,10 +186,15 @@ final class ChatViewModel: ObservableObject {
     private var uiTestFixture: UITestFixture?
 #endif
 
+    /// 11-06 她要一页独立的窗：钉死会话号时，这一页只跟那扇窗说话，绝不改全局「当前会话」。
+    let pinnedSession: Int?
+
     init(line: ChatLine = .main, monitorConnectivity: Bool = true,
          replyTransport: (any ChatReplyTransport)? = nil, cacheFileName: String? = nil,
          replyKeepAlive: ReplyKeepAlive? = nil,
+         pinnedSession: Int? = nil,
          replyCompleted: @escaping @MainActor () -> Void = { CompanionPermissionCoordinator.shared.conversationDidComplete() }) {
+        self.pinnedSession = pinnedSession
         let client = APIClient(baseURL: line.apiBaseURL)
         api = client
         let backgroundKeepAlive: ReplyKeepAlive = { onExpire in
@@ -545,6 +550,14 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
+    /// 11-06：钉死的窗直接用它自己的号，不读服务器「当前会话」——不然一开这页就把她主窗顶掉。
+    private func resolvedSession() async throws -> ActiveChatSession {
+        if let pinnedSession {
+            return ActiveChatSession(id: pinnedSession, model: nil)
+        }
+        return try await replyAPI.activeSession()
+    }
+
     /// 137：网络回来、或者回前台时还没接上服务器：只接会话、拉记录、接回进行中的那句。
     /// 不像 connect() 那样重读缓存——那会把本机正在发的、没发稳的气泡盖掉。
     private func reconnectAfterOffline() async {
@@ -570,7 +583,7 @@ final class ChatViewModel: ObservableObject {
         isConnecting = true
         defer { isConnecting = false }
         do {
-            let active = try await replyAPI.activeSession()
+            let active = try await resolvedSession()
             let sameSession = active.id == sessionID
             prepareForSession(active.id)
             selectedModel = active.model
@@ -722,7 +735,7 @@ final class ChatViewModel: ObservableObject {
 
         do {
             try await api.login(passcode: passcode)
-            let active = try await replyAPI.activeSession()
+            let active = try await resolvedSession()
             prepareForSession(active.id)
             selectedModel = active.model
             phase = .ready
@@ -1671,7 +1684,7 @@ final class ChatViewModel: ObservableObject {
         }
 
         do {
-            let active = try await replyAPI.activeSession()
+            let active = try await resolvedSession()
             prepareForSession(active.id)
             selectedModel = active.model
             CompanionPermissionCoordinator.shared.sessionDidBecomeReady()
