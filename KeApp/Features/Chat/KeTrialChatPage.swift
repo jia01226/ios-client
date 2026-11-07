@@ -20,6 +20,7 @@ struct KeTrialChatPage: View {
                 sendRequests: $sendRequests,
                 pinnedSession: sessionID
             )
+            .environment(\.floatingDockInset, 0)
 
             Button {
                 dismiss()
@@ -38,6 +39,5 @@ struct KeTrialChatPage: View {
             .padding(.top, 10)
             .accessibilityLabel("收起这扇窗")
         }
-        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 }

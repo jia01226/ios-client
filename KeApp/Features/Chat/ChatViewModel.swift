@@ -195,6 +195,12 @@ final class ChatViewModel: ObservableObject {
          pinnedSession: Int? = nil,
          replyCompleted: @escaping @MainActor () -> Void = { CompanionPermissionCoordinator.shared.conversationDidComplete() }) {
         self.pinnedSession = pinnedSession
+        // 11-06：钉死的窗一开就是就绪的——否则会话号要等连服务器才拿到，她一发就静默返回。
+        if let pinnedSession {
+            sessionID = pinnedSession
+            phase = .ready
+            externalSessionReady = true
+        }
         let client = APIClient(baseURL: line.apiBaseURL)
         api = client
         let backgroundKeepAlive: ReplyKeepAlive = { onExpire in
