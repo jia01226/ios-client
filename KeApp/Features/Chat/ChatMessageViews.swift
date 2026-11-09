@@ -268,7 +268,10 @@ struct MessageRow: View {
 
     @ViewBuilder
     private func attachmentView(_ attachment: ChatAttachment) -> some View {
-        if attachment.isImage {
+        if attachment.kind == "night", let entryID = nightEntryID(from: attachment.url) {
+            NightCardView(entryID: entryID)
+                .environmentObject(theme)
+        } else if attachment.isImage {
             Button {
                 onAttachmentTap(attachment)
             } label: {
@@ -295,6 +298,11 @@ struct MessageRow: View {
             .font(theme.font.caption)
             .foregroundStyle(theme.color.textSecondary)
         }
+    }
+
+    private func nightEntryID(from url: String) -> Int? {
+        guard url.hasPrefix("ke-night://") else { return nil }
+        return Int(url.dropFirst("ke-night://".count))
     }
 
 }

@@ -376,6 +376,23 @@ actor APIClient {
         _ = try await perform(request)
     }
 
+    func nightComment(
+        entryID: Int,
+        rating: String,
+        comment: String,
+        prefs: [String: String]
+    ) async throws {
+        var request = try makeRequest(
+            path: "/api/night/\(entryID)/comment",
+            method: "POST"
+        )
+        var body: [String: Any] = ["rating": rating, "comment": comment]
+        if !prefs.isEmpty { body["prefs"] = prefs }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        _ = try await perform(request)
+    }
+
     func uploadAttachment(
         data: Data,
         fileName: String,
