@@ -390,6 +390,12 @@ final class ChatViewModel: ObservableObject {
         await refreshHistory(showFailure: true)
     }
 
+    /// 柯发了主动消息、推送到了——静默刷一次，不弹错误。
+    func refreshOnPush() async {
+        guard phase == .ready, activeStreamClientID == nil else { return }
+        await refreshHistory(showFailure: false)
+    }
+
     func send(_ text: String, reduceMotion: Bool = false) async {
         guard let sessionID, !isSending else { return }
         let attachments = pendingAttachments

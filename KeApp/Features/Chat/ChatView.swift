@@ -53,6 +53,9 @@ struct ChatView: View {
             guard phase == .active else { return }
             Task { await vm.resumeFromForeground() }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .keRemoteMessageArrived)) { _ in
+            Task { await vm.refreshOnPush() }
+        }
     }
 
     private var chatContent: some View {

@@ -59,6 +59,19 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        [.banner, .sound, .badge]
+        NotificationCenter.default.post(name: .keRemoteMessageArrived, object: nil)
+        return [.banner, .sound, .badge]
     }
+
+    /// 她点推送横幅打开 App 时，也刷一次聊天。
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        NotificationCenter.default.post(name: .keRemoteMessageArrived, object: nil)
+    }
+}
+
+extension Notification.Name {
+    static let keRemoteMessageArrived = Notification.Name("keRemoteMessageArrived")
 }
