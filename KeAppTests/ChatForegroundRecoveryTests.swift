@@ -304,7 +304,8 @@ final class ChatForegroundRecoveryTests: XCTestCase {
         server.receive([.receipt(userMessageID: 102, jobID: "job-2", bedroom: nil), .text("新的回复")], at: 1)
         await wait { vm.messages.contains { $0.sender == .me && $0.serverID == 102 } }
         await settle()
-        XCTAssertFalse(vm.messages.contains { $0.text == "新的回复" }, "写完之前不露半截")
+        // 1116：柯边写边显示——这截不等写完就该在气泡里（写盘有 0.08 秒节流，等它落下来）
+        await wait { vm.messages.contains { $0.sender == .ke && $0.text == "新的回复" } }
         server.history += [Message(id: "server-102", serverID: 102, sender: .me, text: "下一句", time: .now), Message(id: "server-103", serverID: 103, sender: .ke, text: "新的回复", time: .now)]
         server.receive([.completed(assistantMessageID: 103, bedroom: nil, status: "done", error: nil, retryable: false, retryScheduled: false)], at: 1)
         server.streams[1].finish(); await next.value
