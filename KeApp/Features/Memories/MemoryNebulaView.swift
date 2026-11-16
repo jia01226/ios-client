@@ -347,11 +347,18 @@ struct MemoryNebulaView: View {
     private static let line = Color(red: 0.76, green: 0.8, blue: 0.87).opacity(0.22)
     private static let night = Color(red: 5 / 255, green: 7 / 255, blue: 13 / 255)
     /// 136：第七团「关于她」和日常吃喝并排在最上面
-    private static let spots: [(NebulaKind, CGFloat, CGFloat)] = [(.pleiades, 0.27, 0.10), (NebulaGroup.about.kind, 0.73, 0.10),
-                                                                  (.orion, 0.22, 0.40), (.sombrero, 0.78, 0.40),
-                                                                  (.heart, 0.24, 0.85), (.horsehead, 0.76, 0.85), (.whirlpool, 0.5, 0.57),
-                                                                  // 1116：第八团「他学会的」放在上面两团中间偏下（位置等模拟器里看过再微调）
-                                                                  (.lessons, 0.5, 0.25)]
+    /// 1116 她：「前面太挤，想要纵深感」——八团按远近摆，上面的小一点（远），下面的略大（近），
+    /// 说好的留在正中。四元组是（哪团、x、y、大小倍率）。
+    private static let spots: [(NebulaKind, CGFloat, CGFloat, CGFloat)] = [
+        (.whirlpool, 0.50, 0.49, 1.00),   // 说好的：正中，最大
+        (.lessons,   0.50, 0.10, 0.54),   // 他学会的：最上，最远最小
+        (.pleiades,  0.16, 0.27, 0.74),   // 日常吃喝
+        (NebulaGroup.about.kind, 0.84, 0.27, 0.74), // 关于她
+        (.orion,     0.11, 0.59, 0.84),   // 身体和药
+        (.sombrero,  0.89, 0.59, 0.84),   // 以后的家
+        (.heart,     0.26, 0.87, 0.90),   // 亲密时刻
+        (.horsehead, 0.74, 0.87, 0.90)    // 难过的夜里
+    ]
 
     private static func readyArts() -> [NebulaKind: NebulaArt] {
         var out: [NebulaKind: NebulaArt] = [:]
@@ -476,11 +483,12 @@ struct MemoryNebulaView: View {
                 }
                 ForEach(Self.spots, id: \.0) { spot in
                     if let g = NebulaGroup.all.first(where: { $0.kind == spot.0 }) {
-                        let big = spot.0 == .whirlpool
-                        // 1116：第八团挤在上面两团中间，画小一号
-                        nebulaLabel(g, box: w * (big ? 0.54 : spot.0 == .lessons ? 0.34 : 0.44))
+                        // 1116：每团按远近有自己的大小，越靠下越大，看起来有纵深
+                        nebulaLabel(g, box: w * (spot.0 == .whirlpool ? 0.52 : 0.46) * spot.3)
                             .position(x: spot.1 * w, y: top + spot.2 * mapH)
-                            .zIndex(big ? 2 : 1)
+                            // 越远越淡一点，近的更实，纵深感更明显
+                            .opacity(0.70 + 0.30 * Double(min(1, spot.3)))
+                            .zIndex(spot.0 == .whirlpool ? 3 : (2 - spot.2))
                     }
                 }
             }
@@ -514,8 +522,8 @@ struct MemoryNebulaView: View {
     /// 离哪团最近：按这一团画出来的大小量（说好的那团画得小，按它自己的大小算）
     private func nearestGroup(_ p: CGPoint, w: CGFloat, top: CGFloat, mapH: CGFloat, reach: CGFloat) -> NebulaGroup? {
         var best: (NebulaKind, CGFloat)?
-        for (kind, x, y) in Self.spots {
-            let radius = w * (kind == .whirlpool ? 0.2 : 0.19)
+        for (kind, x, y, scale) in Self.spots {
+            let radius = w * (kind == .whirlpool ? 0.2 : 0.19) * scale
             let c = CGPoint(x: x * w, y: top + y * mapH - w * 0.02)
             let d = hypot(c.x - p.x, c.y - p.y) / radius
             if d < reach, d < (best?.1 ?? .infinity) { best = (kind, d) }
