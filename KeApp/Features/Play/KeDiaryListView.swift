@@ -7,9 +7,10 @@ import SwiftUI
 
 /// 123：日记页顶上的两栏。记住她上次看的是哪一栏；从「爸爸开锁了」那张卡、「柯的」页写着日记的那张卡点进来，一定落在日记。
 enum DiaryTab: String, CaseIterable {
-    case diary, night
+    case diary, night, drawer
     static let storageKey = "diary.page.tab"
-    var label: String { self == .diary ? "日记" : "夜里" }
+    /// 1116 她：抽屉挪进日记，跟日记、夜里并排
+    var label: String { ["diary": "日记", "night": "夜里", "drawer": "抽屉"][rawValue]! }
     /// 带着要翻开的那一篇进来（pinnedToDiary）就是日记；不然照她上次选的，认不出来的当日记
     static func current(saved: String, pinnedToDiary: Bool, pinnedToNight: Bool = false) -> DiaryTab {
         // 128：从聊天里「夜里日记」卡点进来的，一定落在夜里
@@ -29,8 +30,6 @@ struct KeDiaryListView: View {
     var openingNightID: Int? = nil
     /// 128：那一条已经滚到过了（她往别处翻以后不再拽回去）
     @State private var nightOpened = false
-    /// 1116 她：抽屉挪进日记里——日记右上角点「抽屉」，盖上来一层，右划回日记
-    @State private var drawerOpen = false
     /// 拉过一遍了（转圈可以撤了）
     @State private var openingDone = false
     /// 那一篇已经翻开过（她退回目录后不再拽回去）
@@ -100,6 +99,8 @@ struct KeDiaryListView: View {
                         tabSwitch
                         if tab == .night {
                             NightPane(store: night)
+                        } else if tab == .drawer {
+                            KeDrawerPage(line: line, onClose: {}, embedded: true)
                         } else {
                             controls(proxy)
                             if loading && entries.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(40) }
@@ -156,11 +157,6 @@ struct KeDiaryListView: View {
                     .tint(Ink.accent)
                 }
             }
-            if drawerOpen {
-                KeDrawerPage(line: line) { drawerOpen = false }
-                    .swipeBackLayer { drawerOpen = false }
-                    .zIndex(2)
-            }
             if let entry = reading {
                 // 点开直接打开，不要翻页动画
                 DiaryPage(entry: entry, sameDay: entries.filter { $0.id != entry.id && $0.created_at.prefix(10) == entry.created_at.prefix(10) },
@@ -204,7 +200,7 @@ struct KeDiaryListView: View {
         InkTabSwitch(options: DiaryTab.allCases,
                      selection: Binding(get: { tab }, set: { leftPin = true; savedTab = $0.rawValue }),
                      label: \.label, identifier: { "diary-tab-\($0.rawValue)" },
-                     accessibilityName: "日记或夜里")
+                     accessibilityName: "日记、夜里或抽屉")
             .frame(maxWidth: .infinity)
             .padding(.top, 4)
     }
@@ -223,15 +219,6 @@ struct KeDiaryListView: View {
                 Button(action: onClose) { Image(systemName: "chevron.left").font(.system(size: 20, weight: .light)).frame(width: 44, height: 44, alignment: .leading) }
                     .accessibilityLabel("返回").accessibilityIdentifier("diary-close")
                 Spacer()
-                Button { drawerOpen = true } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "archivebox").font(.system(size: 15, weight: .light))
-                        Text("抽屉").font(Ink.song(14))
-                    }
-                    .foregroundStyle(Ink.secondary).frame(minHeight: 44).contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("打开柯的抽屉").accessibilityIdentifier("diary-open-drawer")
             }
         }
         .padding(.top, 6)
