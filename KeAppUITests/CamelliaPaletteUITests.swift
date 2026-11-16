@@ -1,7 +1,7 @@
 import XCTest
 
-/// 126：「柯的」顶上不再有配色小菜单（设计稿只留右上月牙）。纸色在设置抽屉「素笺」页里选：
-/// 点月牙 → 素笺 → 五款纸色。这里照旧验五款都能选、重开 App 还记得、六个入口照旧能开能关。
+/// 126：「柯的」顶上不再有配色小菜单（设计稿只留右上月牙）。纸色在设置里「外观 · 主题色」选：
+/// 点月牙 → 主题色 → 五款纸色。这里照旧验五款都能选、重开 App 还记得、六个入口照旧能开能关。
 final class CamelliaPaletteUITests: XCTestCase {
     private let palettes = [("blush", "粉白"), ("mist", "浅雾蓝"), ("white", "冷白"), ("ivory", "暖白"), ("cream", "浅米色")]
     override func setUpWithError() throws { continueAfterFailure = false }
@@ -16,10 +16,10 @@ final class CamelliaPaletteUITests: XCTestCase {
         return app
     }
 
-    /// 月牙 → 设置抽屉 → 素笺
+    /// 月牙 → 设置 → 主题色
     private func openPaperPage(_ app: XCUIApplication) {
         app.buttons["home-settings-moon"].tap()
-        let paper = app.buttons["素笺"].firstMatch
+        let paper = app.buttons["settings-row-paper"].firstMatch
         XCTAssertTrue(paper.waitForExistence(timeout: 6))
         paper.tap()
     }

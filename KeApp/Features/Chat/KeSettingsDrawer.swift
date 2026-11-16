@@ -1,60 +1,30 @@
 import SwiftUI
 
-// 112：聊天页的「月隐」设置抽屉。照 10-16 她点头的网页样子做：
-// 聊天页往左划，从右边拉出四分之三宽的纸；左边露出一条变暗的聊天，点它或往右划就收回。
-// 四页：话笺（字体·气泡·模型）、来信（柯来找我）、素笺（四款纸色）、换窗（带着这一程）。
+// 112：聊天页的设置抽屉。聊天页往左划，从右边拉出四分之三宽的纸；左边露出一条变暗的聊天，点它或往右划就收回。
+// 11-16 她：不要文绉绉的名字，简单明了；细线分割、组和组之间留白，不加框、不放小图标。
+// 首页一列分组（模型 · 主动消息 · 聊天窗口 · 外观 · 工具），每行右边写着现在的值，点进去是那一页。
 
 enum KeSettingsTab: String, CaseIterable, Identifiable {
-    case garden, words, visits, paper, window
-
-    static let tabs: [KeSettingsTab] = [.words, .visits, .paper, .window]
+    /// garden 是首页（名字沿用：聊天页、换窗挑选页都拿它回到首页）
+    case garden, model, effort, visits, window, text, bubbles, paper
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .garden: return "月隐"
-        case .words: return "话笺"
-        case .visits: return "来信"
-        case .paper: return "素笺"
-        case .window: return "换窗"
-        }
-    }
-
-    /// 顶上居中的小字
-    var caption: String {
-        switch self {
         case .garden: return "设置"
-        case .words: return "聊天"
-        case .visits: return "柯来找我"
-        case .paper: return "配色"
-        case .window: return "留住这一程"
-        }
-    }
-
-    /// 目录页名字下面那行
-    var subtitle: String {
-        switch self {
-        case .garden: return "一枝收月色"
-        case .words: return "字体 · 气泡 · 模型"
-        case .visits: return "柯来找我"
-        case .paper: return "四款纸色"
-        case .window: return "带着这一程"
-        }
-    }
-
-    var script: String {
-        switch self {
-        case .garden: return "Moonlit"
-        case .words: return "Words between us"
-        case .visits: return "A little closer"
-        case .paper: return "Paper & light"
-        case .window: return "A new window"
+        case .model: return "模型"
+        case .effort: return "思考深度"
+        case .visits: return "主动消息"
+        case .window: return "聊天窗口"
+        case .text: return "字体与字号"
+        case .bubbles: return "聊天气泡"
+        case .paper: return "主题色"
         }
     }
 }
 
-/// 话笺里「更多」能回到原来功能区的那些页，原来的功能一个不少。
+/// 首页「工具」那组、还有几行，打开原来功能区的那些页，原来的功能一个不少。
 enum KeDrawerTool {
     case search, dates, fonts, appearance, usage, all, workshop
 }
@@ -235,33 +205,27 @@ struct KeSettingsDrawer: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            tabs
-            Group {
-                if page == .garden {
-                    KeDrawerGarden { go($0) }
-                } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(page.title)
-                                .font(Ink.song(26))
-                                .tracking(3)
-                                .foregroundStyle(Ink.primary)
-                                .accessibilityAddTraits(.isHeader)
-                            Text(page.script)
-                                .font(Ink.script(20))
-                                .foregroundStyle(Ink.secondary)
-                                .padding(.bottom, 14)
-                            pageContent
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 20)
-                        .padding(.top, 18)
-                        .padding(.bottom, 36)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if page == .garden {
+                        KeSettingsHome(vm: vm, store: store, onPick: go, onOpenTool: onOpenTool, onStartPick: onStartPick)
+                    } else {
+                        Text(page.title)
+                            .font(Ink.song(24))
+                            .tracking(2)
+                            .foregroundStyle(Ink.primary)
+                            .accessibilityAddTraits(.isHeader)
+                            .padding(.bottom, 18)
+                        pageContent
                     }
-                    .scrollIndicators(.hidden)
-                    .id(page)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.top, 4)
+                .padding(.bottom, 36)
             }
+            .scrollIndicators(.hidden)
+            .id(page)
             .frame(maxHeight: .infinity)
         }
         .task(id: isOpen) {
@@ -277,10 +241,13 @@ struct KeSettingsDrawer: View {
     private var pageContent: some View {
         switch page {
         case .garden: EmptyView()
-        case .words: KeWordsPage(vm: vm, store: store, onOpenTool: onOpenTool)
+        case .model: KeModelPage(vm: vm)
+        case .effort: KeEffortPage(store: store)
         case .visits: KeVisitsPage(store: store)
-        case .paper: KePaperPage()
         case .window: KeWindowPage(store: store, onStartPick: onStartPick)
+        case .text: KeTextPage(onOpenTool: onOpenTool)
+        case .bubbles: KeBubblePage()
+        case .paper: KePaperPage()
         }
     }
 
@@ -293,7 +260,7 @@ struct KeSettingsDrawer: View {
             Button { go(.garden) } label: {
                 HStack(spacing: 3) {
                     Image(systemName: "chevron.left").font(.system(size: 12))
-                    Text("目录")
+                    Text("设置")
                 }
                 .frame(minWidth: 44, minHeight: 44, alignment: .leading)
                 .contentShape(Rectangle())
@@ -301,11 +268,9 @@ struct KeSettingsDrawer: View {
             .buttonStyle(.plain)
             .opacity(page == .garden ? 0 : 1)
             .disabled(page == .garden)
-            .accessibilityLabel("回到目录")
+            .accessibilityLabel("回到设置")
             .accessibilityHidden(page == .garden)
 
-            Spacer()
-            Text(page.caption)
             Spacer()
 
             Button(action: onClose) {
@@ -315,170 +280,268 @@ struct KeSettingsDrawer: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("收起设置抽屉")
+            .accessibilityLabel("收起设置")
         }
-        .font(.system(size: 12))
+        .font(.system(size: 13))
         .foregroundStyle(Ink.secondary)
         .padding(.leading, 15)
         .padding(.trailing, 6)
         .padding(.top, 4)
     }
-
-    private var tabs: some View {
-        HStack(spacing: 0) {
-            ForEach(KeSettingsTab.tabs) { tab in
-                Button { go(tab) } label: {
-                    Text(tab.title)
-                        .font(Ink.song(14))
-                        .foregroundStyle(page == tab ? Ink.primary : Ink.secondary)
-                        .frame(maxWidth: .infinity, minHeight: 40)
-                        .overlay(alignment: .bottom) {
-                            Rectangle()
-                                .fill(page == tab ? Ink.accent : Color.clear)
-                                .frame(height: 1)
-                                .padding(.horizontal, 10)
-                        }
-                        .contentShape(Rectangle())
-                        // 137：看着还是 40 高，能点的地方上下各多 2 点，凑够 44
-                        .modifier(ChatHitSlop(horizontal: 0, vertical: 2))
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(page == tab ? .isSelected : [])
-            }
-        }
-        .padding(.horizontal, 6)
-        .padding(.bottom, 6)
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(Ink.line.opacity(0.35)).frame(height: 0.6)
-        }
-    }
 }
 
-// MARK: - 目录：月亮、藤蔓、四个名字
+// MARK: - 首页：柯 + 五组
 
-struct KeDrawerGarden: View {
+struct KeSettingsHome: View {
+    @EnvironmentObject private var theme: Theme
+    @ObservedObject var vm: ChatViewModel
+    @ObservedObject var store: KeWindowStore
     let onPick: (KeSettingsTab) -> Void
+    let onOpenTool: (KeDrawerTool) -> Void
+    let onStartPick: () -> Void
+
+    @AppStorage(CamelliaPalette.storageKey) private var savedPalette = CamelliaPalette.defaultPalette.rawValue
 
     var body: some View {
-        GeometryReader { geo in
-            let w = geo.size.width
-            let h = max(geo.size.height, 480)
-            ZStack(alignment: .topLeading) {
-                // 藤蔓和两朵花先合在一起再一起变淡，交叠处不会透出接缝。
-                ZStack(alignment: .topLeading) {
-                    art("KeSettingsVine", w: w, h: h, x: 0.30, y: 0.22, width: 0.47, height: 0.76)
-                    art("KeCamelliaDiary", w: w, h: h, x: 0.45, y: 0.49, width: 0.16, height: 0.16 * w / h)
-                    art("KeCamelliaDiary", w: w, h: h, x: 0.42, y: 0.80, width: 0.16, height: 0.16 * w / h)
-                }
-                .compositingGroup()
-                .opacity(0.64)
-
-                art("KeSettingsMoon", w: w, h: h, x: 0.18, y: 0.01, width: 0.40, height: 0.35)
-                    .opacity(0.62)
-
-                ZStack {
-                    Image("KeCamelliaWingLeft").resizable().scaledToFit()
-                    Image("KeCamelliaWingRight").resizable().scaledToFit()
-                    Image("KeCamelliaBody").resizable().scaledToFit()
-                }
-                .frame(width: 42, height: 42)
-                .rotationEffect(.degrees(-16))
-                .saturation(0.5)
-                .opacity(0.5)
-                .offset(x: w * 0.33, y: h * 0.67)
-                .accessibilityHidden(true)
-
-                title
-                    .frame(width: w * 0.91, alignment: .trailing)
-                    .offset(y: h * 0.12)
-
-                link(.words, leading: true).offset(x: w * 0.08, y: h * 0.32)
-                link(.visits, leading: true).offset(x: w * 0.08, y: h * 0.57)
-                link(.paper, leading: false)
-                    .frame(width: w * 0.93, alignment: .trailing)
-                    .offset(y: h * 0.48)
-                link(.window, leading: false)
-                    .frame(width: w * 0.93, alignment: .trailing)
-                    .offset(y: h * 0.77)
-
-                Text("点名字进入 · 向右划收回")
-                    .font(.system(size: 10))
-                    .foregroundStyle(Ink.secondary)
-                    .offset(x: w * 0.08, y: h - 30)
-            }
-            .frame(width: w, height: h, alignment: .topLeading)
-        }
-        .clipped()
-    }
-
-    private func art(_ name: String, w: CGFloat, h: CGFloat, x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat) -> some View {
-        Image(name)
-            .resizable()
-            .scaledToFit()
-            .saturation(0.5)
-            .frame(width: w * width, height: h * height)
-            .offset(x: w * x, y: h * y)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-    }
-
-    /// 「月隐」竖着写，左边一行小字「一枝收月色」带一条细线。
-    private var title: some View {
-        HStack(alignment: .top, spacing: 13) {
-            vertical("一枝收月色", size: 11, spacing: 3)
-                .padding(.trailing, 6)
-                .overlay(alignment: .trailing) {
-                    Rectangle().fill(Ink.line).frame(width: 0.7)
-                }
-                .foregroundStyle(Ink.secondary)
-            vertical("月隐", size: 32, spacing: 8)
+        VStack(alignment: .leading, spacing: 0) {
+            Text("设置")
+                .font(Ink.song(26))
+                .tracking(3)
                 .foregroundStyle(Ink.primary)
-                .padding(.top, 24)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("月隐，一枝收月色")
-        .accessibilityAddTraits(.isHeader)
-    }
+                .accessibilityAddTraits(.isHeader)
+                .padding(.bottom, 14)
 
-    private func vertical(_ text: String, size: CGFloat, spacing: CGFloat) -> some View {
-        VStack(spacing: spacing) {
-            ForEach(Array(text.enumerated()), id: \.offset) { _, char in
-                Text(String(char)).font(Ink.song(size))
+            profile
+
+            KeSettingsGroup("模型") {
+                KeSettingsRow(title: "模型", value: modelName, id: "settings-row-model") { onPick(.model) }
+                KeSettingsRow(title: "额度", value: quota?.compactRemainingText,
+                              valueTint: quota?.isRunningLow == true ? Ink.negative : nil,
+                              id: "settings-row-quota") { onOpenTool(.usage) }
+                KeSettingsRow(title: "思考深度", value: store.settings?.effortLevel?.title,
+                              last: true, id: "settings-row-effort") { onPick(.effort) }
             }
-        }
-    }
 
-    private func link(_ page: KeSettingsTab, leading: Bool) -> some View {
-        Button { onPick(page) } label: {
-            HStack(alignment: .top, spacing: 6) {
-                if !leading { stroke }
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(page.title)
-                        .font(Ink.song(24))
-                        .tracking(3)
-                        .foregroundStyle(Ink.primary)
-                    Text(page.subtitle)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Ink.secondary)
+            KeSettingsGroup("主动消息") {
+                if let settings = store.settings {
+                    KeSettingsToggleRow(title: "柯会主动找我", isOn: Binding(
+                        get: { store.settings?.proactiveOn ?? settings.proactiveOn },
+                        set: { store.change(\.proactiveOn, to: $0, key: "proactive_on", wire: $0) }
+                    ))
                 }
-                if leading { stroke }
+                KeSettingsRow(title: "免打扰时段", value: store.settings.map { quiet($0.quietWeekday) },
+                              id: "settings-row-quiet") { onPick(.visits) }
+                KeSettingsRow(title: "夜间消息间隔", value: store.settings.map { "\($0.nightGap) 分钟" },
+                              id: "settings-row-night-gap") { onPick(.visits) }
+                KeSettingsRow(title: "小红书分享", value: store.settings.map { $0.xhsPerDay == 0 ? "不分享" : "每天 \($0.xhsPerDay) 次" },
+                              last: true, id: "settings-row-xhs") { onPick(.visits) }
             }
-            .frame(minHeight: 62, alignment: .top)
+
+            KeSettingsGroup("聊天窗口") {
+                KeSettingsRow(title: "窗口用量", value: windowUsage, progress: windowFill,
+                              id: "settings-row-window") { onPick(.window) }
+                KeSettingsRow(title: "清理窗口", id: "settings-row-wash") { onPick(.window) }
+                KeSettingsRow(title: "换新窗口", id: "settings-row-rotate", action: onStartPick)
+                KeSettingsRow(title: "已固定的对话", value: store.window.map { "\($0.pins.count) 段" },
+                              last: true, id: "settings-row-pins") { onPick(.window) }
+            }
+
+            KeSettingsGroup("外观") {
+                KeSettingsRow(title: "主题色", value: CamelliaPalette.resolve(savedPalette).label,
+                              id: "settings-row-paper") { onPick(.paper) }
+                KeSettingsRow(title: "字体与字号", value: "\(Int(theme.chatFontSize))",
+                              id: "settings-row-text") { onPick(.text) }
+                KeSettingsRow(title: "聊天气泡", id: "settings-row-bubbles") { onPick(.bubbles) }
+                KeSettingsRow(title: "聊天背景", last: true, id: "settings-row-wallpaper") { onOpenTool(.appearance) }
+            }
+
+            KeSettingsGroup("工具") {
+                KeSettingsRow(title: "搜索聊天记录", id: "settings-row-search") { onOpenTool(.search) }
+                KeSettingsRow(title: "按日期查找", id: "settings-row-dates") { onOpenTool(.dates) }
+                KeSettingsRow(title: "工坊", value: "修 App、查问题", id: "settings-row-workshop") { onOpenTool(.workshop) }
+                KeSettingsRow(title: "更多聊天工具", last: true, id: "settings-row-all") { onOpenTool(.all) }
+            }
+
+            Text("向右划收回")
+                .font(.system(size: 11))
+                .foregroundStyle(Ink.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 30)
+        }
+        .task { await vm.loadModelSettings() }
+        .task { await store.loadSettings() }
+    }
+
+    /// 柯：头像、名字、现在用的哪个模型。点进去换模型。
+    private var profile: some View {
+        Button { onPick(.model) } label: {
+            HStack(spacing: 14) {
+                Text("柯")
+                    .font(Ink.song(22))
+                    .foregroundStyle(Ink.accent)
+                    .frame(width: 54, height: 54)
+                    .background(Circle().fill(Ink.accent.opacity(0.09)))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("柯")
+                        .font(Ink.song(20))
+                        .foregroundStyle(Ink.primary)
+                    Text(modelName ?? "还没读到模型")
+                        .font(Ink.latin(12))
+                        .foregroundStyle(Ink.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                KeSettingsChevron()
+            }
+            .padding(.vertical, 12)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(page.title)，\(page.subtitle)")
+        .overlay(alignment: .bottom) { KeSettingsLine() }
+        .accessibilityIdentifier("settings-profile")
     }
 
-    private var stroke: some View {
-        Rectangle()
-            .fill(Ink.line.opacity(0.55))
-            .frame(width: 24, height: 0.7)
-            .padding(.top, 17)
+    private var selectedOption: ChatModelOption? {
+        vm.modelOptions.first { $0.id == vm.selectedModel }
+    }
+
+    private var modelName: String? {
+        selectedOption?.displayName ?? vm.selectedModel
+    }
+
+    /// 现在用的这个号还剩多少；用的不是 Claude（没额度可看）就空着
+    private var quota: ChatModelQuotaGroup? {
+        guard let option = selectedOption else { return nil }
+        let group = ChatModelSection.normalizedGroup(option.family ?? option.group ?? option.provider ?? "")
+        return vm.modelQuotaCatalog?.groups.first { ChatModelSection.normalizedGroup($0.id) == group }
+    }
+
+    private var windowUsage: String? {
+        store.window.map { "\(KeWindowFormat.wan($0.contextTokens)) / \(KeWindowFormat.wan($0.rotateAt))" }
+    }
+
+    private var windowFill: Double? {
+        store.window.map { min(1, Double($0.contextTokens) / Double(max($0.rotateAt, 1))) }
+    }
+
+    /// 「23:00-08:30」写成「23:00 – 08:30」
+    private func quiet(_ range: String) -> String {
+        KeQuietRange(range).map { _ in range.replacingOccurrences(of: "-", with: " – ") } ?? range
     }
 }
 
-// MARK: - 素笺：四款纸色
+// MARK: - 首页的零件：一组、一行、细线
+
+struct KeSettingsGroup<Rows: View>: View {
+    let title: String
+    let rows: Rows
+
+    init(_ title: String, @ViewBuilder rows: () -> Rows) {
+        self.title = title
+        self.rows = rows()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+                .font(Ink.song(12))
+                .tracking(2)
+                .foregroundStyle(Ink.secondary)
+                .padding(.top, 30)
+                .padding(.bottom, 2)
+                .accessibilityAddTraits(.isHeader)
+            rows
+        }
+    }
+}
+
+/// 一行：名字 · 现在的值 · 小箭头。最后一行不画线，靠下面的留白收住。
+struct KeSettingsRow: View {
+    let title: String
+    var value: String?
+    var valueTint: Color?
+    /// 窗口用量那行底下的一条细进度
+    var progress: Double?
+    var last = false
+    var id: String?
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Text(title)
+                        .font(Ink.song(15))
+                        .foregroundStyle(Ink.primary)
+                    Spacer(minLength: 8)
+                    if let value {
+                        Text(value)
+                            .font(Ink.latin(13))
+                            .monospacedDigit()
+                            .foregroundStyle(valueTint ?? Ink.secondary)
+                            .lineLimit(1)
+                    }
+                    KeSettingsChevron()
+                }
+                if let progress {
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Ink.track)
+                            Capsule().fill(Ink.accent.opacity(0.7)).frame(width: geo.size.width * progress)
+                        }
+                    }
+                    .frame(height: 2)
+                    .padding(.trailing, 18)
+                    .accessibilityHidden(true)
+                }
+            }
+            .padding(.vertical, 13)
+            .frame(minHeight: 48)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .overlay(alignment: .bottom) { if !last { KeSettingsLine() } }
+        .accessibilityIdentifier(id ?? "settings-row-\(title)")
+    }
+}
+
+struct KeSettingsToggleRow: View {
+    let title: String
+    @Binding var isOn: Bool
+    var last = false
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            Text(title)
+                .font(Ink.song(15))
+                .foregroundStyle(Ink.primary)
+        }
+        .tint(Ink.accent)
+        .padding(.vertical, 8)
+        .frame(minHeight: 48)
+        .overlay(alignment: .bottom) { if !last { KeSettingsLine() } }
+    }
+}
+
+struct KeSettingsLine: View {
+    var body: some View {
+        Rectangle()
+            .fill(Ink.line.opacity(0.35))
+            .frame(height: 0.5)
+            .accessibilityHidden(true)
+    }
+}
+
+struct KeSettingsChevron: View {
+    var body: some View {
+        Image(systemName: "chevron.right")
+            .font(.system(size: 11, weight: .light))
+            .foregroundStyle(Ink.secondary.opacity(0.7))
+            .accessibilityHidden(true)
+    }
+}
+
+// MARK: - 主题色：五款纸色
 
 struct KePaperPage: View {
     @AppStorage(CamelliaPalette.storageKey) private var savedPalette = CamelliaPalette.defaultPalette.rawValue
@@ -525,7 +588,7 @@ struct KePaperPage: View {
             Text("把喜欢的纸色，铺进每一个角落。")
                 .font(Ink.song(15))
                 .foregroundStyle(Ink.primary)
-            KeDrawerHint("点一款，【我们】、抽屉和这里的纸一起换色。")
+            KeDrawerHint("点一款，【我们】、设置和这里的纸一起换色。")
         }
     }
 }

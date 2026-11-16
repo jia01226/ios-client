@@ -1,103 +1,25 @@
 import SwiftUI
 
-// 112：月隐抽屉里的三页——话笺、来信、换窗。素笺在 KeSettingsDrawer.swift。
+// 11-16：设置首页（KeSettingsDrawer.swift）点进来的几页——模型、思考深度、字体与字号、聊天气泡、主动消息、聊天窗口。
+// 主题色在 KeSettingsDrawer.swift。
 
-// MARK: - 话笺：字体 · 气泡 · 模型
+// MARK: - 模型（各号带额度）
 
-struct KeWordsPage: View {
-    @EnvironmentObject private var theme: Theme
+struct KeModelPage: View {
     @ObservedObject var vm: ChatViewModel
-    /// 124：「柯想得多深」和来信设置存在同一份 /api/ke/settings 里，走同一条存的路
-    @ObservedObject var store: KeWindowStore
-    let onOpenTool: (KeDrawerTool) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            preview
-
-            KeDrawerSlider(
-                title: "字体大小",
-                value: $theme.chatFontSize,
-                range: 13...22,
-                step: 1,
-                valueText: "\(Int(theme.chatFontSize))"
-            )
-            KeDrawerSlider(
-                title: "气泡圆角",
-                value: $theme.bubbleCornerRadius,
-                range: 12...34,
-                step: 1,
-                valueText: "\(Int(theme.bubbleCornerRadius))"
-            )
-            // 127：我的、柯的各挑颜色和浓度（原来的「气泡透明度」和整套配色合在一起的那排拿掉了）
-            BubbleSideControls(side: .me)
-            BubbleSideControls(side: .ke)
-
-            models
-
-            more
-        }
-        .task {
-            // 124：一打开就把各号额度也读上（30 秒内读过就用现成的），不用干等一分钟
-            await vm.loadModelSettings()
-            // 123 她：额度要「实时」，跟 Claude 自己的用量页一样。这页开着就刷，关了就停。
-            // 138：一分钟一刷还是嫌慢，改成 20 秒（服务器那边也只记 20 秒）
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(20))
-                guard !Task.isCancelled else { return }
-                await vm.loadModelQuotas(force: true)
-            }
-        }
-        .task { await store.loadSettings() }
-    }
-
-    // 拖滑杆时这两个气泡跟着变，和聊天里画法一致。
-    private var preview: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Spacer(minLength: 20)
-                previewBubble("今天忙完了，终于能坐一会儿。", mine: true)
-            }
-            HStack {
-                previewBubble("那就靠着吧，我一直在听。", mine: false)
-                Spacer(minLength: 20)
-            }
-        }
-        .padding(14)
-        .background {
-            // 127：预览底下垫和聊天页一样的纸（粉白那款带设计稿的淡粉底图），浓度看着才准
-            ZStack {
-                theme.color.bg
-                if theme.chatPalette.atmosphereImage && theme.skin == .day {
-                    Color.clear.overlay { Image("ChatAtmosphere").resizable().scaledToFill() }
+        models
+            .task {
+                // 124：一打开就把各号额度也读上（30 秒内读过就用现成的），不用干等一分钟
+                await vm.loadModelSettings()
+                // 123 她：额度要「实时」，跟 Claude 自己的用量页一样。这页开着就刷，关了就停。
+                // 138：一分钟一刷还是嫌慢，改成 20 秒（服务器那边也只记 20 秒）
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(20))
+                    guard !Task.isCancelled else { return }
+                    await vm.loadModelQuotas(force: true)
                 }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Ink.line.opacity(0.4), lineWidth: 0.6)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("气泡预览")
-    }
-
-    private func previewBubble(_ text: String, mine: Bool) -> some View {
-        let side: BubbleSide = mine ? .me : .ke
-        return Text(text)
-            .font(theme.font.bubble)
-            .foregroundStyle(theme.bubbleInk(side))
-            .lineSpacing(CGFloat(max(3, theme.chatFontSize * 0.28)))
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, theme.metric.bubbleHorizontalPadding)
-            .padding(.vertical, theme.metric.bubbleVerticalPadding)
-            .background {
-                // 127：和聊天里同一块（BubbleFill），拨颜色、拖浓度这里马上跟着变
-                BubbleFill(
-                    color: theme.bubbleFill(side),
-                    density: theme.bubbleFillDensity(side),
-                    cornerRadius: CGFloat(theme.bubbleCornerRadius)
-                )
             }
     }
 
@@ -114,7 +36,6 @@ struct KeWordsPage: View {
     @ViewBuilder
     private var models: some View {
         VStack(alignment: .leading, spacing: 10) {
-            KeDrawerSectionTitle("模型")
             Text("现在和你说话的：\(selectedName)")
                 .font(.system(size: 14))
                 .foregroundStyle(Ink.primary)
@@ -127,12 +48,10 @@ struct KeWordsPage: View {
                 }
                 .font(.system(size: 12))
                 .foregroundStyle(Ink.secondary)
-                effortPicker
             } else if let error = vm.modelError, vm.modelOptions.isEmpty {
                 KeDrawerHint(error)
                 Button("再试一次") { Task { await vm.loadModels(force: true) } }
                     .buttonStyle(KeDrawerButtonStyle())
-                effortPicker
             } else {
                 if let error = vm.modelError { KeDrawerHint("刚才没换成：\(error)") }
                 // 112 她：「之前不是两个号码吗 2个claude额度 没有了」——1 号、2 号分开列，各自带额度
@@ -144,8 +63,6 @@ struct KeWordsPage: View {
                         quotaID: section.id
                     )
                 }
-                // 124：想得多深只管 Claude 长窗，就放在两个 Claude 号下面
-                effortPicker
                 modelGroup(
                     "GPT",
                     caption: "不走长窗：能看到最近聊天和设定，但不是同一扇窗",
@@ -266,8 +183,18 @@ struct KeWordsPage: View {
             }
         }
     }
+}
 
-    // MARK: 柯想得多深（124）
+// MARK: - 思考深度（124：柯想得多深）
+
+struct KeEffortPage: View {
+    @ObservedObject var store: KeWindowStore
+
+    var body: some View {
+        effortPicker
+            .task { await store.loadSettings() }
+    }
+
 
     /// 124 她：「我可以选择柯的用量，就像现在你是最高速度，柯app选不了」——五档，越往右越深。
     /// 点了先在页面上变过去，停手半秒和来信设置一起存；存不上退回服务器的值并说原因。
@@ -378,42 +305,110 @@ struct KeWordsPage: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel("柯想得多深")
     }
+}
 
-    // MARK: 原来功能区里的东西
+// MARK: - 气泡预览：拖滑杆、换颜色时跟着变
 
-    private var more: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            KeDrawerSectionTitle("更多")
-            // 145：工坊——修 App、查问题的那扇 Claude 窗，跟柯分开
-            toolLink("工坊 · 修 App、查问题", icon: "hammer", tool: .workshop)
-            toolLink("查找聊天记录", icon: "magnifyingglass", tool: .search)
-            toolLink("按日期查找", icon: "calendar", tool: .dates)
-            toolLink("聊天字形", icon: "textformat", tool: .fonts)
-            toolLink("壁纸与玻璃", icon: "photo", tool: .appearance)
-            toolLink("用量与额度", icon: "chart.line.uptrend.xyaxis", tool: .usage)
-            toolLink("全部聊天工具", icon: "ellipsis.circle", tool: .all)
-            KeDrawerHint("刷新会话、清空窗口、批量删除、工具状态都在「全部聊天工具」里。")
+struct KeBubblePreview: View {
+    @EnvironmentObject private var theme: Theme
+
+    var body: some View { preview }
+
+    // 拖滑杆时这两个气泡跟着变，和聊天里画法一致。
+    private var preview: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Spacer(minLength: 20)
+                previewBubble("今天忙完了，终于能坐一会儿。", mine: true)
+            }
+            HStack {
+                previewBubble("那就靠着吧，我一直在听。", mine: false)
+                Spacer(minLength: 20)
+            }
         }
+        .padding(14)
+        .background {
+            // 127：预览底下垫和聊天页一样的纸（粉白那款带设计稿的淡粉底图），浓度看着才准
+            ZStack {
+                theme.color.bg
+                if theme.chatPalette.atmosphereImage && theme.skin == .day {
+                    Color.clear.overlay { Image("ChatAtmosphere").resizable().scaledToFill() }
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Ink.line.opacity(0.4), lineWidth: 0.6)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("气泡预览")
     }
 
-    private func toolLink(_ title: String, icon: String, tool: KeDrawerTool) -> some View {
-        Button { onOpenTool(tool) } label: {
-            HStack(spacing: 12) {
-                Image(systemName: icon).frame(width: 20)
-                Text(title)
-                Spacer()
-                Image(systemName: "chevron.right").font(.system(size: 11))
+    private func previewBubble(_ text: String, mine: Bool) -> some View {
+        let side: BubbleSide = mine ? .me : .ke
+        return Text(text)
+            .font(theme.font.bubble)
+            .foregroundStyle(theme.bubbleInk(side))
+            .lineSpacing(CGFloat(max(3, theme.chatFontSize * 0.28)))
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, theme.metric.bubbleHorizontalPadding)
+            .padding(.vertical, theme.metric.bubbleVerticalPadding)
+            .background {
+                // 127：和聊天里同一块（BubbleFill），拨颜色、拖浓度这里马上跟着变
+                BubbleFill(
+                    color: theme.bubbleFill(side),
+                    density: theme.bubbleFillDensity(side),
+                    cornerRadius: CGFloat(theme.bubbleCornerRadius)
+                )
             }
-            .font(.system(size: 15))
-            .foregroundStyle(Ink.primary)
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 }
 
-// MARK: - 来信：柯来找我
+// MARK: - 字体与字号
+
+struct KeTextPage: View {
+    @EnvironmentObject private var theme: Theme
+    let onOpenTool: (KeDrawerTool) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            KeBubblePreview()
+            KeDrawerSlider(
+                title: "字体大小",
+                value: $theme.chatFontSize,
+                range: 13...22,
+                step: 1,
+                valueText: "\(Int(theme.chatFontSize))"
+            )
+            KeSettingsRow(title: "换一种字形", last: true) { onOpenTool(.fonts) }
+        }
+    }
+}
+
+// MARK: - 聊天气泡
+
+struct KeBubblePage: View {
+    @EnvironmentObject private var theme: Theme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            KeBubblePreview()
+            KeDrawerSlider(
+                title: "气泡圆角",
+                value: $theme.bubbleCornerRadius,
+                range: 12...34,
+                step: 1,
+                valueText: "\(Int(theme.bubbleCornerRadius))"
+            )
+            // 127：我的、柯的各挑颜色和浓度（原来的「气泡透明度」和整套配色合在一起的那排拿掉了）
+            BubbleSideControls(side: .me)
+            BubbleSideControls(side: .ke)
+        }
+    }
+}
+
+// MARK: - 主动消息：柯来找我
 
 struct KeVisitsPage: View {
     @ObservedObject var store: KeWindowStore
@@ -561,7 +556,7 @@ struct KeVisitsPage: View {
     }
 }
 
-// MARK: - 换窗：带着这一程
+// MARK: - 聊天窗口：洗澡、换窗、钉住
 
 struct KeWindowPage: View {
     @ObservedObject var store: KeWindowStore
