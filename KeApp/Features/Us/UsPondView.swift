@@ -28,6 +28,9 @@ struct UsPondView: View {
     /// 1116：她自己记的日程（看医生的号），存在这台手机上
     @ObservedObject private var events = CalendarEventStore.shared
     @State private var floating = false
+    /// 1116：横划换纪念日用的位移和翻牌角度
+    @State private var heroDrag: CGFloat = 0
+    @State private var heroFlip: Double = 0
     @State private var editDay: PondDay?
     @State private var open: PondEntry?
     @State private var choosingAnniversary = false
@@ -52,17 +55,19 @@ struct UsPondView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 // 10-31 她：最上面不要标题。右上那枚月牙是 RootTabView 画的，页面从它下面起
-                heroBlock.padding(.top, 40)
+                heroBlock.padding(.top, 28)
                 Rectangle().fill(Cool.line).frame(width: 28, height: 1)
-                    .frame(maxWidth: .infinity).padding(.top, 14)
+                    .frame(maxWidth: .infinity).padding(.top, 12)
                     .accessibilityHidden(true)
                 // 1116：一屏放下——月历常驻展开，翻月的箭头并进标题那一行
-                calendarHeader.padding(.top, 10)
+                calendarHeader.padding(.top, 8)
                 monthGrid
+                // 1116 她：日历下面空着一大块，把接下来几天的日程排在那儿（看医生的号、开会）
+                upcomingSection
             }
             .padding(.horizontal, 28)
             .padding(.top, 8)
-            .padding(.bottom, 12 + dockInset)
+            .padding(.bottom, 4 + dockInset)
         }
         .scrollIndicators(.hidden)
         .background(paper.ignoresSafeArea())
@@ -90,24 +95,30 @@ struct UsPondView: View {
         // 插画浮在右上，字照常从左排到右：插画在天数旁边，下面两行字从它底下过（不再跟插画抢同一行的宽度）
         ZStack(alignment: .topTrailing) {
             VStack(alignment: .leading, spacing: 0) {
-                if let a = hero {
-                    let n = numbers(a)
-                    // 106：点名字换成别的纪念日（还有几天、今天是……）
-                    Button { choosingAnniversary = true } label: {
-                        Text(eyebrow(a)).font(Cool.tiny()).tracking(2.2)
-                            .foregroundStyle(Cool.mauve)
-                            .frame(minHeight: 32).contentShape(Rectangle())
+                // 1116 她：左右转一下就能换日子（在一起、我的生日、柯的生日……），数字跟着转过去
+                Group {
+                    if let a = hero {
+                        let n = numbers(a)
+                        // 106：点名字换成别的纪念日（还有几天、今天是……）；1116 加了左右滑
+                        Button { choosingAnniversary = true } label: {
+                            Text(eyebrow(a)).font(Cool.tiny()).tracking(2.2)
+                                .foregroundStyle(Cool.mauve)
+                                .frame(minHeight: 32).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("换一个纪念日，现在是\(Self.shortName(a))")
+                        .accessibilityIdentifier("us-anniversary-pick")
+                        HStack(alignment: .lastTextBaseline, spacing: 6) {
+                            Text(n.number).font(Cool.didot(n.number == "今天" ? 34 : 46, .largeTitle))
+                                .foregroundStyle(Cool.number).lineLimit(1).minimumScaleFactor(0.6)
+                            Text(n.unit).font(Cool.song(12, .footnote)).foregroundStyle(Cool.secondary)
+                        }
+                        .accessibilityElement(children: .combine)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("换一个纪念日，现在是\(Self.shortName(a))")
-                    .accessibilityIdentifier("us-anniversary-pick")
-                    HStack(alignment: .lastTextBaseline, spacing: 6) {
-                        Text(n.number).font(Cool.didot(n.number == "今天" ? 34 : 46, .largeTitle))
-                            .foregroundStyle(Cool.number).lineLimit(1).minimumScaleFactor(0.6)
-                        Text(n.unit).font(Cool.song(12, .footnote)).foregroundStyle(Cool.secondary)
-                    }
-                    .accessibilityElement(children: .combine)
                 }
+                .offset(x: heroDrag * 0.16)
+                .rotation3DEffect(.degrees(heroFlip + Double(heroDrag) * 0.05),
+                                  axis: (x: 0, y: 1, z: 0), perspective: 0.6)
                 // 原型那两行：一句中文、一行斜体英文（她：留白克制，日期那行挪到纪念日面板里看）
                 Text(verseZh).font(Cool.song(12, .footnote)).tracking(0.6).lineSpacing(5).foregroundStyle(Cool.secondary)
                     .lineLimit(2).fixedSize(horizontal: false, vertical: true).padding(.top, 12)
@@ -121,10 +132,44 @@ struct UsPondView: View {
                 .opacity(0.92)
                 .accessibilityHidden(true)
         }
+        // 1116：整块都能划（插画上也行），不是只有字那一小块
+        .contentShape(Rectangle())
+        .highPriorityGesture(heroSwipe)
         // 小鱼轻轻浮着；系统开了「减弱动态效果」就不动
         .onAppear {
             guard !reduceMotion, !floating else { return }
             withAnimation(.easeInOut(duration: 3.4).repeatForever(autoreverses: true)) { floating = true }
+        }
+    }
+
+    /// 1116：横着划一下换纪念日；划过去、数字翻过去，松手回弹
+    private var heroSwipe: some Gesture {
+        DragGesture(minimumDistance: 16)
+            .onChanged { value in
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                heroDrag = value.translation.width
+            }
+            .onEnded { value in
+                let dx = value.translation.width
+                if abs(dx) > 44 { cycleAnniversary(dx < 0 ? 1 : -1) }
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) { heroDrag = 0 }
+            }
+    }
+
+    /// 1116：换到上/下一个纪念日——先转到侧面，换完再从另一侧转回来（像翻牌）
+    private func cycleAnniversary(_ step: Int) {
+        let list = vm.anniversaries
+        guard list.count > 1 else { return }
+        let index = list.firstIndex { $0.id == heroID } ?? 0
+        let next = list[(index + step + list.count) % list.count]
+        guard next.id != heroID else { return }
+        guard !reduceMotion else { heroID = next.id; return }
+        let edge: Double = step > 0 ? -1 : 1
+        withAnimation(.easeIn(duration: 0.15)) { heroFlip = 90 * edge }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            heroID = next.id
+            heroFlip = -90 * edge
+            withAnimation(.easeOut(duration: 0.22)) { heroFlip = 0 }
         }
     }
 
@@ -170,13 +215,79 @@ struct UsPondView: View {
         let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
         return LazyVGrid(columns: columns, spacing: 0) {
             ForEach(Self.weekdayNames, id: \.self) {
-                Text($0).font(Cool.tiny()).foregroundStyle(Cool.faint).frame(height: 22).accessibilityHidden(true)
+                Text($0).font(Cool.tiny()).foregroundStyle(Cool.faint).frame(height: 26).accessibilityHidden(true)
             }
             ForEach(Array(vm.monthCells(for: month).enumerated()), id: \.offset) { _, date in
-                if let date { dayCell(date) } else { Color.clear.frame(height: 48) }
+                if let date { dayCell(date) } else { Color.clear.frame(height: 50) }
             }
         }
         .padding(.horizontal, -6)
+    }
+
+    /// 格子里那行字：取标题前 4 个字，去掉尾巴上的标点和空格（「复诊 · 抽血」不至于只剩「复诊 ·」）
+    private static func cellLabel(_ event: CalendarEvent) -> String {
+        let head = String(event.title.trimmingCharacters(in: .whitespaces).prefix(4))
+        return head.trimmingCharacters(in: .whitespaces.union(.punctuationCharacters))
+    }
+
+    // MARK: 接下来（日历下面的日程行）
+
+    /// 1116 她：「提醒在下面，就是多几行，比如预约几号去哪里看医生挂号」。
+    /// 只列今天起最近的 6 条，按时间排；点一行还是打开那天的面板。
+    private var upcomingSection: some View {
+        let upcoming = Array(
+            events.events
+                .filter { $0.start >= Calendar.current.startOfDay(for: .now) }
+                .sorted { $0.start < $1.start }
+                .prefix(6)
+        )
+        return VStack(alignment: .leading, spacing: 0) {
+            // 1116 她：日历结束不写「接下来」，跟上面一样来一道短横线，下面直接排日程
+            Rectangle().fill(Cool.line).frame(width: 28, height: 1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 16)
+                .padding(.bottom, 10)
+                .accessibilityHidden(true)
+
+            if upcoming.isEmpty {
+                Text("还没有排日程。看医生的号、开会的日子，点日历上那天记下来，到点会响。")
+                    .font(Cool.song(12, .footnote)).tracking(0.4).lineSpacing(5)
+                    .foregroundStyle(Cool.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ForEach(upcoming) { event in upcomingRow(event) }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("us-upcoming")
+    }
+
+    private func upcomingRow(_ event: CalendarEvent) -> some View {
+        let c = Calendar.current
+        let monthDay = "\(c.component(.month, from: event.start)) 月 \(c.component(.day, from: event.start)) 日"
+        let weekday = Self.weekdayNames[(c.component(.weekday, from: event.start) + 5) % 7]
+        let time = event.start.formatted(.dateTime.hour().minute())
+        return HStack(alignment: .firstTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(monthDay).font(Cool.didot(15, .subheadline)).foregroundStyle(Cool.number).monospacedDigit()
+                Text("周\(weekday) \(time)").font(Cool.tiny()).foregroundStyle(Cool.faint)
+            }
+            .frame(width: 96, alignment: .leading)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(event.title).font(Cool.song(13, .subheadline)).foregroundStyle(Cool.ink)
+                    .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                if !event.note.isEmpty {
+                    Text(event.note).font(Cool.tiny()).foregroundStyle(Cool.secondary)
+                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .onTapGesture { editDay = PondDay(date: event.start) }
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("打开这一天")
     }
 
     private static func yearMonth(_ date: Date) -> String {
@@ -192,13 +303,13 @@ struct UsPondView: View {
         let anniversary = isAnniversary(date)
         let dayEvents = events.events(on: date)
         // 1116：没排班的那天，格子下面写第一个日程的名字（像苹果月历那样）；有班照旧写班
-        let shift = vm.shift(on: date).map { vm.shiftDisplay($0, on: date) } ?? dayEvents.first.map { String($0.title.prefix(4)) }
+        let shift = vm.shift(on: date).map { vm.shiftDisplay($0, on: date) } ?? dayEvents.first.map(Self.cellLabel)
         // 字调到很大时，班次只写第一个字（白 / 夜 / 休），七格不挤爆
         let shown = shift.map { typeSize >= .accessibility1 ? String($0.prefix(1)) : $0 }
         return Button {
             editDay = PondDay(date: date)
         } label: {
-            VStack(spacing: 3) {
+            VStack(spacing: 5) {
                 Text("\(Calendar.current.component(.day, from: date))")
                     .font(Cool.didot(17, .body)).monospacedDigit()
                     .foregroundStyle(isToday ? Cool.ink : Cool.number)
@@ -224,7 +335,7 @@ struct UsPondView: View {
                 Text(shown ?? " ").font(Cool.tiny()).tracking(0.5).lineLimit(1).minimumScaleFactor(0.7)
                     .foregroundStyle(Cool.secondary)
             }
-            .frame(maxWidth: .infinity, minHeight: 48)
+            .frame(maxWidth: .infinity, minHeight: 50)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
