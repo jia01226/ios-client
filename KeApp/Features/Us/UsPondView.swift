@@ -412,7 +412,9 @@ struct UsPondView: View {
         if countsDown(a) {
             // 生日按年循环（只看月日）；一次性的日子按真实日期倒数，隔一年以上也不会算少
             let left = isRecurring(a) ? vm.daysUntil(a) : vm.daysAhead(to: a.date)
-            let line = a.isYearly
+            let line = a.isLunar
+                ? "每年" + LunarDay.label(month: a.lunarMonth ?? 1, day: a.lunarDay ?? 1)
+                : a.isYearly
                 ? "每年 \(comps.month ?? 0) 月 \(comps.day ?? 0) 日"
                 : "\(comps.year ?? 0) 年 \(comps.month ?? 0) 月 \(comps.day ?? 0) 日"
             return left == 0 ? ("今天", "", "今天是" + Self.shortName(a), false) : ("\(left)", "天后", line, false)
@@ -474,7 +476,8 @@ struct UsPondView: View {
     private func isAnniversary(_ date: Date) -> Bool {
         let c = Calendar.current
         return vm.anniversaries.contains {
-            c.component(.month, from: $0.date) == c.component(.month, from: date) && c.component(.day, from: $0.date) == c.component(.day, from: date)
+            if let m = $0.lunarMonth, let d = $0.lunarDay { return LunarDay.matches(date, month: m, day: d) }
+            return c.component(.month, from: $0.date) == c.component(.month, from: date) && c.component(.day, from: $0.date) == c.component(.day, from: date)
         }
     }
 

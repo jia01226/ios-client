@@ -31,6 +31,10 @@ struct CompanionPages: View {
     @State private var calendarDeletionKind = "亲密"
     @State private var shiftDeletionDate = ""
     @State private var editingID: Int?
+    /// 11-17 她：「妈咪生日是农历，还有妹妹的」——加日子时可以按农历填
+    @State private var lunarDate = false
+    @State private var lunarMonth = 1
+    @State private var lunarDay = 1
     @State private var operationID = UUID().uuidString
     @State private var privateRecords: [RemotePrivateRecord] = []
     @State private var privateExpanded = false
@@ -228,15 +232,19 @@ struct CompanionPages: View {
             ForEach(anniversaries) { item in
                 VStack(alignment: .leading, spacing: 8) {
                     Text(item.name)
-                    Text(item.date).font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
+                    Text(item.lunar.map { "每年" + LunarDay.label(month: $0.month, day: $0.day) + "（下一次 \(item.date)）" } ?? item.date)
+                        .font(theme.font.caption).foregroundStyle(theme.pageColor.textSecondary)
                 }
                 .swipeActions {
                     Button("删除", role: .destructive) { pendingDeletion = item.id }
-                    Button("编辑") {
-                        editingID = item.id; title = item.name
-                        selectedDate = CompanionDate.parse(item.date) ?? .now
-                        operationID = UUID().uuidString; editing = true
-                    }.tint(theme.pageAccent)
+                    // 农历的日子改不成农历（只能按公历改），要改就删了重加
+                    if item.lunar == nil {
+                        Button("编辑") {
+                            editingID = item.id; title = item.name
+                            selectedDate = CompanionDate.parse(item.date) ?? .now
+                            operationID = UUID().uuidString; editing = true
+                        }.tint(theme.pageAccent)
+                    }
                 }
             }
             if anniversaries.isEmpty && !loading && error == nil { Text("还没有纪念日，点右上角添加") }
@@ -572,7 +580,22 @@ struct CompanionPages: View {
                         Text("亲密记录").tag("亲密")
                     }
                 }
-                if page == .calendar || page == .anniversaries {
+                if page == .anniversaries && editingID == nil {
+                    Toggle("农历", isOn: $lunarDate).tint(theme.pageAccent)
+                }
+                if page == .anniversaries && lunarDate && editingID == nil {
+                    Picker("农历月份", selection: $lunarMonth) {
+                        ForEach(1...12, id: \.self) { Text(LunarDay.months[$0 - 1] + "月").tag($0) }
+                    }
+                    Picker("农历日子", selection: $lunarDay) {
+                        ForEach(1...30, id: \.self) { Text(LunarDay.dayName($0)).tag($0) }
+                    }
+                    if let next = LunarDay.next(month: lunarMonth, day: lunarDay, from: .now) {
+                        Text("下一次是 " + next.formatted(.dateTime.year().month().day().locale(Locale(identifier: "zh_CN")))
+                             + "，以后每年按" + LunarDay.label(month: lunarMonth, day: lunarDay) + "算")
+                            .foregroundStyle(theme.pageColor.textSecondary)
+                    }
+                } else if page == .calendar || page == .anniversaries {
                     DatePicker("日期", selection: $selectedDate, displayedComponents: .date)
                         .environment(\.timeZone, CompanionDate.calendar.timeZone)
                 }
@@ -683,6 +706,12 @@ struct CompanionPages: View {
             switch page {
             case .anniversaries:
                 if let editingID { try await api.editAnniversary(id: editingID, name: title, date: dateKey, operationID: operationID) }
+                else if lunarDate {
+                    let solar = LunarDay.upcoming(month: lunarMonth, day: lunarDay)
+                    try await api.addAnniversary(name: title, date: solar.first ?? dateKey,
+                                                 lunar: ["month": lunarMonth, "day": lunarDay, "solar": solar])
+                    lunarDate = false
+                }
                 else { try await api.addAnniversary(name: title, date: dateKey) }
             case .calendar:
                 if recordType == "排班" { try await api.setShift(date: dateKey, shift: title, note: content) }

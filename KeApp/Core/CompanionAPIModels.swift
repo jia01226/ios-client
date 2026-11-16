@@ -6,6 +6,13 @@ struct RemoteAnniversary: Decodable, Identifiable, Sendable {
     let date: String
     let emoji: String?
     let days: Int?
+    /// 11-17 农历的日子（妈咪、妹妹的生日）：农历几月几号；date 是下一次落在公历的那天
+    let lunar: RemoteLunar?
+
+    struct RemoteLunar: Decodable, Sendable {
+        let month: Int
+        let day: Int
+    }
 }
 
 struct RemoteSchedule: Decodable, Sendable {

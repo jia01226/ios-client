@@ -316,6 +316,11 @@ struct Anniversary: Identifiable, Hashable, Codable {
     let title: String
     let date: Date
     var isYearly: Bool = true
+    /// 11-17 农历的生日：每年按农历几月几号过（date 只是下一次的公历日子）
+    var lunarMonth: Int?
+    var lunarDay: Int?
+
+    var isLunar: Bool { lunarMonth != nil && lunarDay != nil }
 }
 
 /// 排班。

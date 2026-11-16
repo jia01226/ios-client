@@ -340,6 +340,9 @@ final class UsViewModel: ObservableObject {
         guard let date = ymd.count == 3
             ? Calendar.current.date(from: DateComponents(year: ymd[0], month: ymd[1], day: ymd[2]))
             : CompanionDate.parse(row.date) else { return nil }
+        if let lunar = row.lunar {
+            return Anniversary(id: id, title: row.name, date: date, isYearly: true, lunarMonth: lunar.month, lunarDay: lunar.day)
+        }
         return Anniversary(id: id, title: row.name, date: date, isYearly: row.name.contains("生日"))
     }
 
@@ -370,6 +373,11 @@ final class UsViewModel: ObservableObject {
 
     func daysUntil(_ item: Anniversary) -> Int {
         let today = calendar.startOfDay(for: .now)
+        // 11-17 农历的生日：今年（或明年）农历那天落在公历哪天
+        if let m = item.lunarMonth, let d = item.lunarDay {
+            guard let next = LunarDay.next(month: m, day: d, from: today) else { return 0 }
+            return max(0, calendar.dateComponents([.day], from: today, to: next).day ?? 0)
+        }
         var components = calendar.dateComponents([.month, .day], from: item.date)
         components.year = calendar.component(.year, from: today)
         var target = calendar.date(from: components) ?? item.date

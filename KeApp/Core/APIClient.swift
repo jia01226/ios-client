@@ -1153,8 +1153,11 @@ actor APIClient {
     /// 抽屉：柯手边在跑什么活，让她自己看见，不用只听他说。
     func fetchWorkDrawer() async throws -> WorkDrawer { try await readResource("/api/work/drawer") }
 
-    func addAnniversary(name: String, date: String, emoji: String = "💞") async throws {
-        try await writeResource("/api/anniversaries", body: ["name": name, "date": date, "emoji": emoji])
+    /// lunar：农历的日子带上 {"month","day","solar":[以后每年落在公历的那天]}——服务器不做农历换算，柯从 solar 里看
+    func addAnniversary(name: String, date: String, emoji: String = "💞", lunar: [String: Any]? = nil) async throws {
+        var body: [String: Any] = ["name": name, "date": date, "emoji": emoji]
+        if let lunar { body["lunar"] = lunar }
+        try await writeResource("/api/anniversaries", body: body)
     }
 
     func deleteAnniversary(id: Int) async throws {
