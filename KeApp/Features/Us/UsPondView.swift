@@ -55,12 +55,12 @@ struct UsPondView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 // 10-31 她：最上面不要标题。右上那枚月牙是 RootTabView 画的，页面从它下面起
-                heroBlock.padding(.top, 8)
+                heroBlock.padding(.top, 0)
                 Rectangle().fill(Cool.line).frame(width: 28, height: 1)
-                    .frame(maxWidth: .infinity).padding(.top, 12)
+                    .frame(maxWidth: .infinity).padding(.top, 8)
                     .accessibilityHidden(true)
                 // 1116：一屏放下——月历常驻展开，翻月的箭头并进标题那一行
-                calendarHeader.padding(.top, 8)
+                calendarHeader.padding(.top, 6)
                 monthGrid
                 // 1116 她：日历下面空着一大块，把接下来几天的日程排在那儿（看医生的号、开会）
                 upcomingSection
@@ -121,9 +121,9 @@ struct UsPondView: View {
                                   axis: (x: 0, y: 1, z: 0), perspective: 0.6)
                 // 原型那两行：一句中文、一行斜体英文（她：留白克制，日期那行挪到纪念日面板里看）
                 Text(verseZh).font(Cool.song(12, .footnote)).tracking(0.6).lineSpacing(5).foregroundStyle(Cool.secondary)
-                    .lineLimit(2).fixedSize(horizontal: false, vertical: true).padding(.top, 12)
+                    .lineLimit(2).fixedSize(horizontal: false, vertical: true).padding(.top, 10)
                 Text(verseEn.lowercased()).font(Cool.didotItalic(12, .footnote)).tracking(0.4).lineSpacing(3).foregroundStyle(Cool.faint)
-                    .lineLimit(2).fixedSize(horizontal: false, vertical: true).padding(.top, 9)
+                    .lineLimit(2).fixedSize(horizontal: false, vertical: true).padding(.top, 7)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Image("UsFishCamellia").resizable().scaledToFit()
