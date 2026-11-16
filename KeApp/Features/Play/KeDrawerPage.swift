@@ -7,6 +7,8 @@ import SwiftUI
 struct KeDrawerPage: View {
     let line: ChatLine
     var onClose: () -> Void
+    /// 1116 她：抽屉挪进日记，跟「日记 · 夜里」并排成第三栏。嵌在日记里时不画自己的标题、底色和滚动，只画那一叠东西
+    var embedded = false
     @AppStorage(CamelliaPalette.storageKey) private var savedPalette = CamelliaPalette.defaultPalette.rawValue
     @State private var items: [RemoteDrawer.Item] = KeDrawerPage.cache
     @State private var sealed = KeDrawerPage.cacheSealed
@@ -46,11 +48,60 @@ struct KeDrawerPage: View {
     private var shown: [RemoteDrawer.Item] { items.filter(shelf.holds) }
 
     var body: some View {
+        if embedded {
+            LazyVStack(alignment: .leading, spacing: 14) { content }
+                .padding(.top, 10)
+                .foregroundStyle(Ink.primary)
+                .task { await load() }
+                .sheet(item: $zoom) { item in
+                    zoomCard(item).presentationDetents([.medium]).presentationBackground(paper)
+                }
+        } else {
+            page
+        }
+    }
+
+    private var page: some View {
         ZStack {
             paper.ignoresSafeArea()
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
                     header
+                    content
+                }
+                .padding(.horizontal, 22)
+            }
+            .scrollIndicators(.hidden)
+            .refreshable { await load() }
+            if let zoom, PixelArt(json: zoom.content) != nil {
+                ZStack {
+                    Color.black.opacity(0.35).ignoresSafeArea().onTapGesture { self.zoom = nil }
+                    zoomCard(zoom)
+                        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(paper))
+                        .padding(28)
+                        .onTapGesture { self.zoom = nil }
+                        .accessibilityAddTraits(.isModal)
+                }
+                // 118：放大的小画开着时，右划先收小画，抽屉还在
+                .swipeBackLayer { self.zoom = nil }
+            }
+        }
+        .foregroundStyle(Ink.primary)
+        .task { await load() }
+    }
+
+    @ViewBuilder private func zoomCard(_ item: RemoteDrawer.Item) -> some View {
+        if let art = PixelArt(json: item.content) {
+            VStack(spacing: 14) {
+                PixelArtView(art: art).frame(maxWidth: 320, maxHeight: 320)
+                if !item.title.isEmpty { Text(item.title).font(Ink.song(17)) }
+                Text(Self.dateLine(item)).font(Ink.latin(12)).foregroundStyle(Ink.secondary)
+            }
+            .padding(24)
+        }
+    }
+
+    @ViewBuilder private var content: some View {
                     if loading && items.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(40) }
                     if failed && items.isEmpty {
                         Button("抽屉暂时没打开，点这里再试一次") { Task { await load() } }
@@ -73,31 +124,6 @@ struct KeDrawerPage: View {
                         Text("— 抽屉底了 —").font(Ink.song(11.5)).foregroundStyle(Ink.secondary)
                             .frame(maxWidth: .infinity).padding(.vertical, 22)
                     }
-                }
-                .padding(.horizontal, 22)
-            }
-            .scrollIndicators(.hidden)
-            .refreshable { await load() }
-            if let zoom, let art = PixelArt(json: zoom.content) {
-                ZStack {
-                    Color.black.opacity(0.35).ignoresSafeArea().onTapGesture { self.zoom = nil }
-                    VStack(spacing: 14) {
-                        PixelArtView(art: art).frame(maxWidth: 320, maxHeight: 320)
-                        if !zoom.title.isEmpty { Text(zoom.title).font(Ink.song(17)) }
-                        Text(Self.dateLine(zoom)).font(Ink.latin(12)).foregroundStyle(Ink.secondary)
-                    }
-                    .padding(24)
-                    .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(paper))
-                    .padding(28)
-                    .onTapGesture { self.zoom = nil }
-                    .accessibilityAddTraits(.isModal)
-                }
-                // 118：放大的小画开着时，右划先收小画，抽屉还在
-                .swipeBackLayer { self.zoom = nil }
-            }
-        }
-        .foregroundStyle(Ink.primary)
-        .task { await load() }
     }
 
     private var header: some View {
