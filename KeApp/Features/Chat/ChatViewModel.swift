@@ -810,6 +810,15 @@ final class ChatViewModel: ObservableObject {
         await recoverActiveJobsIfNeeded()
     }
 
+    /// 1116 她：「消息每次推送过来了，但是显示不出来，得过会或者退出重启」。
+    /// 回前台的接回（resumeFromForeground）在上一轮回复的任务还挂着时会整个跳过，连记录都不拉，
+    /// 要等那个任务自己结束——推送来的那句就一直不出来。收到推送、点推送、回前台时先单独拉一次记录：
+    /// 合并会保留本机正在写的那条，不影响接回。
+    func refreshAfterWake() async {
+        guard phase == .ready, sessionID != nil, !isLoadingHistory else { return }
+        await refreshHistory(showFailure: false)
+    }
+
     func retryHistory() async {
         await resumeFromForeground(forceReconnect: true, userInitiated: true)
     }

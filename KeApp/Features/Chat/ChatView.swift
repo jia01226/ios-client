@@ -195,16 +195,17 @@ struct ChatView: View {
                 presence.didEnterBackground()
             case .active:
                 presence.didBecomeActive()
-                Task { await vm.resumeFromForeground() }
+                // 1116 她：推送来了点进去显示不出来，要等一会或重开——回前台先拉一次记录，不等回复那条线
+                Task { await vm.refreshAfterWake(); await vm.resumeFromForeground() }
             @unknown default: break
             }
         }
         .onChange(of: chatNotifications.openRequest) { _, _ in
-            Task { await vm.resumeFromForeground(forceReconnect: true) }
+            Task { await vm.refreshAfterWake(); await vm.resumeFromForeground(forceReconnect: true) }
         }
         // 137：开着 App 时来了推送：不打断正在回的那句，只是空着时拉一次记录
         .onChange(of: chatNotifications.incoming) { _, _ in
-            Task { await vm.resumeFromForeground() }
+            Task { await vm.refreshAfterWake(); await vm.resumeFromForeground() }
         }
         // 137：没发稳的那句放回输入框——她已经在打下一句了就不动
         .onChange(of: vm.restoredDraft) { _, restored in
