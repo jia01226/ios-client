@@ -21,10 +21,13 @@ struct MemoryFlower: Decodable, Identifiable, Equatable, Sendable {
     let group: String?
     /// 129：她的事变了，「以前……，现在……」
     let changed: String?
+    /// 1116：从哪来的；"menu" 是食单照进来的星（真身在小本子，这里不能改文字、不能熄灭）
+    let source: String?
+    var isFromMenu: Bool { source == "menu" }
 
     enum CodingKeys: String, CodingKey {
         case id, title, body, quotes, occurred_at, written_at, category, importance, valence
-        case last_recalled_at, recall_count, state, author, loved, group, changed
+        case last_recalled_at, recall_count, state, author, loved, group, changed, source
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -45,6 +48,7 @@ struct MemoryFlower: Decodable, Identifiable, Equatable, Sendable {
         loved = try c.decodeIfPresent(Bool.self, forKey: .loved) ?? false
         group = try c.decodeIfPresent(String.self, forKey: .group)
         changed = try c.decodeIfPresent(String.self, forKey: .changed)
+        source = try c.decodeIfPresent(String.self, forKey: .source)
     }
     var isDrawable: Bool { ["bloom", "bud", "fallen"].contains(state) }
 }
@@ -57,6 +61,15 @@ struct MemoryGardenPage: Decodable, Sendable {
 protocol MemoryGardenAPI: Sendable {
     func memoryGarden() async throws -> MemoryGardenPage
     func changeMemoryFlower(id: String, action: String, note: String?, loved: Bool?) async throws
+    /// 1116 她：「记忆我也能改」——标题、正文、换到别的星团（nil 的不改）
+    func editMemoryFlower(id: String, title: String?, body: String?, group: String?) async throws
+}
+
+extension MemoryGardenAPI {
+    /// 测试里的假接口没实现就当改不了
+    func editMemoryFlower(id: String, title: String?, body: String?, group: String?) async throws {
+        throw APIError.invalidResponse
+    }
 }
 extension APIClient: MemoryGardenAPI {}
 
@@ -96,6 +109,22 @@ extension APIClient: MemoryGardenAPI {}
         loaded = true
         Self.cache = (flowers, categories)
     }
+    /// 1116 她：改一颗——标题、正文、换团。服务器收下了才刷新，没收下就原样不动
+    @discardableResult func edit(_ flower: MemoryFlower, title: String?, body: String?, group: String?) async -> Bool {
+        guard !busy, !loading, !flower.isFromMenu else { return false }
+        busy = true
+        defer { busy = false }
+        do {
+            try await api.editMemoryFlower(id: flower.id, title: title, body: body, group: group)
+        } catch {
+            self.error = "没有改成，这颗还是原来的样子。请重试。"
+            return false
+        }
+        do { try await refresh(); error = nil }
+        catch { self.error = "已经改好了，星河还没刷新成功。请稍后重试。" }
+        return true
+    }
+
     @discardableResult func change(_ flower: MemoryFlower, action: String, note: String? = nil) async -> Bool {
         guard !busy, !loading else { return false }
         busy = true

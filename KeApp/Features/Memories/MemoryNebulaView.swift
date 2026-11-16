@@ -322,6 +322,14 @@ struct MemoryNebulaView: View {
     @State private var search = ""
     @State private var dimmedOpen = false
     @State private var correcting: MemoryFlower?
+    /// 1116 她：「记忆我也能改」——正在改的那颗和草稿
+    @State private var editing: MemoryFlower?
+    @State private var editTitle = ""
+    @State private var editBody = ""
+    @State private var editGroup = ""
+    /// 1116：列表按时间筛（0 全部 / 14 / 30 天），按重要度还是按时间排
+    @State private var listDays = 0
+    @State private var listByImportance = false
     @State private var note = ""
     @State private var visible = false
     @State private var arts: [NebulaKind: NebulaArt] = Self.readyArts()
@@ -341,7 +349,9 @@ struct MemoryNebulaView: View {
     /// 136：第七团「关于她」和日常吃喝并排在最上面
     private static let spots: [(NebulaKind, CGFloat, CGFloat)] = [(.pleiades, 0.27, 0.10), (NebulaGroup.about.kind, 0.73, 0.10),
                                                                   (.orion, 0.22, 0.40), (.sombrero, 0.78, 0.40),
-                                                                  (.heart, 0.24, 0.85), (.horsehead, 0.76, 0.85), (.whirlpool, 0.5, 0.57)]
+                                                                  (.heart, 0.24, 0.85), (.horsehead, 0.76, 0.85), (.whirlpool, 0.5, 0.57),
+                                                                  // 1116：第八团「他学会的」放在上面两团中间偏下（位置等模拟器里看过再微调）
+                                                                  (.lessons, 0.5, 0.25)]
 
     private static func readyArts() -> [NebulaKind: NebulaArt] {
         var out: [NebulaKind: NebulaArt] = [:]
@@ -420,6 +430,7 @@ struct MemoryNebulaView: View {
         .onChange(of: selectedID) { _, id in focus(id) }
         .sheet(isPresented: $listOpen) { memoryList }
         .sheet(isPresented: $dimmedOpen) { dimmedList }
+        .sheet(item: $editing) { flower in editSheet(flower) }
         .confirmationDialog("亲密时刻", isPresented: $askUnlock, titleVisibility: .visible) {
             Button("打开这一团") { privateOpen = true; if let g = NebulaGroup.all.first(where: { $0.kind == .heart }) { enter(g) } }
             Button("先不看", role: .cancel) {}
@@ -466,7 +477,8 @@ struct MemoryNebulaView: View {
                 ForEach(Self.spots, id: \.0) { spot in
                     if let g = NebulaGroup.all.first(where: { $0.kind == spot.0 }) {
                         let big = spot.0 == .whirlpool
-                        nebulaLabel(g, box: w * (big ? 0.54 : 0.44))
+                        // 1116：第八团挤在上面两团中间，画小一号
+                        nebulaLabel(g, box: w * (big ? 0.54 : spot.0 == .lessons ? 0.34 : 0.44))
                             .position(x: spot.1 * w, y: top + spot.2 * mapH)
                             .zIndex(big ? 2 : 1)
                     }
@@ -671,7 +683,11 @@ struct MemoryNebulaView: View {
                 Text("已收好").font(.custom("NotoSerifSC-Regular", size: 23, relativeTo: .title2)).padding(.vertical, 8)
                 Button("打开这一团") { askUnlock = true }.font(.system(size: 14)).frame(minHeight: 44)
             } else {
-                Text(flower.title).font(.custom("NotoSerifSC-Regular", size: 23, relativeTo: .title2)).padding(.top, 2).padding(.bottom, 12)
+                Text(flower.title).font(.custom("NotoSerifSC-Regular", size: 23, relativeTo: .title2)).padding(.top, 2).padding(.bottom, 6)
+                // 1116：重要度、情绪、想起过几次，一行小字
+                Text(Self.statsLine(flower)).font(.system(size: 11)).tracking(0.6).foregroundStyle(Self.muted)
+                    .padding(.bottom, 12)
+                    .accessibilityIdentifier("memory-stats")
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         if let changed = flower.changed, !changed.isEmpty {
@@ -693,7 +709,7 @@ struct MemoryNebulaView: View {
                 HStack {
                     Text(Self.dateText(flower)).font(.system(size: 11)).foregroundStyle(Self.muted)
                     Spacer()
-                    Text(flower.author == "ke" ? "✦ 柯亲手记下" : "以前整理的").font(.system(size: 11)).foregroundStyle(Self.muted)
+                    Text(flower.isFromMenu ? "从食单来的" : flower.author == "ke" ? "✦ 柯亲手记下" : "以前整理的").font(.system(size: 11)).foregroundStyle(Self.muted)
                 }
                 .padding(.top, 14)
                 Button { Task { await store.change(flower, action: "love") } } label: {
@@ -719,10 +735,21 @@ struct MemoryNebulaView: View {
                     }
                     .font(.system(size: 13)).frame(minHeight: 44).padding(.top, 6)
                 }
-                Button("记错了") { note = ""; correcting = flower }
+                if flower.isFromMenu {
+                    Text("食单里的，要改跟柯说一声，他在小本子里改").font(.system(size: 12)).foregroundStyle(Self.muted)
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                } else {
+                    HStack {
+                        // 1116 她：「记忆我也能改」
+                        Button("改一改") { beginEdit(flower) }
+                            .accessibilityIdentifier("memory-edit")
+                        Spacer()
+                        Button("记错了") { note = ""; correcting = flower }
+                            .accessibilityIdentifier("memory-correct")
+                    }
                     .font(.system(size: 12)).foregroundStyle(Self.muted)
                     .frame(maxWidth: .infinity, minHeight: 36)
-                    .accessibilityIdentifier("memory-correct")
+                }
             }
             if let error = store.error { Text(error).font(.system(size: 12)).foregroundStyle(Self.muted) }
         }
@@ -737,7 +764,11 @@ struct MemoryNebulaView: View {
     // MARK: 列表（能搜）
 
     private var memoryList: some View {
-        let pool: [MemoryFlower] = (listAll || current == nil) ? shown.reversed() : members(current!.name).reversed()
+        let base: [MemoryFlower] = (listAll || current == nil) ? shown.reversed() : members(current!.name).reversed()
+        // 1116：按时间筛（近 14 / 30 天，看发生的那天），再按重要度或时间排
+        let cutoff = listDays == 0 ? "" : Self.dayKey(Calendar.current.date(byAdding: .day, value: -listDays, to: .now) ?? .now)
+        let ranged = cutoff.isEmpty ? base : base.filter { String(($0.occurred_at ?? $0.written_at ?? "").prefix(10)) >= cutoff }
+        let pool = listByImportance ? ranged.sorted { $0.importance > $1.importance } : ranged
         let term = search.trimmingCharacters(in: .whitespaces).lowercased()
         let rows = pool.filter { f in
             let g = NebulaGroup.groupName(for: f)
@@ -748,6 +779,13 @@ struct MemoryNebulaView: View {
         }
         return NavigationStack {
             List {
+                Picker("时间", selection: $listDays) {
+                    Text("全部").tag(0)
+                    Text("近 14 天").tag(14)
+                    Text("近 30 天").tag(30)
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("memory-list-range")
                 Text(rows.isEmpty ? "没有找到，换一个词试试。" : "\(rows.count) 颗\(privateOpen ? "" : " · 亲密的保持收好")")
                     .font(.caption).foregroundStyle(.secondary)
                 ForEach(rows.prefix(400)) { flower in
@@ -769,7 +807,13 @@ struct MemoryNebulaView: View {
             .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "找一句话、一件小事…")
             .navigationTitle(listAll || current == nil ? "所有记忆" : current!.name)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { listOpen = false } } }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(listByImportance ? "按重要度" : "按时间") { listByImportance.toggle() }
+                        .accessibilityIdentifier("memory-list-sort")
+                }
+                ToolbarItem(placement: .confirmationAction) { Button("完成") { listOpen = false } }
+            }
         }
         .presentationDetents([.medium, .large])
         .environment(\.colorScheme, .dark)
@@ -863,6 +907,72 @@ struct MemoryNebulaView: View {
             try? await Task.sleep(for: .seconds(4.5))
             withAnimation(.easeIn(duration: 0.9)) { toast = nil }
         }
+    }
+
+    // MARK: 1116 改一颗
+
+    private func beginEdit(_ flower: MemoryFlower) {
+        editTitle = flower.title
+        editBody = flower.body
+        let g = NebulaGroup.groupName(for: flower)
+        editGroup = NebulaGroup.named(g) != nil ? g : NebulaGroup.about.name
+        editing = flower
+    }
+
+    private func editSheet(_ flower: MemoryFlower) -> some View {
+        NavigationStack {
+            Form {
+                Section("标题") {
+                    TextField("一句话", text: $editTitle).accessibilityIdentifier("memory-edit-title")
+                }
+                Section("正文") {
+                    TextEditor(text: $editBody).frame(minHeight: 180).accessibilityIdentifier("memory-edit-body")
+                }
+                Section {
+                    Picker("放在哪一团", selection: $editGroup) {
+                        ForEach(NebulaGroup.all) { Text($0.name).tag($0.name) }
+                    }
+                } footer: {
+                    Text("改的就是柯记着的这一份，他再想起来就是你改过的样子。")
+                }
+                if let error = store.error { Text(error).font(.footnote).foregroundStyle(.secondary) }
+            }
+            .navigationTitle("改一改").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { editing = nil } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") {
+                        let title = editTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let body = editBody.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let oldGroup = NebulaGroup.groupName(for: flower)
+                        // 「关于她」在服务器那边还叫「背景」
+                        let group = editGroup == oldGroup ? nil : (editGroup == NebulaGroup.about.name ? NebulaGroup.background : editGroup)
+                        Task {
+                            if await store.edit(flower, title: title == flower.title ? nil : title,
+                                                body: body == flower.body ? nil : body, group: group) {
+                                editing = nil
+                            }
+                        }
+                    }
+                    .disabled(store.busy || editTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                              || editBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier("memory-edit-save")
+                }
+            }
+        }
+        .environment(\.colorScheme, .dark)
+    }
+
+    /// 重要度、情绪、想起过几次
+    static func statsLine(_ flower: MemoryFlower) -> String {
+        let mood = flower.valence >= 0.62 ? "偏开心" : flower.valence <= 0.38 ? "偏难过" : "平平的"
+        let recall = flower.recall_count > 0 ? " · 想起过 \(flower.recall_count) 次" : ""
+        return "重要度 \(flower.importance) · \(mood)\(recall)"
+    }
+
+    static func dayKey(_ date: Date) -> String {
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
 
     static func dateText(_ flower: MemoryFlower) -> String {

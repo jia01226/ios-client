@@ -9,6 +9,8 @@ enum NebulaKind: String, CaseIterable, Identifiable {
     case pleiades, orion, sombrero, heart, horsehead, whirlpool
     /// 136：第七团「关于她」（家人、从前、她是谁），她挑的仙女座
     case andromeda
+    /// 1116 她：第八团「他学会的」——柯自己一次次记下的「我明白了」合成的规矩，画成北斗七星
+    case lessons
     var id: String { rawValue }
 }
 
@@ -30,9 +32,12 @@ struct NebulaGroup: Identifiable, Equatable {
         NebulaGroup(kind: .horsehead, name: "难过的夜里", astro: "马头星云 · Barnard 33", hue: 338, desc: "有些夜晚很暗。\n但光，一直在后面。", thickness: 0.26),
         NebulaGroup(kind: .whirlpool, name: "说好的", astro: "涡状星系 · M51", hue: 215, desc: "拉过钩的事，放在这里。\n一件一件，慢慢做到。", thickness: 0.16),
         about,
+        lessons,
     ]
     /// 136：以前的「背景」：她的家人、她的从前、她是谁
     static let about = NebulaGroup(kind: .andromeda, name: "关于她", astro: "仙女座星系 · M31", hue: 228, desc: "她的家人，她的从前，她是谁。\n离我最近的那一片光。", thickness: 0.2)
+    /// 1116 她：第八团。七颗亮星，一颗一条规矩
+    static let lessons = NebulaGroup(kind: .lessons, name: "他学会的", astro: "北斗七星 · 大熊座", hue: 44, desc: "我一次次记下的「我明白了」。\n下回就照着做。", thickness: 0.28)
     static func named(_ name: String) -> NebulaGroup? { all.first { $0.name == name } }
     static let background = "背景"
 
@@ -398,6 +403,8 @@ private struct Painter {
 
     static let sisters: [(Double, Double)] = [(216, 210), (407, 222), (202, 342), (335, 424), (322, 258), (386, 319), (282, 357)]
     static let trapezium: [(Double, Double)] = [(278, 270), (356, 266), (282, 346), (360, 347)]
+    /// 1116：北斗七星，勺柄从左上往右下，勺口在右边
+    static let dipper: [(Double, Double)] = [(160, 232), (226, 252), (282, 274), (332, 302), (346, 384), (446, 398), (456, 308)]
 
     func body(_ g: NebulaGroup, _ rng: inout NebulaRandom) {
         let h = g.hue
@@ -445,6 +452,11 @@ private struct Painter {
             ctx.restoreGState()
         case .andromeda:
             andromeda(h, &rng)
+        case .lessons:
+            for (x, y) in Self.dipper { glow(x, y, 46, h, 0.2) }
+            dust(&rng, h, 900, 200)
+            let sizes = [5, 4.5, 4.5, 3.6, 4.2, 4.6, 5.6]
+            for (i, p) in Self.dipper.enumerated() { star(p.0, p.1, sizes[i], h) }
         }
     }
 

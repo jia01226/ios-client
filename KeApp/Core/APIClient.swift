@@ -869,6 +869,21 @@ actor APIClient {
         try await readResource("/api/memory/garden")
     }
 
+    /// 1116：改一颗记忆（标题、正文、换团），nil 的不传
+    func editMemoryFlower(id: String, title: String?, body: String?, group: String?) async throws {
+        guard !id.isEmpty, !id.contains("/"), id != ".", id != "..", !id.hasPrefix("meal-") else {
+            throw APIError.invalidResponse
+        }
+        var request = try makeRequest(path: "/api/memory/garden/\(id)/edit", method: "POST")
+        var payload: [String: Any] = [:]
+        if let title { payload["title"] = title }
+        if let body { payload["body"] = body }
+        if let group { payload["group"] = group }
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        _ = try await perform(request)
+    }
+
     func changeMemoryFlower(id: String, action: String, note: String?, loved: Bool?) async throws {
         guard ["wither", "revive", "love"].contains(action),
               !id.isEmpty, !id.contains("/"), id != ".", id != ".." else {

@@ -16,8 +16,26 @@ final class MemoryNebulaTests: XCTestCase {
     }
 
     func testSixGroupsWithPromisesInTheMiddle() {
-        XCTAssertEqual(NebulaGroup.all.map(\.name), ["日常吃喝", "身体和药", "以后的家", "亲密时刻", "难过的夜里", "说好的", "关于她"])
+        XCTAssertEqual(NebulaGroup.all.map(\.name), ["日常吃喝", "身体和药", "以后的家", "亲密时刻", "难过的夜里", "说好的", "关于她", "他学会的"])
         XCTAssertEqual(NebulaGroup.named("说好的")?.kind, .whirlpool)
+        XCTAssertEqual(NebulaGroup.named("他学会的")?.kind, .lessons)
+    }
+
+    /// 1116：服务器分到「他学会的」的那几颗进第八团；食单照进来的星认得出来、不能改
+    func testLessonsGroupAndMenuStars() throws {
+        let lesson = try flower(#"{"id":"l","title":"先哄，再讲理","body":"b","state":"bloom","author":"ke","group":"他学会的","importance":8,"valence":0.7,"recall_count":3}"#)
+        XCTAssertEqual(NebulaGroup.groupName(for: lesson), "他学会的")
+        XCTAssertFalse(lesson.isFromMenu)
+        XCTAssertEqual(MemoryNebulaView.statsLine(lesson), "重要度 8 · 偏开心 · 想起过 3 次")
+        let meal = try flower(#"{"id":"meal-75","title":"拌水果","body":"在夜市，好吃","state":"bud","author":"ke","group":"日常吃喝","source":"menu"}"#)
+        XCTAssertTrue(meal.isFromMenu)
+        XCTAssertEqual(NebulaGroup.groupName(for: meal), "日常吃喝")
+        XCTAssertEqual(MemoryNebulaView.statsLine(meal), "重要度 1 · 平平的")
+    }
+
+    func testLessonsNebulaPaintsAndSeatsStars() {
+        let s = NebulaArt.art(.lessons).seat(for: "lesson-1", thickness: 0.28)
+        XCTAssertLessThanOrEqual(abs(s.x), 1); XCTAssertLessThanOrEqual(abs(s.y), 1)
     }
 
     func testSeatDependsOnlyOnTheMemoryAndSitsInsideTheNebula() {
