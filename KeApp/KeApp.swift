@@ -68,6 +68,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didReceive response: UNNotificationResponse
     ) async {
         guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
+        // 1116：她自己记的日程提醒（看医生的号，见 CalendarEventStore）只是打开 App，不跳去聊天
+        if response.notification.request.identifier.hasPrefix("ke.appt.") { return }
         await MainActor.run { ChatNotificationCoordinator.shared.openChat() }
     }
 
