@@ -30,7 +30,6 @@ struct UsPondView: View {
     @State private var floating = false
     /// 1116：横划换纪念日用的位移和翻牌角度
     @State private var heroDrag: CGFloat = 0
-    @State private var heroFlip: Double = 0
     @State private var editDay: PondDay?
     @State private var open: PondEntry?
     @State private var choosingAnniversary = false
@@ -103,6 +102,7 @@ struct UsPondView: View {
                         Button { choosingAnniversary = true } label: {
                             Text(eyebrow(a)).font(Cool.tiny()).tracking(2.2)
                                 .foregroundStyle(Cool.mauve)
+                                .contentTransition(.interpolate)
                                 .frame(minHeight: 32).contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -111,14 +111,16 @@ struct UsPondView: View {
                         HStack(alignment: .lastTextBaseline, spacing: 6) {
                             Text(n.number).font(Cool.didot(n.number == "今天" ? 34 : 46, .largeTitle))
                                 .foregroundStyle(Cool.number).lineLimit(1).minimumScaleFactor(0.6)
+                                .monospacedDigit()
+                                .contentTransition(.numericText(value: Double(n.number) ?? 0))
                             Text(n.unit).font(Cool.song(12, .footnote)).foregroundStyle(Cool.secondary)
+                                .contentTransition(.interpolate)
                         }
                         .accessibilityElement(children: .combine)
                     }
                 }
-                .offset(x: heroDrag * 0.16)
-                .rotation3DEffect(.degrees(heroFlip + Double(heroDrag) * 0.05),
-                                  axis: (x: 0, y: 1, z: 0), perspective: 0.6)
+                .offset(x: heroDrag * 0.34)
+                .opacity(1 - min(0.35, abs(heroDrag) / 520))
                 // 原型那两行：一句中文、一行斜体英文（她：留白克制，日期那行挪到纪念日面板里看）
                 Text(verseZh).font(Cool.song(12, .footnote)).tracking(0.6).lineSpacing(5).foregroundStyle(Cool.secondary)
                     .lineLimit(2).fixedSize(horizontal: false, vertical: true).padding(.top, 10)
@@ -167,13 +169,8 @@ struct UsPondView: View {
         let next = list[(index + step + list.count) % list.count]
         guard next.id != heroID else { return }
         guard !reduceMotion else { heroID = next.id; return }
-        let edge: Double = step > 0 ? -1 : 1
-        withAnimation(.easeIn(duration: 0.15)) { heroFlip = 90 * edge }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            heroID = next.id
-            heroFlip = -90 * edge
-            withAnimation(.easeOut(duration: 0.22)) { heroFlip = 0 }
-        }
+        // 1116 她：不要翻牌——天数是固定的，只让数字和上面那行字丝滑地变过去
+        withAnimation(.smooth(duration: 0.45)) { heroID = next.id }
     }
 
     // MARK: 这一周 / 月历（原地展开）
@@ -221,7 +218,7 @@ struct UsPondView: View {
                 Text($0).font(Cool.tiny()).foregroundStyle(Cool.faint).frame(height: 26).accessibilityHidden(true)
             }
             ForEach(Array(vm.monthCells(for: month).enumerated()), id: \.offset) { _, date in
-                if let date { dayCell(date) } else { Color.clear.frame(height: 50) }
+                if let date { dayCell(date) } else { Color.clear.frame(height: 53) }
             }
         }
         .padding(.horizontal, -6)
@@ -312,7 +309,7 @@ struct UsPondView: View {
         return Button {
             editDay = PondDay(date: date)
         } label: {
-            VStack(spacing: 2) {
+            VStack(spacing: -3) {
                 Text("\(Calendar.current.component(.day, from: date))")
                     .font(Cool.didot(17, .body)).monospacedDigit()
                     .foregroundStyle(isToday ? Cool.ink : Cool.number)
@@ -338,7 +335,7 @@ struct UsPondView: View {
                 Text(shown ?? " ").font(Cool.tiny()).tracking(0.5).lineLimit(1).minimumScaleFactor(0.7)
                     .foregroundStyle(Cool.secondary)
             }
-            .frame(maxWidth: .infinity, minHeight: 50, alignment: .top)
+            .frame(maxWidth: .infinity, minHeight: 53, alignment: .top)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
