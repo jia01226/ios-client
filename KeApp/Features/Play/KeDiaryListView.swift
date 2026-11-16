@@ -29,6 +29,8 @@ struct KeDiaryListView: View {
     var openingNightID: Int? = nil
     /// 128：那一条已经滚到过了（她往别处翻以后不再拽回去）
     @State private var nightOpened = false
+    /// 1116 她：抽屉挪进日记里——日记右上角点「抽屉」，盖上来一层，右划回日记
+    @State private var drawerOpen = false
     /// 拉过一遍了（转圈可以撤了）
     @State private var openingDone = false
     /// 那一篇已经翻开过（她退回目录后不再拽回去）
@@ -154,6 +156,11 @@ struct KeDiaryListView: View {
                     .tint(Ink.accent)
                 }
             }
+            if drawerOpen {
+                KeDrawerPage(line: line) { drawerOpen = false }
+                    .swipeBackLayer { drawerOpen = false }
+                    .zIndex(2)
+            }
             if let entry = reading {
                 // 点开直接打开，不要翻页动画
                 DiaryPage(entry: entry, sameDay: entries.filter { $0.id != entry.id && $0.created_at.prefix(10) == entry.created_at.prefix(10) },
@@ -216,6 +223,15 @@ struct KeDiaryListView: View {
                 Button(action: onClose) { Image(systemName: "chevron.left").font(.system(size: 20, weight: .light)).frame(width: 44, height: 44, alignment: .leading) }
                     .accessibilityLabel("返回").accessibilityIdentifier("diary-close")
                 Spacer()
+                Button { drawerOpen = true } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "archivebox").font(.system(size: 15, weight: .light))
+                        Text("抽屉").font(Ink.song(14))
+                    }
+                    .foregroundStyle(Ink.secondary).frame(minHeight: 44).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("打开柯的抽屉").accessibilityIdentifier("diary-open-drawer")
             }
         }
         .padding(.top, 6)

@@ -112,7 +112,8 @@ final class ChatImageCache {
 }
 
 /// 一张小图：没出来时是一块淡底和转圈，出来了就是图；解不开写一句
-private struct ChatImageTile: View {
+/// 1116：输入框上方待发送的图也用它画成小缩略图（以前只有图标和「照片-xxxx.jpg」，她不知道发的是哪张）
+struct ChatImageTile: View {
     @EnvironmentObject private var theme: Theme
     let attachment: ChatAttachment
     let width: CGFloat

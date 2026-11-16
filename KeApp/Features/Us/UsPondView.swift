@@ -7,8 +7,8 @@ import UIKit
 // 页首团子小鱼依偎无叶山茶、Didot 细数字；日期下面就是班次，不再单列班次卡片；月历在首页原地展开收起；
 // 荷包、食单、药盒、纸条两列纯文字。锦鲤池拿掉了（换之前的样子在 backup/us-pond-before-watercolor-1029 分支）。
 // 数据照旧是真的：纪念日、排班、月经、亲密、寄语都沿用 UsViewModel / PeriodStore / LoveLogStore / 小本子；
-// 1116 她：一屏放下不用滑——月历常驻展开（不再有周历、展开收起），下面只留药盒、荷包两格；纸条、食单、「柯留下的话」拿掉
-// （食单以后挪进记忆库）；日历里能记看医生这类日程、到点提醒（CalendarEvents.swift），有日程的那天挂个小点。
+// 1116 她：一屏放下不用滑——月历常驻展开（不再有周历、展开收起）；荷包、纸条、「柯留下的话」拿掉，药盒挪去「柯的」，
+// 食单以后挪进记忆库；日历里能记看医生这类日程、到点提醒（CalendarEvents.swift），有日程的那天挂个小点。
 // 点一天还是打开原来那张当天面板（排班、月经来了走了、亲密几次）。
 
 struct UsPondView: View {
@@ -59,7 +59,6 @@ struct UsPondView: View {
                 // 1116：一屏放下——月历常驻展开，翻月的箭头并进标题那一行
                 calendarHeader.padding(.top, 10)
                 monthGrid
-                tools.padding(.top, 14)
             }
             .padding(.horizontal, 28)
             .padding(.top, 8)
@@ -241,49 +240,8 @@ struct UsPondView: View {
         }
     }
 
-    // MARK: 入口（两列纯文字）。1116：只留药盒、荷包；纸条拿掉，食单以后挪进记忆库
-
-    private var tools: some View {
-        let rows: [[PondEntry]] = [[.meds, .purse]]
-        return VStack(spacing: 0) {
-            Rectangle().fill(Cool.line).frame(height: 1)
-            ForEach(rows, id: \.first) { row in
-                HStack(spacing: 0) {
-                    toolButton(row[0])
-                    Rectangle().fill(Cool.line).frame(width: 1, height: 18).accessibilityHidden(true)
-                    toolButton(row[1])
-                }
-                Rectangle().fill(Cool.line).frame(height: 1)
-            }
-        }
-    }
-
-    /// 药盒有没吃的那顿才在下面写一小行（「晚上的还没吃」），别的入口只有名字
-    private var medsPending: String? {
-        guard let s = book.snapshot, !s.meds.rx.isEmpty else { return nil }
-        let left = (s.meds.order ?? []).filter { !(s.meds.today[$0]?.taken ?? false) }
-        return left.first.map { "\($0)的还没吃" }
-    }
-
-    private func toolButton(_ e: PondEntry) -> some View {
-        let status = e == .meds ? medsPending : nil
-        return Button { open = e } label: {
-            HStack(spacing: 6) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(e.title).font(Cool.song(14.5, .body)).tracking(5).foregroundStyle(Cool.ink)
-                    if let status { Text(status).font(Cool.tiny()).foregroundStyle(Cool.mauve) }
-                }
-                Spacer(minLength: 4)
-                Image(systemName: "chevron.right").font(.system(size: 10, weight: .ultraLight)).foregroundStyle(Cool.faint)
-            }
-            .padding(.horizontal, 16)
-            .frame(maxWidth: .infinity, minHeight: 56)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(e.title + (status.map { "，" + $0 } ?? ""))
-        .accessibilityIdentifier("us-entry-\(e.rawValue)")
-    }
+    // 1116：荷包、食单、纸条不要了，药盒挪到「柯的」那朵花里——这页只剩在一起的日子和日历。
+    // 那几页的代码留着（page(_:)），食单以后接进记忆库。
 
     // MARK: 纪念日
 

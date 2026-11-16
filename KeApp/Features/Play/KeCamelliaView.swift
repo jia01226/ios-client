@@ -2,9 +2,10 @@ import SwiftUI
 import UIKit
 
 // 98：「柯的」六个入口：日记、梦、抽屉、塔罗、朋友圈、记忆。140 起是半朵山茶，见下面 KeSpaceView。
+// 1116 她：抽屉挪进日记里（日记页里点进去），原来抽屉那一瓣放药盒（从「我们」页挪过来，那页只留日历）。
 
 enum CamelliaEntry: String, CaseIterable, Identifiable {
-    case diary, dream, drawer, tarot, moments, memory
+    case diary, dream, drawer, tarot, moments, memory, meds
     var id: String { rawValue }
     var label: String {
         switch self {
@@ -14,6 +15,7 @@ enum CamelliaEntry: String, CaseIterable, Identifiable {
         case .tarot: "塔罗"
         case .moments: "朋友圈"
         case .memory: "记忆"
+        case .meds: "药盒"
         }
     }
     var english: String {
@@ -24,6 +26,7 @@ enum CamelliaEntry: String, CaseIterable, Identifiable {
         case .tarot: "Written in stars"
         case .moments: "Little moments"
         case .memory: "To remember"
+        case .meds: "Take care"
         }
     }
     var tagline: String {
@@ -34,6 +37,7 @@ enum CamelliaEntry: String, CaseIterable, Identifiable {
         case .tarot: "抽一张，和你慢慢聊。"
         case .moments: "一些想和你分享的小事。"
         case .memory: "你说过的话，我记着。"
+        case .meds: "按时吃药，我看着呢。"
         }
     }
     var action: String {
@@ -44,6 +48,7 @@ enum CamelliaEntry: String, CaseIterable, Identifiable {
         case .tarot: "进入塔罗"
         case .moments: "看看动态"
         case .memory: "翻阅记忆"
+        case .meds: "打开药盒"
         }
     }
 }
@@ -179,6 +184,8 @@ struct KeSpaceView: View {
     var onOpenQuote: (AppQuote) -> Void
     @ObservedObject private var store: KeCamelliaStore
     @ObservedObject private var moments: MomentsStore
+    /// 1116：药盒的数据跟「我们」页共用一份（UsPondStores），这一瓣下面写「睡前的还没吃」
+    @ObservedObject private var book: NotebookStore
     @State private var open: CamelliaEntry?
     /// 123：日记是从下面那行字点开的（写的是一篇日记，就落在「日记」那一栏）
     @State private var diaryFromCard = false
@@ -193,7 +200,7 @@ struct KeSpaceView: View {
     /// 126：底栏浮在页面上，让出它那一截
     @Environment(\.floatingDockInset) private var dockInset
 
-    private static let order: [CamelliaEntry] = [.diary, .dream, .moments, .memory, .drawer, .tarot]
+    private static let order: [CamelliaEntry] = [.diary, .dream, .moments, .memory, .meds, .tarot]
     private static let stepAngle = 60.0
     private static func wrap(_ n: Int) -> Int { ((n % order.count) + order.count) % order.count }
     private var selected: CamelliaEntry { Self.order[Self.wrap(step)] }
@@ -204,6 +211,7 @@ struct KeSpaceView: View {
         let stores = KeCamelliaStore.shared(line)
         _store = ObservedObject(wrappedValue: stores.camellia)
         _moments = ObservedObject(wrappedValue: stores.moments)
+        _book = ObservedObject(wrappedValue: UsPondStores.shared(line).book)
         let saved = CamelliaEntry(rawValue: UserDefaults.standard.string(forKey: "camellia.selected") ?? "") ?? .diary
         let index = Self.order.firstIndex(of: saved) ?? 0
         _step = State(initialValue: index)
@@ -380,7 +388,7 @@ struct KeSpaceView: View {
                 .accessibilityHint("打开" + event.entry.label)
                 .accessibilityIdentifier("camellia-card")
             } else {
-                Text(selected.tagline).font(.custom("NotoSerifSC-Light", size: 12 * s, relativeTo: .footnote)).tracking(0.5).foregroundStyle(Cool.secondary)
+                Text(tagline(selected)).font(.custom("NotoSerifSC-Light", size: 12 * s, relativeTo: .footnote)).tracking(0.5).foregroundStyle(Cool.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Button { go(selected) } label: {
@@ -404,6 +412,7 @@ struct KeSpaceView: View {
         case .memory: verb = "记住了一件事"
         case .drawer: verb = "往抽屉里放了东西"
         case .tarot: verb = "留了一张牌"
+        case .meds: verb = "看了看你的药"
         }
         return "柯刚刚" + verb
     }
@@ -411,7 +420,16 @@ struct KeSpaceView: View {
     // MARK: 动作
 
     private func refresh(onlyIfStale: Bool = false) async {
-        await store.load(onlyIfStale: onlyIfStale)
+        async let ke: Void = store.load(onlyIfStale: onlyIfStale)
+        async let meds: Void = book.load()
+        _ = await (ke, meds)
+    }
+
+    /// 1116：药盒那一瓣不写固定的话，写今天哪顿还没吃（跟原来「我们」页药盒下面那行一样）；都吃了才写那句
+    private func tagline(_ entry: CamelliaEntry) -> String {
+        guard entry == .meds, let s = book.snapshot, !s.meds.rx.isEmpty else { return entry.tagline }
+        let left = (s.meds.order ?? []).filter { !(s.meds.today[$0]?.taken ?? false) }
+        return left.first.map { "\($0)的还没吃。" } ?? "今天的药都吃了，乖。"
     }
 
     private func go(_ entry: CamelliaEntry, fromCard: Bool = false) {
@@ -425,6 +443,7 @@ struct KeSpaceView: View {
         switch entry {
         case .diary: KeDiaryListView(line: line, onClose: { open = nil }, startOnDiary: diaryFromCard)
         case .drawer: KeDrawerPage(line: line) { open = nil }
+        case .meds: MedsPage(store: book, paper: Cool.paper, onClose: { open = nil; Task { await book.load() } })
         case .dream: KeDreamListView(line: line) { open = nil }
         case .moments:
             MomentsView(store: moments, line: line)
