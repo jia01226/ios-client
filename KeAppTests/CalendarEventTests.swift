@@ -57,4 +57,14 @@ final class CalendarEventTests: XCTestCase {
         XCTAssertEqual(back?.author, "ke")
         XCTAssertEqual(back?.note, "东川三楼 351")
     }
+
+    /// 11-17：柯记的「要跟医生说的」从服务器下来能读到；App 往上送时不带（冲不掉柯刚记的）
+    func testSymptomsComeDownButNotUp() throws {
+        let json = #"{"id":"A","title":"看医生","start":"2026-11-20T16:00:00+08:00","alerts":[1440],"note":"广脑 李启荣","author":"ke","symptoms":[{"at":"11-17 03:53","text":"凌晨 3 点多醒了就睡不着"}]}"#
+        let remote = try JSONDecoder().decode(RemoteCalendarEvent.self, from: Data(json.utf8))
+        let event = try XCTUnwrap(remote.event)
+        XCTAssertEqual(event.symptoms, ["11-17 03:53 凌晨 3 点多醒了就睡不着"])
+        XCTAssertNil(RemoteCalendarEvent(event).symptoms)
+        XCTAssertEqual(CalendarEventStore.withoutStamp("11-17 03:53 凌晨 3 点多醒了就睡不着"), "凌晨 3 点多醒了就睡不着")
+    }
 }

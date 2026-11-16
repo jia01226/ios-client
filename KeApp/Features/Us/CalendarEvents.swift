@@ -18,6 +18,8 @@ struct CalendarEvent: Identifiable, Codable, Hashable {
     var note = ""
     /// ke = 柯记的；空或 me = 她自己记的
     var author: String?
+    /// 11-17 要跟医生说的（「11-17 03:53 凌晨 3 点多醒了就睡不着」）：柯平时问她、替她记下的，这里只看不改
+    var symptoms: [String]?
 }
 
 enum CalendarAlertOption: Int, CaseIterable, Identifiable {
@@ -178,12 +180,21 @@ enum CalendarAlertOption: Int, CaseIterable, Identifiable {
             content.title = event.title
             content.body = minutes == 0 ? "现在 \(time)" : "\(Self.dayWord(event.start, from: fire)) \(time)"
                 + (event.note.isEmpty ? "" : " · \(event.note)")
+            if let said = event.symptoms, !said.isEmpty {
+                content.body += "\n记得跟医生说：" + said.map(Self.withoutStamp).joined(separator: "；")
+            }
             content.sound = .default
             let parts = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fire)
             let trigger = UNCalendarNotificationTrigger(dateMatching: parts, repeats: false)
             try? await center.add(UNNotificationRequest(identifier: identifiers(for: event.id)[index],
                                                         content: content, trigger: trigger))
         }
+    }
+
+    /// 「11-17 03:53 凌晨醒了」→「凌晨醒了」（提醒里放不下时间）
+    static func withoutStamp(_ line: String) -> String {
+        let parts = line.split(separator: " ", maxSplits: 2)
+        return parts.count == 3 && parts[0].contains("-") && parts[1].contains(":") ? String(parts[2]) : line
     }
 
     /// 提醒响的那天跟日程是不是同一天：「今天 9:30」「明天 9:30」「11月20日 9:30」
@@ -211,6 +222,12 @@ struct RemoteCalendarEvent: Codable {
     let alerts: [Int]?
     let note: String?
     let author: String?
+    let symptoms: [RemoteSymptom]?
+
+    struct RemoteSymptom: Codable {
+        let at: String
+        let text: String
+    }
 
     init(_ event: CalendarEvent) {
         id = event.id
@@ -219,11 +236,14 @@ struct RemoteCalendarEvent: Codable {
         alerts = event.alerts
         note = event.note
         author = event.author
+        symptoms = nil   // 要跟医生说的只有柯记，App 不往上送
     }
 
     var event: CalendarEvent? {
         guard let date = Self.formatter.date(from: start) else { return nil }
-        return CalendarEvent(id: id, title: title, start: date, alerts: alerts ?? [60], note: note ?? "", author: author)
+        let said = (symptoms ?? []).map { "\($0.at) \($0.text)" }
+        return CalendarEvent(id: id, title: title, start: date, alerts: alerts ?? [60], note: note ?? "", author: author,
+                             symptoms: said.isEmpty ? nil : said)
     }
 
     nonisolated(unsafe) static let formatter: ISO8601DateFormatter = {
@@ -340,6 +360,18 @@ struct CalendarEventEditor: View {
                 Section {
                     TextField("备注（挂号单号、科室、带什么）", text: $event.note, axis: .vertical)
                         .lineLimit(1...4)
+                }
+                if let said = event.symptoms, !said.isEmpty {
+                    Section {
+                        ForEach(said, id: \.self) { line in
+                            Text(line).font(Ink.song(14)).foregroundStyle(Ink.primary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    } header: {
+                        Text("要跟医生说的")
+                    } footer: {
+                        Text("柯平时问你、帮你记下的。记错了跟柯说一声，他会删。")
+                    }
                 }
                 if !isNew {
                     Section {

@@ -277,6 +277,17 @@ struct UsPondView: View {
                     Text(event.note).font(Cool.tiny()).foregroundStyle(Cool.secondary)
                         .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                 }
+                // 11-17 她：「下面的提醒备注会提示我要说什么症状，我好到时候记得和医生说」
+                if let said = event.symptoms, !said.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("要跟医生说").font(Cool.tiny()).foregroundStyle(Cool.mauve)
+                        ForEach(said, id: \.self) { line in
+                            Text("· " + line).font(Cool.tiny()).foregroundStyle(Cool.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(.top, 3)
+                }
             }
             Spacer(minLength: 0)
         }
