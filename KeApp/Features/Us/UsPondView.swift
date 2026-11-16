@@ -28,8 +28,8 @@ struct UsPondView: View {
     /// 1116：她自己记的日程（看医生的号），存在这台手机上
     @ObservedObject private var events = CalendarEventStore.shared
     @State private var floating = false
-    /// 1116：横划换纪念日用的位移和翻牌角度
-    @State private var heroDrag: CGFloat = 0
+    /// 11-17 她：「天数是滚轮滑动，改成往上滑」——这次往哪边滚（往上划 = 下一个，数字从下面滚上来）
+    @State private var rollingUp = true
     @State private var editDay: PondDay?
     @State private var open: PondEntry?
     @State private var choosingAnniversary = false
@@ -51,24 +51,40 @@ struct UsPondView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                // 10-31 她：最上面不要标题。右上那枚月牙是 RootTabView 画的，页面从它下面起
-                heroBlock.padding(.top, 0)
-                Rectangle().fill(Cool.line).frame(width: 28, height: 1)
-                    .frame(maxWidth: .infinity).padding(.top, 8)
-                    .accessibilityHidden(true)
-                // 1116：一屏放下——月历常驻展开，翻月的箭头并进标题那一行
-                calendarHeader.padding(.top, 6)
-                monthGrid
-                // 1116 她：日历下面空着一大块，把接下来几天的日程排在那儿（看医生的号、开会）
-                upcomingSection
+        // 11-17 她：「日历占满空间了，不要再往下了，直接做里面的回滚」——整页不滚，
+        // 天数和月历钉住，只有下面的日程在自己那一块里上下滑
+        VStack(alignment: .leading, spacing: 0) {
+            // 10-31 她：最上面不要标题。右上那枚月牙是 RootTabView 画的，页面从它下面起
+            heroBlock.padding(.top, 0)
+            Rectangle().fill(Cool.line).frame(width: 28, height: 1)
+                .frame(maxWidth: .infinity).padding(.top, 8)
+                .accessibilityHidden(true)
+            // 1116：一屏放下——月历常驻展开，翻月的箭头并进标题那一行
+            calendarHeader.padding(.top, 6)
+            monthGrid
+            // 1116 她：日历结束不写「接下来」，跟上面一样来一道短横线，下面直接排日程
+            Rectangle().fill(Cool.line).frame(width: 28, height: 1)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+                .accessibilityHidden(true)
+            ScrollView {
+                upcomingSection.padding(.top, 6).padding(.bottom, 18)
             }
-            .padding(.horizontal, 28)
-            .padding(.top, 8)
-            .padding(.bottom, 4 + dockInset)
+            .scrollIndicators(.hidden)
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(maxHeight: .infinity)
+            // 底下一截淡进纸色，滑到底的那行不是被硬切掉
+            .overlay(alignment: .bottom) {
+                LinearGradient(colors: [paper.opacity(0), paper], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 16)
+                    .allowsHitTesting(false)
+            }
         }
-        .scrollIndicators(.hidden)
+        .padding(.horizontal, 28)
+        .padding(.top, 8)
+        .padding(.bottom, 4 + dockInset)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(paper.ignoresSafeArea())
         .foregroundStyle(Cool.ink)
         // 137：切过来照样刷新；回前台 5 分钟内拉过就不再整页重拉（没告诉上柯的「走了」还是会再送）
@@ -98,29 +114,35 @@ struct UsPondView: View {
                 Group {
                     if let a = hero {
                         let n = numbers(a)
-                        // 106：点名字换成别的纪念日（还有几天、今天是……）；1116 加了左右滑
+                        // 106：点名字换成别的纪念日（还有几天、今天是……）
+                        // 11-17 她：「上面的说明也会动」——名字原地淡入淡出，不跟着走
                         Button { choosingAnniversary = true } label: {
                             Text(eyebrow(a)).font(Cool.tiny()).tracking(2.2)
                                 .foregroundStyle(Cool.mauve)
-                                .contentTransition(.interpolate)
-                                .frame(minHeight: 32).contentShape(Rectangle())
+                                .id("eyebrow-" + a.id)
+                                .transition(.opacity)
+                                .frame(minHeight: 32, alignment: .leading).contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("换一个纪念日，现在是\(Self.shortName(a))")
                         .accessibilityIdentifier("us-anniversary-pick")
-                        HStack(alignment: .lastTextBaseline, spacing: 6) {
-                            Text(n.number).font(Cool.didot(n.number == "今天" ? 34 : 46, .largeTitle))
-                                .foregroundStyle(Cool.number).lineLimit(1).minimumScaleFactor(0.6)
-                                .monospacedDigit()
-                                .contentTransition(.numericText(value: Double(n.number) ?? 0))
-                            Text(n.unit).font(Cool.song(12, .footnote)).foregroundStyle(Cool.secondary)
-                                .contentTransition(.interpolate)
+                        // 11-17 她：「天数是滚轮滑动，改成往上滑」——一格窗口里，旧的数字往上滚出去、新的从下面滚上来
+                        ZStack(alignment: .bottomLeading) {
+                            HStack(alignment: .lastTextBaseline, spacing: 6) {
+                                Text(n.number).font(Cool.didot(n.number == "今天" ? 34 : 46, .largeTitle))
+                                    .foregroundStyle(Cool.number).lineLimit(1).minimumScaleFactor(0.6)
+                                    .monospacedDigit()
+                                Text(n.unit).font(Cool.song(12, .footnote)).foregroundStyle(Cool.secondary)
+                            }
+                            .id("number-" + a.id)
+                            .transition(rollTransition)
                         }
+                        .frame(maxWidth: .infinity, minHeight: 58, maxHeight: 58, alignment: .bottomLeading)
+                        .clipped()
                         .accessibilityElement(children: .combine)
+                        .accessibilityHint("往上划换下一个日子，往下划换回上一个")
                     }
                 }
-                .offset(x: heroDrag * 0.34)
-                .opacity(1 - min(0.35, abs(heroDrag) / 520))
                 // 原型那两行：一句中文、一行斜体英文（她：留白克制，日期那行挪到纪念日面板里看）
                 Text(verseZh).font(Cool.song(12, .footnote)).tracking(0.6).lineSpacing(5).foregroundStyle(Cool.secondary)
                     .lineLimit(2).fixedSize(horizontal: false, vertical: true).padding(.top, 10)
@@ -143,6 +165,7 @@ struct UsPondView: View {
         // 1116：整块都能划（插画上也行），不是只有字那一小块
         .contentShape(Rectangle())
         .simultaneousGesture(heroSwipe)
+        .sensoryFeedback(.selection, trigger: heroID)
         // 小鱼轻轻浮着；系统开了「减弱动态效果」就不动
         .onAppear {
             guard !reduceMotion, !floating else { return }
@@ -150,18 +173,24 @@ struct UsPondView: View {
         }
     }
 
-    /// 1116：横着划一下换纪念日；划过去、数字翻过去，松手回弹
+    /// 11-17 她：「左滑卡卡的」「改成往上滑」——手指划的时候什么都不跟着动（以前整块跟手走、每帧重排，就卡），
+    /// 松手时看方向：往上划换下一个，往下划换回上一个，数字像滚轮一样滚一格，轻轻震一下。
     private var heroSwipe: some Gesture {
-        DragGesture(minimumDistance: 16)
-            .onChanged { value in
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                heroDrag = value.translation.width
-            }
+        DragGesture(minimumDistance: 12)
             .onEnded { value in
-                let dx = value.translation.width
-                if abs(dx) > 44 { cycleAnniversary(dx < 0 ? 1 : -1) }
-                withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) { heroDrag = 0 }
+                let dy = value.translation.height, dx = value.translation.width
+                guard abs(dy) > abs(dx) * 1.2,
+                      abs(dy) > 28 || abs(value.predictedEndTranslation.height) > 90 else { return }
+                cycleAnniversary(dy < 0 ? 1 : -1)
             }
+    }
+
+    private var rollTransition: AnyTransition {
+        guard !reduceMotion else { return .opacity }
+        return .asymmetric(
+            insertion: .move(edge: rollingUp ? .bottom : .top).combined(with: .opacity),
+            removal: .move(edge: rollingUp ? .top : .bottom).combined(with: .opacity)
+        )
     }
 
     /// 1116：换到上/下一个纪念日——先转到侧面，换完再从另一侧转回来（像翻牌）
@@ -172,8 +201,11 @@ struct UsPondView: View {
         let next = list[(index + step + list.count) % list.count]
         guard next.id != heroID else { return }
         guard !reduceMotion else { heroID = next.id; return }
-        // 1116 她：不要翻牌——天数是固定的，只让数字和上面那行字丝滑地变过去
-        withAnimation(.smooth(duration: 0.45)) { heroID = next.id }
+        // 先把方向定下来、画一遍，旧数字才知道该往哪边滚出去；下一拍再换
+        rollingUp = step > 0
+        DispatchQueue.main.async {
+            withAnimation(.spring(response: 0.46, dampingFraction: 0.92)) { heroID = next.id }
+        }
     }
 
     // MARK: 这一周 / 月历（原地展开）
@@ -245,13 +277,6 @@ struct UsPondView: View {
                 .prefix(6)
         )
         return VStack(alignment: .leading, spacing: 0) {
-            // 1116 她：日历结束不写「接下来」，跟上面一样来一道短横线，下面直接排日程
-            Rectangle().fill(Cool.line).frame(width: 28, height: 1)
-                .frame(maxWidth: .infinity)
-                .padding(.top, 8)
-                .padding(.bottom, 10)
-                .accessibilityHidden(true)
-
             // 11-16 她：「空白就空白」——没有日程就什么都不写
             ForEach(upcoming) { event in upcomingRow(event) }
         }
