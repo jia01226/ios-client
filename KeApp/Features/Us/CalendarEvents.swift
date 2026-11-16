@@ -3,7 +3,10 @@ import UserNotifications
 
 // 1116 她：「日历我还想做提醒，因为我要看医生，我会忘记什么时候的号了」「在日历中显示，比如一个标记，
 // 我点进去有提醒，和苹果那样」。
-// 日程只存在这台手机上（UserDefaults），到点用本地通知提醒——不靠网络、不靠服务器，跟苹果日历一样到点就响。
+// 到点用本地通知提醒——不靠网络，跟苹果日历一样到点就响。
+// 11-16 她：「柯可以自己记，我发截图给他就可以了」——日程在服务器上也存一份（/api/calendar/events，和柯共用），
+// 手机上留一份照着画、照着排通知。她在这儿加/改/删先记在手机上、再送上去，没送上的下回接着送；
+// 柯记的，「我们」页一刷新、回前台就拉下来。
 // 不走 HomeReminderCoordinator：那边的提醒要等她到家、没在开车才放出来，看医生的号不能等。
 
 struct CalendarEvent: Identifiable, Codable, Hashable {
@@ -13,6 +16,8 @@ struct CalendarEvent: Identifiable, Codable, Hashable {
     /// 提前几分钟提醒（像苹果那样最多两个）；空就是不提醒
     var alerts: [Int] = [60]
     var note = ""
+    /// ke = 柯记的；空或 me = 她自己记的
+    var author: String?
 }
 
 enum CalendarAlertOption: Int, CaseIterable, Identifiable {
@@ -43,7 +48,16 @@ enum CalendarAlertOption: Int, CaseIterable, Identifiable {
 
     @Published private(set) var events: [CalendarEvent] = []
     private let key = "us.calendar.events"
+    private let pendingKey = "us.calendar.pending"
+    private let deletedKey = "us.calendar.deleted"
+    private let syncedOnceKey = "us.calendar.synced-once"
     private let defaults: UserDefaults
+    /// 还没送上服务器的：改过的 id、删掉的 id
+    private var pending: Set<String>
+    private var deleted: Set<String>
+    private var api: APIClient?
+    private var syncing: Task<Void, Never>?
+    private var activeObserver: NSObjectProtocol?
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -51,6 +65,54 @@ enum CalendarAlertOption: Int, CaseIterable, Identifiable {
            let saved = try? JSONDecoder().decode([CalendarEvent].self, from: data) {
             events = saved
         }
+        pending = Set(defaults.stringArray(forKey: pendingKey) ?? [])
+        deleted = Set(defaults.stringArray(forKey: deletedKey) ?? [])
+        // 头一回接上服务器：以前只存在手机上的日程全都送上去
+        if !defaults.bool(forKey: syncedOnceKey) {
+            pending.formUnion(events.map(\.id))
+        }
+    }
+
+    /// 「我们」页那条线路的接口；接上以后回前台就同步一次
+    func attach(_ api: APIClient) {
+        self.api = api
+        guard activeObserver == nil else { return }
+        activeObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in await self?.sync() }
+        }
+    }
+
+    /// 先把手机上改过、删过的送上去，再把服务器那份（含柯记的）拉下来，重排通知。
+    func sync() async {
+        if let syncing { await syncing.value; return }
+        guard let api else { return }
+        let task = Task { @MainActor in
+            for id in deleted {
+                if (try? await api.deleteCalendarEvent(id: id)) != nil { deleted.remove(id) }
+            }
+            for id in pending {
+                guard let event = events.first(where: { $0.id == id }) else { pending.remove(id); continue }
+                if (try? await api.saveCalendarEvent(RemoteCalendarEvent(event))) != nil { pending.remove(id) }
+            }
+            defaults.set(true, forKey: syncedOnceKey)
+            guard let remote = try? await api.fetchCalendarEvents() else { persist(); return }
+            // 还没送上去的那几条照旧留着手机上的样子
+            let local = events.filter { pending.contains($0.id) }
+            let serverSide = remote.compactMap(\.event).filter { !pending.contains($0.id) && !deleted.contains($0.id) }
+            let merged = (serverSide + local).sorted { $0.start < $1.start }
+            if merged != events {
+                let gone = Set(events.map(\.id)).subtracting(merged.map(\.id))
+                events = merged
+                gone.forEach(cancel)
+                for event in merged { await schedule(event) }
+            }
+            persist()
+        }
+        syncing = task
+        await task.value
+        syncing = nil
     }
 
     func events(on date: Date) -> [CalendarEvent] {
@@ -67,18 +129,27 @@ enum CalendarAlertOption: Int, CaseIterable, Identifiable {
         } else {
             events.append(event)
         }
+        pending.insert(event.id)
         persist()
-        Task { await schedule(event) }
+        Task {
+            await schedule(event)
+            await sync()
+        }
     }
 
     func delete(_ id: String) {
         events.removeAll { $0.id == id }
+        pending.remove(id)
+        deleted.insert(id)
         persist()
         cancel(id)
+        Task { await sync() }
     }
 
     private func persist() {
         defaults.set(try? JSONEncoder().encode(events), forKey: key)
+        defaults.set(Array(pending), forKey: pendingKey)
+        defaults.set(Array(deleted), forKey: deletedKey)
     }
 
     // MARK: 本地通知
@@ -128,6 +199,38 @@ enum CalendarAlertOption: Int, CaseIterable, Identifiable {
     }()
     private static let dayFormatter: DateFormatter = {
         let f = DateFormatter(); f.locale = Locale(identifier: "zh_CN"); f.dateFormat = "M月d日"; return f
+    }()
+}
+
+// MARK: - 服务器上那份的样子（时间是带时区的 ISO：2026-11-28T09:00:00+08:00）
+
+struct RemoteCalendarEvent: Codable {
+    let id: String
+    let title: String
+    let start: String
+    let alerts: [Int]?
+    let note: String?
+    let author: String?
+
+    init(_ event: CalendarEvent) {
+        id = event.id
+        title = event.title
+        start = Self.formatter.string(from: event.start)
+        alerts = event.alerts
+        note = event.note
+        author = event.author
+    }
+
+    var event: CalendarEvent? {
+        guard let date = Self.formatter.date(from: start) else { return nil }
+        return CalendarEvent(id: id, title: title, start: date, alerts: alerts ?? [60], note: note ?? "", author: author)
+    }
+
+    nonisolated(unsafe) static let formatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        f.timeZone = TimeZone(identifier: "Asia/Shanghai")
+        return f
     }()
 }
 

@@ -46,4 +46,15 @@ final class CalendarEventTests: XCTestCase {
         XCTAssertEqual(DayEventsSection.alertLine(CalendarEvent(title: "a", start: start, alerts: [0])),
                        "提醒：日程开始时")
     }
+
+    /// 11-16：和服务器（柯也记在那儿）来回一趟，时间按北京时间、带时区，不走样
+    func testRemoteEventRoundTrip() {
+        let remote = RemoteCalendarEvent(CalendarEvent(title: "看医生 戚元丽", start: Date(timeIntervalSince1970: 1_795_827_600),
+                                                       alerts: [1440, 60], note: "东川三楼 351", author: "ke"))
+        XCTAssertEqual(remote.start, "2026-11-28T09:00:00+08:00")
+        let back = remote.event
+        XCTAssertEqual(back?.start, Date(timeIntervalSince1970: 1_795_827_600))
+        XCTAssertEqual(back?.author, "ke")
+        XCTAssertEqual(back?.note, "东川三楼 351")
+    }
 }

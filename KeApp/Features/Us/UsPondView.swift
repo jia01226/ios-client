@@ -131,6 +131,9 @@ struct UsPondView: View {
             Image("UsFishCamellia").resizable().scaledToFit()
                 .containerRelativeFrame(.horizontal) { w, _ in min(190, w * 0.44) }
                 .offset(x: 16, y: floating ? -14 : -9)
+                // 11-16 她：「日历下方的提醒在动」——以前用 withAnimation(repeatForever) 起浮，
+                // 同一拍里排出来的日程行也被卷进这个永远来回的动画，一直上下晃。动画只挂在小鱼自己身上。
+                .animation(reduceMotion ? nil : .easeInOut(duration: 3.4).repeatForever(autoreverses: true), value: floating)
                 .opacity(0.92)
                 // 1116 她：点小鱼也能挑日子（加生日、纪念日）
                 .contentShape(Rectangle())
@@ -143,7 +146,7 @@ struct UsPondView: View {
         // 小鱼轻轻浮着；系统开了「减弱动态效果」就不动
         .onAppear {
             guard !reduceMotion, !floating else { return }
-            withAnimation(.easeInOut(duration: 3.4).repeatForever(autoreverses: true)) { floating = true }
+            floating = true
         }
     }
 
@@ -249,14 +252,8 @@ struct UsPondView: View {
                 .padding(.bottom, 10)
                 .accessibilityHidden(true)
 
-            if upcoming.isEmpty {
-                Text("还没有排日程。看医生的号、开会的日子，点日历上那天记下来，到点会响。")
-                    .font(Cool.song(12, .footnote)).tracking(0.4).lineSpacing(5)
-                    .foregroundStyle(Cool.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                ForEach(upcoming) { event in upcomingRow(event) }
-            }
+            // 11-16 她：「空白就空白」——没有日程就什么都不写
+            ForEach(upcoming) { event in upcomingRow(event) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityIdentifier("us-upcoming")
@@ -615,6 +612,7 @@ enum Cool {
         notes = StickyNotesStore(api: api, scope: line.rawValue)
         book = NotebookStore(api: api)
         love = LoveLogStore(api: api, scope: line.rawValue)
+        CalendarEventStore.shared.attach(api)
         verseKey = "us.verse." + line.rawValue
         if let saved = UserDefaults.standard.stringArray(forKey: verseKey), saved.count == 2 { savedVerse = (saved[0], saved[1]) }
     }
@@ -623,6 +621,8 @@ enum Cool {
     /// onlyIfStale（回前台）：5 分钟内好好拉过就不再整页重拉，只把没告诉上柯的「走了」再送一次。
     func refresh(month: Date, onlyIfStale: Bool = false) async {
         if let loading { await loading.value; return }
+        // 11-16：日程每次都拉（柯刚记的号要马上出现），很轻
+        Task { await CalendarEventStore.shared.sync() }
         if onlyIfStale, let lastLoad, Date().timeIntervalSince(lastLoad) < Self.foregroundGap {
             if periods.hasUnsentEnd { await periods.syncEnds() }
             return

@@ -954,6 +954,26 @@ actor APIClient {
 
     func fetchDrawer() async throws -> RemoteDrawer { try await readResource("/api/drawer") }
 
+    // 11-16：日程（「我们」页的日历和柯共用一份；柯看了挂号截图自己记进来）
+    private struct CalendarEventsResponse: Decodable { let events: [RemoteCalendarEvent] }
+
+    func fetchCalendarEvents() async throws -> [RemoteCalendarEvent] {
+        let response: CalendarEventsResponse = try await readResource("/api/calendar/events")
+        return response.events
+    }
+
+    func saveCalendarEvent(_ event: RemoteCalendarEvent) async throws {
+        var request = try makeRequest(path: "/api/calendar/events", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(event)
+        _ = try await perform(request)
+    }
+
+    func deleteCalendarEvent(id: String) async throws {
+        guard !id.isEmpty, !id.contains("/") else { throw APIError.invalidResponse }
+        _ = try await perform(try makeRequest(path: "/api/calendar/events/\(id)", method: "DELETE"))
+    }
+
     func fetchHut() async throws -> RemoteHut { try await readResource("/api/hut") }
     func sendHutLetter(text: String) async throws { try await writeResource("/api/hut/letter", body: ["text": text]) }
 
