@@ -187,19 +187,20 @@ final class ChatForegroundRecoveryTests: XCTestCase {
             server.receive([.receipt(userMessageID: 100, jobID: "job-1", bedroom: nil), .text("半截")])
             await wait { vm.messages.contains { $0.sender == .me && $0.serverID == 100 } }
             await settle()
-            assertNoPartialReply(vm)
+            assertLiveReply(vm, shows: "半截")
         }
         return task
     }
     /// 让已经排在流里的事件都处理完
     private func settle() async { try? await Task.sleep(nanoseconds: 30_000_000) }
-    /// 121：柯写的过程中，半截正文不进气泡；那一行只剩时间和「发送中」
-    private func assertNoPartialReply(_ vm: ChatViewModel, file: StaticString = #filePath, line: UInt = #line) {
+    /// 1116：柯写的过程中边写边显示——这一条还标着在写，已经收到的字摆在气泡里（照服务器切法）
+    private func assertLiveReply(_ vm: ChatViewModel, shows text: String,
+                                 file: StaticString = #filePath, line: UInt = #line) {
         let pending = vm.messages.filter { $0.sender == .ke && $0.isStreaming }
-        XCTAssertFalse(pending.isEmpty, "应该还有一个在写的占位", file: file, line: line)
+        XCTAssertEqual(pending.count, 1, "应该还有一条在写", file: file, line: line)
         for message in pending {
-            XCTAssertEqual(message.text, "", file: file, line: line)
-            XCTAssertEqual(message.bubbleSegments, [], file: file, line: line)
+            XCTAssertEqual(message.text, text, file: file, line: line)
+            XCTAssertEqual(message.bubbleSegments, Message.liveSegments(text), file: file, line: line)
         }
         XCTAssertTrue(vm.isSending, "顶上一直是「正在输入中」", file: file, line: line)
     }
@@ -371,29 +372,28 @@ final class ChatForegroundRecoveryTests: XCTestCase {
         assertComplete(vm)
     }
 
-    /// 121：写的时候一个字不露；写完整条放上去，气泡照服务器切好的分、一个个冒出来；
-    /// 紧跟着拉回来的记录（同一份切法）不让已经冒出来的气泡重来。
-    func testReplyLandsWholeWithServerSegmentsAndHistoryDoesNotRestartReveal() async {
+    /// 1116：边写边摆；写完照 done 带来的切法定下来，已经摆出来的不再藏起来一个个冒；
+    /// 紧跟着拉回来的记录（同一份切法）也不让它重来。
+    func testLiveReplySettlesOnServerSegmentsWithoutRevealingAgain() async {
         let server = ReplyServer(); let vm = await model(server)
         let sending = await start(vm, server, reduceMotion: false)
         server.receive([.text("先过来。\n\n让我抱一下。")])
-        await settle()
-        assertNoPartialReply(vm)
+        // 0.08 秒内来的第二截排着，稍后补上——不会卡在「半截」
+        await wait { vm.messages.contains { $0.sender == .ke && $0.text == "半截先过来。\n\n让我抱一下。" } }
+        assertLiveReply(vm, shows: "半截先过来。\n\n让我抱一下。")
 
-        // 服务器切成三个（前两段在一个气泡里），和本机按空行切出的四个不一样——证明照服务器的
-        let segments = ["半截先过来。\n\n让我抱一下。", "嗯。", "再慢慢说。"]
+        let segments = ["半截先过来。", "让我抱一下。", "嗯。", "再慢慢说。"]
         server.completeOnServer(segments: segments)
         server.receive([.text("\n\n嗯。\n\n再慢慢说。"),
                         .completed(assistantMessageID: 101, bedroom: nil, status: "done", error: nil,
                                    retryable: false, retryScheduled: false, segments: segments)])
         await wait { vm.messages.contains { $0.sender == .ke && !$0.isStreaming } }
 
-        // 还没拉记录：本机那条已经整条放上去，照 done 带来的切法，第一个气泡先出来
         guard let landed = vm.messages.first(where: { $0.sender == .ke }) else { return XCTFail("没有柯的那条") }
         XCTAssertEqual(landed.serverID, 101)
         XCTAssertEqual(landed.text, "半截先过来。\n\n让我抱一下。\n\n嗯。\n\n再慢慢说。")
         XCTAssertEqual(landed.bubbleSegments, segments)
-        XCTAssertEqual(vm.visibleSegmentCount(for: landed), 1)
+        XCTAssertNil(vm.visibleSegmentCount(for: landed), "已经边写边摆出来了，不再一个个冒")
 
         server.streams[0].finish()
         await sending.value
@@ -401,15 +401,27 @@ final class ChatForegroundRecoveryTests: XCTestCase {
         XCTAssertEqual(replaced?.id, landed.id, "沿用本机 id，时间线认得是同一条")
         XCTAssertEqual(replaced?.bubbleSegments, segments)
         XCTAssertFalse(vm.isSending)
-        await wait { vm.visibleSegmentCount(for: landed).map { $0 >= 2 } == true }
-        let before = vm.visibleSegmentCount(for: landed) ?? 0
-
-        // 又拉一次记录（回前台、点推送都会这样）：切法一样，已经冒出来的不重来
         await vm.retryHistory()
         if let after = vm.messages.first(where: { $0.serverID == 101 }) {
-            XCTAssertGreaterThanOrEqual(vm.visibleSegmentCount(for: after) ?? Int.max, before)
+            XCTAssertNil(vm.visibleSegmentCount(for: after))
         }
-        await wait { vm.visibleSegmentCount(for: landed) == nil }
+    }
+
+    /// 1116：写到一半断了：已经摆出来的半截收回去，变回「等待接回」，等服务器那条完整的整条换上。
+    func testBrokenLiveReplyWithdrawsPartialText() async {
+        let server = ReplyServer(); let vm = await model(server)
+        server.holdNextJob = true
+        let sending = await start(vm, server)
+        server.streams[0].finish(throwing: URLError(.timedOut))
+        await wait { server.heldJob != nil }
+        let waiting = vm.messages.first { $0.sender == .ke }
+        XCTAssertEqual(waiting?.text, "", "半截不留在屏幕上")
+        XCTAssertEqual(waiting?.isAwaitingReply, true)
+        server.completeOnServer()
+        server.heldJob?.resume(throwing: URLError(.timedOut)); server.heldJob = nil
+        await vm.retryHistory()
+        assertComplete(vm)
+        await sending.value
     }
 
     /// 121：回前台接回的那句也是整条换上、一个个冒出来，中间不露半截。

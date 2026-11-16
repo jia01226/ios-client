@@ -75,6 +75,10 @@ final class ChatViewModel: ObservableObject {
     /// 写完（done）、换成工具卡、出错、掐断时一次写回。
     private var thinkingBuffer: (messageID: String, text: String)?
     private var lastThinkingFlush = Date.distantPast
+    /// 1116：柯的正文边写边显示，最多每 0.08 秒写一次 messages；没赶上的那截 0.08 秒后补上，不会卡在半句。
+    private var liveReply: (messageID: String, text: String)?
+    private var liveReplyShownAt = Date.distantPast
+    private var liveReplyTask: Task<Void, Never>?
     /// 137：她正开着看的那条 Thinking（ChatView 告诉这里）；点开那一下先把攒着的写上
     var liveThinkingMessageID: String? {
         didSet {
@@ -1818,10 +1822,28 @@ final class ChatViewModel: ObservableObject {
         /// 121：柯的正文一路收着，不往气泡里写——写完（done）那一刻才整条放上去。
         /// 断线重接是新的一轮 performSend，从头再收，不会把前一轮的半截接在后面。
         var replyText = ""
+        /// 1116：这一轮有没有往屏幕上摆过字（边写边显示）
+        var shownText = ""
 
         func flushBufferedEvents() {
             guard ownsReply(owner) else { return }
             flushThinking()
+        }
+
+        func showLiveText() {
+            guard Message.showsLiveText, ownsReply(owner) else { return }
+            shownText = replyText
+            queueLiveText(replyText, for: assistantLocalID)
+        }
+
+        /// 1116：没写完就断了、出错了：已经摆出来的半截收回去，变回「正在输入」，
+        /// 等服务器那条完整的接回来整条换上（跟 119 的意思一样：半截不当成写完）。
+        func withdrawLiveText() {
+            dropLiveText()
+            guard !shownText.isEmpty else { return }
+            shownText = ""
+            updateMessage(id: assistantLocalID) { if $0.isStreaming { $0.text = "" } }
+            streamRevision += 1
         }
 
         do {
@@ -1868,8 +1890,9 @@ final class ChatViewModel: ObservableObject {
                     await cache.save(Self.cacheable(messages), sessionID: sessionID)
 
                 case let .text(delta):
-                    // 121：只收不显示。气泡不再跟着字数一点点长、写完再被切开（她说的「抖动」）。
+                    // 121：只收不显示（她说的「抖动」）。1116 她要流式：照服务器的切法边写边摆，写完不再切。
                     replyText += delta
+                    showLiveText()
 
                 case let .thinkingDelta(delta):
                     bufferThinking(delta, for: assistantLocalID)
@@ -1902,6 +1925,7 @@ final class ChatViewModel: ObservableObject {
                     segments
                 ):
                     flushBufferedEvents()
+                    dropLiveText()   // 1116：下面整条换成写完的那份，排着的半截不再写
                     didComplete = true
                     endStreamWatch(owner)
                     completionStatus = status ?? (assistantMessageID == nil ? "error" : "done")
@@ -1925,14 +1949,17 @@ final class ChatViewModel: ObservableObject {
                                 $0.deliveryState = .sent
                             }
                             if let completed = messages.first(where: { $0.id == assistantLocalID }) {
-                                stageSegments(for: completed, reduceMotion: reduceMotion || landsWhole)
+                                // 1116：已经边写边摆出来了，就不再隐藏后一个个冒一遍
+                                stageSegments(for: completed, reduceMotion: reduceMotion || landsWhole || !shownText.isEmpty)
                             }
                             streamRevision += 1
                         }
                     } else if status == "merged" {
                         // 这一条已经并进她后面补发的那条，由那条一起回；空位直接收起，不算失败。
+                        withdrawLiveText()
                         removeEmptyAssistant(id: assistantLocalID)
                     } else {
+                        withdrawLiveText()
                         updateMessage(id: assistantLocalID) {
                             $0.isStreaming = false
                             $0.deliveryState = scheduled ? .waiting : .failed
@@ -2010,6 +2037,7 @@ final class ChatViewModel: ObservableObject {
         } catch APIError.unauthorized {
             guard ownsReply(owner) else { return }
             flushBufferedEvents()
+            withdrawLiveText()
             isSending = false
             markFailed(userLocalID: userLocalID, assistantLocalID: assistantLocalID)
             failedSends[clientID] = attachments
@@ -2018,6 +2046,7 @@ final class ChatViewModel: ObservableObject {
         } catch {
             guard ownsReply(owner) else { return }
             flushBufferedEvents()
+            withdrawLiveText()
             if let activeJobID {
                 // 119：半截正文不提前当成写完（isStreaming=false 会把半截按空行切开），
                 // 等服务器那条完整的拉回来一次换上。
@@ -2378,6 +2407,36 @@ final class ChatViewModel: ObservableObject {
             // 她正开着看：照旧最多每 0.05 秒写一次
             flushThinking()
         }
+    }
+
+    /// 1116：柯的正文排着写进气泡（见 liveReply）
+    private func queueLiveText(_ text: String, for messageID: String) {
+        liveReply = (messageID, text)
+        let wait = 0.08 - Date.now.timeIntervalSince(liveReplyShownAt)
+        guard wait > 0 else { return flushLiveText() }
+        guard liveReplyTask == nil else { return }
+        liveReplyTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+            guard let self, !Task.isCancelled else { return }
+            self.liveReplyTask = nil
+            self.flushLiveText()
+        }
+    }
+
+    private func flushLiveText() {
+        liveReplyTask?.cancel()
+        liveReplyTask = nil
+        guard let pending = liveReply else { return }
+        liveReply = nil
+        liveReplyShownAt = .now
+        updateMessage(id: pending.messageID) { if $0.isStreaming { $0.text = pending.text } }
+        streamRevision += 1
+    }
+
+    private func dropLiveText() {
+        liveReplyTask?.cancel()
+        liveReplyTask = nil
+        liveReply = nil
     }
 
     private func flushThinking() {

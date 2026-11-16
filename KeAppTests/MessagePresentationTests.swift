@@ -239,18 +239,39 @@ final class MessagePresentationTests: XCTestCase {
         XCTAssertEqual(mine.bubbleSegments, ["一。\n\n二。"])
     }
 
-    /// 121：还在写的那条一个气泡都不出，时间线里只剩一行（时间和「发送中」）
-    func testStreamingReplyRendersNoTextSegments() {
+    /// 1116：还在写的那条边写边摆，照本机这会儿收到的字按服务器的切法分（不看旧的 segments）；
+    /// 一个字还没来时仍是只有时间和「发送中」的那一行。
+    func testStreamingReplyRendersLiveSegments() {
         let streaming = Message(id: "streaming", sender: .ke, text: "半截的正文\n\n还在长", time: .now,
-                                thoughtSummary: "先想一想。", segments: ["半截的正文", "还在长"],
+                                thoughtSummary: "先想一想。", segments: ["不该用这份"],
                                 isStreaming: true, deliveryState: .sending)
-        XCTAssertEqual(streaming.bubbleSegments, [])
-        XCTAssertTrue(Message(id: "placeholder", sender: .ke, text: "", time: .now,
-                              isStreaming: true, deliveryState: .sending).isAwaitingReply)
+        XCTAssertEqual(streaming.bubbleSegments, ["半截的正文", "还在长"])
+        XCTAssertFalse(streaming.isAwaitingReply)
+        let placeholder = Message(id: "placeholder", sender: .ke, text: "", time: .now,
+                                  isStreaming: true, deliveryState: .sending)
+        XCTAssertTrue(placeholder.isAwaitingReply)
+        XCTAssertEqual(placeholder.bubbleSegments, [])
 
         let items = ChatTimelineItem.make(message: streaming, isHighlighted: false, visibleSegmentCount: nil)
-        XCTAssertEqual(items.map(\.kind), [.thinking, .message], "Thinking 照常在，正文那一行没有字")
-        XCTAssertEqual(items.last?.part, ChatBubblePart(index: 0, count: 1, text: nil))
+        XCTAssertEqual(items.map(\.kind), [.thinking, .message, .segment(1)], "Thinking 照常在，正文边写边一个个出")
+        XCTAssertEqual(items.last?.part, ChatBubblePart(index: 1, count: 2, text: "还在长"))
+    }
+
+    /// 1116：边写边切跟服务器 ke_bubbles.segments 一字不差——写完服务器给的气泡和屏幕上的一样，不跳。
+    func testLiveSegmentsMatchServerSplitting() {
+        XCTAssertEqual(Message.liveSegments(""), [])
+        XCTAssertEqual(Message.liveSegments("在。\n\n\n一直在。\n"), ["在。", "一直在。"])
+        XCTAssertEqual(Message.liveSegments("一行\n同一个气泡\n\n下一个"), ["一行\n同一个气泡", "下一个"])
+        // 写到一半：最后那截还在长
+        XCTAssertEqual(Message.liveSegments("先过来。\n\n让我抱"), ["先过来。", "让我抱"])
+        // 某一段到 96 字：整段一个气泡
+        let paragraph = String(repeating: "长", count: 96)
+        XCTAssertEqual(Message.liveSegments("短。\n\n" + paragraph), ["短。\n\n" + paragraph])
+        // 全文到 180 字：整段一个气泡
+        let parts = Array(repeating: String(repeating: "字", count: 60), count: 3).joined(separator: "\n\n")
+        XCTAssertEqual(Message.liveSegments(parts), [parts])
+        // 只有一段：多长都是一个
+        XCTAssertEqual(Message.liveSegments(String(repeating: "一", count: 300)), [String(repeating: "一", count: 300)])
     }
 
     /// 121：一个个冒出来就是一行行插进来；已经冒出来的那几行不重画、不变

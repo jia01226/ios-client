@@ -78,7 +78,8 @@ struct Message: Identifiable, Hashable, Codable, Sendable {
     /// 本机不再自己切；旧版本缓存里没有这一项，才退回本机的切法。
     var segments: [String]? = nil
 
-    /// 流式回复时，这条还没写完。121 起写完之前一个字都不显示，只亮「正在输入中」。
+    /// 流式回复时，这条还没写完。121 起写完之前一个字都不显示，只亮「正在输入中」；
+    /// 1116 起（showsLiveText）边写边显示，切法跟服务器 ke_bubbles.py 一样，写完不跳。
     var isStreaming: Bool = false
 
     var deliveryState: DeliveryState = .sent
@@ -105,8 +106,11 @@ extension Message {
     /// 单换行保留在同一气泡里，连续空行不会产生空气泡。
     var bubbleSegments: [String] {
         // 121 她：「应该后台切好，我这边看到是一条条的气泡，要么就是一整段」。
-        // 柯还在写的那条一个气泡都不出（不再一个字一个字地长），写完才整条换上。
-        if sender == .ke, isStreaming { return [] }
+        // 1116 她要流式：柯还在写的那条，照服务器的切法一边写一边摆——空行就开下一个气泡，
+        // 够长就整段一个气泡（长度只会变长，整段了就不会再拆回去）。写完服务器给的 segments 跟这个一样，不跳。
+        if sender == .ke, isStreaming {
+            return Self.showsLiveText ? Self.liveSegments(text) : []
+        }
         // 128：「夜里日记」那条画成一张卡，整条不切（服务器切了也不切）
         if sender == .ke, nightCard != nil {
             let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -181,6 +185,38 @@ extension Message {
     /// 服务器那条完整的到了以后，从这种状态换过去的才需要一个个冒出来。
     var isAwaitingReply: Bool {
         sender == .ke && text.isEmpty && (isStreaming || deliveryState != .sent)
+    }
+
+    /// 1116：边写边显示的总开关。🔴 退路：改成 false 就回到 121 那样写完整条放上。
+    static let showsLiveText = true
+
+    /// 1116：写到一半的正文怎么切——逐条照搬服务器 ke_bubbles.segments（LONG_TOTAL 180、LONG_PARAGRAPH 96），
+    /// 这样写完那一刻服务器切好的气泡跟屏幕上已经摆着的一样。
+    static func liveSegments(_ text: String) -> [String] {
+        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n")
+        let whole = normalized.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !whole.isEmpty else { return [] }
+        var parts: [String] = []
+        var lines: [String] = []
+        for line in normalized.split(separator: "\n", omittingEmptySubsequences: false) {
+            let value = String(line)
+            if !value.trimmingCharacters(in: .whitespaces).isEmpty {
+                lines.append(value)
+            } else if !lines.isEmpty {
+                parts.append(lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines))
+                lines.removeAll(keepingCapacity: true)
+            }
+        }
+        if !lines.isEmpty {
+            parts.append(lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        parts = parts.filter { !$0.isEmpty }
+        if parts.count > 1,
+           whole.count >= ChatPresentationPolicy.longFormCharacterThreshold
+            || (parts.map(\.count).max() ?? 0) >= ChatPresentationPolicy.longParagraphCharacterThreshold {
+            return [whole]
+        }
+        return parts
     }
 
     private func keepsLongFormTogether(_ segments: [String]) -> Bool {
