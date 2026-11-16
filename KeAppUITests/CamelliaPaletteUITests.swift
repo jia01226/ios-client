@@ -52,9 +52,9 @@ final class CamelliaPaletteUITests: XCTestCase {
 
     func testSixEntrancesStillOpenAndClose() {
         let app = launch()
-        for (entry, close) in [("diary", "ke-space-close"), ("dream", "dream-close"), ("drawer", "ke-space-close"), ("tarot", "tarot-close"), ("moments", "moments-close"), ("memory", "memory-close")] {
+        for (entry, close) in [("diary", "diary-close"), ("dream", "dream-close"), ("meds", "notebook-close"), ("tarot", "tarot-close"), ("moments", "moments-close"), ("memory", "memory-close")] {
             let flower = app.buttons.matching(identifier: "camellia-\(entry)").firstMatch
-            XCTAssertTrue(flower.waitForExistence(timeout: 6))
+            XCTAssertTrue(flower.waitForExistence(timeout: 6), "Flower: \(entry)")
             flower.tap()
             XCTAssertTrue(app.buttons[close].waitForExistence(timeout: 10), "Entry: \(entry)")
             capture("camellia-126-entry-\(entry)")
