@@ -55,7 +55,7 @@ struct UsPondView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 // 10-31 她：最上面不要标题。右上那枚月牙是 RootTabView 画的，页面从它下面起
-                heroBlock.padding(.top, 28)
+                heroBlock.padding(.top, 8)
                 Rectangle().fill(Cool.line).frame(width: 28, height: 1)
                     .frame(maxWidth: .infinity).padding(.top, 12)
                     .accessibilityHidden(true)
@@ -248,7 +248,7 @@ struct UsPondView: View {
             // 1116 她：日历结束不写「接下来」，跟上面一样来一道短横线，下面直接排日程
             Rectangle().fill(Cool.line).frame(width: 28, height: 1)
                 .frame(maxWidth: .infinity)
-                .padding(.top, 16)
+                .padding(.top, 8)
                 .padding(.bottom, 10)
                 .accessibilityHidden(true)
 

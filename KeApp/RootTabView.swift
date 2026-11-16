@@ -77,7 +77,8 @@ struct RootTabView: View {
             }
             // 126：「我们」「柯的」顶上不要大标题，只留右上一枚小月牙——点了和从右边划、聊天里点三个点是同一个设置抽屉
             .overlay(alignment: .topTrailing) {
-                if (selection == .us || selection == .drawer) && !chatSettingsOpen {
+                // 1116 她：我们页不要那枚月牙了（右边照样能划出设置）；柯的页留着
+                if selection == .drawer && !chatSettingsOpen {
                     HomeSettingsMoon(action: openSettingsFromHome)
                         .padding(.trailing, theme.metric.chromeHeaderInset - 4)
                         .padding(.top, 2)
