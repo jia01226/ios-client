@@ -130,6 +130,9 @@ struct UsPondView: View {
                 .containerRelativeFrame(.horizontal) { w, _ in min(190, w * 0.44) }
                 .offset(x: 16, y: floating ? -14 : -9)
                 .opacity(0.92)
+                // 1116 她：点小鱼也能挑日子（加生日、纪念日）
+                .contentShape(Rectangle())
+                .onTapGesture { choosingAnniversary = true }
                 .accessibilityHidden(true)
         }
         // 1116：整块都能划（插画上也行），不是只有字那一小块
@@ -244,7 +247,7 @@ struct UsPondView: View {
         return VStack(alignment: .leading, spacing: 0) {
             // 1116 她：日历结束不写「接下来」，跟上面一样来一道短横线，下面直接排日程
             Rectangle().fill(Cool.line).frame(width: 28, height: 1)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity)
                 .padding(.top, 16)
                 .padding(.bottom, 10)
                 .accessibilityHidden(true)
@@ -309,7 +312,7 @@ struct UsPondView: View {
         return Button {
             editDay = PondDay(date: date)
         } label: {
-            VStack(spacing: 5) {
+            VStack(spacing: 2) {
                 Text("\(Calendar.current.component(.day, from: date))")
                     .font(Cool.didot(17, .body)).monospacedDigit()
                     .foregroundStyle(isToday ? Cool.ink : Cool.number)
@@ -335,7 +338,7 @@ struct UsPondView: View {
                 Text(shown ?? " ").font(Cool.tiny()).tracking(0.5).lineLimit(1).minimumScaleFactor(0.7)
                     .foregroundStyle(Cool.secondary)
             }
-            .frame(maxWidth: .infinity, minHeight: 50)
+            .frame(maxWidth: .infinity, minHeight: 50, alignment: .top)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -362,16 +365,22 @@ struct UsPondView: View {
     static func shortName(_ a: Anniversary) -> String {
         ["together": "在一起", "confession": "表白日", "mine": "我的生日", "ke": "柯的生日"][a.id] ?? a.title
     }
+    /// 1116 她：生日往回数（还有 N 天），纪念日往前数（在一起 N 天，一天比一天大）。
+    /// 生日不一定带「每年」这个标记（服务器回来的可能没有），按 id / 名字再兜一层；
+    /// 「管理日期」里加的、还没到的日子（比如「下次见面」）也当倒数。
+    private func countsDown(_ a: Anniversary) -> Bool {
+        if a.isYearly || a.id == "mine" || a.id == "ke" || a.title.contains("生日") { return true }
+        return a.date > Date.now
+    }
+
     private func numbers(_ a: Anniversary) -> (number: String, unit: String, line: String, past: Bool) {
         let c = Calendar.current, comps = c.dateComponents([.year, .month, .day], from: a.date)
-        if a.isYearly {
+        if countsDown(a) {
             let left = vm.daysUntil(a)
-            let line = "每年 \(comps.month ?? 0) 月 \(comps.day ?? 0) 日"
+            let line = a.isYearly
+                ? "每年 \(comps.month ?? 0) 月 \(comps.day ?? 0) 日"
+                : "\(comps.year ?? 0) 年 \(comps.month ?? 0) 月 \(comps.day ?? 0) 日"
             return left == 0 ? ("今天", "", "今天是" + Self.shortName(a), false) : ("\(left)", "天后", line, false)
-        }
-        // 137：「管理日期」里加的、还没到的日子（比如「下次见面」）往后数
-        if a.date > Date.now {
-            return ("\(vm.daysAhead(to: a.date))", "天后", "\(comps.year ?? 0) 年 \(comps.month ?? 0) 月 \(comps.day ?? 0) 日", false)
         }
         // 那天就算第一天，和柯那边说的「今天第 113 天」一样
         return ("\(vm.daysTogether(since: a.date) + 1)", "天", "从 \(comps.year ?? 0) 年 \(comps.month ?? 0) 月 \(comps.day ?? 0) 日那天起", true)
