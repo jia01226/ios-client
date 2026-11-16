@@ -137,7 +137,7 @@ struct UsPondView: View {
         }
         // 1116：整块都能划（插画上也行），不是只有字那一小块
         .contentShape(Rectangle())
-        .highPriorityGesture(heroSwipe)
+        .simultaneousGesture(heroSwipe)
         // 小鱼轻轻浮着；系统开了「减弱动态效果」就不动
         .onAppear {
             guard !reduceMotion, !floating else { return }
@@ -368,15 +368,20 @@ struct UsPondView: View {
     /// 1116 她：生日往回数（还有 N 天），纪念日往前数（在一起 N 天，一天比一天大）。
     /// 生日不一定带「每年」这个标记（服务器回来的可能没有），按 id / 名字再兜一层；
     /// 「管理日期」里加的、还没到的日子（比如「下次见面」）也当倒数。
+    /// 每年来一次的日子（生日）；它们按「下一次是几月几号」倒数
+    private func isRecurring(_ a: Anniversary) -> Bool {
+        a.isYearly || a.id == "mine" || a.id == "ke" || a.title.contains("生日")
+    }
+
     private func countsDown(_ a: Anniversary) -> Bool {
-        if a.isYearly || a.id == "mine" || a.id == "ke" || a.title.contains("生日") { return true }
-        return a.date > Date.now
+        isRecurring(a) || a.date > Date.now
     }
 
     private func numbers(_ a: Anniversary) -> (number: String, unit: String, line: String, past: Bool) {
         let c = Calendar.current, comps = c.dateComponents([.year, .month, .day], from: a.date)
         if countsDown(a) {
-            let left = vm.daysUntil(a)
+            // 生日按年循环（只看月日）；一次性的日子按真实日期倒数，隔一年以上也不会算少
+            let left = isRecurring(a) ? vm.daysUntil(a) : vm.daysAhead(to: a.date)
             let line = a.isYearly
                 ? "每年 \(comps.month ?? 0) 月 \(comps.day ?? 0) 日"
                 : "\(comps.year ?? 0) 年 \(comps.month ?? 0) 月 \(comps.day ?? 0) 日"
