@@ -1085,10 +1085,9 @@ struct ChatView: View {
                             Button {
                                 imageRouter.open([attachment], at: 0)
                             } label: {
-                                HStack(spacing: theme.metric.gapXS) {
-                                    Image(systemName: "photo")
-                                    Text(attachment.name).lineLimit(1)
-                                }
+                                // 1116 她：「发消息的图片能不能显示图片，小图片在上面，不然我都不知道发的什么图片」
+                                ChatImageTile(attachment: attachment, width: 52, height: 52)
+                                    .padding(.vertical, 4)
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("预览待发送图片 \(attachment.name)")

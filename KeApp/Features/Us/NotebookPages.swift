@@ -721,7 +721,8 @@ struct PursePage: View {
         _jars = StateObject(wrappedValue: JarStore(api: store.api))
     }
 
-    private var current: PurseTab { PurseTab(rawValue: tab) ?? .spend }
+    /// 1116 她：荷包只管攒钱——只看攒钱的罐子和进度，花钱、每月上限、网购额度那一页不再出现（数据和代码都留着）
+    private var current: PurseTab { .save }
 
     var body: some View {
         ZStack {
@@ -730,7 +731,6 @@ struct PursePage: View {
                           notice: current == .spend ? store.banner : nil,
                           onRetry: current == .spend && store.canRetry ? { await store.retry() } : nil,
                           onRefresh: { if current == .save { await jars.load() } else { await store.retry() } }) {
-                tabSwitch
                 if current == .save {
                     JarListPane(store: jars, paper: paper) { jar in openJar = jar.id }
                 } else {

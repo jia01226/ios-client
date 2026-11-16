@@ -7,6 +7,8 @@ import UIKit
 // 页首团子小鱼依偎无叶山茶、Didot 细数字；日期下面就是班次，不再单列班次卡片；月历在首页原地展开收起；
 // 荷包、食单、药盒、纸条两列纯文字。锦鲤池拿掉了（换之前的样子在 backup/us-pond-before-watercolor-1029 分支）。
 // 数据照旧是真的：纪念日、排班、月经、亲密、寄语都沿用 UsViewModel / PeriodStore / LoveLogStore / 小本子；
+// 1116 她：一屏放下不用滑——月历常驻展开（不再有周历、展开收起）；荷包、纸条、「柯留下的话」拿掉，药盒挪去「柯的」，
+// 食单以后挪进记忆库；日历里能记看医生这类日程、到点提醒（CalendarEvents.swift），有日程的那天挂个小点。
 // 点一天还是打开原来那张当天面板（排班、月经来了走了、亲密几次）。
 
 struct UsPondView: View {
@@ -23,9 +25,8 @@ struct UsPondView: View {
     /// 133：亲密记录（132 错加在旧的 UsView 上了，她这页看不到）
     @ObservedObject private var love: LoveLogStore
     @State private var month = Calendar.current.dateInterval(of: .month, for: .now)?.start ?? .now
-    /// 140：周历显示哪一天所在的那一周（默认今天；点过哪天、月历里翻过去点了哪天，收起后就回到那一周）
-    @State private var focus = Calendar.current.startOfDay(for: .now)
-    @State private var expanded = false
+    /// 1116：她自己记的日程（看医生的号），存在这台手机上
+    @ObservedObject private var events = CalendarEventStore.shared
     @State private var floating = false
     @State private var editDay: PondDay?
     @State private var open: PondEntry?
@@ -51,22 +52,17 @@ struct UsPondView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 // 10-31 她：最上面不要标题。右上那枚月牙是 RootTabView 画的，页面从它下面起
-                heroBlock.padding(.top, 48)
+                heroBlock.padding(.top, 40)
                 Rectangle().fill(Cool.line).frame(width: 28, height: 1)
-                    .frame(maxWidth: .infinity).padding(.top, 18)
+                    .frame(maxWidth: .infinity).padding(.top, 14)
                     .accessibilityHidden(true)
-                calendarHeader.padding(.top, 26)
-                if expanded {
-                    monthGrid.transition(.opacity)
-                } else {
-                    weekStrip.transition(.opacity)
-                }
-                tools.padding(.top, 34)
-                quote.padding(.top, 40)
+                // 1116：一屏放下——月历常驻展开，翻月的箭头并进标题那一行
+                calendarHeader.padding(.top, 10)
+                monthGrid
             }
             .padding(.horizontal, 28)
             .padding(.top, 8)
-            .padding(.bottom, 28 + dockInset)
+            .padding(.bottom, 12 + dockInset)
         }
         .scrollIndicators(.hidden)
         .background(paper.ignoresSafeArea())
@@ -138,101 +134,49 @@ struct UsPondView: View {
     private static let monthNames = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"]
     private static let weekdayNames = ["一", "二", "三", "四", "五", "六", "日"]
 
-    private var weekDays: [Date] {
-        let c = Self.mondayCalendar
-        let start = c.dateInterval(of: .weekOfYear, for: focus)?.start ?? focus
-        return (0..<7).compactMap { c.date(byAdding: .day, value: $0, to: start) }
-    }
-    private var focusIsThisWeek: Bool { Self.mondayCalendar.isDate(focus, equalTo: .now, toGranularity: .weekOfYear) }
-    private var weekTitle: String {
-        let m = Calendar.current.component(.month, from: focus)
-        return Self.monthNames[m - 1] + (focusIsThisWeek ? " · 这一周" : " · 那一周")
-    }
-
-    private func toggleMonth() {
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
-            if !expanded { month = vm.startOfMonth(for: focus) }
-            expanded.toggle()
-        }
-    }
-
     private var calendarHeader: some View {
         HStack(alignment: .center, spacing: 8) {
-            Text(expanded ? "日历" : weekTitle).font(Cool.song(13, .subheadline)).tracking(2.2).foregroundStyle(Cool.ink)
+            Text("日历").font(Cool.song(13, .subheadline)).tracking(2.2).foregroundStyle(Cool.ink)
                 .accessibilityAddTraits(.isHeader)
-            if expanded, love.monthCount(month) > 0 {
+            if love.monthCount(month) > 0 {
                 Text("亲密 \(love.monthCount(month)) 次").font(Cool.song(11, .caption)).foregroundStyle(Cool.mauve)
             }
             Spacer(minLength: 4)
-            if !expanded, !focusIsThisWeek {
-                Button { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { focus = Calendar.current.startOfDay(for: .now) } } label: {
-                    Text("回到今天").font(Cool.tiny(.caption)).foregroundStyle(Cool.secondary).frame(minHeight: 44).contentShape(Rectangle())
+            if !vm.isCurrentMonth(month) {
+                Button { month = vm.startOfMonth(for: .now) } label: {
+                    Text("回到本月").font(Cool.tiny(.caption)).foregroundStyle(Cool.secondary).frame(minHeight: 44).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
-            Button(action: toggleMonth) {
-                HStack(spacing: 4) {
-                    Text(expanded ? "收起月历" : "展开月历")
-                    Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.system(size: 9, weight: .light))
-                }
-                .font(Cool.tiny(.caption)).tracking(1).foregroundStyle(Cool.secondary)
-                .frame(minHeight: 44).contentShape(Rectangle())
+            // 137：点的范围放到 44×44，箭头本身不变
+            Button { month = vm.month(byAdding: -1, to: month) } label: {
+                Image(systemName: "chevron.left").font(.system(size: 13, weight: .ultraLight)).frame(width: 36, height: 44).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(expanded ? "收起月历" : "展开月历")
-            .accessibilityIdentifier("us-month-toggle")
-        }
-    }
-
-    private var weekStrip: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(weekDays.enumerated()), id: \.offset) { i, date in
-                VStack(spacing: 4) {
-                    Text(Self.weekdayNames[i]).font(Cool.tiny()).foregroundStyle(Cool.faint)
-                        .accessibilityHidden(true)
-                    dayCell(date)
-                }
-                .frame(maxWidth: .infinity)
+            .accessibilityLabel("上个月")
+            Text(Self.yearMonth(month)).font(Cool.didot(15, .subheadline)).foregroundStyle(Cool.secondary)
+                .lineLimit(1).fixedSize()
+                .accessibilityLabel(vm.monthTitle(for: month))
+            Button { month = vm.month(byAdding: 1, to: month) } label: {
+                Image(systemName: "chevron.right").font(.system(size: 13, weight: .ultraLight)).frame(width: 36, height: 44).contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("下个月")
         }
-        .padding(.top, 12)
-        .padding(.horizontal, -6)
+        .foregroundStyle(Cool.secondary)
     }
 
     private var monthGrid: some View {
-        VStack(spacing: 0) {
-            HStack {
-                // 137：点的范围放到 44×44，箭头本身不变
-                Button { month = vm.month(byAdding: -1, to: month) } label: {
-                    Image(systemName: "chevron.left").font(.system(size: 14, weight: .ultraLight)).frame(width: 44, height: 44).contentShape(Rectangle())
-                }
-                .accessibilityLabel("上个月")
-                Spacer()
-                Text(Self.yearMonth(month)).font(Cool.didot(15, .subheadline)).foregroundStyle(Cool.secondary)
-                    .accessibilityLabel(vm.monthTitle(for: month))
-                Spacer()
-                Button { month = vm.month(byAdding: 1, to: month) } label: {
-                    Image(systemName: "chevron.right").font(.system(size: 14, weight: .ultraLight)).frame(width: 44, height: 44).contentShape(Rectangle())
-                }
-                .accessibilityLabel("下个月")
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
+        return LazyVGrid(columns: columns, spacing: 0) {
+            ForEach(Self.weekdayNames, id: \.self) {
+                Text($0).font(Cool.tiny()).foregroundStyle(Cool.faint).frame(height: 22).accessibilityHidden(true)
             }
-            .foregroundStyle(Cool.secondary)
-            let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
-            LazyVGrid(columns: columns, spacing: 2) {
-                ForEach(Self.weekdayNames, id: \.self) {
-                    Text($0).font(Cool.tiny()).foregroundStyle(Cool.faint).frame(height: 24).accessibilityHidden(true)
-                }
-                ForEach(Array(vm.monthCells(for: month).enumerated()), id: \.offset) { _, date in
-                    if let date { dayCell(date) } else { Color.clear.frame(height: 52) }
-                }
-            }
-            .padding(.horizontal, -6)
-            if !vm.isCurrentMonth(month) {
-                Button("回到本月") { month = vm.startOfMonth(for: .now) }
-                    .font(Cool.song(12, .caption)).foregroundStyle(Cool.secondary).frame(minHeight: 44)
+            ForEach(Array(vm.monthCells(for: month).enumerated()), id: \.offset) { _, date in
+                if let date { dayCell(date) } else { Color.clear.frame(height: 48) }
             }
         }
-        .padding(.top, 2)
+        .padding(.horizontal, -6)
     }
 
     private static func yearMonth(_ date: Date) -> String {
@@ -246,11 +190,12 @@ struct UsPondView: View {
         let period = isPeriod(date)
         let times = love.count(on: date)
         let anniversary = isAnniversary(date)
-        let shift = vm.shift(on: date).map { vm.shiftDisplay($0, on: date) }
+        let dayEvents = events.events(on: date)
+        // 1116：没排班的那天，格子下面写第一个日程的名字（像苹果月历那样）；有班照旧写班
+        let shift = vm.shift(on: date).map { vm.shiftDisplay($0, on: date) } ?? dayEvents.first.map { String($0.title.prefix(4)) }
         // 字调到很大时，班次只写第一个字（白 / 夜 / 休），七格不挤爆
         let shown = shift.map { typeSize >= .accessibility1 ? String($0.prefix(1)) : $0 }
         return Button {
-            focus = Calendar.current.startOfDay(for: date)
             editDay = PondDay(date: date)
         } label: {
             VStack(spacing: 3) {
@@ -270,16 +215,23 @@ struct UsPondView: View {
                             .foregroundStyle(Cool.heart).offset(x: 9, y: -2)
                         }
                     }
+                    // 1116：有日程（看医生的号）的那天，左上挂一个小点
+                    .overlay(alignment: .topLeading) {
+                        if !dayEvents.isEmpty {
+                            Circle().fill(Cool.mauve).frame(width: 5, height: 5).offset(x: -4, y: 1)
+                        }
+                    }
                 Text(shown ?? " ").font(Cool.tiny()).tracking(0.5).lineLimit(1).minimumScaleFactor(0.7)
                     .foregroundStyle(Cool.secondary)
             }
-            .frame(maxWidth: .infinity, minHeight: 52)
+            .frame(maxWidth: .infinity, minHeight: 48)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(vm.calendarDayAccessibilityLabel(date) + (period ? "，月经" : "") + (anniversary ? "，纪念日" : "")
-                            + (times > 0 ? "，亲密 \(times) 次" : ""))
-        .accessibilityHint("打开这一天：排班、月经、亲密")
+                            + (times > 0 ? "，亲密 \(times) 次" : "")
+                            + (dayEvents.isEmpty ? "" : "，\(dayEvents.count) 个日程"))
+        .accessibilityHint("打开这一天：日程、排班、月经、亲密")
         .accessibilityIdentifier(vm.calendarDayIdentifier(date))
         .contextMenu {
             Text(times > 0 ? "这天亲密 \(times) 次" : "这天还没有亲密记录")
@@ -288,74 +240,8 @@ struct UsPondView: View {
         }
     }
 
-    // MARK: 四个入口（两列纯文字）
-
-    private var tools: some View {
-        let rows: [[PondEntry]] = [[.purse, .menu], [.meds, .notes]]
-        return VStack(spacing: 0) {
-            Rectangle().fill(Cool.line).frame(height: 1)
-            ForEach(rows, id: \.first) { row in
-                HStack(spacing: 0) {
-                    toolButton(row[0])
-                    Rectangle().fill(Cool.line).frame(width: 1, height: 18).accessibilityHidden(true)
-                    toolButton(row[1])
-                }
-                Rectangle().fill(Cool.line).frame(height: 1)
-            }
-        }
-    }
-
-    /// 药盒有没吃的那顿才在下面写一小行（「晚上的还没吃」），别的入口只有名字
-    private var medsPending: String? {
-        guard let s = book.snapshot, !s.meds.rx.isEmpty else { return nil }
-        let left = (s.meds.order ?? []).filter { !(s.meds.today[$0]?.taken ?? false) }
-        return left.first.map { "\($0)的还没吃" }
-    }
-
-    private func toolButton(_ e: PondEntry) -> some View {
-        let status = e == .meds ? medsPending : nil
-        return Button { open = e } label: {
-            HStack(spacing: 6) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(e.title).font(Cool.song(14.5, .body)).tracking(5).foregroundStyle(Cool.ink)
-                    if let status { Text(status).font(Cool.tiny()).foregroundStyle(Cool.mauve) }
-                }
-                Spacer(minLength: 4)
-                Image(systemName: "chevron.right").font(.system(size: 10, weight: .ultraLight)).foregroundStyle(Cool.faint)
-            }
-            .padding(.horizontal, 16)
-            .frame(maxWidth: .infinity, minHeight: 66)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(e.title + (status.map { "，" + $0 } ?? ""))
-        .accessibilityIdentifier("us-entry-\(e.rawValue)")
-    }
-
-    // MARK: 柯留下的话（小本子里的寄语）
-
-    /// 柯最近贴的一张纸条（原型里「柯留下的话」）；他还没贴过就不放
-    private var kesNote: String? {
-        notes.notes.filter { $0.author == .ai }.max { $0.created_at < $1.created_at }?
-            .content.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    @ViewBuilder private var quote: some View {
-        if let note = kesNote, !note.isEmpty {
-            Button { open = .notes } label: {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("“\(note)”").font(Cool.song(13, .footnote)).tracking(0.8).lineSpacing(5)
-                        .foregroundStyle(Cool.secondary).lineLimit(3).multilineTextAlignment(.leading)
-                    Text("柯留下的话").font(Cool.tiny()).tracking(2).foregroundStyle(Cool.faint)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityElement(children: .combine)
-            .accessibilityHint("打开纸条")
-        }
-    }
+    // 1116：荷包、食单、纸条不要了，药盒挪到「柯的」那朵花里——这页只剩在一起的日子和日历。
+    // 那几页的代码留着（page(_:)），食单以后接进记忆库。
 
     // MARK: 纪念日
 
@@ -459,6 +345,8 @@ struct UsPondView: View {
                 .accessibilityIdentifier("day-sheet-close")
             }
             .padding(.horizontal, 24).padding(.top, 10)
+            // 1116：看医生这类日程，点进去能设提醒
+            DayEventsSection(store: events, date: date)
             HStack {
                 Text("月经").font(Ink.song(15))
                 Spacer()
