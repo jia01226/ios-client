@@ -984,6 +984,24 @@ actor APIClient {
         catch { throw APIError.decoding(error) }
     }
 
+    // 11-17 奶茶、粑粑（「我们」日历切到那两面时读写，柯也看得到）
+    func bodyLog(month: String) async throws -> BodyLogMonth {
+        let (data, _) = try await perform(try makeRequest(path: "/api/bodylog", queryItems: [URLQueryItem(name: "month", value: month)]))
+        do { return try decoder.decode(BodyLogMonth.self, from: data) }
+        catch { throw APIError.decoding(error) }
+    }
+
+    func setBodyLogDay(kind: String, day: String, count: Int, feel: String?) async throws -> BodyLogMonth {
+        var request = try makeRequest(path: "/api/bodylog/day", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = ["kind": kind, "day": day, "count": count]
+        if let feel { body["feel"] = feel }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, _) = try await perform(request)
+        do { return try decoder.decode(BodyLogMonth.self, from: data) }
+        catch { throw APIError.decoding(error) }
+    }
+
     func deleteLove(id: Int) async throws {
         _ = try await perform(try makeRequest(path: "/api/love/log/\(id)/delete", method: "POST"))
     }

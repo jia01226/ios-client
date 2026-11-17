@@ -5,10 +5,12 @@ import UIKit
 
 @MainActor
 final class CamelliaPaletteTests: XCTestCase {
-    // 126：多了「粉白」，排第一个，也是默认
-    func testFivePalettesWithBlushFirstAndNoOriginalBlue() {
-        XCTAssertEqual(CamelliaPalette.allCases.map(\.rawValue), ["blush", "mist", "white", "ivory", "cream"])
-        XCTAssertEqual(CamelliaPalette.allCases.map(\.label), ["粉白", "浅雾蓝", "冷白", "暖白", "浅米色"])
+    // 126：多了「粉白」，排第一个，也是默认；11-17 又多四款白，暖的、粉的排前面
+    func testPalettesWithBlushFirstAndNoOriginalBlue() {
+        XCTAssertEqual(CamelliaPalette.allCases.map(\.rawValue),
+                       ["blush", "pinkish", "lotus", "linen", "ivory", "cream", "fog", "mist", "white"])
+        XCTAssertEqual(CamelliaPalette.allCases.map(\.label),
+                       ["粉白", "淡粉白", "藕粉白", "米白", "暖白", "浅米色", "雾蓝白", "浅雾蓝", "冷白"])
     }
 
     func testMissingAndUnknownValuesFallBackToBlush() {
@@ -36,9 +38,10 @@ final class CamelliaPaletteTests: XCTestCase {
         XCTAssertEqual(hex(CamelliaPalette.blush.inks.primary), 0x564653)
         XCTAssertEqual(hex(CamelliaPalette.blush.inks.secondary), 0x7A6572)
         XCTAssertEqual(hex(CamelliaPalette.blush.inks.accent), 0x8C617A)
-        // 挑过别的纸色的，字还是原来的蓝墨
-        XCTAssertEqual(hex(CamelliaPalette.ivory.inks.primary), 0x3D5478)
-        XCTAssertEqual(hex(CamelliaPalette.cream.inks.accent), 0x526D88)
+        // 11-17 三页统一：挑哪张纸都是这套暖墨
+        for palette in CamelliaPalette.allCases {
+            XCTAssertEqual(hex(palette.inks.primary), 0x564653, palette.rawValue)
+        }
     }
 
     // MARK: 126 聊天配色跟着换粉白（只在她没挑过纸色时）

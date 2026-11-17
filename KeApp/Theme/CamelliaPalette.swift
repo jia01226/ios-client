@@ -4,7 +4,9 @@ import SwiftUI
 enum CamelliaPalette: String, CaseIterable, Identifiable {
     // 126：她认可的「三页同一张浅粉白纸」放第一个，没动过配色的人默认就是它。
     // 自己挑过别的（存进了 camellia.palette）照旧，不改她的选择。
-    case blush, mist, white, ivory, cream
+    // 11-17 她：「白中带点粉色或者蓝色，就像你（Claude）的白、QQ 的白、DS 的白，淡淡的……全部放在 App 里，到时候我选就好」
+    // 多了四款：淡粉白、藕粉白、米白（像 Claude）、雾蓝白（像 QQ）。暖的、粉的排前面。
+    case blush, pinkish, lotus, linen, ivory, cream, fog, mist, white
 
     static let storageKey = "camellia.palette"
     static let defaultPalette: CamelliaPalette = .blush
@@ -24,6 +26,10 @@ enum CamelliaPalette: String, CaseIterable, Identifiable {
     var label: String {
         switch self {
         case .blush: "粉白"
+        case .pinkish: "淡粉白"
+        case .lotus: "藕粉白"
+        case .linen: "米白"
+        case .fog: "雾蓝白"
         case .mist: "浅雾蓝"
         case .white: "冷白"
         case .ivory: "暖白"
@@ -34,6 +40,10 @@ enum CamelliaPalette: String, CaseIterable, Identifiable {
         switch self {
         // 126：设计稿 blush.css 最后一层 --paper #FFFEFE，几乎是白、带一丝粉
         case .blush: (255 / 255, 254 / 255, 254 / 255)
+        case .pinkish: (252 / 255, 247 / 255, 248 / 255)   // #FCF7F8 白里一丝粉
+        case .lotus: (251 / 255, 249 / 255, 248 / 255)     // #FBF9F8 暖白里带一点粉
+        case .linen: (250 / 255, 249 / 255, 245 / 255)     // #FAF9F5 像 Claude 的白，带丢丢黄
+        case .fog: (246 / 255, 248 / 255, 251 / 255)       // #F6F8FB 像 QQ 的白
         case .mist: (243 / 255, 248 / 255, 252 / 255)
         case .white: (250 / 255, 252 / 255, 253 / 255)
         // 121 她：「就 app 那个图标的背景色？暖色的白色」——取图标山茶底下那层米白
@@ -47,7 +57,9 @@ enum CamelliaPalette: String, CaseIterable, Identifiable {
     }
     var mistOpacity: Double {
         switch self {
-        case .blush: 0.42
+        case .blush, .pinkish, .lotus: 0.42
+        case .linen: 0.46
+        case .fog: 0.56
         case .mist: 0.60
         case .white: 0.56
         case .ivory: 0.46
@@ -60,20 +72,21 @@ enum CamelliaPalette: String, CaseIterable, Identifiable {
     var mistTint: Color {
         switch self {
         // 126：粉白纸上的水痕带一点点粉，不发灰也不发黄
-        case .blush: Color(red: 1, green: 0.975, blue: 0.985)
-        case .ivory: Color(red: 1, green: 0.965, blue: 0.9)
+        case .blush, .pinkish, .lotus: Color(red: 1, green: 0.975, blue: 0.985)
+        case .ivory, .linen: Color(red: 1, green: 0.965, blue: 0.9)
         case .cream: Color(red: 1, green: 0.95, blue: 0.88)
-        case .mist, .white: .white
+        case .mist, .white, .fog: .white
         }
     }
     /// 「我们」页的水纹在暖的两款上再淡一点，只动这一页，「柯的」那枝山茶不变
-    var pondWash: Double { self == .ivory || self == .cream || self == .blush ? 0.7 : 0.9 }
+    var pondWash: Double { [.mist, .white, .fog].contains(self) ? 0.9 : 0.7 }
     /// 126：粉白那款用设计稿的字色，别的四款还是原来的蓝墨
     static var ink: Color { stored().inks.primary }
     static var secondaryInk: Color { stored().inks.secondary }
 
     /// 126：每款纸配一套墨。页面只用 Ink.xxx，不直接拿这里的值。
-    var inks: CamelliaInks { self == .blush ? .blush : .classic }
+    /// 11-17 她要三页统一：不管挑哪张纸，字都用同一套暖墨（原来别的纸配蓝墨，暖花配冷字就割裂）
+    var inks: CamelliaInks { .blush }
 }
 
 /// 126：「我们」「柯的」、小本子、设置抽屉共用的字色/强调色。

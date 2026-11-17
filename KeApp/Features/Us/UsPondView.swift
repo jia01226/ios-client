@@ -24,6 +24,11 @@ struct UsPondView: View {
     @ObservedObject private var book: NotebookStore
     /// 133：亲密记录（132 错加在旧的 UsView 上了，她这页看不到）
     @ObservedObject private var love: LoveLogStore
+    /// 11-17 奶茶、粑粑：日历切到那两面时画
+    @ObservedObject private var bodyLog: BodyLogStore
+    /// 11-17 她：「正常就是排班日历，然后切换奶茶、粑粑、亲密」——每次进来都是排班那面
+    @State private var face: CalendarFace = .shift
+    @State private var faceDay: PondDay?
     @State private var month = Calendar.current.dateInterval(of: .month, for: .now)?.start ?? .now
     /// 1116：她自己记的日程（看医生的号），存在这台手机上
     @ObservedObject private var events = CalendarEventStore.shared
@@ -50,6 +55,7 @@ struct UsPondView: View {
         _notes = ObservedObject(wrappedValue: stores.notes)
         _book = ObservedObject(wrappedValue: stores.book)
         _love = ObservedObject(wrappedValue: stores.love)
+        _bodyLog = ObservedObject(wrappedValue: stores.bodyLog)
     }
 
     var body: some View {
@@ -63,7 +69,11 @@ struct UsPondView: View {
                 .accessibilityHidden(true)
             // 1116：一屏放下——月历常驻展开，翻月的箭头并进标题那一行
             calendarHeader.padding(.top, 6)
+            // 换一面就是一整张新的月历：旧的淡出，新的从下面轻轻浮上来
             monthGrid
+                .id(face)
+                .transition(reduceMotion ? .opacity : .asymmetric(insertion: .opacity.combined(with: .offset(y: 12)),
+                                                                  removal: .opacity))
             // 1116 她：日历结束不写「接下来」，跟上面一样来一道短横线，下面直接排日程
             Rectangle().fill(Cool.line).frame(width: 28, height: 1)
                 .frame(maxWidth: .infinity)
@@ -71,7 +81,11 @@ struct UsPondView: View {
                 .padding(.bottom, 4)
                 .accessibilityHidden(true)
             ScrollView {
-                upcomingSection.padding(.top, 6).padding(.bottom, 18)
+                if face == .shift {
+                    upcomingSection.padding(.top, 6).padding(.bottom, 18)
+                } else {
+                    faceSummary.padding(.top, 8)
+                }
             }
             .scrollIndicators(.hidden)
             .scrollBounceBehavior(.basedOnSize)
@@ -92,7 +106,8 @@ struct UsPondView: View {
         // 137：切过来照样刷新；回前台 5 分钟内拉过就不再整页重拉（没告诉上柯的「走了」还是会再送）
         .task { await stores.refresh(month: month) }
         .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await stores.refresh(month: month, onlyIfStale: true) } } }
-        .onChange(of: month) { _, m in Task { await love.load(m) } }
+        .onChange(of: month) { _, m in Task { await love.load(m); await bodyLog.load(m) } }
+        .sheet(item: $faceDay) { day in faceSheet(day.date) }
         .sheet(item: $editDay, onDismiss: { periods.clearStatus() }) { day in daySheet(day.date) }
         .sheet(item: $openEvent) { event in
             CalendarEventEditor(event: event, isNew: false) { saved in
@@ -225,28 +240,26 @@ struct UsPondView: View {
     private static let weekdayNames = ["一", "二", "三", "四", "五", "六", "日"]
 
     private var calendarHeader: some View {
-        HStack(alignment: .center, spacing: 8) {
-            Text("日历").font(Cool.song(13, .subheadline)).tracking(2.2).foregroundStyle(Cool.ink)
-                .accessibilityAddTraits(.isHeader)
-            if love.monthCount(month) > 0 {
-                Text("亲密 \(love.monthCount(month)) 次").font(Cool.song(11, .caption)).foregroundStyle(Cool.mauve)
-            }
+        HStack(alignment: .center, spacing: 6) {
+            // 11-17：原来的「日历 · 亲密几次」换成四面切换；亲密有了自己那一面
+            CalendarFacePicker(face: $face)
             Spacer(minLength: 4)
-            if !vm.isCurrentMonth(month) {
-                Button { month = vm.startOfMonth(for: .now) } label: {
-                    Text("回到本月").font(Cool.tiny(.caption)).foregroundStyle(Cool.secondary).frame(minHeight: 44).contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
             // 137：点的范围放到 44×44，箭头本身不变
             Button { month = vm.month(byAdding: -1, to: month) } label: {
                 Image(systemName: "chevron.left").font(.system(size: 13, weight: .ultraLight)).frame(width: 36, height: 44).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("上个月")
-            Text(Self.yearMonth(month)).font(Cool.didot(15, .subheadline)).foregroundStyle(Cool.secondary)
-                .lineLimit(1).fixedSize()
-                .accessibilityLabel(vm.monthTitle(for: month))
+            // 不在本月时点年月回到本月（原来那个「回到本月」挪到这里，顶上放不下四个字了）
+            Button { month = vm.startOfMonth(for: .now) } label: {
+                Text(Self.yearMonth(month)).font(Cool.didot(15, .subheadline))
+                    .foregroundStyle(vm.isCurrentMonth(month) ? Cool.secondary : Cool.mauve)
+                    .lineLimit(1).fixedSize()
+                    .frame(minHeight: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(vm.isCurrentMonth(month))
+            .accessibilityLabel(vm.monthTitle(for: month) + (vm.isCurrentMonth(month) ? "" : "，点一下回到本月"))
             Button { month = vm.month(byAdding: 1, to: month) } label: {
                 Image(systemName: "chevron.right").font(.system(size: 13, weight: .ultraLight)).frame(width: 36, height: 44).contentShape(Rectangle())
             }
@@ -263,7 +276,7 @@ struct UsPondView: View {
                 Text($0).font(Cool.tiny()).foregroundStyle(Cool.faint).frame(height: 26).accessibilityHidden(true)
             }
             ForEach(Array(vm.monthCells(for: month).enumerated()), id: \.offset) { _, date in
-                if let date { dayCell(date) } else { Color.clear.frame(height: 53) }
+                if let date { cell(date) } else { Color.clear.frame(height: 53) }
             }
         }
         .padding(.horizontal, -6)
@@ -337,6 +350,59 @@ struct UsPondView: View {
         return "\(c.component(.year, from: date)) / " + String(format: "%02d", c.component(.month, from: date))
     }
 
+    @ViewBuilder private func cell(_ date: Date) -> some View {
+        switch face {
+        case .shift: dayCell(date)
+        case .tea: FaceDayCell(date: date, face: .tea, count: bodyLog.tea(on: date)) { faceDay = PondDay(date: date) }
+        case .poop:
+            let p = bodyLog.poop(on: date)
+            FaceDayCell(date: date, face: .poop, count: p?.count ?? 0, feel: p?.feel) { faceDay = PondDay(date: date) }
+        case .love: FaceDayCell(date: date, face: .love, count: love.count(on: date)) { faceDay = PondDay(date: date) }
+        }
+    }
+
+    /// 奶茶 / 粑粑 / 亲密那几面，月历下面写这个月一共多少
+    private var faceSummary: some View {
+        let line: String
+        switch face {
+        case .tea: line = "这个月喝了 \(bodyLog.teaMonth(month)) 杯奶茶"
+        case .poop:
+            let gap = bodyLog.daysSinceLastPoop()
+            line = "这个月粑粑 \(bodyLog.poopMonth(month)) 次" + (gap.map { $0 == 0 ? " · 今天拉过了" : " · 上一次是 \($0) 天前" } ?? "")
+        case .love: line = "这个月亲密 \(love.monthCount(month)) 次"
+        case .shift: line = ""
+        }
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(line).font(Cool.song(13, .subheadline)).foregroundStyle(Cool.ink)
+            Text("点哪一天就改哪一天，柯也看得到；跟柯说一声他也会帮你记。")
+                .font(Cool.tiny()).foregroundStyle(Cool.secondary)
+            if let error = face == .love ? love.error : bodyLog.error {
+                Text(error).font(Cool.tiny()).foregroundStyle(Cool.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder private func faceSheet(_ date: Date) -> some View {
+        switch face {
+        case .tea:
+            FaceDaySheet(face: .tea, date: date, count: bodyLog.tea(on: date), onSet: { n, _ in
+                Task { await bodyLog.set("tea", count: n, on: date) }
+            }, error: bodyLog.error)
+        case .poop:
+            let p = bodyLog.poop(on: date)
+            FaceDaySheet(face: .poop, date: date, count: p?.count ?? 0, feel: p?.feel, onSet: { n, f in
+                Task { await bodyLog.set("poop", count: n, feel: f, on: date) }
+            }, error: bodyLog.error)
+        case .love:
+            FaceDaySheet(face: .love, date: date, count: love.count(on: date), onSet: { n, _ in
+                Task { await love.setCount(n, on: date) }
+            }, error: love.error)
+        case .shift:
+            EmptyView()
+        }
+    }
+
     /// 一天：Didot 数字，下面就是班次；今天淡蓝圆底，月经淡粉圆底，纪念日 ☾、亲密小心挂在右上
     private func dayCell(_ date: Date) -> some View {
         let isToday = Calendar.current.isDateInToday(date)
@@ -360,12 +426,10 @@ struct UsPondView: View {
                     .background(Circle().fill(period ? Cool.period : (isToday ? Cool.today : .clear)))
                     .overlay(Circle().stroke(isToday && period ? Cool.number.opacity(0.45) : .clear, lineWidth: 0.8))
                     .overlay(alignment: .topTrailing) {
-                        if anniversary || times > 0 {
-                            HStack(spacing: 1) {
-                                if anniversary { Text("☾").font(.system(size: 9)) }
-                                if times > 0 { Image(systemName: "heart.fill").font(.system(size: 6)) }
-                            }
-                            .foregroundStyle(Cool.heart).offset(x: 9, y: -2)
+                        // 11-17 亲密有了自己那一面，排班这面只留纪念日的 ☾
+                        if anniversary {
+                            Text("☾").font(.system(size: 9))
+                                .foregroundStyle(Cool.heart).offset(x: 9, y: -2)
                         }
                     }
                     // 1116：有日程（看医生的号）的那天，左上挂一个小点
@@ -648,6 +712,8 @@ enum Cool {
     let notes: StickyNotesStore
     let book: NotebookStore
     let love: LoveLogStore
+    /// 11-17 奶茶、粑粑
+    let bodyLog: BodyLogStore
     /// 寄语在手机上留一份：刚开 App、还没拉到时先画上次那句
     private(set) var savedVerse: (en: String, zh: String)?
     private let verseKey: String
@@ -662,6 +728,7 @@ enum Cool {
         notes = StickyNotesStore(api: api, scope: line.rawValue)
         book = NotebookStore(api: api)
         love = LoveLogStore(api: api, scope: line.rawValue)
+        bodyLog = BodyLogStore(api: api, scope: line.rawValue)
         CalendarEventStore.shared.attach(api)
         verseKey = "us.verse." + line.rawValue
         if let saved = UserDefaults.standard.stringArray(forKey: verseKey), saved.count == 2 { savedVerse = (saved[0], saved[1]) }
@@ -677,13 +744,14 @@ enum Cool {
             if periods.hasUnsentEnd { await periods.syncEnds() }
             return
         }
-        let task = Task { @MainActor [vm, periods, notes, book, love] in
+        let task = Task { @MainActor [vm, periods, notes, book, love, bodyLog] in
             async let a: Void = vm.loadReminders()
             async let b: Void = periods.load()
             async let c: Void = notes.load()
             async let d: Void = book.load()
             async let e: Void = love.load(month)
-            _ = await (a, b, c, d, e)
+            async let f: Void = bodyLog.load(month)
+            _ = await (a, b, c, d, e, f)
         }
         loading = task
         await task.value
