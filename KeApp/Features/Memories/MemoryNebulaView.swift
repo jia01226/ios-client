@@ -363,6 +363,10 @@ struct MemoryNebulaView: View {
     /// 136：第七团「关于她」和日常吃喝并排在最上面
     /// 1116 她：「前面太挤，想要纵深感」——八团按远近摆，上面的小一点（远），下面的略大（近），
     /// 说好的留在正中。四元组是（哪团、x、y、大小倍率）。
+    /// 星图上下留白：overview 和「从哪团飞进去」的锚点必须用同一份，不然点进去会错位抖一下
+    private static let mapTop: CGFloat = 150
+    private static let mapBottom: CGFloat = 212
+
     private static let spots: [(NebulaKind, CGFloat, CGFloat, CGFloat)] = [
         (.whirlpool, 0.50, 0.49, 1.00),   // 说好的：正中，最大
         (.lessons,   0.50, 0.10, 0.54),   // 他学会的：最上，最远最小
@@ -493,7 +497,7 @@ struct MemoryNebulaView: View {
 
     private var overview: some View {
         GeometryReader { geo in
-            let w = geo.size.width, top: CGFloat = 150, bottom: CGFloat = 212
+            let w = geo.size.width, top = Self.mapTop, bottom = Self.mapBottom
             let mapH = max(300, geo.size.height - top - bottom)
             ZStack(alignment: .topLeading) {
                 ForEach(loose.prefix(60)) { f in
@@ -928,7 +932,7 @@ struct MemoryNebulaView: View {
         motion.jump(.home)
         // 先把「从哪团飞进去」定下来画一遍，整片星河才知道往哪儿放大；下一拍再进
         if let spot = Self.spots.first(where: { $0.0 == g.kind }) {
-            let top: CGFloat = 150, bottom: CGFloat = 178
+            let top = Self.mapTop, bottom = Self.mapBottom
             let mapH = max(300, overviewSize.height - top - bottom)
             enterAnchor = UnitPoint(x: spot.1, y: min(1, (top + spot.2 * mapH) / max(1, overviewSize.height)))
         }
