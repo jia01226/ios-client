@@ -370,8 +370,8 @@ struct MemoryNebulaView: View {
         (NebulaGroup.about.kind, 0.84, 0.27, 0.74), // 关于她
         (.orion,     0.11, 0.59, 0.84),   // 身体和药
         (.sombrero,  0.89, 0.59, 0.84),   // 以后的家
-        (.heart,     0.26, 0.87, 0.90),   // 亲密时刻
-        (.horsehead, 0.74, 0.87, 0.90)    // 难过的夜里
+        (.heart,     0.26, 0.85, 0.90),   // 亲密时刻
+        (.horsehead, 0.74, 0.85, 0.90)    // 难过的夜里
     ]
 
     private static func readyArts() -> [NebulaKind: NebulaArt] {
@@ -493,7 +493,7 @@ struct MemoryNebulaView: View {
 
     private var overview: some View {
         GeometryReader { geo in
-            let w = geo.size.width, top: CGFloat = 150, bottom: CGFloat = 178
+            let w = geo.size.width, top: CGFloat = 150, bottom: CGFloat = 212
             let mapH = max(300, geo.size.height - top - bottom)
             ZStack(alignment: .topLeading) {
                 ForEach(loose.prefix(60)) { f in
