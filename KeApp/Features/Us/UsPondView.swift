@@ -29,6 +29,10 @@ struct UsPondView: View {
     /// 11-17 她：「正常就是排班日历，然后切换奶茶、粑粑、亲密」——每次进来都是排班那面
     @State private var face: CalendarFace = .shift
     @State private var faceDay: PondDay?
+    /// 11-17 奶茶本本：点哪天，日历下面就列哪天的几杯
+    @State private var teaDay = Date.now
+    @State private var editingCup: TeaCup?
+    @State private var teaBudgetOpen = false
     @State private var month = Calendar.current.dateInterval(of: .month, for: .now)?.start ?? .now
     /// 1116：她自己记的日程（看医生的号），存在这台手机上
     @ObservedObject private var events = CalendarEventStore.shared
@@ -83,6 +87,12 @@ struct UsPondView: View {
             ScrollView {
                 if face == .shift {
                     upcomingSection.padding(.top, 6).padding(.bottom, 18)
+                } else if face == .tea {
+                    TeaPanel(store: bodyLog, month: month, day: teaDay,
+                             onAdd: { editingCup = TeaCup(day: HomeReminderCoordinator.dayKey(teaDay)) },
+                             onEdit: { editingCup = $0 },
+                             onBudget: { teaBudgetOpen = true })
+                        .padding(.top, 8).padding(.bottom, 18)
                 } else {
                     faceSummary.padding(.top, 8)
                 }
@@ -108,6 +118,16 @@ struct UsPondView: View {
         .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await stores.refresh(month: month, onlyIfStale: true) } } }
         .onChange(of: month) { _, m in Task { await love.load(m); await bodyLog.load(m) } }
         .sheet(item: $faceDay) { day in faceSheet(day.date) }
+        .sheet(item: $editingCup) { cup in
+            TeaCupEditor(cup: cup, isNew: cup.id.isEmpty, recentBrands: bodyLog.recentBrands,
+                         upload: { await bodyLog.uploadPhoto($0) },
+                         onSave: { saved in Task { await bodyLog.saveCup(saved) } },
+                         onDelete: { gone in Task { await bodyLog.deleteCup(gone) } })
+                .environmentObject(Theme.shared)
+        }
+        .sheet(isPresented: $teaBudgetOpen) {
+            TeaBudgetSheet(budget: bodyLog.teaBudget) { m, w in Task { await bodyLog.setBudget(monthBudget: m, weekCups: w) } }
+        }
         .sheet(item: $editDay, onDismiss: { periods.clearStatus() }) { day in daySheet(day.date) }
         .sheet(item: $openEvent) { event in
             CalendarEventEditor(event: event, isNew: false) { saved in
@@ -355,7 +375,9 @@ struct UsPondView: View {
     @ViewBuilder private func cell(_ date: Date) -> some View {
         switch face {
         case .shift: dayCell(date)
-        case .tea: FaceDayCell(date: date, face: .tea, count: bodyLog.tea(on: date)) { faceDay = PondDay(date: date) }
+        case .tea:
+            TeaDayCell(date: date, cups: bodyLog.teaCups(on: date),
+                       selected: Calendar.current.isDate(date, inSameDayAs: teaDay)) { teaDay = date }
         case .poop:
             let p = bodyLog.poop(on: date)
             FaceDayCell(date: date, face: .poop, count: p?.count ?? 0, feel: p?.feel) { faceDay = PondDay(date: date) }
@@ -386,9 +408,7 @@ struct UsPondView: View {
     @ViewBuilder private func faceSheet(_ date: Date) -> some View {
         switch face {
         case .tea:
-            FaceDaySheet(face: .tea, date: date, count: bodyLog.tea(on: date), onSet: { n, _ in
-                Task { await bodyLog.set("tea", count: n, on: date) }
-            }, error: bodyLog.error)
+            EmptyView()   // 奶茶点一天是在日历下面列出来（TeaPanel），不弹小窗
         case .poop:
             let p = bodyLog.poop(on: date)
             FaceDaySheet(face: .poop, date: date, count: p?.count ?? 0, feel: p?.feel, onSet: { n, f in

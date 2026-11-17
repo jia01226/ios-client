@@ -1013,6 +1013,35 @@ actor APIClient {
         catch { throw APIError.decoding(error) }
     }
 
+    func saveTeaCup(_ cup: TeaCup) async throws -> (TeaCup, BodyLogMonth) {
+        struct Saved: Decodable { let cup: TeaCup; let month: BodyLogMonth }
+        var request = try makeRequest(path: "/api/bodylog/tea", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(cup)
+        let (data, _) = try await perform(request)
+        do {
+            let saved = try decoder.decode(Saved.self, from: data)
+            return (saved.cup, saved.month)
+        } catch { throw APIError.decoding(error) }
+    }
+
+    func deleteTeaCup(id: String) async throws {
+        guard !id.isEmpty, !id.contains("/") else { throw APIError.invalidResponse }
+        _ = try await perform(try makeRequest(path: "/api/bodylog/tea/\(id)", method: "DELETE"))
+    }
+
+    func setTeaBudget(monthBudget: Double?, weekCups: Int?) async throws -> BodyLogMonth {
+        var request = try makeRequest(path: "/api/bodylog/tea-budget", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = [:]
+        if let monthBudget { body["month_budget"] = monthBudget }
+        if let weekCups { body["week_cups"] = weekCups }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, _) = try await perform(request)
+        do { return try decoder.decode(BodyLogMonth.self, from: data) }
+        catch { throw APIError.decoding(error) }
+    }
+
     func setBodyLogDay(kind: String, day: String, count: Int, feel: String?) async throws -> BodyLogMonth {
         var request = try makeRequest(path: "/api/bodylog/day", method: "POST")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

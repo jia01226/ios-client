@@ -15,7 +15,48 @@ struct BodyLogMonth: Codable, Equatable, Sendable {
     var tea_month: Int
     var poop_month: Int
     var last_poop: String?
+    // 11-17 奶茶本本：一杯一条、花费、热量、这周第几杯、她定的预算
+    var tea_cups: [TeaCup]?
+    var tea_spend: Double?
+    var tea_kcal: Int?
+    var tea_week: Int?
+    var tea_budget: TeaBudget?
 }
+
+/// 一杯奶茶（她记的、或者柯听她说了记的）
+struct TeaCup: Codable, Equatable, Identifiable, Sendable {
+    var id: String = ""
+    var day: String
+    var brand: String?
+    var drink: String?
+    var sugar: String?
+    var ice: String?
+    var toppings: String?
+    var note: String?
+    var photo: String?
+    var price: Double?
+    var kcal: Int?
+    var kcal_by: String?
+    var rating: Int?
+    var author: String?
+    var at: String?
+
+    /// 品牌第一个字，做成日历上的小圆章（不用各家的 logo）
+    var badge: String { String((brand?.trimmingCharacters(in: .whitespaces).first).map { String($0) } ?? "茶") }
+    var title: String {
+        let t = [brand, drink].compactMap { $0?.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
+        return t.isEmpty ? "一杯奶茶" : t
+    }
+    var options: String {
+        [sugar, ice, toppings].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " / ")
+    }
+}
+
+struct TeaBudget: Codable, Equatable, Sendable {
+    var month_budget: Double?
+    var week_cups: Int?
+}
+
 
 /// 出恭顺不顺：顺 / 有点难 / 很难（她嫌「粑粑」难听，界面上叫「出恭」）
 enum PoopFeel: String, CaseIterable, Identifiable, Sendable {
@@ -33,6 +74,10 @@ enum PoopFeel: String, CaseIterable, Identifiable, Sendable {
 protocol BodyLogAPI: Sendable {
     func bodyLog(month: String) async throws -> BodyLogMonth
     func setBodyLogDay(kind: String, day: String, count: Int, feel: String?) async throws -> BodyLogMonth
+    func saveTeaCup(_ cup: TeaCup) async throws -> (TeaCup, BodyLogMonth)
+    func deleteTeaCup(id: String) async throws
+    func setTeaBudget(monthBudget: Double?, weekCups: Int?) async throws -> BodyLogMonth
+    func uploadAttachment(data: Data, fileName: String, mimeType: String) async throws -> ChatAttachment
 }
 extension APIClient: BodyLogAPI {}
 
@@ -60,6 +105,57 @@ extension APIClient: BodyLogAPI {}
         return months[String(day.prefix(7))]?.poop[day]
     }
     func teaMonth(_ month: Date) -> Int { months[Self.monthKey(month)]?.tea_month ?? 0 }
+    func teaCups(on date: Date) -> [TeaCup] {
+        let day = HomeReminderCoordinator.dayKey(date)
+        return (months[String(day.prefix(7))]?.tea_cups ?? []).filter { $0.day == day }
+    }
+    func teaSpend(_ month: Date) -> Double { months[Self.monthKey(month)]?.tea_spend ?? 0 }
+    func teaKcal(_ month: Date) -> Int { months[Self.monthKey(month)]?.tea_kcal ?? 0 }
+    /// 这周第几杯、预算（预算不分月，取最近拉到的那份）
+    var teaWeek: Int { months[Self.monthKey(.now)]?.tea_week ?? 0 }
+    var teaBudget: TeaBudget? { months[Self.monthKey(.now)]?.tea_budget ?? months.values.compactMap(\.tea_budget).first }
+    /// 记过的品牌，最近的在前（记一杯时点一下就填上）
+    var recentBrands: [String] {
+        let cups = months.values.flatMap { $0.tea_cups ?? [] }.sorted { ($0.at ?? $0.day) > ($1.at ?? $1.day) }
+        var seen = Set<String>(), out: [String] = []
+        for b in cups.compactMap(\.brand) where !b.isEmpty && seen.insert(b).inserted { out.append(b) }
+        return Array(out.prefix(8))
+    }
+
+    @discardableResult func saveCup(_ cup: TeaCup) async -> Bool {
+        do {
+            let (_, month) = try await api.saveTeaCup(cup)
+            months[month.month] = month
+            error = nil; persist()
+            return true
+        } catch {
+            self.error = "这杯没存上，再试一次"
+            return false
+        }
+    }
+
+    func deleteCup(_ cup: TeaCup) async {
+        do {
+            try await api.deleteTeaCup(id: cup.id)
+            if let date = Self.date(cup.day) { await load(date) }
+        } catch {
+            self.error = "没删掉，再试一次"
+        }
+    }
+
+    func setBudget(monthBudget: Double?, weekCups: Int?) async {
+        do {
+            let month = try await api.setTeaBudget(monthBudget: monthBudget, weekCups: weekCups)
+            months[month.month] = month
+            error = nil; persist()
+        } catch {
+            self.error = "预算没存上，再试一次"
+        }
+    }
+
+    func uploadPhoto(_ data: Data) async -> String? {
+        try? await api.uploadAttachment(data: data, fileName: "奶茶-\(UUID().uuidString.prefix(8)).jpg", mimeType: "image/jpeg").url
+    }
     func poopMonth(_ month: Date) -> Int { months[Self.monthKey(month)]?.poop_month ?? 0 }
     /// 上一次粑粑隔了几天（今天拉过是 0）；没记过是 nil
     func daysSinceLastPoop() -> Int? {
