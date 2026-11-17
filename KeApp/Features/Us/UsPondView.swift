@@ -33,6 +33,9 @@ struct UsPondView: View {
     @State private var teaDay = Date.now
     @State private var editingCup: TeaCup?
     @State private var teaBudgetOpen = false
+    /// 11-17 出恭本本：点哪天，日历下面列哪天的几次
+    @State private var poopDay = Date.now
+    @State private var editingPoop: PoopLog?
     @State private var month = Calendar.current.dateInterval(of: .month, for: .now)?.start ?? .now
     /// 1116：她自己记的日程（看医生的号），存在这台手机上
     @ObservedObject private var events = CalendarEventStore.shared
@@ -94,7 +97,10 @@ struct UsPondView: View {
                              onBudget: { teaBudgetOpen = true })
                         .padding(.top, 8).padding(.bottom, 18)
                 } else {
-                    faceSummary.padding(.top, 8)
+                    PoopPanel(store: bodyLog, month: month, day: poopDay,
+                              onAdd: { editingPoop = PoopLog(day: HomeReminderCoordinator.dayKey(poopDay)) },
+                              onEdit: { editingPoop = $0 })
+                        .padding(.top, 8).padding(.bottom, 18)
                 }
             }
             .scrollIndicators(.hidden)
@@ -124,6 +130,11 @@ struct UsPondView: View {
                          onSave: { saved in Task { await bodyLog.saveCup(saved) } },
                          onDelete: { gone in Task { await bodyLog.deleteCup(gone) } })
                 .environmentObject(Theme.shared)
+        }
+        .sheet(item: $editingPoop) { log in
+            PoopEditor(log: log, isNew: log.id.isEmpty,
+                       onSave: { saved in Task { await bodyLog.savePoop(saved) } },
+                       onDelete: { gone in Task { await bodyLog.deletePoop(gone) } })
         }
         .sheet(isPresented: $teaBudgetOpen) {
             TeaBudgetSheet(budget: bodyLog.teaBudget) { m, w in Task { await bodyLog.setBudget(monthBudget: m, weekCups: w) } }
@@ -379,8 +390,8 @@ struct UsPondView: View {
             TeaDayCell(date: date, cups: bodyLog.teaCups(on: date),
                        selected: Calendar.current.isDate(date, inSameDayAs: teaDay)) { teaDay = date }
         case .poop:
-            let p = bodyLog.poop(on: date)
-            FaceDayCell(date: date, face: .poop, count: p?.count ?? 0, feel: p?.feel) { faceDay = PondDay(date: date) }
+            PoopDayCell(date: date, logs: bodyLog.poopLogs(on: date),
+                        selected: Calendar.current.isDate(date, inSameDayAs: poopDay)) { poopDay = date }
         }
     }
 
@@ -410,10 +421,7 @@ struct UsPondView: View {
         case .tea:
             EmptyView()   // 奶茶点一天是在日历下面列出来（TeaPanel），不弹小窗
         case .poop:
-            let p = bodyLog.poop(on: date)
-            FaceDaySheet(face: .poop, date: date, count: p?.count ?? 0, feel: p?.feel, onSet: { n, f in
-                Task { await bodyLog.set("poop", count: n, feel: f, on: date) }
-            }, error: bodyLog.error)
+            EmptyView()   // 出恭点一天是在日历下面列出来（PoopPanel）
         case .shift:
             EmptyView()
         }

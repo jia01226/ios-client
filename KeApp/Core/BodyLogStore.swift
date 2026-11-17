@@ -21,6 +21,54 @@ struct BodyLogMonth: Codable, Equatable, Sendable {
     var tea_kcal: Int?
     var tea_week: Int?
     var tea_budget: TeaBudget?
+    // 11-17 出恭本本：一次一条
+    var poop_logs: [PoopLog]?
+    var poop_hard: Int?
+    var poop_none: Int?
+}
+
+/// 出恭一次：时间、顺不顺、用时、蹲了没出来、形状（选填）、备注
+struct PoopLog: Codable, Equatable, Identifiable, Sendable {
+    var id: String = ""
+    var day: String
+    var time: String?
+    var feel: String?
+    var duration: String?
+    var none: Bool?
+    var shape: String?
+    var note: String?
+    var author: String?
+
+    var isNone: Bool { none ?? false }
+}
+
+enum PoopDuration: String, CaseIterable, Identifiable, Sendable {
+    case lt5, fiveTo10 = "5to10", gt10
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .lt5: return "5 分钟内"
+        case .fiveTo10: return "5–10 分钟"
+        case .gt10: return "10 分钟以上"
+        }
+    }
+}
+
+/// 形状（选填）：从硬到稀七档，名字是我们自己起的
+enum PoopShape: String, CaseIterable, Identifiable, Sendable {
+    case pebble, lumpy, cracked, banana, soft, mushy, watery
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .pebble: return "小石子"
+        case .lumpy: return "疙瘩条"
+        case .cracked: return "裂纹条"
+        case .banana: return "香蕉"
+        case .soft: return "软团"
+        case .mushy: return "糊糊"
+        case .watery: return "水水"
+        }
+    }
 }
 
 /// 一杯奶茶（她记的、或者柯听她说了记的）
@@ -74,6 +122,8 @@ enum PoopFeel: String, CaseIterable, Identifiable, Sendable {
 protocol BodyLogAPI: Sendable {
     func bodyLog(month: String) async throws -> BodyLogMonth
     func setBodyLogDay(kind: String, day: String, count: Int, feel: String?) async throws -> BodyLogMonth
+    func savePoop(_ log: PoopLog) async throws -> (PoopLog, BodyLogMonth)
+    func deletePoop(id: String) async throws
     func saveTeaCup(_ cup: TeaCup) async throws -> (TeaCup, BodyLogMonth)
     func deleteTeaCup(id: String) async throws
     func setTeaBudget(monthBudget: Double?, weekCups: Int?) async throws -> BodyLogMonth
@@ -120,6 +170,34 @@ extension APIClient: BodyLogAPI {}
         var seen = Set<String>(), out: [String] = []
         for b in cups.compactMap(\.brand) where !b.isEmpty && seen.insert(b).inserted { out.append(b) }
         return Array(out.prefix(8))
+    }
+
+    func poopLogs(on date: Date) -> [PoopLog] {
+        let day = HomeReminderCoordinator.dayKey(date)
+        return (months[String(day.prefix(7))]?.poop_logs ?? []).filter { $0.day == day }.sorted { ($0.time ?? "") < ($1.time ?? "") }
+    }
+    func poopHard(_ month: Date) -> Int { months[Self.monthKey(month)]?.poop_hard ?? 0 }
+    func poopNone(_ month: Date) -> Int { months[Self.monthKey(month)]?.poop_none ?? 0 }
+
+    @discardableResult func savePoop(_ log: PoopLog) async -> Bool {
+        do {
+            let (_, month) = try await api.savePoop(log)
+            months[month.month] = month
+            error = nil; persist()
+            return true
+        } catch {
+            self.error = "这次没存上，再试一次"
+            return false
+        }
+    }
+
+    func deletePoop(_ log: PoopLog) async {
+        do {
+            try await api.deletePoop(id: log.id)
+            if let date = Self.date(log.day) { await load(date) }
+        } catch {
+            self.error = "没删掉，再试一次"
+        }
     }
 
     @discardableResult func saveCup(_ cup: TeaCup) async -> Bool {

@@ -1013,6 +1013,23 @@ actor APIClient {
         catch { throw APIError.decoding(error) }
     }
 
+    func savePoop(_ log: PoopLog) async throws -> (PoopLog, BodyLogMonth) {
+        struct Saved: Decodable { let entry: PoopLog; let month: BodyLogMonth }
+        var request = try makeRequest(path: "/api/bodylog/poop", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(log)
+        let (data, _) = try await perform(request)
+        do {
+            let saved = try decoder.decode(Saved.self, from: data)
+            return (saved.entry, saved.month)
+        } catch { throw APIError.decoding(error) }
+    }
+
+    func deletePoop(id: String) async throws {
+        guard !id.isEmpty, !id.contains("/") else { throw APIError.invalidResponse }
+        _ = try await perform(try makeRequest(path: "/api/bodylog/poop/\(id)", method: "DELETE"))
+    }
+
     func saveTeaCup(_ cup: TeaCup) async throws -> (TeaCup, BodyLogMonth) {
         struct Saved: Decodable { let cup: TeaCup; let month: BodyLogMonth }
         var request = try makeRequest(path: "/api/bodylog/tea", method: "POST")
