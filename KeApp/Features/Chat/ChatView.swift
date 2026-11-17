@@ -1087,7 +1087,8 @@ struct ChatView: View {
                                 imageRouter.open([attachment], at: 0)
                             } label: {
                                 // 1116 她：「发消息的图片能不能显示图片，小图片在上面，不然我都不知道发的什么图片」
-                                ChatImageTile(attachment: attachment, width: 52, height: 52)
+                                // 11-17 她：「图片太小了，做成和 Claude 那么大」——52 → 84
+                                ChatImageTile(attachment: attachment, width: 84, height: 84)
                                     .padding(.vertical, 4)
                             }
                             .buttonStyle(.plain)

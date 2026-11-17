@@ -210,7 +210,8 @@ struct Metrics {
     let glassShadowY: CGFloat = 6
     let drawerWidth: CGFloat = 310
     let drawerHeaderHeight: CGFloat = 56
-    let recentPhotoSize: CGFloat = 68
+    // 11-17 她：「图片太小了，做成和 Claude 那么大」
+    let recentPhotoSize: CGFloat = 84
     let messageImageHeight: CGFloat = 180
     let scrollToLatestRevealDistance: CGFloat = 96
 

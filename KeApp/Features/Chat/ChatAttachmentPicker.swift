@@ -95,13 +95,12 @@ final class RecentPhotosStore: ObservableObject {
     private let imageManager = PHCachingImageManager()
     private var didLoad = false
 
+    /// 11-17 她：「最近图片有点更新不及时，每次还得点（所有照片）」——以前只在第一次打开时读一次，
+    /// 之后新拍的、新截的都不出来。现在每次打开加号面板都重读一遍；已经有图时不转圈，读好了直接换上。
     func loadIfNeeded() async {
         let current = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        let authorizationBecameAvailable = permissionDenied
-            && (current == .authorized || current == .limited)
-        guard !didLoad || authorizationBecameAvailable else { return }
         didLoad = true
-        isLoading = true
+        isLoading = photos.isEmpty
         permissionDenied = false
         defer { isLoading = false }
 
@@ -171,7 +170,7 @@ final class RecentPhotosStore: ObservableObject {
             var completed = false
             imageManager.requestImage(
                 for: asset,
-                targetSize: CGSize(width: 180, height: 180),
+                targetSize: CGSize(width: 270, height: 270),
                 contentMode: .aspectFill,
                 options: options
             ) { image, info in

@@ -9,11 +9,12 @@ import ImageIO
 
 enum ChatImageMetrics {
     /// 一张图在聊天里的高度：加载前后都一样
-    static let height: CGFloat = 168
-    static let minWidth: CGFloat = 96
-    static let maxWidth: CGFloat = 224
+    /// 11-17 她：「图片太小了，做成和 Claude 那么大」——168 → 240，最宽 224 → 280，几张时方格 92 → 112
+    static let height: CGFloat = 240
+    static let minWidth: CGFloat = 140
+    static let maxWidth: CGFloat = 280
     /// 好几张图时的小方格
-    static let tile: CGFloat = 92
+    static let tile: CGFloat = 112
     /// 塔罗小牌的宽，高按牌的比例
     static let tarotWidth: CGFloat = 72
     static let tarotAspect: CGFloat = 0.58
