@@ -340,12 +340,20 @@ struct MemoryNebulaView: View {
     @State private var byGroup: [String: [MemoryFlower]] = [:]
     @State private var shownCount = 0
     @State private var cameraVersion = 0
+    /// 11-17 她：「点击没有那种自然而然放大的感觉，而是吧唧一下打开了」——进一团时从点的那团放大飞进去，出来缩回那团
+    @State private var enterAnchor: UnitPoint = .center
+    @State private var overviewSize = CGSize(width: 390, height: 844)
     @AppStorage("memory.galaxy.lastSeen") private var lastSeen = ""
 
     private static let ink = Color(red: 0.945, green: 0.94, blue: 0.93)
     private static let muted = Color(red: 0.72, green: 0.74, blue: 0.81)
     private static let line = Color(red: 0.76, green: 0.8, blue: 0.87).opacity(0.22)
     private static let night = Color(red: 5 / 255, green: 7 / 255, blue: 13 / 255)
+    /// 「找一件事」那张单子：实心深蓝底、亮字
+    private static let listBack = Color(red: 0.07, green: 0.08, blue: 0.13)
+    private static let listRow = Color(red: 0.12, green: 0.13, blue: 0.2)
+    private static let listInk = Color(red: 0.97, green: 0.96, blue: 0.95)
+    private static let listSub = Color(red: 0.8, green: 0.82, blue: 0.88)
     /// 136：第七团「关于她」和日常吃喝并排在最上面
     /// 1116 她：「前面太挤，想要纵深感」——八团按远近摆，上面的小一点（远），下面的略大（近），
     /// 说好的留在正中。四元组是（哪团、x、y、大小倍率）。
@@ -392,12 +400,16 @@ struct MemoryNebulaView: View {
                                        onTap: { id in selectedID = id }, onPinchOut: { leave() })
                         .ignoresSafeArea()
                         .background(GeometryReader { geo in Color.clear.onAppear { canvasSize = geo.size }.onChange(of: geo.size) { _, s in canvasSize = s } }.ignoresSafeArea())
-                        .transition(.opacity)
+                        .transition(reduceMotion ? .opacity : .asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.28, anchor: enterAnchor)),
+                            removal: .opacity.combined(with: .scale(scale: 0.28, anchor: enterAnchor))))
                 } else {
                     ProgressView().tint(Self.muted)
                 }
             } else {
-                overview.transition(.opacity)
+                overview.transition(reduceMotion ? .opacity : .asymmetric(
+                    insertion: .opacity.combined(with: .scale(scale: 2.2, anchor: enterAnchor)),
+                    removal: .opacity.combined(with: .scale(scale: 2.8, anchor: enterAnchor))))
             }
             VStack(spacing: 0) {
                 header
@@ -406,7 +418,7 @@ struct MemoryNebulaView: View {
             }
             if let flower = selected {
                 VStack { Spacer(); card(flower) }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.96, anchor: .bottom)))
             }
             overlays
             if let toast {
@@ -421,9 +433,10 @@ struct MemoryNebulaView: View {
         }
         .foregroundStyle(Self.ink)
         .environment(\.colorScheme, .dark)
-        // 卡片一点就出来，不慢慢弹
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: selectedID)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: current)
+        // 卡片一点就出来，轻轻托上来
+        .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.86), value: selectedID)
+        // 11-17：进一团、出来都是一段放大 / 缩回，不是一闪
+        .animation(reduceMotion ? nil : .spring(response: 0.62, dampingFraction: 0.9), value: current)
         .sensoryFeedback(.selection, trigger: selectedID)
         .task { await store.load() }
         .task { await paint() }
@@ -494,6 +507,8 @@ struct MemoryNebulaView: View {
             }
             .frame(width: w, height: geo.size.height)
             .contentShape(Rectangle())
+            .onAppear { overviewSize = geo.size }
+            .onChange(of: geo.size) { _, s in overviewSize = s }
             // 130：点哪儿就认离哪团最近（以前按钮的框叠在一起，点身体和药会点到说好的）；一点马上进
             .gesture(DragGesture(minimumDistance: 0).onEnded { v in
                 guard hypot(v.translation.width, v.translation.height) < 10 else { return }
@@ -794,24 +809,33 @@ struct MemoryNebulaView: View {
                 }
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("memory-list-range")
+                .listRowBackground(Self.listRow)
                 Text(rows.isEmpty ? "没有找到，换一个词试试。" : "\(rows.count) 颗\(privateOpen ? "" : " · 亲密的保持收好")")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.footnote).foregroundStyle(Self.listSub)
+                    .listRowBackground(Self.listRow)
                 ForEach(rows.prefix(400)) { flower in
                     let g = NebulaGroup.groupName(for: flower)
                     let hidden = g == "亲密时刻" && !privateOpen
+                    // 11-17 她：「这个页面太淡了，看不清楚字」——列表里的按钮字被染成主题色（灰紫），压在深底上发虚。
+                    // 换成亮字、副标题也提亮一档，底换成实心深蓝
                     Button { open(flower) } label: {
                         HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(hidden ? "已收好的一件事" : flower.title).lineLimit(1)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(hidden ? "已收好的一件事" : flower.title).lineLimit(2)
+                                    .font(.body).foregroundStyle(Self.listInk)
                                 Text("\(g == NebulaGroup.background ? "还没归类" : g) · \(Self.dateText(flower))\(flower.author == "ke" ? " · 柯亲手记下" : "")")
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    .font(.footnote).foregroundStyle(Self.listSub)
                             }
                             Spacer()
-                            Image(systemName: hidden ? "lock" : "chevron.right").font(.caption).foregroundStyle(.secondary)
+                            Image(systemName: hidden ? "lock" : "chevron.right").font(.footnote).foregroundStyle(Self.listSub)
                         }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .listRowBackground(Self.listRow)
                 }
             }
+            .scrollContentBackground(.hidden)
             .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "找一句话、一件小事…")
             .navigationTitle(listAll || current == nil ? "所有记忆" : current!.name)
             .navigationBarTitleDisplayMode(.inline)
@@ -824,6 +848,8 @@ struct MemoryNebulaView: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .presentationBackground(Self.listBack)
+        .tint(Self.listInk)
         .environment(\.colorScheme, .dark)
     }
 
@@ -868,7 +894,13 @@ struct MemoryNebulaView: View {
     private func enter(_ g: NebulaGroup) {
         selectedID = nil
         motion.jump(.home)
-        current = g
+        // 先把「从哪团飞进去」定下来画一遍，整片星河才知道往哪儿放大；下一拍再进
+        if let spot = Self.spots.first(where: { $0.0 == g.kind }) {
+            let top: CGFloat = 150, bottom: CGFloat = 178
+            let mapH = max(300, overviewSize.height - top - bottom)
+            enterAnchor = UnitPoint(x: spot.1, y: min(1, (top + spot.2 * mapH) / max(1, overviewSize.height)))
+        }
+        DispatchQueue.main.async { current = g }
     }
     private func leave() {
         selectedID = nil
