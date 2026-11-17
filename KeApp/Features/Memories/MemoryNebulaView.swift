@@ -311,6 +311,9 @@ private struct NebulaDetailCanvas: View {
 struct MemoryNebulaView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var store: MemoryGardenStore
+    /// 11-17 夜里对账：柯想改的那几条
+    @StateObject private var proposals = MemoryProposalStore()
+    @State private var proposalsOpen = false
     @Binding var page: Int
     var onClose: (() -> Void)?
     @State private var current: NebulaGroup?
@@ -439,6 +442,10 @@ struct MemoryNebulaView: View {
         .animation(reduceMotion ? nil : .spring(response: 0.62, dampingFraction: 0.9), value: current)
         .sensoryFeedback(.selection, trigger: selectedID)
         .task { await store.load() }
+        .task { await proposals.load() }
+        .sheet(isPresented: $proposalsOpen) {
+            MemoryProposalSheet(store: proposals) { Task { await store.load() } }
+        }
         .task { await paint() }
         .onAppear { visible = true; regroup(); welcomeNewMemory() }
         .onDisappear { visible = false; privateOpen = false; if current?.kind == .heart { current = nil } }
@@ -670,7 +677,21 @@ struct MemoryNebulaView: View {
                 .multilineTextAlignment(.center)
                 .shadow(color: .black.opacity(0.6), radius: 4)
             HStack {
-                Text("亮的是柯亲手记的").font(.system(size: 11)).tracking(1.2).foregroundStyle(Color(red: 0.83, green: 0.77, blue: 0.71))
+                if proposals.proposals.isEmpty {
+                    Text("亮的是柯亲手记的").font(.system(size: 11)).tracking(1.2).foregroundStyle(Color(red: 0.83, green: 0.77, blue: 0.71))
+                } else {
+                    // 11-17：柯夜里对账想改的几条，她点进去看、同意才改
+                    Button { proposalsOpen = true } label: {
+                        HStack(spacing: 5) {
+                            Circle().fill(Color(red: 0.94, green: 0.88, blue: 0.73)).frame(width: 6, height: 6)
+                            Text("柯想改的 · \(proposals.proposals.count)")
+                        }
+                        .font(.system(size: 13)).foregroundStyle(Color(red: 0.94, green: 0.88, blue: 0.73))
+                        .frame(minHeight: 44).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("memory-proposals")
+                }
                 Spacer()
                 Button { listAll = current == nil; search = ""; listOpen = true } label: {
                     HStack(spacing: 4) {
@@ -698,6 +719,13 @@ struct MemoryNebulaView: View {
             HStack {
                 Text(groupName == NebulaGroup.background ? "还没归类的小事" : groupName)
                     .font(.system(size: 12)).tracking(1.7).foregroundStyle(Color(red: 0.8, green: 0.74, blue: 0.9))
+                if flower.draft {
+                    // 11-17：柯今天随手记的，夜里拿原话对过账才算定下来
+                    Text("今晚对账").font(.system(size: 10)).foregroundStyle(Color(red: 0.94, green: 0.88, blue: 0.73))
+                        .padding(.horizontal, 6).padding(.vertical, 1)
+                        .overlay(Capsule().stroke(Color(red: 0.94, green: 0.88, blue: 0.73).opacity(0.6), lineWidth: 0.6))
+                        .accessibilityLabel("草稿，今晚对账")
+                }
                 Spacer()
                 Button { selectedID = nil } label: { Image(systemName: "xmark").font(.system(size: 15)).frame(width: 44, height: 44) }
                     .accessibilityLabel("收起").padding(.trailing, -12)

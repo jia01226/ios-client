@@ -870,6 +870,27 @@ actor APIClient {
     }
 
     /// 1116：改一颗记忆（标题、正文、换团），nil 的不传
+    // 11-17 夜里对账：「柯想改的」
+    func memoryProposals() async throws -> MemoryProposalPage {
+        let (data, _) = try await perform(try makeRequest(path: "/api/memory/proposals"))
+        do { return try decoder.decode(MemoryProposalPage.self, from: data) }
+        catch { throw APIError.decoding(error) }
+    }
+
+    func decideMemoryProposal(id: String, approve: Bool) async throws -> MemoryProposalPage {
+        guard !id.isEmpty, !id.contains("/") else { throw APIError.invalidResponse }
+        let (data, _) = try await perform(try makeRequest(path: "/api/memory/proposals/\(id)/\(approve ? "approve" : "reject")", method: "POST"))
+        do { return try decoder.decode(MemoryProposalPage.self, from: data) }
+        catch { throw APIError.decoding(error) }
+    }
+
+    func setMemoryProposalAuto(_ auto: Bool) async throws {
+        var request = try makeRequest(path: "/api/memory/proposals/settings", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["auto": auto])
+        _ = try await perform(request)
+    }
+
     func editMemoryFlower(id: String, title: String?, body: String?, group: String?) async throws {
         guard !id.isEmpty, !id.contains("/"), id != ".", id != "..", !id.hasPrefix("meal-") else {
             throw APIError.invalidResponse
