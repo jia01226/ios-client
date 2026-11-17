@@ -75,13 +75,17 @@ struct RootTabView: View {
                         .accessibilityHidden(true)
                 }
             }
-            // 126：「我们」「柯的」顶上不要大标题，只留右上一枚小月牙——点了和从右边划、聊天里点三个点是同一个设置抽屉
+            // 126：「我们」「柯的」顶上不要大标题。1116 我们页的月牙拿掉；11-17 她：柯的页最上面那个月亮也去掉。
+            // 设置照样从右边划出来（聊天里往左划也行）。读屏的人看不到划，留一个只给读屏用的「打开设置」。
             .overlay(alignment: .topTrailing) {
-                // 1116 她：我们页不要那枚月牙了（右边照样能划出设置）；柯的页留着
-                if selection == .drawer && !chatSettingsOpen {
-                    HomeSettingsMoon(action: openSettingsFromHome)
-                        .padding(.trailing, theme.metric.chromeHeaderInset - 4)
-                        .padding(.top, 2)
+                if selection != .ke && !chatSettingsOpen {
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .accessibilityElement()
+                        .accessibilityLabel("打开设置")
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAction { openSettingsFromHome() }
+                        .accessibilityIdentifier("home-settings-entry")
                 }
             }
             .background {
@@ -257,24 +261,6 @@ struct RootTabView: View {
     RootTabView().environmentObject(Theme.shared)
 }
 
-
-/// 126：「我们」「柯的」右上角那枚小月牙，打开设置抽屉
-struct HomeSettingsMoon: View {
-    @EnvironmentObject private var theme: Theme
-    let action: () -> Void
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "moon")
-                .font(.system(size: theme.metric.homeMoonSize, weight: .light))
-                .foregroundStyle(Ink.primary)
-                .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("打开设置")
-        .accessibilityIdentifier("home-settings-moon")
-    }
-}
 
 /// 126：页面底下被浮着的底栏盖住的那一截（从安全区底边算起）。键盘起来、设置打开时底栏收起，就是 0。
 private struct FloatingDockInsetKey: EnvironmentKey { static let defaultValue: CGFloat = 0 }

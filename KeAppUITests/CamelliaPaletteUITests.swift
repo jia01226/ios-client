@@ -1,7 +1,7 @@
 import XCTest
 
 /// 126：「柯的」顶上不再有配色小菜单（设计稿只留右上月牙）。纸色在设置里「外观 · 主题色」选：
-/// 点月牙 → 主题色 → 五款纸色。这里照旧验五款都能选、重开 App 还记得、六个入口照旧能开能关。
+/// 11-17 月牙拿掉了：从右边划出设置 → 主题色 → 五款纸色。这里照旧验五款都能选、重开 App 还记得、六个入口照旧能开能关。
 final class CamelliaPaletteUITests: XCTestCase {
     private let palettes = [("blush", "粉白"), ("mist", "浅雾蓝"), ("white", "冷白"), ("ivory", "暖白"), ("cream", "浅米色")]
     override func setUpWithError() throws { continueAfterFailure = false }
@@ -12,13 +12,15 @@ final class CamelliaPaletteUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["tab-drawer"].waitForExistence(timeout: 15))
         app.buttons["tab-drawer"].tap()
-        XCTAssertTrue(app.buttons["home-settings-moon"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons.matching(identifier: "camellia-diary").firstMatch.waitForExistence(timeout: 10))
         return app
     }
 
-    /// 月牙 → 设置 → 主题色
+    /// 从右边划出设置 → 主题色
     private func openPaperPage(_ app: XCUIApplication) {
-        app.buttons["home-settings-moon"].tap()
+        let window = app.windows.firstMatch
+        window.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
         let paper = app.buttons["settings-row-paper"].firstMatch
         XCTAssertTrue(paper.waitForExistence(timeout: 6))
         paper.tap()
@@ -43,7 +45,7 @@ final class CamelliaPaletteUITests: XCTestCase {
         app.terminate()
         app.launch()
         app.buttons["tab-drawer"].tap()
-        XCTAssertTrue(app.buttons["home-settings-moon"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons.matching(identifier: "camellia-diary").firstMatch.waitForExistence(timeout: 10))
         openPaperPage(app)
         XCTAssertTrue(app.buttons["浅米色"].firstMatch.waitForExistence(timeout: 4))
         XCTAssertTrue(app.buttons["浅米色"].firstMatch.isSelected)
@@ -59,14 +61,13 @@ final class CamelliaPaletteUITests: XCTestCase {
             XCTAssertTrue(app.buttons[close].waitForExistence(timeout: 10), "Entry: \(entry)")
             capture("camellia-126-entry-\(entry)")
             app.buttons[close].tap()
-            XCTAssertTrue(app.buttons["home-settings-moon"].waitForExistence(timeout: 6))
+            XCTAssertTrue(flower.waitForExistence(timeout: 6))
         }
     }
 
-    func testMoonUnderNightSkinAndLargeText() {
+    func testSettingsUnderNightSkinAndLargeText() {
         let app = launch(skin: "night", extra: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityM"])
-        let moon = app.buttons["home-settings-moon"]
-        XCTAssertTrue(moon.isHittable)
+        XCTAssertFalse(app.buttons["home-settings-moon"].exists)   // 11-17 柯的页顶上不再有月亮
         openPaperPage(app)
         XCTAssertTrue(app.buttons["暖白"].firstMatch.waitForExistence(timeout: 4))
         app.buttons["暖白"].firstMatch.tap()
