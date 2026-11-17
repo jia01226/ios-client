@@ -410,16 +410,13 @@ struct MemoryNebulaView: View {
                                        onTap: { id in selectedID = id }, onPinchOut: { leave() })
                         .ignoresSafeArea()
                         .background(GeometryReader { geo in Color.clear.onAppear { canvasSize = geo.size }.onChange(of: geo.size) { _, s in canvasSize = s } }.ignoresSafeArea())
-                        .transition(reduceMotion ? .opacity : .asymmetric(
-                            insertion: .opacity.combined(with: .scale(scale: 0.28, anchor: enterAnchor)),
-                            removal: .opacity.combined(with: .scale(scale: 0.28, anchor: enterAnchor))))
+                        // 1117 她：点进去会抖——缩放那一下晃，改成淡入淡出（实测不抖了）
+                        .transition(.opacity)
                 } else {
                     ProgressView().tint(Self.muted)
                 }
             } else {
-                overview.transition(reduceMotion ? .opacity : .asymmetric(
-                    insertion: .opacity.combined(with: .scale(scale: 2.2, anchor: enterAnchor)),
-                    removal: .opacity.combined(with: .scale(scale: 2.8, anchor: enterAnchor))))
+                overview.transition(.opacity)
             }
             VStack(spacing: 0) {
                 header
@@ -446,8 +443,8 @@ struct MemoryNebulaView: View {
         .environment(\.colorScheme, .dark)
         // 卡片一点就出来，轻轻托上来
         .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.86), value: selectedID)
-        // 11-17：进一团、出来都是一段放大 / 缩回，不是一闪
-        .animation(reduceMotion ? nil : .spring(response: 0.62, dampingFraction: 0.9), value: current)
+        // 11-17：进一团、出来原本是一段放大 / 缩回；1117 她说会抖，改成淡入淡出，缩放拿掉了
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.26), value: current)
         .sensoryFeedback(.selection, trigger: selectedID)
         .task { await store.load() }
         .task { await proposals.load() }
