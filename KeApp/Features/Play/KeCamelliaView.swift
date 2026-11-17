@@ -241,20 +241,18 @@ struct KeSpaceView: View {
                     Text("慢慢转，慢慢认识我。").font(.custom("NotoSerifSC-Light", size: 12 * s, relativeTo: .footnote))
                         .tracking(1).foregroundStyle(Cool.secondary).padding(.top, 10 * s)
                 }
-                .padding(.leading, 31 * s).padding(.top, top)
+                // 11-17 她：「这个还要往上挪，整体再往右边一点」——左边一栏 31 → 40，名字那列 137 → 104
+                .padding(.leading, 40 * s).padding(.top, top)
                 VStack(alignment: .leading, spacing: 3 * s) {
                     ForEach(Self.order) { name($0, s: s) }
                 }
-                .padding(.leading, 31 * s).padding(.top, top + 137 * s)
+                .padding(.leading, 40 * s).padding(.top, top + 104 * s)
+                // 「转一转 ↗」和「轻轻转动花朵」拿掉了（她：「这个下面不要了」）——点名字本来就会转过去直接进
                 below(s: s)
-                    .frame(maxWidth: w - 56 * s, alignment: .leading)
-                    .padding(.leading, 32 * s)
+                    .frame(maxWidth: w - 64 * s, alignment: .leading)
+                    .padding(.leading, 40 * s)
                     .frame(maxHeight: .infinity, alignment: .bottomLeading)
                     .padding(.bottom, dockInset + 18 * s)
-                Text("轻轻转动花朵").font(Cool.tiny()).tracking(1).foregroundStyle(Cool.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                    .padding(.trailing, 28 * s).padding(.bottom, dockInset + 10 * s)
-                    .allowsHitTesting(false).accessibilityHidden(true)
             }
             .coordinateSpace(name: "bloom")
         }
@@ -399,15 +397,6 @@ struct KeSpaceView: View {
                 Text(tagline(selected)).font(.custom("NotoSerifSC-Light", size: 12 * s, relativeTo: .footnote)).tracking(0.5).foregroundStyle(Cool.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Button { go(selected) } label: {
-                HStack(spacing: 20 * s) {
-                    Text(selected.action).font(.custom("NotoSerifSC-Light", size: 14 * s, relativeTo: .subheadline)).tracking(2)
-                    Image(systemName: "arrow.up.right").font(.system(size: 13 * s, weight: .ultraLight))
-                }
-                .foregroundStyle(Cool.ink).frame(minHeight: 44).contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("camellia-enter")
         }
     }
 
