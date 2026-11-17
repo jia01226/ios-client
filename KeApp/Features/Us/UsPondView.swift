@@ -419,8 +419,9 @@ struct UsPondView: View {
                     .foregroundStyle(isToday ? Cool.ink : Cool.number)
                     .lineLimit(1).minimumScaleFactor(0.7)
                     .frame(width: 32, height: 32)
-                    // 11-17 她：「排班、月经、亲密在一起」——月经那几天照旧垫粉
-                    .background(Circle().fill(period ? Cool.period : (isToday ? Cool.today : .clear)))
+                    // 11-17 她：「经期我想要方块的粉色阴影，比如 1-5 号可以连起来的那种」——粉色画在整格后面（见下面 periodBand），
+                    // 数字这里只留「今天」的圈；今天正好在经期，就描一圈细线
+                    .background(Circle().fill(isToday && !period ? Cool.today : .clear))
                     .overlay(Circle().stroke(isToday && period ? Cool.number.opacity(0.45) : .clear, lineWidth: 0.8))
                     .overlay(alignment: .topTrailing) {
                         if anniversary || times > 0 {
@@ -441,6 +442,7 @@ struct UsPondView: View {
                     .foregroundStyle(Cool.secondary)
             }
             .frame(maxWidth: .infinity, minHeight: 53, alignment: .top)
+            .background(alignment: .top) { if period { periodBand(date) } }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -535,6 +537,25 @@ struct UsPondView: View {
     }
 
     // MARK: 当天面板
+
+    /// 经期那几天连成一条粉色的块：前一天也在经期就和左边接上，后一天也在就和右边接上；
+    /// 一周的头（周一）、尾（周日）和经期的头尾收成小圆角
+    private func periodBand(_ date: Date) -> some View {
+        let c = Calendar.current
+        let weekday = c.component(.weekday, from: date)   // 1 = 周日，2 = 周一
+        let prev = c.date(byAdding: .day, value: -1, to: date).map(isPeriod) ?? false
+        let next = c.date(byAdding: .day, value: 1, to: date).map(isPeriod) ?? false
+        let left = !prev || weekday == 2, right = !next || weekday == 1
+        let r: CGFloat = 9
+        return UnevenRoundedRectangle(topLeadingRadius: left ? r : 0, bottomLeadingRadius: left ? r : 0,
+                                      bottomTrailingRadius: right ? r : 0, topTrailingRadius: right ? r : 0,
+                                      style: .continuous)
+            .fill(Cool.period)
+            .frame(height: 32)
+            .padding(.leading, left ? 4 : 0)
+            .padding(.trailing, right ? 4 : 0)
+            .accessibilityHidden(true)
+    }
 
     private func isPeriod(_ date: Date) -> Bool {
         let key = HomeReminderCoordinator.dayKey(date)
