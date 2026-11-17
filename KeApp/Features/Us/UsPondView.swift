@@ -240,31 +240,34 @@ struct UsPondView: View {
     private static let weekdayNames = ["一", "二", "三", "四", "五", "六", "日"]
 
     private var calendarHeader: some View {
-        HStack(alignment: .center, spacing: 6) {
-            // 11-17：原来的「日历 · 亲密几次」换成四面切换；亲密有了自己那一面
+        VStack(spacing: 0) {
+            // 11-17：原来的「日历 · 亲密几次」换成几面切换，单独一整行；翻月在下面一行
             CalendarFacePicker(face: $face)
-            Spacer(minLength: 4)
-            // 137：点的范围放到 44×44，箭头本身不变
-            Button { month = vm.month(byAdding: -1, to: month) } label: {
-                Image(systemName: "chevron.left").font(.system(size: 13, weight: .ultraLight)).frame(width: 36, height: 44).contentShape(Rectangle())
+            HStack(alignment: .center, spacing: 6) {
+                Spacer(minLength: 4)
+                // 137：点的范围放到 44×44，箭头本身不变
+                Button { month = vm.month(byAdding: -1, to: month) } label: {
+                    Image(systemName: "chevron.left").font(.system(size: 13, weight: .ultraLight)).frame(width: 36, height: 44).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("上个月")
+                // 不在本月时点年月回到本月（原来那个「回到本月」挪到这里，顶上放不下四个字了）
+                Button { month = vm.startOfMonth(for: .now) } label: {
+                    Text(Self.yearMonth(month)).font(Cool.didot(15, .subheadline))
+                        .foregroundStyle(vm.isCurrentMonth(month) ? Cool.secondary : Cool.mauve)
+                        .lineLimit(1).fixedSize()
+                        .frame(minHeight: 44).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(vm.isCurrentMonth(month))
+                .accessibilityLabel(vm.monthTitle(for: month) + (vm.isCurrentMonth(month) ? "" : "，点一下回到本月"))
+                Button { month = vm.month(byAdding: 1, to: month) } label: {
+                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .ultraLight)).frame(width: 36, height: 44).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("下个月")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("上个月")
-            // 不在本月时点年月回到本月（原来那个「回到本月」挪到这里，顶上放不下四个字了）
-            Button { month = vm.startOfMonth(for: .now) } label: {
-                Text(Self.yearMonth(month)).font(Cool.didot(15, .subheadline))
-                    .foregroundStyle(vm.isCurrentMonth(month) ? Cool.secondary : Cool.mauve)
-                    .lineLimit(1).fixedSize()
-                    .frame(minHeight: 44).contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(vm.isCurrentMonth(month))
-            .accessibilityLabel(vm.monthTitle(for: month) + (vm.isCurrentMonth(month) ? "" : "，点一下回到本月"))
-            Button { month = vm.month(byAdding: 1, to: month) } label: {
-                Image(systemName: "chevron.right").font(.system(size: 13, weight: .ultraLight)).frame(width: 36, height: 44).contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("下个月")
+            .frame(height: 34)
         }
         .foregroundStyle(Cool.secondary)
     }
@@ -357,6 +360,9 @@ struct UsPondView: View {
         case .poop:
             let p = bodyLog.poop(on: date)
             FaceDayCell(date: date, face: .poop, count: p?.count ?? 0, feel: p?.feel) { faceDay = PondDay(date: date) }
+        case .period:
+            // 月经那面：点一天打开原来那张当天面板（「今天来了」「今天走了」在那里）
+            FaceDayCell(date: date, face: .period, count: isPeriod(date) ? 1 : 0, caption: periodCaption(date)) { editDay = PondDay(date: date) }
         case .love: FaceDayCell(date: date, face: .love, count: love.count(on: date)) { faceDay = PondDay(date: date) }
         }
     }
@@ -368,15 +374,17 @@ struct UsPondView: View {
         case .tea: line = "这个月喝了 \(bodyLog.teaMonth(month)) 杯奶茶"
         case .poop:
             let gap = bodyLog.daysSinceLastPoop()
-            line = "这个月粑粑 \(bodyLog.poopMonth(month)) 次" + (gap.map { $0 == 0 ? " · 今天拉过了" : " · 上一次是 \($0) 天前" } ?? "")
+            line = "这个月出恭 \(bodyLog.poopMonth(month)) 次" + (gap.map { $0 == 0 ? " · 今天有过了" : " · 上一次是 \($0) 天前" } ?? "")
+        case .period: line = periods.summary
         case .love: line = "这个月亲密 \(love.monthCount(month)) 次"
         case .shift: line = ""
         }
         return VStack(alignment: .leading, spacing: 6) {
             Text(line).font(Cool.song(13, .subheadline)).foregroundStyle(Cool.ink)
-            Text("点哪一天就改哪一天，柯也看得到；跟柯说一声他也会帮你记。")
+            Text(face == .period ? "点哪一天打开那天，记「来了」「走了」；柯也看得到。"
+                                 : "点哪一天就改哪一天，柯也看得到；跟柯说一声他也会帮你记。")
                 .font(Cool.tiny()).foregroundStyle(Cool.secondary)
-            if let error = face == .love ? love.error : bodyLog.error {
+            if let error = face == .love ? love.error : face == .period ? periods.error : bodyLog.error {
                 Text(error).font(Cool.tiny()).foregroundStyle(Cool.secondary)
             }
         }
@@ -398,9 +406,20 @@ struct UsPondView: View {
             FaceDaySheet(face: .love, date: date, count: love.count(on: date), onSet: { n, _ in
                 Task { await love.setCount(n, on: date) }
             }, error: love.error)
-        case .shift:
+        case .shift, .period:
             EmptyView()
         }
+    }
+
+    /// 月经那面格子底下：来的那天「来了」，记了走的那天「走了」
+    private func periodCaption(_ date: Date) -> String? {
+        let key = HomeReminderCoordinator.dayKey(date)
+        for record in periods.records {
+            if record.start_date == key { return "来了" }
+            let marked = periods.pendingEnds[record.id] != nil || record.end_date != nil
+            if marked, periods.shownEnd(of: record) == key { return "走了" }
+        }
+        return nil
     }
 
     /// 一天：Didot 数字，下面就是班次；今天淡蓝圆底，月经淡粉圆底，纪念日 ☾、亲密小心挂在右上
@@ -423,8 +442,8 @@ struct UsPondView: View {
                     .foregroundStyle(isToday ? Cool.ink : Cool.number)
                     .lineLimit(1).minimumScaleFactor(0.7)
                     .frame(width: 32, height: 32)
-                    .background(Circle().fill(period ? Cool.period : (isToday ? Cool.today : .clear)))
-                    .overlay(Circle().stroke(isToday && period ? Cool.number.opacity(0.45) : .clear, lineWidth: 0.8))
+                    // 11-17 月经有了自己那一面，排班这面不再染粉
+                    .background(Circle().fill(isToday ? Cool.today : .clear))
                     .overlay(alignment: .topTrailing) {
                         // 11-17 亲密有了自己那一面，排班这面只留纪念日的 ☾
                         if anniversary {

@@ -17,7 +17,7 @@ struct BodyLogMonth: Codable, Equatable, Sendable {
     var last_poop: String?
 }
 
-/// 粑粑顺不顺：顺 / 有点难 / 很难
+/// 出恭顺不顺：顺 / 有点难 / 很难（她嫌「粑粑」难听，界面上叫「出恭」）
 enum PoopFeel: String, CaseIterable, Identifiable, Sendable {
     case ok, hard, very_hard
     var id: String { rawValue }
@@ -76,7 +76,7 @@ extension APIClient: BodyLogAPI {}
             error = nil
             persist()
         } catch {
-            self.error = months[key] == nil ? "奶茶、粑粑的记录没拉下来，过会儿再试" : nil
+            self.error = months[key] == nil ? "奶茶、出恭的记录没拉下来，过会儿再试" : nil
         }
     }
 

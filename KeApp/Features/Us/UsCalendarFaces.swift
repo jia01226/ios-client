@@ -1,16 +1,18 @@
 import SwiftUI
 
 // 11-17 她：「可以切换日历，正常就是排班日历，然后切换奶茶、粑粑、亲密」「就是完全新的日历，里面放奶茶，
-// 另一个切换里面放粑粑」——日历上面一排四个字，点哪个整张月历换成哪一面，各面只放自己那一样，不堆在一起。
+// 另一个切换里面放粑粑」——日历上面一排字，点哪个整张月历换成哪一面，各面只放自己那一样，不堆在一起。
+// 她又说：「月经去哪里了」——月经也单独一面（排班那面不再染粉）；「不要叫粑粑了，好难听，叫出恭吧」。
 
 enum CalendarFace: String, CaseIterable, Identifiable {
-    case shift, tea, poop, love
+    case shift, period, tea, poop, love
     var id: String { rawValue }
     var label: String {
         switch self {
         case .shift: return "排班"
+        case .period: return "月经"
         case .tea: return "奶茶"
-        case .poop: return "粑粑"
+        case .poop: return "出恭"
         case .love: return "亲密"
         }
     }
@@ -18,6 +20,7 @@ enum CalendarFace: String, CaseIterable, Identifiable {
     var tint: Color {
         switch self {
         case .shift: return .clear
+        case .period: return Color(hex: 0xF5E2EC)
         case .tea: return Color(hex: 0xEFE2D2)    // 奶茶色
         case .poop: return Color(hex: 0xE6EBDD)   // 淡淡的草绿（顺）
         case .love: return Color(hex: 0xF5E2EC)
@@ -32,13 +35,13 @@ enum CalendarFace: String, CaseIterable, Identifiable {
     }
 }
 
-/// 日历顶上那排「排班 · 奶茶 · 粑粑 · 亲密」
+/// 日历顶上那排「排班 · 月经 · 奶茶 · 出恭 · 亲密」，平铺一整行
 struct CalendarFacePicker: View {
     @Binding var face: CalendarFace
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 0) {
             ForEach(CalendarFace.allCases) { f in
                 let on = f == face
                 Button {
@@ -51,7 +54,7 @@ struct CalendarFacePicker: View {
                         .overlay(alignment: .bottom) {
                             Rectangle().fill(on ? Cool.mauve : .clear).frame(height: 1)
                         }
-                        .frame(minHeight: 44)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -63,15 +66,18 @@ struct CalendarFacePicker: View {
     }
 }
 
-/// 奶茶 / 粑粑 / 亲密那几面的一格：Didot 数字，记了的那天垫一层颜色，底下写几杯、几次
+/// 月经 / 奶茶 / 出恭 / 亲密那几面的一格：Didot 数字，记了的那天垫一层颜色，底下写几杯、几次
 struct FaceDayCell: View {
     let date: Date
     let face: CalendarFace
     let count: Int
     var feel: String?
+    /// 月经那面：来的那天写「来了」、走的那天写「走了」
+    var caption: String?
     let onTap: () -> Void
 
     private var label: String {
+        if let caption { return caption }
         guard count > 0 else { return " " }
         switch face {
         case .tea: return "\(count) 杯"
@@ -102,12 +108,12 @@ struct FaceDayCell: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(Calendar.current.component(.month, from: date)) 月 \(Calendar.current.component(.day, from: date)) 日，"
-                            + (count > 0 ? "\(face.label) \(label)" : "没有\(face.label)记录"))
+                            + (count > 0 ? "\(face.label)\(face == .period ? "" : " " + label)" : "没有\(face.label)记录"))
         .accessibilityHint("改这一天的\(face.label)")
     }
 }
 
-/// 点奶茶 / 粑粑 / 亲密那面的某一天：一张小弹窗，加减、粑粑顺不顺
+/// 点奶茶 / 出恭 / 亲密那面的某一天：一张小弹窗，加减、粑粑顺不顺
 struct FaceDaySheet: View {
     let face: CalendarFace
     let date: Date
