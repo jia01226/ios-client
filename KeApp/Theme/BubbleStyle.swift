@@ -170,6 +170,19 @@ struct BubbleFill: View {
     var body: some View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             .fill(color.opacity(reduceTransparency ? 1 : density))
+            // 11-17 聊天底色换成和别的页同一张白纸：白的、很淡的气泡描一道细线，不然跟纸糊成一片
+            .overlay {
+                if Self.nearWhite(color) || density < 0.35 {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .strokeBorder(Ink.line.opacity(0.75), lineWidth: 0.6)
+                }
+            }
             .allowsHitTesting(false)
+    }
+
+    static func nearWhite(_ color: Color) -> Bool {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        guard UIColor(color).getRed(&r, green: &g, blue: &b, alpha: &a) else { return false }
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.95
     }
 }

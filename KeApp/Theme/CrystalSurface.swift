@@ -19,16 +19,9 @@ struct AppAtmosphere: View {
                 if !night && theme.chatPalette.atmosphereImage {
                     // 127：粉白那款铺设计稿那张淡粉底图（烤好的静态图）。
                     // 11-17 她：「设置的那个统一，就应该统一所有的背景颜色」——聊天一整片粉，切过来像换了个 App。
-                    // 现在底下先铺「主题色」里挑的那张纸（跟「我们」「柯的」、设置同一张），粉白纸上只留一半不到的粉，
-                    // 白气泡还托得出来；挑了别的纸就不铺粉。「降低透明度」时只留纸色。
-                    let paper = CamelliaPalette.resolve(savedPaper)
-                    paper.paper
-                    if !reduceTransparency && paper == .blush {
-                        Color.clear
-                            .overlay { Image("ChatAtmosphere").resizable().scaledToFill() }
-                            .clipped()
-                            .opacity(0.45)
-                    }
+                    // 她又说：「底色三个 tab 都统一吧」——粉底图不铺了，就是「主题色」里挑的那张纸，跟「我们」「柯的」、设置同一张。
+                    // 白气泡在白纸上会看不见，BubbleFill 给近白的气泡描一道细线。
+                    CamelliaPalette.resolve(savedPaper).paper
                 } else {
                     // 126：粉白纸几乎是白的，光晕只留一点影子（设计稿底图只有 10% 的淡）
                     let glow = night ? 1 : theme.chatPalette.glow

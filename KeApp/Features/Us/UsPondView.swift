@@ -31,6 +31,8 @@ struct UsPondView: View {
     /// 11-17 她：「天数是滚轮滑动，改成往上滑」——这次往哪边滚（往上划 = 下一个，数字从下面滚上来）
     @State private var rollingUp = true
     @State private var editDay: PondDay?
+    /// 11-17 她：「点进去就弹窗出来」——日历下面那行一点，直接弹出这个日程
+    @State private var openEvent: CalendarEvent?
     @State private var open: PondEntry?
     @State private var choosingAnniversary = false
     @State private var managingDates = false
@@ -92,6 +94,14 @@ struct UsPondView: View {
         .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await stores.refresh(month: month, onlyIfStale: true) } } }
         .onChange(of: month) { _, m in Task { await love.load(m) } }
         .sheet(item: $editDay, onDismiss: { periods.clearStatus() }) { day in daySheet(day.date) }
+        .sheet(item: $openEvent) { event in
+            CalendarEventEditor(event: event, isNew: false) { saved in
+                events.save(saved)
+            } onDelete: { id in
+                events.delete(id)
+            }
+            .presentationDetents([.medium, .large])
+        }
         .sheet(isPresented: $choosingAnniversary) { anniversarySheet }
         .sheet(isPresented: $managingDates, onDismiss: { Task { await vm.loadReminders() } }) {
             CompanionPages(page: .anniversaries, line: line).environmentObject(Theme.shared)
@@ -284,21 +294,21 @@ struct UsPondView: View {
         .accessibilityIdentifier("us-upcoming")
     }
 
-    /// 11-17 她：「我们页有点太满了」——一行只写「11.20 · 周五 16:00」和「广脑 李启荣 · 江村二楼诊室11」，
-    /// 点进去（那天的面板 → 这个日程）再看备注、要跟医生说的。
+    /// 11-17 她：「我们页有点太满了」——一行只写「11 月 20 日 · 周五 16:00」和「广脑 李启荣 · 江村二楼诊室11 · 序号13」，
+    /// 点这一行直接弹出这个日程，再看备注、要跟医生说的。
     private func upcomingRow(_ event: CalendarEvent) -> some View {
         let c = Calendar.current
-        let monthDay = "\(c.component(.month, from: event.start)).\(c.component(.day, from: event.start))"
+        let monthDay = "\(c.component(.month, from: event.start)) 月 \(c.component(.day, from: event.start)) 日"
         let weekday = Self.weekdayNames[(c.component(.weekday, from: event.start) + 5) % 7]
         let time = event.start.formatted(.dateTime.hour().minute())
         return HStack(alignment: .firstTextBaseline, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(monthDay).font(Cool.didot(16, .subheadline)).foregroundStyle(Cool.number).monospacedDigit()
+                Text(monthDay).font(Cool.didot(15, .subheadline)).foregroundStyle(Cool.number).monospacedDigit()
                 Text("周\(weekday) \(time)").font(Cool.tiny()).foregroundStyle(Cool.secondary)
             }
-            .frame(width: 84, alignment: .leading)
+            .frame(width: 96, alignment: .leading)
             Text(Self.upcomingLine(event)).font(Cool.song(13, .subheadline)).foregroundStyle(Cool.ink)
-                .lineLimit(1).truncationMode(.tail)
+                .lineLimit(2).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
             if let said = event.symptoms, !said.isEmpty {
                 // 有记下要跟医生说的，只挂一个小点提示点进去看
@@ -307,16 +317,19 @@ struct UsPondView: View {
         }
         .padding(.vertical, 6)
         .contentShape(Rectangle())
-        .onTapGesture { editDay = PondDay(date: event.start) }
+        .onTapGesture { openEvent = event }
         .accessibilityElement(children: .combine)
-        .accessibilityHint("打开这一天")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("打开这个日程")
     }
 
-    /// 看病的写「广脑 李启荣 · 江村二楼诊室11」（备注里前两截），别的事写标题
+    /// 看病的写「广脑 李启荣 · 江村二楼诊室11 · 序号13」（备注里前两截 + 序号那截），别的事写标题
     static func upcomingLine(_ event: CalendarEvent) -> String {
         guard event.title == "看医生", !event.note.isEmpty else { return event.title }
         let parts = event.note.components(separatedBy: "·").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        return parts.prefix(2).joined(separator: " · ")
+        var shown = Array(parts.prefix(2))
+        if let number = parts.dropFirst(2).first(where: { $0.contains("序号") }) { shown.append(number) }
+        return shown.joined(separator: " · ")
     }
 
     private static func yearMonth(_ date: Date) -> String {
