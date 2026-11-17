@@ -284,43 +284,39 @@ struct UsPondView: View {
         .accessibilityIdentifier("us-upcoming")
     }
 
+    /// 11-17 她：「我们页有点太满了」——一行只写「11.20 · 周五 16:00」和「广脑 李启荣 · 江村二楼诊室11」，
+    /// 点进去（那天的面板 → 这个日程）再看备注、要跟医生说的。
     private func upcomingRow(_ event: CalendarEvent) -> some View {
         let c = Calendar.current
-        let monthDay = "\(c.component(.month, from: event.start)) 月 \(c.component(.day, from: event.start)) 日"
+        let monthDay = "\(c.component(.month, from: event.start)).\(c.component(.day, from: event.start))"
         let weekday = Self.weekdayNames[(c.component(.weekday, from: event.start) + 5) % 7]
         let time = event.start.formatted(.dateTime.hour().minute())
         return HStack(alignment: .firstTextBaseline, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(monthDay).font(Cool.didot(15, .subheadline)).foregroundStyle(Cool.number).monospacedDigit()
-                Text("周\(weekday) \(time)").font(Cool.tiny()).foregroundStyle(Cool.faint)
+                Text(monthDay).font(Cool.didot(16, .subheadline)).foregroundStyle(Cool.number).monospacedDigit()
+                Text("周\(weekday) \(time)").font(Cool.tiny()).foregroundStyle(Cool.secondary)
             }
-            .frame(width: 96, alignment: .leading)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(event.title).font(Cool.song(13, .subheadline)).foregroundStyle(Cool.ink)
-                    .lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                if !event.note.isEmpty {
-                    Text(event.note).font(Cool.tiny()).foregroundStyle(Cool.secondary)
-                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                }
-                // 11-17 她：「下面的提醒备注会提示我要说什么症状，我好到时候记得和医生说」
-                if let said = event.symptoms, !said.isEmpty {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("要跟医生说").font(Cool.tiny()).foregroundStyle(Cool.mauve)
-                        ForEach(said, id: \.self) { line in
-                            Text("· " + line).font(Cool.tiny()).foregroundStyle(Cool.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    .padding(.top, 3)
-                }
-            }
+            .frame(width: 84, alignment: .leading)
+            Text(Self.upcomingLine(event)).font(Cool.song(13, .subheadline)).foregroundStyle(Cool.ink)
+                .lineLimit(1).truncationMode(.tail)
             Spacer(minLength: 0)
+            if let said = event.symptoms, !said.isEmpty {
+                // 有记下要跟医生说的，只挂一个小点提示点进去看
+                Circle().fill(Cool.mauve).frame(width: 4, height: 4).accessibilityHidden(true)
+            }
         }
         .padding(.vertical, 6)
         .contentShape(Rectangle())
         .onTapGesture { editDay = PondDay(date: event.start) }
         .accessibilityElement(children: .combine)
         .accessibilityHint("打开这一天")
+    }
+
+    /// 看病的写「广脑 李启荣 · 江村二楼诊室11」（备注里前两截），别的事写标题
+    static func upcomingLine(_ event: CalendarEvent) -> String {
+        guard event.title == "看医生", !event.note.isEmpty else { return event.title }
+        let parts = event.note.components(separatedBy: "·").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        return parts.prefix(2).joined(separator: " · ")
     }
 
     private static func yearMonth(_ date: Date) -> String {
@@ -596,15 +592,17 @@ enum PondEntry: String, Identifiable {
 
 /// 140：「我们」页清冷水彩的颜色和字（Design/UsWatercolorReview/cool.css）。
 /// 原型里的浅字太淡（班次 #94a1b3 约 2.6:1），这里正文、班次、星期都加深到 4.5:1 以上；只有装饰的斜体英文和箭头用淡色。
+/// 11-17 她：「设置的那个统一，就应该统一所有的背景颜色」——「我们」「柯的」原来是一套冷的蓝灰（纸偏蓝、字蓝灰），
+/// 跟设置、聊天的暖墨对不上。现在纸跟她在「主题色」里挑的那张走，字、线、强调色都用设置那套暖墨（Ink）。
 enum Cool {
-    static let paper = Color(hex: 0xFCFDFF)
-    static let ink = Color(hex: 0x5E6877)        // 约 5.6:1
-    static let number = Color(hex: 0x66748A)     // 约 4.7:1
-    static let secondary = Color(hex: 0x737E8C)  // 约 4.1:1
-    static let mauve = Color(hex: 0x86728C)      // 约 4.6:1
-    static let faint = Color(hex: 0x9CA6B4)      // 装饰用
-    static let line = Color(hex: 0xE9EDF3)
-    static let today = Color(hex: 0xEAEFF7)
+    static var paper: Color { CamelliaPalette.stored().paper }
+    static var ink: Color { Ink.primary }
+    static var number: Color { Ink.primary }
+    static var secondary: Color { Ink.secondary }
+    static var mauve: Color { Ink.accent }
+    static var faint: Color { Ink.secondary.opacity(0.65) }   // 装饰用
+    static var line: Color { Ink.line.opacity(0.6) }
+    static var today: Color { Ink.track }
     static let period = Color(hex: 0xF5E2EC)
     static let heart = Color(hex: 0xB0849F)
     /// Didot 是 iOS 自带的；跟着系统字号放大

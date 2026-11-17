@@ -7,6 +7,7 @@ import UIKit
 struct AppAtmosphere: View {
     @EnvironmentObject private var theme: Theme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @AppStorage(CamelliaPalette.storageKey) private var savedPaper = CamelliaPalette.defaultPalette.rawValue
     // 85：她说「太平、没动效」，光晕曾经很慢地来回漂（一个来回 18 秒）。
     // 127：聊天记录就在这层上面滑，底下再漂会晕；浮栏的模糊也得跟着每帧重算。现在整层静止。
 
@@ -16,12 +17,17 @@ struct AppAtmosphere: View {
             if !theme.isBedroom {
                 let night = theme.skin == .night
                 if !night && theme.chatPalette.atmosphereImage {
-                    // 127：粉白那款铺设计稿那张淡粉底图（app-atmosphere：饱和度 0.4、轻糊、按 17% 正片叠底压在白纸上，
-                    // 都提前烤进图里了），运行时就是一张静止的图，不挂滤镜、不混合。「降低透明度」时只留纸色。
-                    if !reduceTransparency {
+                    // 127：粉白那款铺设计稿那张淡粉底图（烤好的静态图）。
+                    // 11-17 她：「设置的那个统一，就应该统一所有的背景颜色」——聊天一整片粉，切过来像换了个 App。
+                    // 现在底下先铺「主题色」里挑的那张纸（跟「我们」「柯的」、设置同一张），粉白纸上只留一半不到的粉，
+                    // 白气泡还托得出来；挑了别的纸就不铺粉。「降低透明度」时只留纸色。
+                    let paper = CamelliaPalette.resolve(savedPaper)
+                    paper.paper
+                    if !reduceTransparency && paper == .blush {
                         Color.clear
                             .overlay { Image("ChatAtmosphere").resizable().scaledToFill() }
                             .clipped()
+                            .opacity(0.45)
                     }
                 } else {
                     // 126：粉白纸几乎是白的，光晕只留一点影子（设计稿底图只有 10% 的淡）

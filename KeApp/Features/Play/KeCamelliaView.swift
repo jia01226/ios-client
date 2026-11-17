@@ -224,8 +224,9 @@ struct KeSpaceView: View {
             let w = geo.size.width, usable = geo.size.height - dockInset
             let top: CGFloat = 40
             let s = min(w / 390, max(0.7, (usable - top - 10) / 620))
-            let flower = 520 * s
-            let center = CGPoint(x: w, y: top + 340 * s)
+            // 11-17 她：「柯的那个花太大了，不够留白」——520 收到 430，圆心再往右挪一点，左边字那一栏空出来
+            let flower = 430 * s
+            let center = CGPoint(x: w + 24 * s, y: top + 350 * s)
             ZStack(alignment: .topLeading) {
                 bloom(size: flower, center: center)
                 VStack(alignment: .leading, spacing: 0) {
