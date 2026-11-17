@@ -357,9 +357,8 @@ struct KeSettingsHome: View {
 
             KeSettingsGroup("工具") {
                 KeSettingsRow(title: "搜索聊天记录", id: "settings-row-search") { onOpenTool(.search) }
-                KeSettingsRow(title: "按日期查找", id: "settings-row-dates") { onOpenTool(.dates) }
-                KeSettingsRow(title: "工坊", value: "修 App、查问题", id: "settings-row-workshop") { onOpenTool(.workshop) }
-                KeSettingsRow(title: "更多聊天工具", last: true, id: "settings-row-all") { onOpenTool(.all) }
+                // 11-17 她：「工坊和这个用不上，更多聊天工具是重合的」——两行都拿掉
+                KeSettingsRow(title: "按日期查找", last: true, id: "settings-row-dates") { onOpenTool(.dates) }
             }
 
             Text("向右划收回")

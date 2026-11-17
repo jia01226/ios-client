@@ -226,7 +226,8 @@ struct KeSpaceView: View {
             let s = min(w / 390, max(0.7, (usable - top - 10) / 620))
             // 11-17 她：「柯的那个花太大了，不够留白」——520 收到 430，圆心再往右挪一点，左边字那一栏空出来
             let flower = 430 * s
-            let center = CGPoint(x: w + 24 * s, y: top + 350 * s)
+            // 她看了模拟器：「花要往上面挪一点」
+            let center = CGPoint(x: w + 24 * s, y: top + 300 * s)
             ZStack(alignment: .topLeading) {
                 bloom(size: flower, center: center)
                 VStack(alignment: .leading, spacing: 0) {
@@ -346,9 +347,10 @@ struct KeSpaceView: View {
         return Button { tapName(entry) } label: {
             VStack(alignment: .leading, spacing: 3 * s) {
                 HStack(spacing: 8) {
-                    Text(entry.label).font(.custom("NotoSerifSC-Light", size: 22 * s, relativeTo: .title3)).tracking(3)
+                    // 11-17 她：「旁边的字体增大」——没选中的 16 → 19，选中的 22 → 25
+                    Text(entry.label).font(.custom("NotoSerifSC-Light", size: 25 * s, relativeTo: .title3)).tracking(3)
                         .lineLimit(1).fixedSize()
-                        .scaleEffect(on ? 1 : 16.0 / 22, anchor: .leading)
+                        .scaleEffect(on ? 1 : 19.0 / 25, anchor: .leading)
                         .foregroundStyle(on ? Cool.ink : Cool.secondary)
                     if fresh { Circle().fill(Cool.mauve).frame(width: 5, height: 5).accessibilityHidden(true) }
                 }
@@ -359,7 +361,7 @@ struct KeSpaceView: View {
             .overlay(alignment: .leading) {
                 Circle().fill(Cool.heart).frame(width: 4, height: 4).offset(x: -9 * s).opacity(on ? 1 : 0).accessibilityHidden(true)
             }
-            .frame(width: 112 * s, height: 56 * s, alignment: .leading)
+            .frame(width: 130 * s, height: 58 * s, alignment: .leading)
             .contentShape(Rectangle())
             .animation(reduceMotion ? nil : .easeOut(duration: 0.35), value: on)
         }
