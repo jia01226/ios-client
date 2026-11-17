@@ -984,6 +984,28 @@ actor APIClient {
         catch { throw APIError.decoding(error) }
     }
 
+    // 11-17 转盘（「柯的」里的转盘，柯也看得到、也能替她转）
+
+    func fetchWheels() async throws -> WheelSnapshot {
+        let (data, _) = try await perform(try makeRequest(path: "/api/wheels"))
+        return try JSONDecoder().decode(WheelSnapshot.self, from: data)
+    }
+
+    func saveWheels(_ wheels: [Wheel]) async throws -> WheelSnapshot {
+        var request = try makeRequest(path: "/api/wheels", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(["wheels": wheels])
+        let (data, _) = try await perform(request)
+        return try JSONDecoder().decode(WheelSnapshot.self, from: data)
+    }
+
+    func logWheelSpin(wheelID: String, optionID: String) async throws {
+        var request = try makeRequest(path: "/api/wheels/spin", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(["wheel_id": wheelID, "option_id": optionID])
+        _ = try await perform(request)
+    }
+
     // 11-17 奶茶、粑粑（「我们」日历切到那两面时读写，柯也看得到）
     func bodyLog(month: String) async throws -> BodyLogMonth {
         let (data, _) = try await perform(try makeRequest(path: "/api/bodylog", queryItems: [URLQueryItem(name: "month", value: month)]))

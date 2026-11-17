@@ -5,7 +5,7 @@ import UIKit
 // 1116 她：抽屉挪进日记里（日记页里点进去），原来抽屉那一瓣放药盒（从「我们」页挪过来，那页只留日历）。
 
 enum CamelliaEntry: String, CaseIterable, Identifiable {
-    case diary, dream, drawer, tarot, moments, memory, meds
+    case diary, dream, drawer, tarot, moments, memory, meds, wheel
     var id: String { rawValue }
     var label: String {
         switch self {
@@ -16,6 +16,7 @@ enum CamelliaEntry: String, CaseIterable, Identifiable {
         case .moments: "朋友圈"
         case .memory: "记忆"
         case .meds: "药盒"
+        case .wheel: "转盘"
         }
     }
     var english: String {
@@ -27,6 +28,7 @@ enum CamelliaEntry: String, CaseIterable, Identifiable {
         case .moments: "Little moments"
         case .memory: "To remember"
         case .meds: "Take care"
+        case .wheel: "Round and round"
         }
     }
     var tagline: String {
@@ -38,6 +40,7 @@ enum CamelliaEntry: String, CaseIterable, Identifiable {
         case .moments: "一些想和你分享的小事。"
         case .memory: "你说过的话，我记着。"
         case .meds: "按时吃药，我看着呢。"
+        case .wheel: "拿不定主意，就让它转一下。"
         }
     }
     var action: String {
@@ -49,6 +52,7 @@ enum CamelliaEntry: String, CaseIterable, Identifiable {
         case .moments: "看看动态"
         case .memory: "翻阅记忆"
         case .meds: "打开药盒"
+        case .wheel: "转一转"
         }
     }
 }
@@ -200,8 +204,9 @@ struct KeSpaceView: View {
     /// 126：底栏浮在页面上，让出它那一截
     @Environment(\.floatingDockInset) private var dockInset
 
-    private static let order: [CamelliaEntry] = [.diary, .dream, .moments, .memory, .meds, .tarot]
-    private static let stepAngle = 60.0
+    // 11-17 她：「加一个转盘放在塔罗下面」——七个入口，花一圈分七格
+    private static let order: [CamelliaEntry] = [.diary, .dream, .moments, .memory, .meds, .tarot, .wheel]
+    private static let stepAngle = 360.0 / Double(order.count)
     private static func wrap(_ n: Int) -> Int { ((n % order.count) + order.count) % order.count }
     private var selected: CamelliaEntry { Self.order[Self.wrap(step)] }
 
@@ -416,6 +421,7 @@ struct KeSpaceView: View {
         case .drawer: verb = "往抽屉里放了东西"
         case .tarot: verb = "留了一张牌"
         case .meds: verb = "看了看你的药"
+        case .wheel: verb = "转了转盘"
         }
         return "柯刚刚" + verb
     }
@@ -451,6 +457,7 @@ struct KeSpaceView: View {
         case .moments:
             MomentsView(store: moments, line: line)
         case .tarot: TarotView(line: line)
+        case .wheel: WheelView { open = nil }
         case .memory:
             MemoryTabView(line: line, onOpenQuote: { quote in open = nil; onOpenQuote(quote) }, onClose: { open = nil })
         }
