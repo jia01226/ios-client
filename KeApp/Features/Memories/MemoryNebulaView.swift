@@ -313,6 +313,9 @@ struct MemoryNebulaView: View {
     @ObservedObject var store: MemoryGardenStore
     /// 11-17 夜里对账：柯想改的那几条
     @StateObject private var proposals = MemoryProposalStore()
+    /// 11-17 DS 量的：当底栏里那一页打开时，底栏浮在页面上（840–898），底下「柯想改的」「找一件事」那一行整个被压住、点到的是底栏。
+    /// 底栏的高度从 RootTabView 递下来；从「柯的」全屏打开时是 0。
+    @Environment(\.floatingDockInset) private var dockInset
     @State private var proposalsOpen = false
     @Binding var page: Int
     var onClose: (() -> Void)?
@@ -421,6 +424,7 @@ struct MemoryNebulaView: View {
             }
             if let flower = selected {
                 VStack { Spacer(); card(flower) }
+                    .padding(.bottom, dockInset)
                     .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.96, anchor: .bottom)))
             }
             overlays
@@ -706,7 +710,7 @@ struct MemoryNebulaView: View {
             .padding(.top, 4)
             .overlay(alignment: .top) { Rectangle().fill(Self.line).frame(height: 1) }
         }
-        .padding(.horizontal, 26).padding(.bottom, 8)
+        .padding(.horizontal, 26).padding(.bottom, 8 + dockInset)
     }
 
     // MARK: 卡片
