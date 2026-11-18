@@ -619,66 +619,133 @@ struct UsPondView: View {
     /// 137：最上面写点的是哪一天、右上「关上」；整张面板一个样子（细宋体、粉白强调色）
     private func daySheet(_ date: Date) -> some View {
         VStack(spacing: 0) {
-            HStack(alignment: .center) {
-                Text(Self.dayTitleFormatter.string(from: date)).font(Ink.song(18)).tracking(1.5)
-                    .accessibilityAddTraits(.isHeader)
+            // 1118 她给的稿：上面「日期 + 今日安排」，下面一张张卡片
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Self.dayTitleFormatter.string(from: date)).font(Ink.song(12)).foregroundStyle(Ink.secondary)
+                    Text("今日安排").font(Ink.song(21)).tracking(2).foregroundStyle(Ink.primary)
+                        .accessibilityAddTraits(.isHeader)
+                }
                 Spacer()
-                // 137：44×44 和点的范围要放在按钮里面，放外面 .plain 只认那两个字
                 Button { editDay = nil } label: {
-                    Text("关上").font(Ink.song(15)).foregroundStyle(Ink.accent)
-                        .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                    Image(systemName: "xmark").font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Ink.secondary)
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(Ink.primary.opacity(0.05)))
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("关上")
                 .accessibilityIdentifier("day-sheet-close")
             }
-            .padding(.horizontal, 24).padding(.top, 10)
-            // 1116：看医生这类日程，点进去能设提醒
-            DayEventsSection(store: events, date: date)
-            HStack {
-                Text("月经").font(Ink.song(15))
-                Spacer()
-                PeriodCalendarControls(store: periods)
+            .padding(.horizontal, 20).padding(.top, 32).padding(.bottom, 8)
+
+            ScrollView {
+                VStack(spacing: 10) {
+                    sheetCard {
+                        DayEventsSection(store: events, date: date)
+                        // 1118 稿子上有这句：那天没排日程就说一声
+                        if events.events(on: date).isEmpty {
+                            Text("今天还没有日程")
+                                .font(Ink.song(12)).foregroundStyle(Ink.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 24).padding(.top, 6).padding(.bottom, 12)
+                        }
+                    }
+
+                    sheetCard {
+                        HStack {
+                            Text("月经记录").font(Ink.song(15)).foregroundStyle(Ink.primary)
+                            Spacer()
+                            PeriodCalendarControls(store: periods)
+                        }
+                        .padding(.horizontal, 20).padding(.top, 9)
+
+                        if !Calendar.current.isDateInToday(date) {
+                            Text("「今天来了」「今天走了」都记在今天，不记在这一天")
+                                .font(Ink.song(11.5)).foregroundStyle(Ink.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 20).padding(.top, 2)
+                        }
+                        Text(periods.summary).font(Ink.song(12)).foregroundStyle(Ink.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 20).padding(.top, 6)
+                            .accessibilityIdentifier("period-summary")
+                        periodSyncRow
+                        Text("记录状态会自动更新周期信息")
+                            .font(Ink.song(11.5)).foregroundStyle(Ink.secondary.opacity(0.8))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 20).padding(.top, 2).padding(.bottom, 9)
+                    }
+
+                    sheetCard {
+                        HStack {
+                            Text("亲密记录").font(Ink.song(15)).foregroundStyle(Ink.primary)
+                            Spacer()
+                            let times = love.count(on: date)
+                            Button { Task { await love.setCount(times - 1, on: date) } } label: {
+                                Image(systemName: "minus").frame(width: 40, height: 40).contentShape(Rectangle())
+                            }.disabled(times == 0).accessibilityLabel("减一次")
+                            Text("\(times) 次").font(Ink.song(15)).monospacedDigit().frame(minWidth: 52)
+                            Button { Task { await love.setCount(times + 1, on: date) } } label: {
+                                Image(systemName: "plus").frame(width: 40, height: 40).contentShape(Rectangle())
+                            }.accessibilityLabel("加一次")
+                        }
+                        .foregroundStyle(Ink.accent)
+                        .padding(.horizontal, 20).padding(.top, 8)
+
+                        Text("轻点 + 记录今天的次数")
+                            .font(Ink.song(11.5)).foregroundStyle(Ink.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 20).padding(.top, 2)
+                        if let error = love.error {
+                            Text(error).font(Ink.song(12)).foregroundStyle(Ink.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 20)
+                        }
+                        Color.clear.frame(height: 9)
+                    }
+
+                    sheetCard {
+                        HStack {
+                            Text("今日班次").font(Ink.song(15)).foregroundStyle(Ink.primary)
+                            Spacer()
+                            Text("选择一项").font(Ink.song(11.5)).foregroundStyle(Ink.secondary)
+                        }
+                        .padding(.horizontal, 20).padding(.top, 9)
+
+                        ScheduleEditorSheet(model: vm, date: date,
+                                            currentShift: vm.shift(on: date),
+                                            currentNote: vm.shiftNote(on: date),
+                                            showsTitle: false) { shift, note in
+                            vm.setShift(shift, note: note, on: date); editDay = nil
+                        }
+                        .padding(.bottom, 4)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+                .padding(.bottom, 24)
             }
-            .padding(.horizontal, 24).padding(.top, 2)
-            // 137：「来了 / 走了」只记今天——点的是别的日子就说一声，免得以为记在了那天
-            if !Calendar.current.isDateInToday(date) {
-                Text("「今天来了」「今天走了」都记在今天，不记在这一天").font(Ink.song(11.5)).foregroundStyle(Ink.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 24)
-            }
-            // 126：上次哪天来、哪天走；今天点了「走了」就写「今天走了 · 正在告诉柯 / 已告诉柯」
-            Text(periods.summary).font(Ink.song(12)).foregroundStyle(Ink.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 24).padding(.top, 2)
-                .accessibilityIdentifier("period-summary")
-            periodSyncRow
-            // 133：亲密记录，柯记的，她也能改
-            HStack {
-                Text("亲密").font(Ink.song(15))
-                Spacer()
-                let times = love.count(on: date)
-                // 137：点的范围放到 44×44，加减号本身不变
-                Button { Task { await love.setCount(times - 1, on: date) } } label: {
-                    Image(systemName: "minus").frame(width: 44, height: 44).contentShape(Rectangle())
-                }.disabled(times == 0).accessibilityLabel("减一次")
-                Text("\(times) 次").font(Ink.song(15)).monospacedDigit().frame(minWidth: 44)
-                Button { Task { await love.setCount(times + 1, on: date) } } label: {
-                    Image(systemName: "plus").frame(width: 44, height: 44).contentShape(Rectangle())
-                }.accessibilityLabel("加一次")
-            }
-            .foregroundStyle(Ink.accent)
-            .padding(.horizontal, 24).padding(.top, 6)
-            if let error = love.error {
-                Text(error).font(Ink.song(12)).foregroundStyle(Ink.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 24)
-            }
-            ScheduleEditorSheet(model: vm, date: date, currentShift: vm.shift(on: date), currentNote: vm.shiftNote(on: date)) { shift, note in
-                vm.setShift(shift, note: note, on: date); editDay = nil
-            }
+            .scrollIndicators(.hidden)
         }
-        .presentationDetents([.large])
+        // 1118 她：底下不要空着一大块，也别顶到最上面——按内容高度停在下面，想拉到全屏也能拉
+        .presentationDetents([.fraction(0.87), .large])
         .presentationBackground(paper)
         .foregroundStyle(Ink.primary)
+    }
+
+    /// 1118：「今日安排」里的一张卡片（里面先包一层 VStack，背景才会整块，不会一行一条）
+    private func sheetCard<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 0) { content() }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Ink.primary.opacity(0.035))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Ink.line.opacity(0.45), lineWidth: 0.7)
+            )
     }
 
     /// 137：经期记没记上，在面板里直接说；没告诉上柯的「走了」给一个「再告诉柯一次」

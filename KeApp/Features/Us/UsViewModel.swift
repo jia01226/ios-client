@@ -12,22 +12,29 @@ struct ScheduleEditorSheet: View {
     @State private var selectedShift: ShiftDay.Kind?
     @State private var note: String
 
+    /// 1118：放进「今日安排」的卡片时，不要它自己那行「排班」标题
+    var showsTitle = true
+
     init(
         model: UsViewModel, date: Date,
         currentShift: ShiftDay.Kind?,
         currentNote: String?,
+        showsTitle: Bool = true,
         onSave: @escaping (ShiftDay.Kind?, String?) -> Void
     ) {
         self.model = model
         self.date = date
+        self.showsTitle = showsTitle
         self.onSave = onSave
         _selectedShift = State(initialValue: currentShift)
         _note = State(initialValue: currentNote ?? "")
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("排班").font(Ink.song(15)).foregroundStyle(Ink.primary)
+        VStack(alignment: .leading, spacing: 12) {
+            if showsTitle {
+                Text("排班").font(Ink.song(15)).foregroundStyle(Ink.primary)
+            }
 
             ScrollView {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())]) {
@@ -59,7 +66,7 @@ struct ScheduleEditorSheet: View {
                     Text("休息日无需填写，清除当天排班即可。")
                         .font(Ink.song(12))
                         .foregroundStyle(Ink.secondary)
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
                 }
             }
 
@@ -77,7 +84,7 @@ struct ScheduleEditorSheet: View {
             }
         }
         .padding(.horizontal, 24)
-        .padding(.top, 16)
+        .padding(.top, 10)
         .sensoryFeedback(.selection, trigger: selectedShift)
         .accessibilityElement(children: .contain)
     }
@@ -104,7 +111,7 @@ private struct ShiftChoice: View {
             }
             .foregroundStyle(selected ? Ink.accent : Ink.primary)
             .frame(maxWidth: .infinity)
-            .frame(height: 88)
+            .frame(height: 70)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(selected ? Ink.accent.opacity(0.08) : Color.clear)

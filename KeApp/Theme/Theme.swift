@@ -562,7 +562,7 @@ enum JournalLayout {
     static let sceneRatio: CGFloat = 0.92
     static let hutCord: CGFloat = 155
     static let hutTop: CGFloat = 130
-    static let shiftChoicesHeight: CGFloat = 260
+    static let shiftChoicesHeight: CGFloat = 210
 }
 
 // 朋友圈与提醒的原生布局令牌。
