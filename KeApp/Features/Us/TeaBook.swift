@@ -56,7 +56,7 @@ struct TeaDayCell: View {
                 }
                 .frame(height: 16)
             }
-            .frame(maxWidth: .infinity, minHeight: 53, alignment: .top)
+            .frame(maxWidth: .infinity, minHeight: 53, maxHeight: 53, alignment: .top)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -115,10 +115,10 @@ struct TeaPanel: View {
 
     private func stat(_ value: String, _ label: String) -> some View {
         VStack(spacing: 3) {
-            Text(value).font(Cool.didot(19, .title3)).foregroundStyle(Cool.ink).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+            Text(value).font(Cool.didot(18, .title3)).foregroundStyle(Cool.ink).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
             Text(label).font(Cool.tiny()).foregroundStyle(Cool.secondary)
         }
-        .frame(maxWidth: .infinity, minHeight: 58)
+        .frame(maxWidth: .infinity, minHeight: 56, maxHeight: 56)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Cool.line.opacity(0.35)))
         .accessibilityElement(children: .combine)
     }

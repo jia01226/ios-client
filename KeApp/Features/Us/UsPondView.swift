@@ -89,7 +89,8 @@ struct UsPondView: View {
                 .accessibilityHidden(true)
             ScrollView {
                 if face == .shift {
-                    upcomingSection.padding(.top, 6).padding(.bottom, 18)
+                    // 11-18 她：「中间 ----- 下面看医生 / 奶茶杯数 / 本月次数要一致的高度」——三面下面第一行都从同一个高度起
+                    upcomingSection.padding(.top, 2).padding(.bottom, 18)
                 } else if face == .tea {
                     TeaPanel(store: bodyLog, month: month, day: teaDay,
                              onAdd: { editingCup = TeaCup(day: HomeReminderCoordinator.dayKey(teaDay)) },
@@ -120,7 +121,9 @@ struct UsPondView: View {
         .background(paper.ignoresSafeArea())
         .foregroundStyle(Cool.ink)
         // 137：切过来照样刷新；回前台 5 分钟内拉过就不再整页重拉（没告诉上柯的「走了」还是会再送）
-        .task { await stores.refresh(month: month) }
+        // 11-18 她：「底栏切换 tab，我们这里会有点卡」——每次切过来都整页重拉、拉回来又一样样重画。
+        // 五分钟内拉过就只补没送上的（跟回前台一样）；日程照旧每次拉（很轻，柯刚记的号要马上出现）
+        .task { await stores.refresh(month: month, onlyIfStale: true) }
         .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await stores.refresh(month: month, onlyIfStale: true) } } }
         .onChange(of: month) { _, m in Task { await love.load(m); await bodyLog.load(m) } }
         .sheet(item: $faceDay) { day in faceSheet(day.date) }
@@ -303,13 +306,14 @@ struct UsPondView: View {
     }
 
     private var monthGrid: some View {
+        let annDays = anniversaryKeys(month)
         let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
         return LazyVGrid(columns: columns, spacing: 0) {
             ForEach(Self.weekdayNames, id: \.self) {
                 Text($0).font(Cool.tiny()).foregroundStyle(Cool.faint).frame(height: 26).accessibilityHidden(true)
             }
             ForEach(Array(vm.monthCells(for: month).enumerated()), id: \.offset) { _, date in
-                if let date { cell(date) } else { Color.clear.frame(height: 53) }
+                if let date { cell(date, anniversaries: annDays) } else { Color.clear.frame(height: 53) }
             }
         }
         .padding(.horizontal, -6)
@@ -383,9 +387,9 @@ struct UsPondView: View {
         return "\(c.component(.year, from: date)) / " + String(format: "%02d", c.component(.month, from: date))
     }
 
-    @ViewBuilder private func cell(_ date: Date) -> some View {
+    @ViewBuilder private func cell(_ date: Date, anniversaries: Set<String>) -> some View {
         switch face {
-        case .shift: dayCell(date)
+        case .shift: dayCell(date, anniversary: anniversaries.contains(HomeReminderCoordinator.dayKey(date)))
         case .tea:
             TeaDayCell(date: date, cups: bodyLog.teaCups(on: date),
                        selected: Calendar.current.isDate(date, inSameDayAs: teaDay)) { teaDay = date }
@@ -428,11 +432,10 @@ struct UsPondView: View {
     }
 
     /// 一天：Didot 数字，下面就是班次；今天淡蓝圆底，月经淡粉圆底，纪念日 ☾、亲密小心挂在右上
-    private func dayCell(_ date: Date) -> some View {
+    private func dayCell(_ date: Date, anniversary: Bool) -> some View {
         let isToday = Calendar.current.isDateInToday(date)
         let period = isPeriod(date)
         let times = love.count(on: date)
-        let anniversary = isAnniversary(date)
         let dayEvents = events.events(on: date)
         // 1116：没排班的那天，格子下面写第一个日程的名字（像苹果月历那样）；有班照旧写班
         let shift = vm.shift(on: date).map { vm.shiftDisplay($0, on: date) } ?? dayEvents.first.map(Self.cellLabel)
@@ -469,7 +472,7 @@ struct UsPondView: View {
                 Text(shown ?? " ").font(Cool.tiny()).tracking(0.5).lineLimit(1).minimumScaleFactor(0.7)
                     .foregroundStyle(Cool.secondary)
             }
-            .frame(maxWidth: .infinity, minHeight: 53, alignment: .top)
+            .frame(maxWidth: .infinity, minHeight: 53, maxHeight: 53, alignment: .top)   // 三面同一个高度，切换不跳
             .background(alignment: .top) { if period { periodBand(date) } }
             .contentShape(Rectangle())
         }
@@ -594,6 +597,11 @@ struct UsPondView: View {
             return record.start_date <= key && (marked ? key < end || key == record.start_date : key <= end)
         }
     }
+    /// 这个月哪几天是纪念日：一个月算一次（以前每画一格都把农历换算一遍）
+    private func anniversaryKeys(_ month: Date) -> Set<String> {
+        Set(vm.monthCells(for: month).compactMap { $0 }.filter(isAnniversary).map(HomeReminderCoordinator.dayKey))
+    }
+
     private func isAnniversary(_ date: Date) -> Bool {
         let c = Calendar.current
         return vm.anniversaries.contains {

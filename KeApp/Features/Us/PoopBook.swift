@@ -116,27 +116,28 @@ struct PoopDayCell: View {
         let done = logs.filter { !$0.isNone }.count
         Button(action: onTap) {
             VStack(spacing: 0) {
+                // 11-18：数字跟排班、奶茶那两面一样大、一样的位置（以前 28×26、小一号，切过来会跳）
                 Text("\(Calendar.current.component(.day, from: date))")
-                    .font(Cool.didot(16, .body)).monospacedDigit()
+                    .font(Cool.didot(17, .body)).monospacedDigit()
                     .foregroundStyle(isToday ? Cool.ink : Cool.number)
                     .lineLimit(1).minimumScaleFactor(0.7)
-                    .frame(width: 28, height: 26)
-                    .background(Circle().fill(isToday ? Cool.today : .clear).frame(width: 26, height: 26))
-                    .overlay(Circle().stroke(selected ? Cool.mauve : .clear, lineWidth: 1).frame(width: 26, height: 26))
+                    .frame(width: 32, height: 32)
+                    .background(Circle().fill(isToday ? Cool.today : .clear))
+                    .overlay(Circle().stroke(selected ? Cool.mauve : .clear, lineWidth: 1))
                 ZStack(alignment: .topTrailing) {
                     if logs.isEmpty {
                         Color.clear
                     } else {
-                        PoopBlob(mood: PoopMood(day: logs), width: 28)
+                        PoopBlob(mood: PoopMood(day: logs), width: 24)
                         if done > 1 {
                             Text("\(done)").font(.system(size: 9, weight: .medium)).foregroundStyle(.white)
                                 .frame(width: 13, height: 13).background(Circle().fill(Cool.mauve)).offset(x: 5, y: -3)
                         }
                     }
                 }
-                .frame(width: 30, height: 24)
+                .frame(width: 28, height: 20)
             }
-            .frame(maxWidth: .infinity, minHeight: 53, alignment: .top)
+            .frame(maxWidth: .infinity, minHeight: 53, maxHeight: 53, alignment: .top)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -195,10 +196,10 @@ struct PoopPanel: View {
 
     private func stat(_ value: String, _ label: String) -> some View {
         VStack(spacing: 3) {
-            Text(value).font(Cool.didot(17, .title3)).foregroundStyle(Cool.ink).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+            Text(value).font(Cool.didot(18, .title3)).foregroundStyle(Cool.ink).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
             Text(label).font(Cool.tiny()).foregroundStyle(Cool.secondary)
         }
-        .frame(maxWidth: .infinity, minHeight: 54)
+        .frame(maxWidth: .infinity, minHeight: 56, maxHeight: 56)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Cool.line.opacity(0.35)))
         .accessibilityElement(children: .combine)
     }
