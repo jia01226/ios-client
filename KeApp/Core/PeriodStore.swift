@@ -159,6 +159,7 @@ final class PeriodStore: ObservableObject {
         do {
             try await api.deletePeriod(id: record.id)
             records.removeAll { $0.id == record.id }
+            persistRecords()   // 11-18：手机上留的那份也删掉，不然下次打开先冒出来
             pendingEnds.removeValue(forKey: record.id); persistEnds()
             if record.start_date == defaults.string(forKey: startedKey) { defaults.removeObject(forKey: startedKey) }
             status = "这条记录已删除。"

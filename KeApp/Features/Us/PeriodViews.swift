@@ -34,8 +34,10 @@ struct PeriodCalendarControls: View {
     @State private var history = false
     var body: some View {
         HStack(spacing: 2) {
+            // 11-18 她：「我 17 号没来，现在也删不掉」——以前只有一颗很淡的小水滴，点开还得往左滑才看得到删除。
+            // 写成两个字「记录」，点开每一条后面直接有「删除」
             Button { history = true } label: {
-                Image(systemName: "drop").font(.system(size: 12, weight: .ultraLight)).frame(width: 44, height: 44)
+                Text("记录").font(Ink.song(13)).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
             }.accessibilityLabel("经期记录").accessibilityValue(store.summary).accessibilityIdentifier("period-history")
             Button { Task { await store.start() } } label: { actionLabel("今天来了", available: store.canStart) }
                 .disabled(!store.canStart).accessibilityIdentifier("period-start")
@@ -70,15 +72,24 @@ private struct PeriodHistoryView: View {
                 if let status = store.status { Text(status) }
                 if let error = store.error { Button(error) { Task { await store.load() } } }
                 ForEach(store.records.sorted { $0.start_date > $1.start_date }) { record in
-                    VStack(alignment: .leading, spacing: JournalLayout.smallGap) {
-                        // 137：写「10月2日 来了」，不写「2026-10-02」
-                        Text(store.dayLabel(record.start_date) + " 来了")
-                        if let end = store.pendingEnds[record.id] ?? record.end_date {
-                            Text(store.dayLabel(end) + (store.pendingEnds[record.id] == nil ? " 走了" : " 走了 · 还没告诉上柯"))
-                                .foregroundStyle(theme.pageColor.textSecondary)
+                    HStack(alignment: .center) {
+                        VStack(alignment: .leading, spacing: JournalLayout.smallGap) {
+                            // 137：写「10月2日 来了」，不写「2026-10-02」
+                            Text(store.dayLabel(record.start_date) + " 来了")
+                            if let end = store.pendingEnds[record.id] ?? record.end_date {
+                                Text(store.dayLabel(end) + (store.pendingEnds[record.id] == nil ? " 走了" : " 走了 · 还没告诉上柯"))
+                                    .foregroundStyle(theme.pageColor.textSecondary)
+                            }
+                            if let note = record.note, !note.isEmpty { Text(note).font(theme.font.journalCaption) }
                         }
-                        if let note = record.note, !note.isEmpty { Text(note).font(theme.font.journalCaption) }
-                    }.swipeActions { Button("删除记录", role: .destructive) { deleting = record } }
+                        Spacer()
+                        // 11-18：点错了能直接删，不用知道要往左滑
+                        Button("删除") { deleting = record }
+                            .font(theme.font.journalCaption).foregroundStyle(theme.pageAccent)
+                            .buttonStyle(.borderless).frame(minWidth: 44, minHeight: 44)
+                            .accessibilityLabel("删除 \(store.dayLabel(record.start_date)) 这条")
+                    }
+                    .swipeActions { Button("删除记录", role: .destructive) { deleting = record } }
                 }
                 if store.loaded && store.records.isEmpty { Text("还没有经期记录。") }
             }
