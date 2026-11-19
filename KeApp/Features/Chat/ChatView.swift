@@ -51,6 +51,9 @@ struct ChatView: View {
     @State private var importingFile = false
     @State private var showingCamera = false
     @State private var settingsPage: ChatSettingsPage = .root
+    /// 11-19 她：「这个（功能区）老是会冒出来」——从新设置点「搜索聊天记录」「按日期查找」「聊天背景」「换一种字形」进来的，
+    /// 返回时直接回新设置，不再退到旧的「功能区」总列表
+    @State private var settingsFromDrawer = false
     @State private var searchQuery = ""
     @State private var selectedMessageIDs: Set<Int> = []
     @State private var showingDeleteConfirmation = false
@@ -695,6 +698,7 @@ struct ChatView: View {
 
     /// 话笺「更多」：打开原来的功能区页面，功能一个不少。
     private func openDrawerTool(_ tool: KeDrawerTool) {
+        settingsFromDrawer = tool != .all
         keDrawerOpen = false
         attachmentsOpen = false
         inputFocused = false
@@ -1236,7 +1240,7 @@ struct ChatView: View {
                     let dx = value.translation.width, dy = value.translation.height
                     guard value.startLocation.x <= theme.metric.pagePadding,
                           dx > 80, abs(dx) > abs(dy) * 1.5 else { return }
-                    if settingsPage == .root { closeTransientPanels() } else { settingsPage = .root }
+                    settingsBack()
                 }
         )
         .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.85), value: settingsPage)
@@ -1264,14 +1268,13 @@ struct ChatView: View {
     private var settingsHeader: some View {
         HStack {
             Button {
-                if settingsPage == .root { closeTransientPanels() }
-                else { settingsPage = .root }
+                settingsBack()
             } label: {
                 Image(systemName: "chevron.left")
                     .frame(width: theme.metric.touchTarget, height: theme.metric.touchTarget)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(settingsPage == .root ? "关闭聊天设置" : "返回聊天设置")
+            .accessibilityLabel(settingsPage == .root || settingsFromDrawer ? "回到设置" : "返回聊天设置")
             Spacer()
             Text(settingsTitle).font(theme.font.sectionTitle)
             Spacer()
@@ -2073,6 +2076,20 @@ struct ChatView: View {
             .foregroundStyle(theme.color.textSecondary)
             Slider(value: value, in: range)
                 .tint(theme.effectiveAccent)
+        }
+    }
+
+    /// 返回：从新设置点进来的，关掉这一页、回到新设置；否则照旧退到功能区总列表 / 关掉
+    private func settingsBack() {
+        if settingsFromDrawer && settingsPage != .root {
+            settingsFromDrawer = false
+            closeTransientPanels()
+            settingsPage = .root
+            withAnimation(KeDrawerMotion.animation(reduceMotion: reduceMotion)) { showKeDrawer(page: .garden) }
+        } else if settingsPage == .root {
+            closeTransientPanels()
+        } else {
+            settingsPage = .root
         }
     }
 
