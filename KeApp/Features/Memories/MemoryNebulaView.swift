@@ -513,7 +513,11 @@ struct MemoryNebulaView: View {
                 ForEach(Self.spots, id: \.0) { spot in
                     if let g = NebulaGroup.all.first(where: { $0.kind == spot.0 }) {
                         // 1116：每团按远近有自己的大小，越靠下越大，看起来有纵深
-                        nebulaLabel(g, box: w * (spot.0 == .whirlpool ? 0.52 : 0.46) * spot.3)
+                        // 11-19 她：「有些字母都没有显示全」——最左、最右那两团的名字和小字超出屏幕（「户座大星云」）。
+                        // 图照旧摆在原处，字往屏幕里挪，离边至少 10 点（字宽按 150 估）
+                        let half: CGFloat = 75, x = spot.1 * w
+                        let shift = x - half < 10 ? 10 - (x - half) : (x + half > w - 10 ? (w - 10) - (x + half) : 0)
+                        nebulaLabel(g, box: w * (spot.0 == .whirlpool ? 0.52 : 0.46) * spot.3, textShift: shift)
                             .position(x: spot.1 * w, y: top + spot.2 * mapH)
                             // 越远越淡一点，近的更实，纵深感更明显
                             .opacity(0.70 + 0.30 * Double(min(1, spot.3)))
@@ -562,7 +566,7 @@ struct MemoryNebulaView: View {
         return best.flatMap { b in NebulaGroup.all.first { $0.kind == b.0 } }
     }
 
-    private func nebulaLabel(_ g: NebulaGroup, box: CGFloat) -> some View {
+    private func nebulaLabel(_ g: NebulaGroup, box: CGFloat, textShift: CGFloat = 0) -> some View {
         let count = members(g.name).count
         return VStack(spacing: 0) {
             Group {
@@ -589,8 +593,12 @@ struct MemoryNebulaView: View {
                 Text(g.name).font(.custom("NotoSerifSC-Regular", size: 16, relativeTo: .body)).tracking(1.3)
             }
             .shadow(color: Self.night, radius: 6)
+            .fixedSize()
+            .offset(x: textShift)
             .padding(.top, -8)
             Text("\(g.astro) · \(count)").font(.system(size: 9.5)).tracking(0.8).foregroundStyle(Self.muted)
+                .lineLimit(1).fixedSize()
+                .offset(x: textShift)
                 .padding(.top, 2)
         }
         .allowsHitTesting(false)
