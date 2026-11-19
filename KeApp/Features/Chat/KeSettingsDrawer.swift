@@ -107,7 +107,9 @@ struct KeDrawerOverlay<Content: View>: View {
                     .environment(\.keDrawerControlActive, $controlActive)
                     .frame(width: width)
                     .frame(maxHeight: .infinity)
-                    .background { panelBackground(glass: settled && isOpen && closingDrag == 0).ignoresSafeArea() }
+                    // 11-19 她：「退出设置的时候字会闪过」——以前一往右划就从玻璃一下子换成实心纸，背景一亮、字跟着一闪。
+                    // 停稳以后一路是玻璃，收回去、滑出屏幕了才换回纸（拉出来的路上照旧是纸，不让模糊跟着每帧重算）
+                    .background { panelBackground(glass: settled).ignoresSafeArea() }
                     .overlay(alignment: .leading) {
                         Rectangle()
                             .fill(Ink.line.opacity(0.35))
@@ -137,7 +139,13 @@ struct KeDrawerOverlay<Content: View>: View {
             if !open { controlActive = false }
         }
         .task(id: isOpen) {
-            guard isOpen else { settled = false; return }
+            guard isOpen else {
+                // 等收回的弹簧走完（0.38 秒）再换回纸
+                try? await Task.sleep(for: .milliseconds(reduceMotion ? 0 : 450))
+                guard !Task.isCancelled else { return }
+                settled = false
+                return
+            }
             // 弹簧 0.38 秒，等它停稳再换玻璃
             try? await Task.sleep(for: .milliseconds(reduceMotion ? 0 : 450))
             guard !Task.isCancelled else { return }
