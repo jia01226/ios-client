@@ -931,6 +931,42 @@ actor APIClient {
         _ = try await perform(try makeRequest(path: "/api/memory/app-quotes/\(id)", method: "DELETE"))
     }
 
+    // MARK: 收藏（11-20 她：今天的游戏想原样留着，日记页里专门一栏）
+
+    func favorites() async throws -> [FavoriteSummary] {
+        let (data, _) = try await perform(try makeRequest(path: "/api/ke/favorites"))
+        return try JSONDecoder().decode(FavoriteListPayload.self, from: data).items
+    }
+
+    func favorite(id: String) async throws -> FavoriteItem {
+        let (data, _) = try await perform(try makeRequest(path: "/api/ke/favorites/\(id)"))
+        return try JSONDecoder().decode(FavoriteItem.self, from: data)
+    }
+
+    func favoriteDay(_ date: String) async throws -> [FavoriteMessage] {
+        let request = try makeRequest(path: "/api/ke/favorites/day", queryItems: [URLQueryItem(name: "date", value: date)])
+        let (data, _) = try await perform(request)
+        return try JSONDecoder().decode(FavoriteDayPayload.self, from: data).messages
+    }
+
+    func addFavorite(fromID: Int, toID: Int, title: String) async throws {
+        var request = try makeRequest(path: "/api/ke/favorites", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["from_id": fromID, "to_id": toID, "title": title])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        _ = try await perform(request)
+    }
+
+    func renameFavorite(id: String, title: String) async throws {
+        var request = try makeRequest(path: "/api/ke/favorites/\(id)", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["title": title])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        _ = try await perform(request)
+    }
+
+    func deleteFavorite(id: String) async throws {
+        _ = try await perform(try makeRequest(path: "/api/ke/favorites/\(id)", method: "DELETE"))
+    }
+
     func reviewPending(offset: Int = 0) async throws -> ReviewPage {
         let request = try makeRequest(path: "/api/memory/pending", queryItems: [URLQueryItem(name: "offset", value: String(offset))])
         let (data, _) = try await perform(request)
@@ -1759,3 +1795,37 @@ private extension String {
 
 extension APIClient: MemoryReviewService {}
 extension APIClient: NightDiaryService {}
+
+// MARK: - 收藏的数据（/api/ke/favorites）
+
+struct FavoriteSummary: Decodable, Identifiable, Equatable, Sendable {
+    let id: String
+    let title: String
+    let note: String?
+    let first_at: String?
+    let last_at: String?
+    let count: Int
+    let preview: String?
+}
+
+struct FavoriteMessage: Decodable, Identifiable, Equatable, Sendable {
+    let id: Int
+    /// "her" / "ke"
+    let author: String
+    let at: String
+    let text: String
+    /// 柯那一条的小心思（日子列表里没有）
+    let note: String?
+}
+
+struct FavoriteItem: Decodable, Identifiable, Sendable {
+    let id: String
+    let title: String
+    let note: String?
+    let first_at: String?
+    let messages: [FavoriteMessage]
+}
+
+private struct FavoriteListPayload: Decodable { let items: [FavoriteSummary] }
+private struct FavoriteDayPayload: Decodable { let messages: [FavoriteMessage] }
+

@@ -7,10 +7,11 @@ import SwiftUI
 
 /// 123：日记页顶上的两栏。记住她上次看的是哪一栏；从「爸爸开锁了」那张卡、「柯的」页写着日记的那张卡点进来，一定落在日记。
 enum DiaryTab: String, CaseIterable {
-    case diary, night, drawer
+    case diary, night, drawer, favorites
     static let storageKey = "diary.page.tab"
     /// 1116 她：抽屉挪进日记，跟日记、夜里并排
-    var label: String { ["diary": "日记", "night": "夜里", "drawer": "抽屉"][rawValue]! }
+    /// 1120 她：聊天里想原样留着的一段，放进日记页第四栏「收藏」
+    var label: String { ["diary": "日记", "night": "夜里", "drawer": "抽屉", "favorites": "收藏"][rawValue]! }
     /// 带着要翻开的那一篇进来（pinnedToDiary）就是日记；不然照她上次选的，认不出来的当日记
     static func current(saved: String, pinnedToDiary: Bool, pinnedToNight: Bool = false) -> DiaryTab {
         // 128：从聊天里「夜里日记」卡点进来的，一定落在夜里
@@ -101,6 +102,8 @@ struct KeDiaryListView: View {
                             NightPane(store: night)
                         } else if tab == .drawer {
                             KeDrawerPage(line: line, onClose: {}, embedded: true)
+                        } else if tab == .favorites {
+                            FavoritesPane(line: line)
                         } else {
                             controls(proxy)
                             if loading && entries.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(40) }
@@ -200,7 +203,7 @@ struct KeDiaryListView: View {
         InkTabSwitch(options: DiaryTab.allCases,
                      selection: Binding(get: { tab }, set: { leftPin = true; savedTab = $0.rawValue }),
                      label: \.label, identifier: { "diary-tab-\($0.rawValue)" },
-                     accessibilityName: "日记、夜里或抽屉")
+                     accessibilityName: "日记、夜里、抽屉或收藏")
             .frame(maxWidth: .infinity)
             .padding(.top, 4)
     }
@@ -437,5 +440,317 @@ private struct DiaryPage: View {
         guard p.count == 3, let m = Int(p[1]), let d = Int(p[2]) else { return day }
         let w = KeDiaryListView.weekday(day).replacingOccurrences(of: "周", with: "星期")
         return "\(p[0])年\(m)月\(d)日 · \(w)"
+    }
+}
+
+// MARK: - 收藏（1120 她：「今天和柯玩的游戏……那些对话我想原样保存，能不能做个收藏放在日记里面，专门搞个 tab」）
+// 服务器把那一段原样另抄一份（ke_favorites.py），聊天以后怎么折叠都不碍事。新建：挑一天 → 点开头那句、再点结尾那句 → 起个名。
+
+struct FavoritesPane: View {
+    let line: ChatLine
+    @State private var items: [FavoriteSummary] = FavoritesPane.cache
+    @State private var loading = FavoritesPane.cache.isEmpty
+    @State private var failed = false
+    @State private var reading: FavoriteSummary?
+    @State private var making = false
+    @AppStorage(CamelliaPalette.storageKey) private var savedPalette = CamelliaPalette.defaultPalette.rawValue
+    @MainActor static var cache: [FavoriteSummary] = []
+    private var paper: Color { CamelliaPalette.resolve(savedPalette).paper }
+
+    var body: some View {
+        LazyVStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(items.isEmpty ? "" : "\(items.count) 段").font(Ink.song(12)).foregroundStyle(Ink.secondary)
+                Spacer()
+                Button { making = true } label: {
+                    Label("收藏一段", systemImage: "plus").font(Ink.song(13.5))
+                }
+                .foregroundStyle(Ink.accent)
+                .accessibilityIdentifier("favorites-new")
+            }
+            .padding(.vertical, 12)
+            if loading && items.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(40) }
+            if failed {
+                Button("收藏暂时没接上，点这里再试一次") { Task { await load() } }
+                    .font(Ink.song(14)).padding(.top, 20)
+            }
+            if !loading && !failed && items.isEmpty {
+                Text("还没有收藏。点「收藏一段」，挑一天里的一段对话原样留下来。")
+                    .font(Ink.song(14)).foregroundStyle(Ink.secondary)
+                    .frame(maxWidth: .infinity).padding(.vertical, 30)
+            }
+            ForEach(items) { item in
+                Button { reading = item } label: { row(item) }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("favorite-\(item.id)")
+                Rectangle().fill(Ink.line).frame(height: 0.5)
+            }
+        }
+        .foregroundStyle(Ink.primary)
+        .task { await load() }
+        .sheet(item: $reading) { summary in
+            FavoriteReader(line: line, summary: summary) { Task { await load() } }
+                .presentationBackground(paper)
+        }
+        .sheet(isPresented: $making) {
+            FavoriteMaker(line: line) { Task { await load() } }
+                .presentationBackground(paper)
+        }
+    }
+
+    private func row(_ item: FavoriteSummary) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(item.title).font(Ink.song(16)).lineLimit(1)
+            HStack(spacing: 8) {
+                Text(Self.when(item.first_at)).font(Ink.song(12))
+                Text("\(item.count) 句").font(Ink.song(12))
+            }
+            .foregroundStyle(Ink.secondary)
+            if let preview = item.preview, !preview.isEmpty {
+                Text(preview).font(Ink.song(13)).foregroundStyle(Ink.secondary).lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 14)
+        .contentShape(Rectangle())
+    }
+
+    /// "2026-11-20 17:00:50" → "11月20日 17:00"
+    static func when(_ at: String?) -> String {
+        guard let at, at.count >= 16 else { return "" }
+        let m = Int(at.dropFirst(5).prefix(2)) ?? 0, d = Int(at.dropFirst(8).prefix(2)) ?? 0
+        return "\(m)月\(d)日 \(at.dropFirst(11).prefix(5))"
+    }
+
+    private func load() async {
+        do {
+            let list = try await APIClient(baseURL: line.apiBaseURL).favorites()
+            items = list
+            FavoritesPane.cache = list
+            failed = false
+        } catch {
+            failed = items.isEmpty
+        }
+        loading = false
+    }
+}
+
+/// 点开一段收藏：原样的对话，她在右、柯在左；柯那一条有小心思的，点一下展开。
+struct FavoriteReader: View {
+    let line: ChatLine
+    let summary: FavoriteSummary
+    var onChanged: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var item: FavoriteItem?
+    @State private var failed = false
+    @State private var openNotes: Set<Int> = []
+    @State private var renaming = false
+    @State private var newTitle = ""
+    @State private var confirmDelete = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 18) {
+                Button("关上") { dismiss() }
+                Spacer()
+                Button("改名") { newTitle = item?.title ?? summary.title; renaming = true }
+                Button("删掉", role: .destructive) { confirmDelete = true }
+            }
+            .font(Ink.song(14))
+            .foregroundStyle(Ink.accent)
+            .padding(.horizontal, 22).padding(.top, 18).padding(.bottom, 8)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    Text(item?.title ?? summary.title).font(Ink.song(20)).padding(.bottom, 2)
+                    Text(FavoritesPane.when(summary.first_at)).font(Ink.song(12)).foregroundStyle(Ink.secondary)
+                    if let note = item?.note, !note.isEmpty {
+                        Text(note).font(Ink.song(13)).foregroundStyle(Ink.secondary).padding(.top, 2)
+                    }
+                    Rectangle().fill(Ink.line).frame(height: 0.5).padding(.vertical, 6)
+                    if item == nil && !failed { ProgressView().frame(maxWidth: .infinity).padding(40) }
+                    if failed { Text("这段没取回来，等会儿再点开看看。").font(Ink.song(14)).foregroundStyle(Ink.secondary) }
+                    ForEach(item?.messages ?? []) { message in bubble(message) }
+                }
+                .padding(.horizontal, 22).padding(.bottom, 40)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .foregroundStyle(Ink.primary)
+        .task { await load() }
+        .alert("改个名字", isPresented: $renaming) {
+            TextField("名字", text: $newTitle)
+            Button("好") { Task { await rename() } }
+            Button("算了", role: .cancel) {}
+        }
+        .confirmationDialog("这段收藏删掉以后找不回来（聊天记录里原来那几句不受影响）。", isPresented: $confirmDelete,
+                            titleVisibility: .visible) {
+            Button("删掉这段收藏", role: .destructive) { Task { await remove() } }
+        }
+    }
+
+    private func bubble(_ m: FavoriteMessage) -> some View {
+        let mine = m.author == "her"
+        return VStack(alignment: mine ? .trailing : .leading, spacing: 4) {
+            Text(m.text)
+                .font(Ink.song(15))
+                .foregroundStyle(mine ? Ink.meText : Ink.keText)
+                .padding(.horizontal, 13).padding(.vertical, 9)
+                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(mine ? Ink.meFill : Ink.keFill))
+                .textSelection(.enabled)
+            if !mine, let note = m.note, !note.isEmpty {
+                if openNotes.contains(m.id) {
+                    Text(note).font(Ink.song(12.5)).foregroundStyle(Ink.secondary)
+                        .padding(.horizontal, 6)
+                        .onTapGesture { openNotes.remove(m.id) }
+                } else {
+                    Button("小心思") { openNotes.insert(m.id) }
+                        .font(Ink.song(11.5)).foregroundStyle(Ink.secondary)
+                }
+            }
+            Text(String(m.at.dropFirst(11).prefix(5))).font(Ink.song(10.5)).foregroundStyle(Ink.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: mine ? .trailing : .leading)
+        .padding(mine ? Edge.Set.leading : Edge.Set.trailing, 40)
+    }
+
+    private func load() async {
+        do { item = try await APIClient(baseURL: line.apiBaseURL).favorite(id: summary.id) } catch { failed = true }
+    }
+
+    private func rename() async {
+        let title = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return }
+        try? await APIClient(baseURL: line.apiBaseURL).renameFavorite(id: summary.id, title: title)
+        await load()
+        onChanged()
+    }
+
+    private func remove() async {
+        try? await APIClient(baseURL: line.apiBaseURL).deleteFavorite(id: summary.id)
+        onChanged()
+        dismiss()
+    }
+}
+
+/// 新建收藏：挑一天 → 点开头那句 → 点结尾那句 → 起个名 → 收好。
+struct FavoriteMaker: View {
+    let line: ChatLine
+    var onSaved: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var day = Date()
+    @State private var messages: [FavoriteMessage] = []
+    @State private var loading = false
+    @State private var startID: Int?
+    @State private var endID: Int?
+    @State private var title = ""
+    @State private var saving = false
+    @State private var errorText: String?
+
+    private static let dayFormat: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "Asia/Shanghai")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+    private var range: ClosedRange<Int>? {
+        guard let a = startID else { return nil }
+        let b = endID ?? a
+        return min(a, b)...max(a, b)
+    }
+    private var hint: String {
+        if startID == nil { return "点一下开头那句" }
+        if endID == nil { return "再点一下结尾那句" }
+        return "选好了，起个名字就能收好（点别的句子可以重选）"
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button("算了") { dismiss() }
+                Spacer()
+                Button(saving ? "收着…" : "收好") { Task { await save() } }
+                    .disabled(range == nil || saving)
+                    .accessibilityIdentifier("favorite-save")
+            }
+            .font(Ink.song(14))
+            .foregroundStyle(Ink.accent)
+            .padding(.horizontal, 22).padding(.top, 18)
+            VStack(alignment: .leading, spacing: 10) {
+                DatePicker("哪一天", selection: $day, in: ...Date(), displayedComponents: .date)
+                    .font(Ink.song(14))
+                    .environment(\.locale, Locale(identifier: "zh_CN"))
+                TextField("名字（不填就用日子和时间）", text: $title)
+                    .font(Ink.song(15))
+                    .padding(.vertical, 8)
+                    .overlay(alignment: .bottom) { Rectangle().fill(Ink.line).frame(height: 0.5) }
+                Text(errorText ?? hint).font(Ink.song(12.5))
+                    .foregroundStyle(errorText == nil ? Ink.secondary : Ink.negative)
+            }
+            .padding(.horizontal, 22).padding(.vertical, 12)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 6) {
+                    if loading { ProgressView().frame(maxWidth: .infinity).padding(30) }
+                    if !loading && messages.isEmpty {
+                        Text("这一天没有聊天。").font(Ink.song(14)).foregroundStyle(Ink.secondary)
+                            .frame(maxWidth: .infinity).padding(30)
+                    }
+                    ForEach(messages) { m in pickRow(m) }
+                }
+                .padding(.horizontal, 22).padding(.bottom, 40)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .foregroundStyle(Ink.primary)
+        .task(id: Self.dayFormat.string(from: day)) { await load() }
+    }
+
+    private func pickRow(_ m: FavoriteMessage) -> some View {
+        let mine = m.author == "her"
+        let picked = range?.contains(m.id) ?? false
+        let edge = m.id == startID || m.id == endID
+        return Button {
+            if startID == nil || endID != nil { startID = m.id; endID = nil } else { endID = m.id }
+            errorText = nil
+        } label: {
+            HStack(alignment: .top, spacing: 8) {
+                Text(String(m.at.dropFirst(11).prefix(5))).font(Ink.song(11)).foregroundStyle(Ink.secondary)
+                    .frame(width: 38, alignment: .leading)
+                Text((mine ? "她　" : "柯　") + m.text)
+                    .font(Ink.song(14))
+                    .foregroundStyle(mine ? Ink.meText : Ink.keText)
+                    .lineLimit(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(picked ? Ink.accent.opacity(edge ? 0.18 : 0.08) : Color.clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func load() async {
+        loading = true
+        startID = nil; endID = nil
+        do { messages = try await APIClient(baseURL: line.apiBaseURL).favoriteDay(Self.dayFormat.string(from: day)) }
+        catch { messages = []; errorText = "这一天的聊天没取回来，等会儿再试" }
+        loading = false
+    }
+
+    private func save() async {
+        guard let range else { return }
+        saving = true
+        defer { saving = false }
+        do {
+            try await APIClient(baseURL: line.apiBaseURL).addFavorite(
+                fromID: range.lowerBound, toID: range.upperBound,
+                title: title.trimmingCharacters(in: .whitespacesAndNewlines))
+            onSaved()
+            dismiss()
+        } catch {
+            errorText = "没收好，再点一次「收好」试试"
+        }
     }
 }
