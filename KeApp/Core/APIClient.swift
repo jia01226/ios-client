@@ -949,9 +949,10 @@ actor APIClient {
         return try JSONDecoder().decode(FavoriteDayPayload.self, from: data).messages
     }
 
-    func addFavorite(fromID: Int, toID: Int, title: String) async throws {
+    func addFavorite(fromID: Int, toID: Int, title: String, category: String = "") async throws {
         var request = try makeRequest(path: "/api/ke/favorites", method: "POST")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["from_id": fromID, "to_id": toID, "title": title])
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["from_id": fromID, "to_id": toID, "title": title,
+                                                                       "category": category])
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         _ = try await perform(request)
     }
@@ -961,6 +962,33 @@ actor APIClient {
         request.httpBody = try JSONSerialization.data(withJSONObject: ["title": title])
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         _ = try await perform(request)
+    }
+
+    func recategorizeFavorite(id: String, category: String) async throws {
+        var request = try makeRequest(path: "/api/ke/favorites/\(id)", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["category": category])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        _ = try await perform(request)
+    }
+
+    func favoriteCategories() async throws -> [String] {
+        let (data, _) = try await perform(try makeRequest(path: "/api/ke/favorites/categories"))
+        return try JSONDecoder().decode(FavoriteCategoriesPayload.self, from: data).categories
+    }
+
+    /// 11-22 一键收藏：柯把那天的聊天切段、起小标题、归类（服务器后台跑，隔几秒问一下进度）
+    func startAutoFavorite(date: String) async throws -> FavoriteAutoStatus {
+        var request = try makeRequest(path: "/api/ke/favorites/auto", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["date": date])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, _) = try await perform(request)
+        return try JSONDecoder().decode(FavoriteAutoStatus.self, from: data)
+    }
+
+    func autoFavoriteStatus(date: String) async throws -> FavoriteAutoStatus {
+        let request = try makeRequest(path: "/api/ke/favorites/auto", queryItems: [URLQueryItem(name: "date", value: date)])
+        let (data, _) = try await perform(request)
+        return try JSONDecoder().decode(FavoriteAutoStatus.self, from: data)
     }
 
     func deleteFavorite(id: String) async throws {
@@ -1806,6 +1834,10 @@ struct FavoriteSummary: Decodable, Identifiable, Equatable, Sendable {
     let last_at: String?
     let count: Int
     let preview: String?
+    /// 11-22 分类（柯挑的会带上，她自己收的可以不填）
+    let category: String?
+    /// "her" 她自己收的 / "ke" 柯挑的
+    let by: String?
 }
 
 struct FavoriteMessage: Decodable, Identifiable, Equatable, Sendable {
@@ -1828,4 +1860,13 @@ struct FavoriteItem: Decodable, Identifiable, Sendable {
 
 private struct FavoriteListPayload: Decodable { let items: [FavoriteSummary] }
 private struct FavoriteDayPayload: Decodable { let messages: [FavoriteMessage] }
+private struct FavoriteCategoriesPayload: Decodable { let categories: [String] }
+
+/// 柯挑收藏的进度：idle / running / done / error
+struct FavoriteAutoStatus: Decodable, Sendable {
+    let state: String
+    let added: Int?
+    let error: String?
+    let titles: [String]?
+}
 

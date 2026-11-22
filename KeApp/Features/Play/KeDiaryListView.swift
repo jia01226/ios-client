@@ -453,37 +453,69 @@ struct FavoritesPane: View {
     @State private var failed = false
     @State private var reading: FavoriteSummary?
     @State private var making = false
+    /// 1122 一键收藏今天：柯在挑的时候显示一行字，挑完说收了哪几段
+    @State private var autoLine: String?
+    @State private var autoRunning = false
     @AppStorage(CamelliaPalette.storageKey) private var savedPalette = CamelliaPalette.defaultPalette.rawValue
     @MainActor static var cache: [FavoriteSummary] = []
     private var paper: Color { CamelliaPalette.resolve(savedPalette).paper }
 
+    /// 按分类分组；分类按最近收的排前面，没分类的放最后
+    private var groups: [(name: String, items: [FavoriteSummary])] {
+        var order: [String] = []
+        var bucket: [String: [FavoriteSummary]] = [:]
+        for item in items {
+            let name = (item.category ?? "").trimmingCharacters(in: .whitespaces)
+            if bucket[name] == nil { order.append(name) }
+            bucket[name, default: []].append(item)
+        }
+        order = order.filter { !$0.isEmpty } + order.filter { $0.isEmpty }
+        return order.map { ($0, bucket[$0] ?? []) }
+    }
+
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 0) {
-            HStack {
+            HStack(spacing: 16) {
                 Text(items.isEmpty ? "" : "\(items.count) 段").font(Ink.song(12)).foregroundStyle(Ink.secondary)
                 Spacer()
+                Button { Task { await autoToday() } } label: {
+                    Label(autoRunning ? "柯在挑…" : "一键收藏今天", systemImage: "sparkles").font(Ink.song(13.5))
+                }
+                .disabled(autoRunning)
+                .accessibilityIdentifier("favorites-auto-today")
                 Button { making = true } label: {
                     Label("收藏一段", systemImage: "plus").font(Ink.song(13.5))
                 }
-                .foregroundStyle(Ink.accent)
                 .accessibilityIdentifier("favorites-new")
             }
+            .foregroundStyle(Ink.accent)
             .padding(.vertical, 12)
+            if let autoLine {
+                Text(autoLine).font(Ink.song(12.5)).foregroundStyle(Ink.secondary)
+                    .padding(.bottom, 8)
+            }
             if loading && items.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(40) }
             if failed {
                 Button("收藏暂时没接上，点这里再试一次") { Task { await load() } }
                     .font(Ink.song(14)).padding(.top, 20)
             }
             if !loading && !failed && items.isEmpty {
-                Text("还没有收藏。点「收藏一段」，挑一天里的一段对话原样留下来。")
+                Text("还没有收藏。点「一键收藏今天」让柯把今天的聊天分段收好，或者点「收藏一段」自己挑开头结尾。")
                     .font(Ink.song(14)).foregroundStyle(Ink.secondary)
                     .frame(maxWidth: .infinity).padding(.vertical, 30)
             }
-            ForEach(items) { item in
-                Button { reading = item } label: { row(item) }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("favorite-\(item.id)")
-                Rectangle().fill(Ink.line).frame(height: 0.5)
+            ForEach(groups, id: \.name) { group in
+                if groups.count > 1 || !group.name.isEmpty {
+                    Text(group.name.isEmpty ? "没分类" : group.name)
+                        .font(Ink.song(13)).foregroundStyle(Ink.secondary)
+                        .padding(.top, 16).padding(.bottom, 2)
+                }
+                ForEach(group.items) { item in
+                    Button { reading = item } label: { row(item) }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("favorite-\(item.id)")
+                    Rectangle().fill(Ink.line).frame(height: 0.5)
+                }
             }
         }
         .foregroundStyle(Ink.primary)
@@ -493,7 +525,8 @@ struct FavoritesPane: View {
                 .presentationBackground(paper)
         }
         .sheet(isPresented: $making) {
-            FavoriteMaker(line: line) { Task { await load() } }
+            FavoriteMaker(line: line, onSaved: { Task { await load() } },
+                          onAuto: { day in Task { await autoDay(day) } })
                 .presentationBackground(paper)
         }
     }
@@ -504,6 +537,7 @@ struct FavoritesPane: View {
             HStack(spacing: 8) {
                 Text(Self.when(item.first_at)).font(Ink.song(12))
                 Text("\(item.count) 句").font(Ink.song(12))
+                if item.by == "ke" { Text("柯挑的").font(Ink.song(11.5)).foregroundStyle(Ink.accent) }
             }
             .foregroundStyle(Ink.secondary)
             if let preview = item.preview, !preview.isEmpty {
@@ -533,6 +567,42 @@ struct FavoritesPane: View {
         }
         loading = false
     }
+
+    private func autoToday() async {
+        await autoDay(FavoriteMaker.dayFormat.string(from: Date()))
+    }
+
+    /// 让柯把那天的聊天切段收藏：服务器后台跑，这里每 4 秒问一次，最多等 4 分钟
+    private func autoDay(_ day: String) async {
+        guard !autoRunning else { return }
+        autoRunning = true
+        defer { autoRunning = false }
+        let label = day == FavoriteMaker.dayFormat.string(from: Date()) ? "今天" : Self.when(day + " 00:00").components(separatedBy: " ").first ?? day
+        autoLine = "柯在翻\(label)的聊天，挑值得留的段落，一两分钟……"
+        let api = APIClient(baseURL: line.apiBaseURL)
+        do {
+            var status = try await api.startAutoFavorite(date: day)
+            var waited = 0
+            while status.state == "running" && waited < 240 {
+                try await Task.sleep(nanoseconds: 4_000_000_000)
+                waited += 4
+                status = try await api.autoFavoriteStatus(date: day)
+            }
+            switch status.state {
+            case "done":
+                let titles = status.titles ?? []
+                autoLine = titles.isEmpty ? "\(label)收过的都在了，柯没挑出新的段落。"
+                    : "柯收了 \(titles.count) 段：" + titles.map { "「\($0)」" }.joined(separator: "")
+                await load()
+            case "error":
+                autoLine = "柯这回没挑成（\(status.error ?? "不知道哪儿卡了")），等会儿再点一次。"
+            default:
+                autoLine = "柯还在挑，过一会儿下拉刷新看看。"
+            }
+        } catch {
+            autoLine = "没连上，等会儿再点一次「一键收藏今天」。"
+        }
+    }
 }
 
 /// 点开一段收藏：原样的对话，她在右、柯在左；柯那一条有小心思的，点一下展开。
@@ -547,6 +617,8 @@ struct FavoriteReader: View {
     @State private var renaming = false
     @State private var newTitle = ""
     @State private var confirmDelete = false
+    @State private var recategorizing = false
+    @State private var newCategory = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -554,6 +626,7 @@ struct FavoriteReader: View {
                 Button("关上") { dismiss() }
                 Spacer()
                 Button("改名") { newTitle = item?.title ?? summary.title; renaming = true }
+                Button("分类") { newCategory = summary.category ?? ""; recategorizing = true }
                 Button("删掉", role: .destructive) { confirmDelete = true }
             }
             .font(Ink.song(14))
@@ -562,7 +635,12 @@ struct FavoriteReader: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
                     Text(item?.title ?? summary.title).font(Ink.song(20)).padding(.bottom, 2)
-                    Text(FavoritesPane.when(summary.first_at)).font(Ink.song(12)).foregroundStyle(Ink.secondary)
+                    HStack(spacing: 8) {
+                        Text(FavoritesPane.when(summary.first_at))
+                        if let c = shownCategory, !c.isEmpty { Text("· " + c) }
+                        if summary.by == "ke" { Text("· 柯挑的") }
+                    }
+                    .font(Ink.song(12)).foregroundStyle(Ink.secondary)
                     if let note = item?.note, !note.isEmpty {
                         Text(note).font(Ink.song(13)).foregroundStyle(Ink.secondary).padding(.top, 2)
                     }
@@ -580,6 +658,11 @@ struct FavoriteReader: View {
         .alert("改个名字", isPresented: $renaming) {
             TextField("名字", text: $newTitle)
             Button("好") { Task { await rename() } }
+            Button("算了", role: .cancel) {}
+        }
+        .alert("放进哪一类", isPresented: $recategorizing) {
+            TextField("比如：游戏、谈心、看病", text: $newCategory)
+            Button("好") { Task { await recategorize() } }
             Button("算了", role: .cancel) {}
         }
         .confirmationDialog("这段收藏删掉以后找不回来（聊天记录里原来那几句不受影响）。", isPresented: $confirmDelete,
@@ -625,6 +708,16 @@ struct FavoriteReader: View {
         onChanged()
     }
 
+    @State private var changedCategory: String?
+    private var shownCategory: String? { changedCategory ?? summary.category }
+
+    private func recategorize() async {
+        let category = newCategory.trimmingCharacters(in: .whitespacesAndNewlines)
+        try? await APIClient(baseURL: line.apiBaseURL).recategorizeFavorite(id: summary.id, category: category)
+        changedCategory = category
+        onChanged()
+    }
+
     private func remove() async {
         try? await APIClient(baseURL: line.apiBaseURL).deleteFavorite(id: summary.id)
         onChanged()
@@ -636,6 +729,8 @@ struct FavoriteReader: View {
 struct FavoriteMaker: View {
     let line: ChatLine
     var onSaved: () -> Void
+    /// 1122 不想自己点开头结尾：这一天交给柯挑（关掉这页，收藏栏那儿显示进度）
+    var onAuto: (String) -> Void = { _ in }
     @Environment(\.dismiss) private var dismiss
     @State private var day = Date()
     @State private var messages: [FavoriteMessage] = []
@@ -645,8 +740,10 @@ struct FavoriteMaker: View {
     @State private var title = ""
     @State private var saving = false
     @State private var errorText: String?
+    @State private var category = ""
+    @State private var categories: [String] = []
 
-    private static let dayFormat: DateFormatter = {
+    static let dayFormat: DateFormatter = {
         let f = DateFormatter()
         f.calendar = Calendar(identifier: .gregorian)
         f.locale = Locale(identifier: "en_US_POSIX")
@@ -685,6 +782,33 @@ struct FavoriteMaker: View {
                     .font(Ink.song(15))
                     .padding(.vertical, 8)
                     .overlay(alignment: .bottom) { Rectangle().fill(Ink.line).frame(height: 0.5) }
+                TextField("分类（可以不填）", text: $category)
+                    .font(Ink.song(15))
+                    .padding(.vertical, 8)
+                    .overlay(alignment: .bottom) { Rectangle().fill(Ink.line).frame(height: 0.5) }
+                if !categories.isEmpty {
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 8) {
+                            ForEach(categories, id: \.self) { c in
+                                Button(c) { category = c }
+                                    .font(Ink.song(12.5))
+                                    .foregroundStyle(category == c ? Ink.accent : Ink.secondary)
+                                    .padding(.horizontal, 10).padding(.vertical, 5)
+                                    .background(Capsule().stroke(category == c ? Ink.accent : Ink.line, lineWidth: 0.8))
+                            }
+                        }
+                    }
+                    .scrollIndicators(.hidden)
+                }
+                Button {
+                    onAuto(Self.dayFormat.string(from: day))
+                    dismiss()
+                } label: {
+                    Label("懒得挑？这一天交给柯分段收", systemImage: "sparkles").font(Ink.song(13))
+                }
+                .foregroundStyle(Ink.accent)
+                .disabled(messages.isEmpty)
+                .accessibilityIdentifier("favorite-auto-day")
                 Text(errorText ?? hint).font(Ink.song(12.5))
                     .foregroundStyle(errorText == nil ? Ink.secondary : Ink.negative)
             }
@@ -704,6 +828,7 @@ struct FavoriteMaker: View {
         }
         .foregroundStyle(Ink.primary)
         .task(id: Self.dayFormat.string(from: day)) { await load() }
+        .task { categories = (try? await APIClient(baseURL: line.apiBaseURL).favoriteCategories()) ?? [] }
     }
 
     private func pickRow(_ m: FavoriteMessage) -> some View {
@@ -746,7 +871,8 @@ struct FavoriteMaker: View {
         do {
             try await APIClient(baseURL: line.apiBaseURL).addFavorite(
                 fromID: range.lowerBound, toID: range.upperBound,
-                title: title.trimmingCharacters(in: .whitespacesAndNewlines))
+                title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                category: category.trimmingCharacters(in: .whitespacesAndNewlines))
             onSaved()
             dismiss()
         } catch {
