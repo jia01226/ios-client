@@ -31,7 +31,7 @@ jobs:
       PROJECT: KeApp.xcodeproj
       SCHEME: KeApp
       # push 触发拿不到 inputs，这里给一个固定 Build 号；换成 workflow_dispatch 后可删
-      DEFAULT_BUILD_NUMBER: 203
+      DEFAULT_BUILD_NUMBER: 204
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
       ASC_KEY_BASE64: ${{ secrets.ASC_KEY_BASE64 }}
