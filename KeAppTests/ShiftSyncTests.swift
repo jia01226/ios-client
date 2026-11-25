@@ -10,9 +10,9 @@ final class ShiftSyncTests: XCTestCase {
     func testRequestedPresetsAndEditableTimes() throws {
         defer { defaults.removePersistentDomain(forName: suite) }
         let normal = try XCTUnwrap(ShiftPlan.load(kind: "normal", defaults: defaults))
-        XCTAssertEqual(normal.timeSummary, "08:30-12:00、14:00-17:30")
-        XCTAssertEqual(normal.resolve(on: today)?.workMinutes, 420)
-        XCTAssertEqual(normal.resolve(on: today)?.breakMinutes, 120)
+        XCTAssertEqual(normal.timeSummary, "08:30-12:00")
+        XCTAssertEqual(normal.resolve(on: today)?.workMinutes, 210)
+        XCTAssertEqual(normal.resolve(on: today)?.breakMinutes, 0)
         for (kind, times) in [("early", "08:30-14:45"), ("deputy", "14:45-21:00")] {
             let plan = try XCTUnwrap(ShiftPlan.load(kind: kind, defaults: defaults))
             XCTAssertEqual(plan.timeSummary, times)
@@ -35,8 +35,8 @@ final class ShiftSyncTests: XCTestCase {
         await vm.syncShifts()
         let rows = await api.fetchShifts()
         XCTAssertEqual(rows.count, 1)
-        XCTAssertEqual(rows.first?.shift, "正常班")
-        XCTAssertTrue(rows.first?.note?.contains("08:30-12:00、14:00-17:30") == true)
+        XCTAssertEqual(rows.first?.shift, "开会")
+        XCTAssertTrue(rows.first?.note?.contains("08:30-12:00") == true)
         vm.setShift(nil, on: today)
         XCTAssertNil(vm.shift(on: today))
         XCTAssertNil(vm.shiftPlan(on: today))
@@ -66,7 +66,7 @@ final class ShiftSyncTests: XCTestCase {
         XCTAssertEqual(ShiftNote.plan(from: byDate[HomeReminderCoordinator.dayKey(today)]?.note ?? ""), custom)
         XCTAssertEqual(ShiftNote.plan(from: byDate[HomeReminderCoordinator.dayKey(tomorrow)]?.note ?? ""), special)
         XCTAssertEqual(ShiftNote.plan(from: byDate[HomeReminderCoordinator.dayKey(yesterday)]?.note ?? ""), ShiftPlan.preset(kind: "normal"))
-        XCTAssertEqual(byDate[HomeReminderCoordinator.dayKey(today)]?.shift, "正常班（已调整）")
+        XCTAssertEqual(byDate[HomeReminderCoordinator.dayKey(today)]?.shift, "开会（已调整）")
         XCTAssertEqual(vm.shiftPlan(on: tomorrow), special)
         XCTAssertEqual(vm.shiftPlan(on: yesterday), ShiftPlan.preset(kind: "normal"))
         await vm.refreshShifts()

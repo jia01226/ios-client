@@ -213,7 +213,7 @@ final class NightDiaryTests: XCTestCase {
     func testDiaryTabRemembersChoiceButOpeningCardLandsOnDiary() {
         XCTAssertEqual(DiaryTab.diary.rawValue, "diary", "存在本机的值不能改名")
         XCTAssertEqual(DiaryTab.night.rawValue, "night")
-        XCTAssertEqual(DiaryTab.allCases.map(\.label), ["日记", "夜里", "抽屉"])
+        XCTAssertEqual(DiaryTab.allCases.map(\.label), ["日记", "夜里", "抽屉", "收藏"])
         XCTAssertEqual(DiaryTab.current(saved: "drawer", pinnedToDiary: false), .drawer)
         XCTAssertNotEqual(DiaryTab.storageKey, "notebook.purse.tab")
 
