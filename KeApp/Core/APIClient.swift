@@ -695,6 +695,28 @@ actor APIClient {
         }
     }
 
+    /// 11-25 她：「在手表能回复柯的消息」。通知上（手表、锁屏）点「回复」打的字从这里发给柯。
+    /// 服务器收到就在后台开始回，回好了照常推一条通知；这里不等他回完，接上了就松手（后台只给几十秒）。
+    func sendFromNotification(text: String, sessionID: Int) async throws {
+        var request = try makeRequest(path: "/api/chat", method: "POST", includeCookieHeader: true)
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "text": text,
+            "session_id": sessionID,
+            "client_msg_id": "notif-" + UUID().uuidString,
+            "via": "notification",
+            "supports_merge": true,
+        ] as [String: Any])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 20
+        let (bytes, response) = try await session.bytes(for: request)
+        guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        if http.statusCode == 401 { throw APIError.unauthorized }
+        guard (200..<300).contains(http.statusCode) else { throw APIError.badStatus(http.statusCode, "") }
+        // 读到第一行就说明这句已经落库、柯开始回了
+        for try await _ in bytes.lines { break }
+    }
+
     func markSeen(sessionID: Int, throughID: Int?) async throws {
         var request = try makeRequest(path: "/api/chat/seen", method: "POST")
         var body: [String: Any] = ["session_id": sessionID]
