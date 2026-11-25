@@ -37,6 +37,10 @@ struct UsPondView: View {
     @State private var poopDay = Date.now
     @State private var editingPoop: PoopLog?
     @State private var month = Calendar.current.dateInterval(of: .month, for: .now)?.start ?? .now
+    /// 11-25 她：「翻月有点卡，还容易误触到具体日子」——月历跟着手指走；在滑就不算点格子
+    @State private var swipeX: CGFloat = 0
+    @State private var swiping = false
+    @State private var tapQuietUntil = Date.distantPast
     /// 1116：她自己记的日程（看医生的号），存在这台手机上
     @ObservedObject private var events = CalendarEventStore.shared
     @State private var floating = false
@@ -78,6 +82,7 @@ struct UsPondView: View {
             calendarHeader.padding(.top, 6)
             // 换一面就是一整张新的月历：旧的淡出，新的从下面轻轻浮上来
             monthGrid
+                .offset(x: swipeX)
                 .simultaneousGesture(monthSwipe)
                 .id(face)
                 .transition(reduceMotion ? .opacity : .asymmetric(insertion: .opacity.combined(with: .offset(y: 12)),
@@ -270,14 +275,36 @@ struct UsPondView: View {
 
     /// 11-25 她：日历要能左右滑动翻月，不用去点那两个小箭头
     private var monthSwipe: some Gesture {
-        DragGesture(minimumDistance: 24)
+        DragGesture(minimumDistance: 10)
+            .onChanged { value in
+                let dx = value.translation.width, dy = value.translation.height
+                guard swiping || (abs(dx) > 12 && abs(dx) > abs(dy) * 1.2) else { return }
+                swiping = true
+                // 跟着手指走一点（带阻尼），让她觉得「抓住了」，不是松手后才动
+                swipeX = reduceMotion ? 0 : dx * 0.45
+            }
             .onEnded { value in
                 let dx = value.translation.width, dy = value.translation.height
                 let predicted = value.predictedEndTranslation.width
-                guard abs(dx) > abs(dy) * 1.3,
-                      abs(dx) > 36 || abs(predicted) > 110 else { return }
-                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) {
-                    month = vm.month(byAdding: dx < 0 ? 1 : -1, to: month)
+                let wasSwiping = swiping
+                swiping = false
+                if wasSwiping { tapQuietUntil = Date().addingTimeInterval(0.35) }
+                let flip = wasSwiping && abs(dx) > abs(dy) * 1.2 && (abs(dx) > 40 || abs(predicted) > 90)
+                guard flip else {
+                    withAnimation(.snappy(duration: 0.18)) { swipeX = 0 }
+                    return
+                }
+                let step = dx < 0 ? 1 : -1
+                if reduceMotion {
+                    month = vm.month(byAdding: step, to: month)
+                } else {
+                    // 新的一月从手指来的那一侧滑进来
+                    var quiet = Transaction(); quiet.disablesAnimations = true
+                    withTransaction(quiet) {
+                        month = vm.month(byAdding: step, to: month)
+                        swipeX = CGFloat(step) * 60
+                    }
+                    withAnimation(.snappy(duration: 0.2)) { swipeX = 0 }
                 }
                 UISelectionFeedbackGenerator().selectionChanged()
             }
@@ -458,6 +485,8 @@ struct UsPondView: View {
         // 字调到很大时，班次只写第一个字（白 / 夜 / 休），七格不挤爆
         let shown = shift.map { typeSize >= .accessibility1 ? String($0.prefix(1)) : $0 }
         return Button {
+            // 刚滑过月就不算点了这一天
+            guard !swiping, Date() > tapQuietUntil else { return }
             editDay = PondDay(date: date)
         } label: {
             VStack(spacing: -3) {
@@ -825,7 +854,9 @@ enum Cool {
     /// 取不到就退回 Didot，不至于变成无衬线。
     private static let numberFont: String = {
         // 11-25 她定的：Source Serif 4 正体（跟中文的思源宋体是一套字形，小字号也清楚）
-        for name in ["SourceSerif4-Regular", "SourceSerif4"] where UIFont(name: name, size: 12) != nil {
+        // 11-25：包里那份字体的 PostScript 名是 SourceSerif4Roman-Regular（原来找 SourceSerif4-Regular 找不到，悄悄退回了 Didot）
+        for name in ["SourceSerif4Roman-Regular", "SourceSerif4-Regular", "Source Serif 4", "SourceSerif4"]
+        where UIFont(name: name, size: 12) != nil {
             return name
         }
         return "Didot"

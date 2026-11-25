@@ -224,7 +224,8 @@ final class UsViewModel: ObservableObject {
         self.defaults = defaults
         self.api = api
         self.shiftAPI = shiftAPI ?? api
-        shiftTemplates = defaults.data(forKey: shiftTemplatesKey).flatMap { try? JSONDecoder().decode([ShiftTemplate].self, from: $0) } ?? ShiftTemplate.initial()
+        shiftTemplates = ShiftTemplate.ordered(
+            defaults.data(forKey: shiftTemplatesKey).flatMap { try? JSONDecoder().decode([ShiftTemplate].self, from: $0) } ?? ShiftTemplate.initial())
         savedShiftNames = defaults.dictionary(forKey: savedShiftNamesKey) as? [String: String] ?? [:]
         if let data = defaults.data(forKey: pendingShiftsKey),
            let pending = try? JSONDecoder().decode([String: PendingShiftChange].self, from: data) {
