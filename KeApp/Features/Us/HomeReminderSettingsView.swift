@@ -11,7 +11,7 @@ struct HomeReminderSettingsView: View {
     @State private var shiftKind = ShiftDay.Kind.normal
     @State private var showingDay = false
     @State private var saved = false
-    @State private var templateName = "正常班"
+    @State private var templateName = "开会"
     @State private var saveError: String?
     @State private var deletingTemplate = false
     @State private var editingClock: ClockSelection?

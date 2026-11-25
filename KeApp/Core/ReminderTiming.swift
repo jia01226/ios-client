@@ -29,7 +29,8 @@ struct ShiftPlan: Codable, Equatable {
 
     static func preset(kind: String) -> ShiftPlan? {
         switch kind {
-        case "normal": return ShiftPlan(periods: [ShiftPeriod(startMinutes: 510, endMinutes: 720), ShiftPeriod(startMinutes: 840, endMinutes: 1050)])
+        // 开会：一般 8:30–12（她说的时间，不再假设下午还有一段）
+        case "normal": return ShiftPlan(periods: [ShiftPeriod(startMinutes: 510, endMinutes: 720)])
         case "early": return ShiftPlan(periods: [ShiftPeriod(startMinutes: 510, endMinutes: 885)])
         case "deputy": return ShiftPlan(periods: [ShiftPeriod(startMinutes: 885, endMinutes: 1260)])
         default: return nil
