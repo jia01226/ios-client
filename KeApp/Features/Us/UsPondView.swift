@@ -70,7 +70,7 @@ struct UsPondView: View {
         // 天数和月历钉住，只有下面的日程在自己那一块里上下滑
         VStack(alignment: .leading, spacing: 0) {
             // 10-31 她：最上面不要标题。右上那枚月牙是 RootTabView 画的，页面从它下面起
-            heroBlock.padding(.top, 0)
+            heroBlock.padding(.top, 0).simultaneousGesture(monthSwipe)
             Rectangle().fill(Cool.line).frame(width: 28, height: 1)
                 .frame(maxWidth: .infinity).padding(.top, 8)
                 .accessibilityHidden(true)
@@ -78,6 +78,7 @@ struct UsPondView: View {
             calendarHeader.padding(.top, 6)
             // 换一面就是一整张新的月历：旧的淡出，新的从下面轻轻浮上来
             monthGrid
+                .simultaneousGesture(monthSwipe)
                 .id(face)
                 .transition(reduceMotion ? .opacity : .asymmetric(insertion: .opacity.combined(with: .offset(y: 12)),
                                                                   removal: .opacity))
@@ -265,6 +266,21 @@ struct UsPondView: View {
         DispatchQueue.main.async {
             withAnimation(.spring(response: 0.46, dampingFraction: 0.92)) { heroID = next.id }
         }
+    }
+
+    /// 11-25 她：日历要能左右滑动翻月，不用去点那两个小箭头
+    private var monthSwipe: some Gesture {
+        DragGesture(minimumDistance: 24)
+            .onEnded { value in
+                let dx = value.translation.width, dy = value.translation.height
+                let predicted = value.predictedEndTranslation.width
+                guard abs(dx) > abs(dy) * 1.3,
+                      abs(dx) > 36 || abs(predicted) > 110 else { return }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) {
+                    month = vm.month(byAdding: dx < 0 ? 1 : -1, to: month)
+                }
+                UISelectionFeedbackGenerator().selectionChanged()
+            }
     }
 
     // MARK: 这一周 / 月历（原地展开）
