@@ -71,6 +71,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 #endif
         UNUserNotificationCenter.current().delegate = self
         registerReplyCategory()
+        WatchBridge.shared.start()
         PushRegistrationCoordinator.shared.prepareAtLaunch()
         LocationContextReporter.shared.prepareAtLaunch()
         _ = HomeReminderCoordinator.shared
@@ -101,7 +102,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
             guard !text.isEmpty else { return }
             let sid = Self.sessionID(from: response.notification.request.content.userInfo)
             do {
-                try await APIClient.shared.sendFromNotification(text: text, sessionID: sid)
+                // 柯的聊天在 test1 那条线上（ChatLine.test1），不是 App 默认的 apiBaseURL
+                try await APIClient(baseURL: ChatLine.test1.apiBaseURL).sendFromNotification(text: text, sessionID: sid)
             } catch {
                 print("[push] 通知里回的没发出去：\(error)")
                 // 没发出去要让她知道，不然她在手表上等一个永远不来的回复
