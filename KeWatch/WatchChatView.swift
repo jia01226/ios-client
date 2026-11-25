@@ -20,6 +20,15 @@ struct WatchChatView: View {
                 }
             }
             .navigationTitle("柯")
+            // 11-25：手表上下拉刷新不灵（ScrollView 的 refreshable 在手表上不起作用），给一颗看得见的按钮
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { Task { await refresh() } } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .accessibilityLabel("刷新")
+                }
+            }
         }
         // 11-25 她：「我在手机回复了柯，但是手表没有显示」——原来只在打开那一下拉一次。
         // 现在：抬腕回到前台马上拉；开着的时候每 6 秒看一眼（她在手机上聊，手表跟着走）
@@ -82,7 +91,6 @@ struct WatchChatView: View {
             }
             .onAppear { proxy.scrollTo(-2, anchor: .bottom) }
         }
-        .refreshable { await refresh() }
     }
 
     private func bubble(_ m: WatchMessage) -> some View {
