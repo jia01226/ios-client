@@ -140,22 +140,7 @@ jobs:
       - name: 导出 IPA（Ad Hoc）
         run: |
           set -euo pipefail
-          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key><string>ad-hoc</string>
-            <key>signingStyle</key><string>manual</string>
-            <key>teamID</key><string>$TEAM_ID</string>
-            <key>provisioningProfiles</key>
-            <dict>
-              <key>$BUNDLE_ID</key><string>$PROFILE_NAME</string>
-${WATCH_PROFILE_NAME:+              <key>$BUNDLE_ID.watchkitapp</key><string>$WATCH_PROFILE_NAME</string>}
-            </dict>
-          </dict>
-          </plist>
-          PLIST
+          python3 scripts/export-options.py "$RUNNER_TEMP/ExportOptions.plist"
 
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/KeApp.xcarchive" \
