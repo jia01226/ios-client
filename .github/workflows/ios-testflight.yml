@@ -2,6 +2,10 @@ name: Build TestFlight
 
 on:
   # 只手动触发：Apple 的 App Store Connect 有上传频率限制
+  # 临时：新工作流在默认分支登记前，dispatch 端点找不到它，用一次性触发分支跑
+  push:
+    branches:
+      - claude/tf-trigger
   workflow_dispatch:
     inputs:
       build_number:
@@ -72,7 +76,7 @@ jobs:
         run: |
           set -euo pipefail
           BUILD_NUMBER="${{ inputs.build_number }}"
-          if [ -z "$BUILD_NUMBER" ]; then BUILD_NUMBER="$GITHUB_RUN_NUMBER"; fi
+          if [ -z "$BUILD_NUMBER" ]; then BUILD_NUMBER="${DEFAULT_BUILD_NUMBER:-$GITHUB_RUN_NUMBER}"; fi
           [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]
           echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
           # shellcheck disable=SC2086
