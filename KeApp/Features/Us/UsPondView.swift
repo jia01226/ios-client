@@ -805,8 +805,16 @@ enum Cool {
     static var today: Color { Ink.track }
     static let period = Color(hex: 0xF5E2EC)
     static let heart = Color(hex: 0xB0849F)
-    /// Didot 是 iOS 自带的；跟着系统字号放大
-    static func didot(_ size: CGFloat, _ style: Font.TextStyle) -> Font { .custom("Didot", size: size, relativeTo: style) }
+    /// 11-25 她：要锁屏时钟那种衬线数字。锁屏那档是苹果的 New York（系统自带衬线），
+    /// 取不到就退回 Didot，不至于变成无衬线。
+    private static let numberFont: String = {
+        // 11-25 她定的：Source Serif 4 正体（跟中文的思源宋体是一套字形，小字号也清楚）
+        for name in ["SourceSerif4-Regular", "SourceSerif4"] where UIFont(name: name, size: 12) != nil {
+            return name
+        }
+        return "Didot"
+    }()
+    static func didot(_ size: CGFloat, _ style: Font.TextStyle) -> Font { .custom(numberFont, size: size, relativeTo: style) }
     static func didotItalic(_ size: CGFloat, _ style: Font.TextStyle) -> Font { .custom("Didot-Italic", size: size, relativeTo: style) }
     /// 跟 Ink.song 同一款思源宋体细字，只是跟着系统字号放大
     /// 思源宋体：13 号以上用极细（原型的宋体是细的），更小的用细一档
