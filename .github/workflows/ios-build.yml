@@ -8,6 +8,11 @@ on:
         description: "可选：指定 App Build 号；留空则使用工作流运行序号"
         required: false
         type: string
+      include_watch:
+        description: "是否把手表 KeWatch 打进包里（手表还没登记时选 false）"
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -37,13 +42,20 @@ jobs:
         run: brew install xcodegen
 
       - name: 生成 Xcode 工程
+        env:
+          INCLUDE_WATCH: ${{ inputs.include_watch }}
         run: |
+          if [ "${INCLUDE_WATCH:-true}" = "false" ]; then
+            echo "本次不打手表：临时摘掉 KeWatch（只改 runner 上的副本）"
+            python3 scripts/remove-watch.py
+          fi
           set -euo pipefail
           xcodegen generate --spec project.yml
           test -d "$PROJECT"
 
       - name: 安装 Ad Hoc 证书和描述文件
         env:
+          INCLUDE_WATCH: ${{ inputs.include_watch }}
           BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
           P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
           PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
@@ -53,7 +65,9 @@ jobs:
           : "${BUILD_CERTIFICATE_BASE64:?缺少 BUILD_CERTIFICATE_BASE64}"
           : "${P12_PASSWORD:?缺少 P12_PASSWORD}"
           : "${PROVISIONING_PROFILE_BASE64:?缺少 PROVISIONING_PROFILE_BASE64}"
-          : "${WATCH_PROVISIONING_PROFILE_BASE64:?缺少 WATCH_PROVISIONING_PROFILE_BASE64（手表 love.jiagude.ke.watchkitapp 的描述文件）}"
+          if [ "${INCLUDE_WATCH:-true}" != "false" ]; then
+            : "${WATCH_PROVISIONING_PROFILE_BASE64:?缺少 WATCH_PROVISIONING_PROFILE_BASE64（手表描述文件）}"
+          fi
 
           CERT_PATH="$RUNNER_TEMP/build_certificate.p12"
           PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
@@ -87,7 +101,8 @@ jobs:
           cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
           echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
 
-          # —— 手表那份 ——
+          # —— 手表那份（没带手表就跳过）——
+          if [ "${INCLUDE_WATCH:-true}" != "false" ]; then
           WATCH_PROFILE_PATH="$RUNNER_TEMP/watch_profile.mobileprovision"
           WATCH_PROFILE_PLIST="$RUNNER_TEMP/watch_profile.plist"
           printf '%s' "$WATCH_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$WATCH_PROFILE_PATH"
@@ -98,6 +113,7 @@ jobs:
           test "$WATCH_PROFILE_APP_ID" = "$TEAM_ID.$BUNDLE_ID.watchkitapp"
           cp "$WATCH_PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$WATCH_PROFILE_UUID.mobileprovision"
           echo "WATCH_PROFILE_NAME=$WATCH_PROFILE_NAME" >> "$GITHUB_ENV"
+          fi
 
       - name: Archive（Ad Hoc）
         env:
@@ -118,7 +134,7 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY='Apple Distribution' \
             KE_PHONE_PROFILE="$PROFILE_NAME" \
-            KE_WATCH_PROFILE="$WATCH_PROFILE_NAME" \
+            ${WATCH_PROFILE_NAME:+KE_WATCH_PROFILE="$WATCH_PROFILE_NAME"} \
             archive
 
       - name: 导出 IPA（Ad Hoc）
@@ -135,7 +151,7 @@ jobs:
             <key>provisioningProfiles</key>
             <dict>
               <key>$BUNDLE_ID</key><string>$PROFILE_NAME</string>
-              <key>$BUNDLE_ID.watchkitapp</key><string>$WATCH_PROFILE_NAME</string>
+${WATCH_PROFILE_NAME:+              <key>$BUNDLE_ID.watchkitapp</key><string>$WATCH_PROFILE_NAME</string>}
             </dict>
           </dict>
           </plist>
