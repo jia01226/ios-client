@@ -58,6 +58,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: love.jiagude.ke
+        # CI 用：手机与手表的描述文件名字分开传（本地不传就是空）
+        PROVISIONING_PROFILE_SPECIFIER: "$(KE_PHONE_PROFILE)"
         PRODUCT_NAME: 柯
         PRODUCT_MODULE_NAME: KeApp
         TARGETED_DEVICE_FAMILY: "1"
@@ -96,6 +98,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: love.jiagude.ke.watchkitapp
+        PROVISIONING_PROFILE_SPECIFIER: "$(KE_WATCH_PROFILE)"
         PRODUCT_NAME: 柯
         PRODUCT_MODULE_NAME: KeWatch
         TARGETED_DEVICE_FAMILY: "4"

@@ -47,11 +47,13 @@ jobs:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
           P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
           PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
+          WATCH_PROVISIONING_PROFILE_BASE64: ${{ secrets.WATCH_PROVISIONING_PROFILE_BASE64 }}
         run: |
           set -euo pipefail
           : "${BUILD_CERTIFICATE_BASE64:?缺少 BUILD_CERTIFICATE_BASE64}"
           : "${P12_PASSWORD:?缺少 P12_PASSWORD}"
           : "${PROVISIONING_PROFILE_BASE64:?缺少 PROVISIONING_PROFILE_BASE64}"
+          : "${WATCH_PROVISIONING_PROFILE_BASE64:?缺少 WATCH_PROVISIONING_PROFILE_BASE64（手表 love.jiagude.ke.watchkitapp 的描述文件）}"
 
           CERT_PATH="$RUNNER_TEMP/build_certificate.p12"
           PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
@@ -85,6 +87,18 @@ jobs:
           cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
           echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
 
+          # —— 手表那份 ——
+          WATCH_PROFILE_PATH="$RUNNER_TEMP/watch_profile.mobileprovision"
+          WATCH_PROFILE_PLIST="$RUNNER_TEMP/watch_profile.plist"
+          printf '%s' "$WATCH_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$WATCH_PROFILE_PATH"
+          security cms -D -i "$WATCH_PROFILE_PATH" > "$WATCH_PROFILE_PLIST"
+          WATCH_PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$WATCH_PROFILE_PLIST")
+          WATCH_PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$WATCH_PROFILE_PLIST")
+          WATCH_PROFILE_APP_ID=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$WATCH_PROFILE_PLIST")
+          test "$WATCH_PROFILE_APP_ID" = "$TEAM_ID.$BUNDLE_ID.watchkitapp"
+          cp "$WATCH_PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$WATCH_PROFILE_UUID.mobileprovision"
+          echo "WATCH_PROFILE_NAME=$WATCH_PROFILE_NAME" >> "$GITHUB_ENV"
+
       - name: Archive（Ad Hoc）
         env:
           REQUESTED_BUILD_NUMBER: ${{ inputs.build_number }}
@@ -103,7 +117,8 @@ jobs:
             DEVELOPMENT_TEAM="$TEAM_ID" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY='Apple Distribution' \
-            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            KE_PHONE_PROFILE="$PROFILE_NAME" \
+            KE_WATCH_PROFILE="$WATCH_PROFILE_NAME" \
             archive
 
       - name: 导出 IPA（Ad Hoc）
@@ -120,6 +135,7 @@ jobs:
             <key>provisioningProfiles</key>
             <dict>
               <key>$BUNDLE_ID</key><string>$PROFILE_NAME</string>
+              <key>$BUNDLE_ID.watchkitapp</key><string>$WATCH_PROFILE_NAME</string>
             </dict>
           </dict>
           </plist>
