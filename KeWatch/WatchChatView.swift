@@ -3,6 +3,7 @@ import SwiftUI
 /// 手表上的聊天：她在右、柯在左，最底下一颗「说话」。点了是系统的输入（语音、手写、表情）。
 struct WatchChatView: View {
     @EnvironmentObject private var link: WatchLink
+    @Environment(\.scenePhase) private var scenePhase
     @State private var messages: [WatchMessage] = []
     @State private var draft = ""
     @State private var waiting = false        // 柯在回
@@ -20,7 +21,22 @@ struct WatchChatView: View {
             }
             .navigationTitle("柯")
         }
-        .task(id: link.baseURL) { await refresh() }
+        // 11-25 她：「我在手机回复了柯，但是手表没有显示」——原来只在打开那一下拉一次。
+        // 现在：抬腕回到前台马上拉；开着的时候每 6 秒看一眼（她在手机上聊，手表跟着走）
+        .task(id: TaskKey(base: link.baseURL, active: scenePhase == .active)) {
+            guard scenePhase == .active else { return }
+            await refresh()
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(6))
+                if Task.isCancelled { break }
+                if poll == nil || poll?.isCancelled == true || !waiting { await refresh(quiet: true) }
+            }
+        }
+    }
+
+    private struct TaskKey: Equatable {
+        let base: URL?
+        let active: Bool
     }
 
     private var notPaired: some View {
@@ -86,16 +102,23 @@ struct WatchChatView: View {
 
     private var api: WatchAPI? { link.baseURL.map { WatchAPI(baseURL: $0) } }
 
-    private func refresh() async {
+    private func refresh(quiet: Bool = false) async {
         guard let api else { return }
         do {
-            messages = try await api.recent()
+            let fresh = try await api.recent()
+            // 她刚说的那句还没落库时（本地先摆上去的那条），别被拉回来的旧列表盖掉
+            if waiting, let pending = messages.last, pending.id >= Int.max - 1000,
+               !fresh.contains(where: { $0.fromHer && $0.text == pending.text }) {
+                messages = fresh + [pending]
+            } else if fresh != messages {
+                messages = fresh
+            }
             note = nil
         } catch WatchAPIError.unauthorized {
             note = "登录过期了，在手机上打开一次柯"
             link.askPhone()
         } catch {
-            note = "这会儿连不上，下拉再试试"
+            if !quiet { note = "这会儿连不上，下拉再试试" }
         }
     }
 
