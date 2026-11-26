@@ -100,7 +100,7 @@ final class ModelSelectionTests: XCTestCase {
         let groups = [
             ChatModelGroup(
                 id: "claude_2", label: "Claude 2", available: false,
-                configured: true, message: "额度冷却中"
+                configured: true, message: "额度冷却中", email: nil, plan: nil
             )
         ]
         let option = ChatModelOption(
