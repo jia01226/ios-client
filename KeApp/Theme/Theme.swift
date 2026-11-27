@@ -728,19 +728,19 @@ enum TarotTableStyle {
     static let flipDuration = 0.48
 }
 
-/// 11-27 记忆星河：中间是草帽星系的真照片（不写字），所有记忆是散在四周的星星，一类一个颜色。
-/// 下面的分类按钮用同一份颜色当小圆点（也是图例）。颜色彼此要分得开：暖金、蓝、薄荷、紫、粉、琥珀、嫩绿、月光银。
+/// 11-27 记忆星河：所有记忆是散在四周的星星，一类一个颜色；下面的分类按钮用同一份颜色当小圆点（也是图例）。
+/// 她：「饱和度太高像霓虹灯，不好看；要淡淡的白色、白色加粉、白色加紫……不要绿色」——全是带一点点颜色的白。
 enum GalaxyInk {
     static func rgb(_ kind: NebulaKind) -> SIMD3<Float> {
         switch kind {
-        case .whirlpool: SIMD3(1.0, 0.93, 0.74)    // 说好的
-        case .andromeda: SIMD3(0.55, 0.68, 1.0)    // 关于她
-        case .pleiades: SIMD3(0.45, 0.88, 0.8)     // 日常吃喝
-        case .orion: SIMD3(0.74, 0.56, 1.0)        // 身体和药
-        case .heart: SIMD3(1.0, 0.5, 0.66)         // 亲密时刻
-        case .lessons: SIMD3(1.0, 0.72, 0.36)      // 他学会的
-        case .sombrero: SIMD3(0.66, 0.92, 0.55)    // 以后的家
-        case .horsehead: SIMD3(0.82, 0.85, 0.92)   // 难过的夜里
+        case .whirlpool: SIMD3(1.0, 0.95, 0.86)    // 说好的：暖白
+        case .andromeda: SIMD3(0.85, 0.9, 1.0)     // 关于她：白里一点蓝
+        case .pleiades: SIMD3(1.0, 0.9, 0.83)      // 日常吃喝：白里一点杏
+        case .orion: SIMD3(0.9, 0.86, 1.0)         // 身体和药：白里一点紫
+        case .heart: SIMD3(1.0, 0.85, 0.9)         // 亲密时刻：白里一点粉
+        case .lessons: SIMD3(1.0, 0.93, 0.78)      // 他学会的：白里一点奶黄
+        case .sombrero: SIMD3(0.97, 0.88, 0.97)    // 以后的家：白里一点藕荷
+        case .horsehead: SIMD3(0.88, 0.9, 0.95)    // 难过的夜里：月光银
         }
     }
     static func color(_ kind: NebulaKind) -> Color {
