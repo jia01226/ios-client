@@ -51,7 +51,7 @@ enum GalaxyLayout {
     static let bandRegion = 8
     static let worldRegion = 9
     /// 星云的画在世界里的半边长
-    static func extent(_ i: Int) -> Float { i == 0 ? 160 : 80 }
+    static func extent(_ i: Int) -> Float { i == 0 ? 185 : 92 }
     static func index(of kind: NebulaKind) -> Int? { order.firstIndex { $0.kind == kind } }
     static func center(_ i: Int, spin: Double) -> SIMD3<Float> {
         guard i > 0 else { return .zero }
@@ -60,6 +60,76 @@ enum GalaxyLayout {
         let lift = Float(i % 2 == 1 ? 1 : -1) * Float(25 + i * 4)
         return SIMD3(Float(cos(a)) * r, lift * Float(sin(2 * a)), Float(sin(a)) * r)
     }
+}
+
+// MARK: 真照片
+/// 11-27 她：「还是很像贴纸」——七团换成真的星云照片（哈勃 / NASA / 天文爱好者拍的），北斗七星没有照片，照旧是七颗亮星。
+/// 照片已经裁成正方形、天空底色压黑、边缘化进黑色（KeApp/Resources/Nebula），作者写在「…」→「照片来源」。
+final class NebulaPhoto: @unchecked Sendable {
+    let cgImage: CGImage
+    /// 128×128 RGBA，给星星找亮处落脚、给云气取颜色
+    private let px: [UInt8]
+
+    private init(_ cg: CGImage) {
+        cgImage = cg
+        var buf = [UInt8](repeating: 0, count: 128 * 128 * 4)
+        buf.withUnsafeMutableBytes { raw in
+            if let c = CGContext(data: raw.baseAddress, width: 128, height: 128, bitsPerComponent: 8, bytesPerRow: 512,
+                                 space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+                c.interpolationQuality = .medium
+                c.draw(cg, in: CGRect(x: 0, y: 0, width: 128, height: 128))
+            }
+        }
+        px = buf
+    }
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var cache: [NebulaKind: NebulaPhoto?] = [:]
+    static func of(_ kind: NebulaKind) -> NebulaPhoto? {
+        lock.lock(); defer { lock.unlock() }
+        if let hit = cache[kind] { return hit }
+        var made: NebulaPhoto?
+        if kind != .lessons, let path = Bundle.main.path(forResource: "nebula-\(kind.rawValue)", ofType: "jpg"),
+           let cg = UIImage(contentsOfFile: path)?.cgImage { made = NebulaPhoto(cg) }
+        cache[kind] = made
+        return made
+    }
+    /// 详情页（还是旧的画法）也换成这张
+    static func image(_ kind: NebulaKind) -> Image? { of(kind).map { Image(decorative: $0.cgImage, scale: 1) } }
+
+    private func at(_ u: Double, _ v: Double) -> Int? {
+        let x = Int((u + 1) / 2 * 128), y = Int((v + 1) / 2 * 128)
+        guard x >= 0, x < 128, y >= 0, y < 128 else { return nil }
+        return (y * 128 + x) * 4
+    }
+    func brightness(_ u: Double, _ v: Double) -> Double {
+        guard let i = at(u, v) else { return 0 }
+        return (Double(px[i]) + Double(px[i + 1]) + Double(px[i + 2])) / 765
+    }
+    func color(_ u: Double, _ v: Double) -> SIMD3<Float> {
+        guard let i = at(u, v) else { return .zero }
+        return SIMD3(Float(px[i]), Float(px[i + 1]), Float(px[i + 2])) / 255
+    }
+    /// 一颗记忆星落在照片哪儿：只看它自己的 id，落在亮的地方
+    func seat(for id: String) -> SIMD3<Double> {
+        var r = NebulaRandom(NebulaRandom.hash(id))
+        for _ in 0..<500 {
+            let u = r.next() * 1.5 - 0.75, v = r.next() * 1.5 - 0.75
+            if r.next() < pow(brightness(u, v) * 1.6, 0.6) { return SIMD3(u, v, r.normal() * 0.15) }
+        }
+        return SIMD3(r.next() * 0.6 - 0.3, r.next() * 0.6 - 0.3, 0)
+    }
+
+    static let credits = """
+    说好的 · 涡状星系 M51：NASA、ESA（哈勃），公有领域
+    关于她 · 仙女座星系：Adam Evans，CC BY 2.0
+    日常吃喝 · 昴星团：NASA、ESA、AURA/Caltech、Palomar Observatory，公有领域
+    身体和药 · 猎户座大星云：NASA、ESA、M. Robberto（哈勃），公有领域
+    亲密时刻 · 心脏星云：JPedro Bento，CC BY 4.0
+    以后的家 · 草帽星系：NASA/ESA、Hubble Heritage Team，公有领域
+    难过的夜里 · 马头星云：Dylan O'Donnell，CC0
+    照片都来自维基共享资源，裁剪、调暗了天空、边缘做了渐隐。
+    """
 }
 
 // MARK: 镜头
@@ -167,6 +237,8 @@ final class GalaxyRenderer: NSObject, MTKViewDelegate {
     private var rings: MTLBuffer?
     private var ringCount = 0
     private var artTextures: [Int: MTLTexture] = [:]
+    /// 哪几团用的是真照片（照片自己有星有尘，不再撒画出来的星尘）
+    private var photoRegions: Set<Int> = []
     private var labelTextures: [Int: (MTLTexture, SIMD2<Float>)] = [:]
     private var newTexture: (MTLTexture, SIMD2<Float>)?
     /// 金色的那些（这几天新记的、刚落下的）：点得到、头上写「新」
@@ -321,6 +393,12 @@ final class GalaxyRenderer: NSObject, MTKViewDelegate {
         return i == 0 ? SIMD3(u * e, -z * e * 0.6, v * e) : SIMD3(u * e, -v * e, z * e * 0.6)
     }
 
+    /// 这颗记忆星在这一团里的盘面坐标：有照片照照片的亮处，没有照原来画的
+    private func seat(_ g: NebulaGroup, _ id: String) -> SIMD3<Double>? {
+        if let photo = NebulaPhoto.of(g.kind) { return photo.seat(for: id) }
+        return input.arts[g.kind]?.seat(for: id, thickness: g.thickness)
+    }
+
     private func rebuild() {
         builtVersion = input.version
         // 先把要坐流星来的那几颗挑出来，落地之前不摆
@@ -354,8 +432,39 @@ final class GalaxyRenderer: NSObject, MTKViewDelegate {
         }
         golden = []
         for i in 0..<GalaxyLayout.order.count {
-            guard let g = group(i), let art = input.arts[g.kind] else { continue }
+            guard let g = group(i) else { continue }
             let e = GalaxyLayout.extent(i), reg = UInt32(i)
+            if let photo = NebulaPhoto.of(g.kind) {
+                photoRegions.insert(i)
+                // 照片本身就有云有星；只照着照片的颜色铺一层很淡的大光雾，让它跟宇宙融在一起、有一点厚
+                var puffs = 0, tries = 0
+                while puffs < 80 && tries < 4000 {
+                    tries += 1
+                    let u = r.next() * 1.6 - 0.8, v = r.next() * 1.6 - 0.8, b = photo.brightness(u, v)
+                    guard r.next() < b * 2.2 else { continue }
+                    puffs += 1
+                    let c = simd_min(photo.color(u, v) * 1.6, SIMD3(repeating: 1))
+                    out.append(GalaxySprite(posSize: SIMD4(local(i, SIMD3(u, v, r.normal() * 0.3)), e * Float(0.22 + r.next() * 0.3)),
+                                            color: SIMD4(c, 0.035), meta: SIMD4(reg, 0, 0, 0)))
+                }
+                for m in input.members[g.kind] ?? [] where !pending.contains(m.id) {
+                    let p = local(i, photo.seat(for: m.id))
+                    let phase = UInt32(NebulaRandom.hash(m.id) % 6000)
+                    if m.recent || landed.contains(m.id) {
+                        golden.append((m.id, i, p))
+                        out.append(GalaxySprite(posSize: SIMD4(p, e * 0.11), color: SIMD4(1, 0.9, 0.68, 1), meta: SIMD4(reg, 2, phase, 0)))
+                    } else {
+                        out.append(GalaxySprite(posSize: SIMD4(p, e * (m.bright ? 0.03 : 0.022)), color: SIMD4(1, 0.97, 0.92, m.bright ? 0.7 : 0.4),
+                                                meta: SIMD4(reg, 1, phase, 0)))
+                    }
+                }
+                if artTextures[i] == nil {
+                    artTextures[i] = try? loader.newTexture(cgImage: photo.cgImage, options: [.SRGB: false, .generateMipmaps: true])
+                }
+                if labelTextures[i] == nil, let t = labelTexture(g.name, g.astro) { labelTextures[i] = t }
+                continue
+            }
+            guard let art = input.arts[g.kind] else { continue }
             // 云气：照这团画的亮处撒几百团又大又淡的光，云才厚（她：「云层太单薄」）
             var gas = 0, tries = 0
             while gas < 300 && tries < 9000 {
@@ -418,14 +527,14 @@ final class GalaxyRenderer: NSObject, MTKViewDelegate {
             guard let (i, g) = (0..<GalaxyLayout.order.count).lazy.compactMap({ i -> (Int, NebulaGroup)? in
                 guard let g = self.group(i), self.input.members[g.kind]?.contains(where: { $0.id == id }) == true else { return nil }
                 return (i, g)
-            }).first, let art = input.arts[g.kind] else { continue }
+            }).first, let spot = seat(g, id) else { continue }
             scheduled.insert(id)
             if reduceMotion { landed.insert(id); continue }
             pending.insert(id)
             let start = now + 0.9 + (shower ? Double(placed) * 0.16 + r.next() * 0.12 : Double(placed) * 1.1)
             let offset = shower ? SIMD3<Float>(520 + Float(r.normal()) * 60, 700 + Float(r.normal()) * 60, -260)
                                 : SIMD3<Float>(520, 700, -260)
-            landings.append(Landing(id: id, region: i, local: local(i, art.seat(for: id, thickness: g.thickness)), offset: offset, start: start))
+            landings.append(Landing(id: id, region: i, local: local(i, spot), offset: offset, start: start))
             placed += 1
         }
     }
@@ -557,11 +666,17 @@ final class GalaxyRenderer: NSObject, MTKViewDelegate {
         for i in 0..<8 {
             guard let tex = artTextures[i] else { continue }
             let e = GalaxyLayout.extent(i)
-            let quads: [GalaxyQuad] = i == 0
+            // 真照片：原样贴，外面再叠一层放大的、很淡的光晕；画出来的那团（北斗）照旧
+            let photoQuads: [GalaxyQuad]? = !photoRegions.contains(i) ? nil : (i == 0
+                ? [GalaxyQuad(center: SIMD4(0, 0, 0, e), tint: SIMD4(1, 1, 1, 0.95), meta: SIMD4(0, 1, 0, 0), extra: .zero),
+                   GalaxyQuad(center: SIMD4(0, 4, 0, e * 1.3), tint: SIMD4(1, 1, 1, 0.14), meta: SIMD4(0, 1, 0, 0), extra: .zero)]
+                : [GalaxyQuad(center: SIMD4(0, 0, 0, e), tint: SIMD4(1, 1, 1, 0.95), meta: SIMD4(UInt32(i), 0, 0, 0), extra: .zero),
+                   GalaxyQuad(center: SIMD4(0, 0, 8, e * 1.35), tint: SIMD4(1, 1, 1, 0.12), meta: SIMD4(UInt32(i), 0, 0, 0), extra: SIMD4(0.3, 0, 0, 0))])
+            let quads: [GalaxyQuad] = photoQuads ?? (i == 0
                 ? [GalaxyQuad(center: SIMD4(0, 0, 0, e), tint: SIMD4(1, 1, 1, 0.8), meta: SIMD4(0, 1, 1, 0), extra: .zero),
                    GalaxyQuad(center: SIMD4(0, 5, 0, e * 1.15), tint: SIMD4(1, 1, 1, 0.22), meta: SIMD4(0, 1, 1, 0), extra: .zero)]
                 : [GalaxyQuad(center: SIMD4(0, 0, 0, e), tint: SIMD4(1, 1, 1, 0.55), meta: SIMD4(UInt32(i), 0, 1, 0), extra: .zero),
-                   GalaxyQuad(center: SIMD4(0, 0, 6, e * 1.3), tint: SIMD4(1, 1, 1, 0.2), meta: SIMD4(UInt32(i), 0, 1, 0), extra: SIMD4(0.4, 0, 0, 0))]
+                   GalaxyQuad(center: SIMD4(0, 0, 6, e * 1.3), tint: SIMD4(1, 1, 1, 0.2), meta: SIMD4(UInt32(i), 0, 1, 0), extra: SIMD4(0.4, 0, 0, 0))])
             enc.setFragmentTexture(tex, index: 0)
             enc.setVertexBytes(quads, length: MemoryLayout<GalaxyQuad>.stride * quads.count, index: 0)
             enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: quads.count)

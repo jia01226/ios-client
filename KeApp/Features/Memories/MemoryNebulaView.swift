@@ -227,10 +227,12 @@ private struct NebulaDetailCanvas: View {
         g.opacity = (group.kind == .heart ? 0.95 : 0.8) * pow(pr.facing, 1.3)
         guard g.opacity > 0.02 else { return }
         g.concatenate(pr.planeTransform)
-        g.draw(art.image, in: CGRect(x: -1, y: -1, width: 2, height: 2))
+        g.draw(NebulaPhoto.image(group.kind) ?? art.image, in: CGRect(x: -1, y: -1, width: 2, height: 2))
     }
 
     private func drawDust(_ ctx: inout GraphicsContext, _ pr: NebulaProjection) {
+        // 11-27 换成真照片的那几团，照片自己有星有尘，画出来的星尘形状对不上，不撒
+        guard NebulaPhoto.of(group.kind) == nil else { return }
         let side = 1 - pr.facing
         let d = 0.9 + 0.35 * min(2, sqrt(pr.camera.zoom))
         let alphas = [0.16, 0.26, 0.38, 0.52]
@@ -377,6 +379,7 @@ struct MemoryNebulaView: View {
     @State private var arrivals: [String] = []
     @State private var galaxyVersion = 0
     @State private var homeRequest = 0
+    @State private var creditsOpen = false
     private static let hasMetal = MTLCreateSystemDefaultDevice() != nil
 
     private static let ink = Color(red: 0.945, green: 0.94, blue: 0.93)
@@ -530,6 +533,7 @@ struct MemoryNebulaView: View {
         .onChange(of: selectedID) { _, id in focus(id) }
         .sheet(isPresented: $listOpen) { memoryList }
         .sheet(isPresented: $dimmedOpen) { dimmedList }
+        .alert("星云照片来源", isPresented: $creditsOpen) { Button("好", role: .cancel) {} } message: { Text(NebulaPhoto.credits) }
         .sheet(item: $editing) { flower in editSheet(flower) }
         .confirmationDialog("亲密时刻", isPresented: $askUnlock, titleVisibility: .visible) {
             Button("打开这一团") { privateOpen = true; if let g = NebulaGroup.all.first(where: { $0.kind == .heart }) { enter(g) } }
@@ -724,6 +728,7 @@ struct MemoryNebulaView: View {
                         Button("回到正面") { motion.fly(.home, duration: reduceMotion ? 0 : 0.8); cameraVersion += 1; selectedID = nil }
                     }
                     Button("刷新") { Task { await store.load() } }
+                    Button("照片来源") { creditsOpen = true }
                 } label: {
                     Image(systemName: "ellipsis").font(.system(size: 17)).frame(width: 44, height: 44)
                 }
