@@ -483,6 +483,7 @@ struct ChatView: View {
 
     /// 浮栏的玻璃：只画在圆角里，外面不铺底板、不扩散白雾。
     /// 127：浮栏就盖在滚动的记录上，不再用 iOS 26 的液态玻璃（每帧都要重新折射底下滑过的字）。
+    /// 11-27 她又要原生玻璃：白天的浮栏走 KeGlass(native:)，素笺里「原生液态玻璃」开着就是系统玻璃，关了回到 127。
     /// 白天走 KeGlass（系统 ultraThinMaterial + 纸色，透度在素笺里调）；照片壁纸、夜里、卧室也是一层系统模糊，
     /// 不叠影子。系统开了「降低透明度」，材质自己会变实心，KeGlass 换成实心纸。
     @ViewBuilder
@@ -498,7 +499,7 @@ struct ChatView: View {
                 shape.strokeBorder(theme.color.glassEdge.opacity(0.5), lineWidth: 0.6)
             }
         } else {
-            KeGlass(shape: shape, minPaper: 0.2)
+            KeGlass(shape: shape, minPaper: 0.2, native: true)
         }
     }
 

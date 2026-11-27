@@ -158,7 +158,7 @@ struct KeDrawerOverlay<Content: View>: View {
         // 117：抽屉也是那块玻璃；上面字多，纸色垫厚一点
         ZStack {
             if glass {
-                KeGlass(shape: Rectangle(), minPaper: 0.72)
+                KeGlass(shape: Rectangle(), minPaper: 0.72, native: true)
                     .transition(.identity)
             }
             palette.paper.opacity(glass ? 0 : 1)

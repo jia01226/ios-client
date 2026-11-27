@@ -248,7 +248,7 @@ struct RootTabView: View {
         .padding(theme.metric.chromeDockPadding)
         // 117：三个页面的底栏都是同一块液态玻璃（素笺里能选纸感/轻玻璃/浮光）；126：只画在圆角里，外面不铺底
         .background {
-            KeGlass(shape: RoundedRectangle(cornerRadius: theme.metric.chromeDockRadius, style: .continuous), minPaper: 0.2)
+            KeGlass(shape: RoundedRectangle(cornerRadius: theme.metric.chromeDockRadius, style: .continuous), minPaper: 0.2, native: true)
         }
         .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { dockHeight = $0 }
         .padding(.horizontal, theme.metric.chromeDockInset)

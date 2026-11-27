@@ -86,13 +86,34 @@ final class NebulaMotion {
         jump(Self.clamp(c, size))
     }
     /// 松手：拉回原大小时，顺手回到正中
-    func endGesture(size: CGSize) {
+    /// 11-27 她说星河「比 Vera 的月相卡」：松手就急刹车。现在甩一下会带着惯性滑一段、慢慢停（返回滑多久，外面照这个时长一帧一帧画）。
+    /// fly 是三次缓出，起步速度 = 3 × 距离 / 时长，所以滑的距离取 速度 × 时长 / 3，接得上手指松开那一刻的速度。
+    @discardableResult
+    func endGesture(size: CGSize, velocity: CGSize = .zero) -> Double {
+        let wasPanning = panning
         base = nil; dragOrigin = nil; pinchOrigin = nil
         let c = camera(at: Date())
         if c.zoom <= 1.05, c.pan != .zero {
             var t = c; t.pan = .zero; t.zoom = max(1, t.zoom)
             fly(t, duration: 0.3)
+            return 0.3
         }
+        let speed = hypot(Double(velocity.width), Double(velocity.height))
+        guard speed > 120 else { return 0 }
+        // 甩得越快滑得越久，但不超过 1.4 秒；太快的甩法封顶，免得一下转好几圈
+        let duration = min(1.4, 0.45 + speed / 2400)
+        let k = duration / 3, cap = 2600.0, scale = min(1, cap / speed)
+        let vx = Double(velocity.width) * scale, vy = Double(velocity.height) * scale
+        var t = c
+        if wasPanning {
+            t.pan.width += vx * k; t.pan.height += vy * k
+            t = Self.clamp(t, size)
+        } else {
+            t.yaw += vx * 0.009 * k
+            t.pitch -= vy * 0.009 * k
+        }
+        fly(t, duration: duration)
+        return duration
     }
 }
 
@@ -132,7 +153,8 @@ private struct NebulaDetailCanvas: View {
     var body: some View {
         // 平时停着；手指在上面、镜头在飞的时候才一帧一帧画。「说好的」慢慢转，一秒画 12 次就够
         let live = active && (touching || flyingUntil > Date()) && settle >= 0
-        TimelineView(.animation(minimumInterval: live ? 1.0 / 60 : 1.0 / 12, paused: !(live || (active && spins)))) { timeline in
+        // 11-27：动的时候按屏幕最高刷新率画（她的 14 Pro Max 是 120），Info.plist 里开了 CADisableMinimumFrameDurationOnPhone
+        TimelineView(.animation(minimumInterval: live ? nil : 1.0 / 12, paused: !(live || (active && spins)))) { timeline in
             Canvas(rendersAsynchronously: false) { context, canvasSize in draw(&context, canvasSize, timeline.date, labels: !touching) }
         }
         .background(GeometryReader { g in Color.clear.onAppear { size = g.size }.onChange(of: g.size) { _, s in size = s } })
@@ -150,8 +172,8 @@ private struct NebulaDetailCanvas: View {
                     .onEnded { v in
                         guard v.startLocation.x >= SwipeBackToClose.edge else { return }
                         let moved = touching
-                        motion.endGesture(size: size)
-                        if moved { touching = false; flying(0.35) }
+                        let glide = motion.endGesture(size: size, velocity: moved ? v.velocity : .zero)
+                        if moved { touching = false; flying(max(0.35, glide)) }
                         else if !pinching, hypot(v.translation.width, v.translation.height) <= 6 { onTap(hit(v.location)) }
                     },
                 MagnifyGesture()

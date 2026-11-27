@@ -161,11 +161,16 @@ struct KeDiaryListView: View {
                 }
             }
             if let entry = reading {
-                // 点开直接打开，不要翻页动画
-                DiaryPage(entry: entry, sameDay: entries.filter { $0.id != entry.id && $0.created_at.prefix(10) == entry.created_at.prefix(10) },
-                          paper: paper,
-                          onBack: { reading = nil }, onOpen: { other in reading = other })
-                    .id(entry.id)
+                // 点开直接打开，不要翻页动画（108）；11-27 打开以后左右划像书一样卷页，翻到更早/更新的一篇
+                // 书照目录现在显示的顺序排（搜索、只看锁着的都算）；点开的那篇不在里面（比如从聊天卡点进来）就只翻它自己
+                let pages = shown.contains { $0.id == entry.id } ? shown : [entry]
+                DiaryBook(entries: pages, currentID: entry.id, paper: paper, onTurn: { reading = $0 }) { page in
+                    DiaryPage(entry: page, sameDay: entries.filter { $0.id != page.id && $0.created_at.prefix(10) == page.created_at.prefix(10) },
+                              paper: paper,
+                              onBack: { reading = nil }, onOpen: { other in reading = other })
+                }
+                    // 卷起来的纸要盖住整屏（状态栏那一截也是纸），字照旧躲开刘海和 Home 条
+                    .ignoresSafeArea()
                     // 118：读一篇时从左边缘右划，先回目录（搜索词和翻到的位置都还在），再划一次才合上日记
                     .swipeBackLayer { reading = nil }
                     .zIndex(1)

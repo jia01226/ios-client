@@ -59,11 +59,22 @@ enum KeGlassClarity {
     }
 }
 
+/// 11-27 她又想要「iOS 原生的玻璃质感」。127 退掉液态玻璃是因为气泡、卡片一屏几十块都在折射；
+/// 这回只给几块浮着的「框」用（底栏、聊天顶栏和输入栏、设置抽屉），气泡和卡片照旧走模糊+纸色。
+/// 素笺里有开关「原生液态玻璃」，真机滑着卡就关掉，立刻回到 127 的样子。
+enum KeNativeGlass {
+    static let storageKey = "ke.glass.native"
+    static let defaultValue = true
+}
+
 struct KeGlass<S: InsettableShape>: View {
     let shape: S
     /// 有字的表面，纸色至少垫这么多
     var minPaper: Double = 0.35
+    /// 只有浮着的框传 true：iOS 26 上用系统液态玻璃
+    var native: Bool = false
     @AppStorage(KeGlassClarity.storageKey) private var clarity = KeGlassClarity.defaultValue
+    @AppStorage(KeNativeGlass.storageKey) private var nativeOn = KeNativeGlass.defaultValue
     @AppStorage(CamelliaPalette.storageKey) private var savedPalette = CamelliaPalette.defaultPalette.rawValue
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
@@ -71,7 +82,8 @@ struct KeGlass<S: InsettableShape>: View {
 
     var body: some View {
         KeGlassFill(shape: shape, paper: paper,
-                    clarity: reduceTransparency ? 0 : KeGlassClarity.clamp(clarity), minPaper: minPaper)
+                    clarity: reduceTransparency ? 0 : KeGlassClarity.clamp(clarity), minPaper: minPaper,
+                    native: native && nativeOn)
     }
 }
 
@@ -82,10 +94,17 @@ struct KeGlassFill<S: InsettableShape>: View {
     let paper: Color
     let clarity: Double
     var minPaper: Double = 0.35
+    var native: Bool = false
 
     var body: some View {
         if clarity <= 0.001 {
             shape.fill(paper)
+        } else if native, #available(iOS 26.0, *) {
+            // 系统液态玻璃自己有亮边和折射，不再叠那两道描边；纸色当染色，透度越高染得越淡
+            let paperOpacity = KeGlassClarity.paperOpacity(clarity: clarity, minPaper: minPaper)
+            Color.clear
+                .glassEffect((clarity >= 0.8 ? Glass.clear : Glass.regular).tint(paper.opacity(paperOpacity * 0.6)), in: shape)
+                .allowsHitTesting(false)
         } else {
             ZStack {
                 shape.fill(.ultraThinMaterial)
@@ -112,6 +131,7 @@ struct KeGlassFill<S: InsettableShape>: View {
 /// 素笺页里选玻璃那一块：三档 + 一条「玻璃透度」滑杆 + 一块跟着变的预览
 struct KeGlassPicker: View {
     @AppStorage(KeGlassClarity.storageKey) private var clarity = KeGlassClarity.defaultValue
+    @AppStorage(KeNativeGlass.storageKey) private var nativeOn = KeNativeGlass.defaultValue
     @AppStorage(CamelliaPalette.storageKey) private var savedPalette = CamelliaPalette.defaultPalette.rawValue
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
@@ -120,6 +140,15 @@ struct KeGlassPicker: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("玻璃质感").font(.system(size: 15, weight: .medium)).foregroundStyle(Ink.primary)
+            if #available(iOS 26.0, *) {
+                Toggle(isOn: $nativeOn) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("原生液态玻璃").font(Ink.song(16)).foregroundStyle(Ink.primary)
+                        Text("底栏、顶栏、输入栏和抽屉用苹果自己的玻璃；滑着卡就关掉").font(.system(size: 11)).foregroundStyle(Ink.secondary)
+                    }
+                }
+                .tint(Ink.accent)
+            }
             HStack(spacing: 10) {
                 ForEach(KeGlassLevel.allCases) { level in
                     let value = KeGlassClarity.preset(level)

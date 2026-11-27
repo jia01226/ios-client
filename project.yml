@@ -52,9 +52,16 @@ targets:
         NSLocationWhenInUseUsageDescription: 用于让柯知道你到了哪里和那边的天气，只在位置明显变化时更新
         NSLocationAlwaysAndWhenInUseUsageDescription: 用于在你到达新地方时安静更新给柯，不持续追踪路线
         UIApplicationSupportsIndirectInputEvents: true
+        # 11-27 让 ProMotion 屏（她的 14 Pro Max）真的跑到 120 帧；不开这个 iPhone 上自己画的动画最多 60
+        CADisableMinimumFrameDurationOnPhone: true
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: love.jiagude.ke
@@ -62,7 +69,7 @@ targets:
         PROVISIONING_PROFILE_SPECIFIER: "$(KE_PHONE_PROFILE)"
         PRODUCT_NAME: 柯
         PRODUCT_MODULE_NAME: KeApp
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MACCATALYST: false
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: KeApp/KeApp.entitlements
