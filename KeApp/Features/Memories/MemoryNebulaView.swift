@@ -380,6 +380,8 @@ struct MemoryNebulaView: View {
     @State private var galaxyVersion = 0
     @State private var homeRequest = 0
     @State private var creditsOpen = false
+    /// 11-27 星河下面的分类按钮：点亮哪一类（nil 是全部）
+    @State private var galaxyFocus: NebulaKind?
     private static let hasMetal = MTLCreateSystemDefaultDevice() != nil
 
     private static let ink = Color(red: 0.945, green: 0.94, blue: 0.93)
@@ -430,7 +432,7 @@ struct MemoryNebulaView: View {
                 GalaxyMember(id: f.id, bright: f.author == "ke", recent: f.author == "ke" && (f.written_at ?? "") >= since)
             }
         }
-        return GalaxyInput(arts: arts, members: members, arrivals: arrivals, version: galaxyVersion)
+        return GalaxyInput(members: members, arrivals: arrivals, focus: galaxyFocus, version: galaxyVersion)
     }
     private static func dayString(_ d: Date) -> String {
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"
@@ -454,11 +456,6 @@ struct MemoryNebulaView: View {
                 // 11-27 新星河：一直留着（进了一团就停下来不画），出来时镜头从那一团飞回全景
                 GalaxyUniverseView(input: galaxyInput, active: visible && current == nil && !listOpen, homeRequest: homeRequest,
                                    reduceMotion: reduceMotion,
-                                   canEnter: { kind in
-                                       if kind == .heart && !privateOpen { askUnlock = true; return false }
-                                       return true
-                                   },
-                                   onEnter: { kind in if let g = NebulaGroup.all.first(where: { $0.kind == kind }) { enter(g) } },
                                    onTapStar: { id in selectedID = id })
                     .ignoresSafeArea()
                     .opacity(current == nil ? 1 : 0)
@@ -747,7 +744,7 @@ struct MemoryNebulaView: View {
                 .transformEffect(CGAffineTransform(a: 0.9, b: 0, c: -0.287, d: 1, tx: 14, ty: 0))
                 .shadow(color: .black.opacity(0.35), radius: 6)
                 .accessibilityHidden(true)
-            Text(current.map { "\($0.astro) · \(members($0.name).count) 颗" } ?? "说好的在中央，小事在身旁 · \(shownCount) 颗")
+            Text(current.map { "\($0.astro) · \(members($0.name).count) 颗" } ?? (Self.hasMetal ? "每一颗星都是一件事 · \(shownCount) 颗" : "说好的在中央，小事在身旁 · \(shownCount) 颗"))
                 .font(.system(size: 12)).tracking(1.2).foregroundStyle(Self.muted)
                 .shadow(color: .black.opacity(0.5), radius: 4)
         }
@@ -758,7 +755,8 @@ struct MemoryNebulaView: View {
 
     private var footer: some View {
         VStack(spacing: 10) {
-            Text(current == nil ? (Self.hasMetal ? "拖着转 · 双指缩放 · 点一团飞进去 · 金色的是新记的" : "轻点一团星云 · 双指拉开也能进去 · 暗暗的小星是还没归类的事")
+            if current == nil && Self.hasMetal { galaxyChips }
+            Text(current == nil ? (Self.hasMetal ? "拖着转 · 双指缩放 · 点星星读记忆 · 金色的是新记的" : "轻点一团星云 · 双指拉开也能进去 · 暗暗的小星是还没归类的事")
                  : (current?.kind == .heart && !privateOpen ? "" : "拖动转着看 · 双指拉近出名字，拉近后拖动是挪 · 点星星读记忆"))
                 .font(.system(size: 11)).tracking(0.5).foregroundStyle(Self.muted)
                 .multilineTextAlignment(.center)
@@ -794,6 +792,49 @@ struct MemoryNebulaView: View {
             .overlay(alignment: .top) { Rectangle().fill(Self.line).frame(height: 1) }
         }
         .padding(.horizontal, 26).padding(.bottom, 8 + dockInset)
+    }
+
+    /// 11-27 新星河下面的分类：小圆点就是星星的颜色（也是图例）。点一类，那一类亮起来、别的暗下去；再点一次回到全部。
+    /// 亮着一类的时候多一个「进去看看」，进那一类的详情页（亲密时刻照旧先问）。
+    private var galaxyChips: some View {
+        VStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    chip(nil, "全部", count: shownCount)
+                    ForEach(GalaxyLayout.kinds, id: \.self) { kind in
+                        if let g = NebulaGroup.all.first(where: { $0.kind == kind }) {
+                            chip(kind, g.name, count: members(g.name).count)
+                        }
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+            if let kind = galaxyFocus, let g = NebulaGroup.all.first(where: { $0.kind == kind }) {
+                Button { tapGroup(g) } label: {
+                    HStack(spacing: 4) { Text("进去看看\(g.name)"); Image(systemName: "chevron.right").font(.system(size: 10)) }
+                        .font(.system(size: 12)).foregroundStyle(GalaxyInk.color(kind)).frame(minHeight: 30)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("galaxy-enter-\(kind.rawValue)")
+            }
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: galaxyFocus)
+    }
+
+    private func chip(_ kind: NebulaKind?, _ name: String, count: Int) -> some View {
+        let on = galaxyFocus == kind
+        return Button { galaxyFocus = (on || kind == nil) ? nil : kind } label: {
+            HStack(spacing: 5) {
+                if let kind { Circle().fill(GalaxyInk.color(kind)).frame(width: 7, height: 7) }
+                Text(name).font(.system(size: 12))
+                Text("\(count)").font(.system(size: 10)).foregroundStyle(Self.muted)
+            }
+            .padding(.horizontal, 10).frame(minHeight: 30)
+            .background(Capsule().fill(Color.white.opacity(on ? 0.14 : 0.06)))
+            .overlay(Capsule().strokeBorder(on ? Self.ink.opacity(0.55) : Color.white.opacity(0.14), lineWidth: 0.8))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 
     // MARK: 卡片

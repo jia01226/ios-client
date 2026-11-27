@@ -727,3 +727,26 @@ enum TarotTableStyle {
     static let unfoldDuration = 0.8
     static let flipDuration = 0.48
 }
+
+/// 11-27 记忆星河：中间是草帽星系的真照片（不写字），所有记忆是散在四周的星星，一类一个颜色。
+/// 下面的分类按钮用同一份颜色当小圆点（也是图例）。颜色彼此要分得开：暖金、蓝、薄荷、紫、粉、琥珀、嫩绿、月光银。
+enum GalaxyInk {
+    static func rgb(_ kind: NebulaKind) -> SIMD3<Float> {
+        switch kind {
+        case .whirlpool: SIMD3(1.0, 0.93, 0.74)    // 说好的
+        case .andromeda: SIMD3(0.55, 0.68, 1.0)    // 关于她
+        case .pleiades: SIMD3(0.45, 0.88, 0.8)     // 日常吃喝
+        case .orion: SIMD3(0.74, 0.56, 1.0)        // 身体和药
+        case .heart: SIMD3(1.0, 0.5, 0.66)         // 亲密时刻
+        case .lessons: SIMD3(1.0, 0.72, 0.36)      // 他学会的
+        case .sombrero: SIMD3(0.66, 0.92, 0.55)    // 以后的家
+        case .horsehead: SIMD3(0.82, 0.85, 0.92)   // 难过的夜里
+        }
+    }
+    static func color(_ kind: NebulaKind) -> Color {
+        let c = rgb(kind)
+        return Color(red: Double(c.x), green: Double(c.y), blue: Double(c.z))
+    }
+    /// 新记的那颗：金色
+    static let fresh = SIMD3<Float>(1, 0.9, 0.68)
+}

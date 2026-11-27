@@ -16,12 +16,15 @@ struct GalaxyUniforms {
     float2 viewport;   // 像素
     float time;
     float projScale;   // 世界里 1 个单位、离镜头 1 个单位远时，在屏幕上是多少像素
+    float orbit;       // 星环转了多少（半径 230 那一圈的角度）；里圈快、外圈慢
+    float focus;       // 她点了哪一类（-1 是全部）
 };
 
 struct GalaxySprite {
     float4 posSize;    // xyz 本地坐标；w 大小（世界单位；背景星是像素）
     float4 color;
-    uint4 meta;        // x 属于哪一块（0…9；100+L 是第 L 层背景星）；y 样子；z 闪的相位
+    uint4 meta;        // x 属于哪一块（0…9；100+L 是第 L 层背景星）；y 样子；z 闪的相位；
+                       // w > 0：绕中心转的（posSize.xyz = 半径、起始角、高度），w-1 是哪一类（254 是新记的金星，不跟着变暗；255 是星盘的尘）
 };
 
 struct GalaxyQuad {
@@ -61,9 +64,18 @@ vertex SpriteOut galaxySpriteVertex(uint vid [[vertex_id]], uint iid [[instance_
         clip = sky[s.meta.x - 100] * float4(s.posSize.xyz, 1);
         clip.z = clip.w * 0.9999;
         px = s.posSize.w;
+    } else if (s.meta.w > 0) {
+        float r = s.posSize.x;
+        float a = s.posSize.y + u.orbit * 230.0 / max(r, 60.0);
+        clip = u.viewProj * float4(cos(a) * r, s.posSize.z, sin(a) * r, 1);
+        px = s.posSize.w * u.projScale / max(clip.w, 1.0);
     } else {
         clip = u.viewProj * (regions[s.meta.x] * float4(s.posSize.xyz, 1));
         px = s.posSize.w * u.projScale / max(clip.w, 1.0);
+    }
+    float dim = 1.0;
+    if (s.meta.w > 0 && s.meta.w < 254 && u.focus >= 0.0) {
+        if (abs(float(s.meta.w - 1) - u.focus) < 0.5) { px *= 1.5; } else { dim = 0.14; }
     }
     // 太小的点在屏幕上会一闪一闪地消失：至少一个像素，亮度按缩掉的比例减
     float shrink = 1.0;
@@ -73,7 +85,7 @@ vertex SpriteOut galaxySpriteVertex(uint vid [[vertex_id]], uint iid [[instance_
     float phase = float(s.meta.z) * 0.001;
     if (s.meta.y == 1) tw = 0.85 + 0.15 * sin(u.time * 1.1 + phase);
     if (s.meta.y == 2) tw = 0.6 + 0.4 * sin(u.time * 3.6 + phase);
-    o.color = s.color * tw * shrink;
+    o.color = s.color * tw * shrink * dim;
     if (clip.w <= 0) o.color = float4(0);
     o.uv = c;
     o.kind = float(s.meta.y);
