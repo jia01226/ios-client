@@ -69,7 +69,7 @@ struct GalaxyCameraState {
     var pitch: Float
     var zoom: Float
     var target: SIMD3<Float>
-    static let home = GalaxyCameraState(yaw: 0.3, pitch: 0.62, zoom: 1, target: .zero)
+    static let home = GalaxyCameraState(yaw: 0.3, pitch: 0.85, zoom: 1, target: .zero)
 }
 
 final class GalaxyCamera {
@@ -114,7 +114,7 @@ final class GalaxyCamera {
     }
 
     var eye: SIMD3<Float> {
-        let d = 1950 / s.zoom
+        let d = 1850 / s.zoom
         return s.target + d * SIMD3(sin(s.yaw) * cos(s.pitch), sin(s.pitch), cos(s.yaw) * cos(s.pitch))
     }
 }
@@ -163,6 +163,9 @@ final class GalaxyRenderer: NSObject, MTKViewDelegate {
     private var builtVersion = -1
     private var staticSprites: MTLBuffer?
     private var staticCount = 0
+    /// 七条轨道的淡圈（效果图里有，第一版漏了）
+    private var rings: MTLBuffer?
+    private var ringCount = 0
     private var artTextures: [Int: MTLTexture] = [:]
     private var labelTextures: [Int: (MTLTexture, SIMD2<Float>)] = [:]
     private var newTexture: (MTLTexture, SIMD2<Float>)?
@@ -338,15 +341,16 @@ final class GalaxyRenderer: NSObject, MTKViewDelegate {
         }
         // 银河星盘：星尘 + 一层淡紫的光雾，绕着中心一起转
         let band = UInt32(GalaxyLayout.bandRegion)
-        for _ in 0..<2400 {
+        // 11-27 她看了说「买家秀」：星盘太淡、背景发空。星尘加密加亮，光雾加厚
+        for _ in 0..<4200 {
             let a = r.next() * 2 * .pi, rr = 120 + pow(r.next(), 0.6) * 500
-            out.append(GalaxySprite(posSize: SIMD4(Float(cos(a) * rr), Float(r.normal() * 20), Float(sin(a) * rr), 1.8),
-                                    color: SIMD4(0.72, 0.69, 0.9, Float(0.05 + 0.11 * r.next())), meta: SIMD4(band, 0, 0, 0)))
+            out.append(GalaxySprite(posSize: SIMD4(Float(cos(a) * rr), Float(r.normal() * 20), Float(sin(a) * rr), 2.4),
+                                    color: SIMD4(0.74, 0.7, 0.92, Float(0.07 + 0.16 * r.next())), meta: SIMD4(band, 0, 0, 0)))
         }
-        for _ in 0..<170 {
+        for _ in 0..<300 {
             let a = r.next() * 2 * .pi, rr = 150 + pow(r.next(), 0.7) * 460
-            out.append(GalaxySprite(posSize: SIMD4(Float(cos(a) * rr), Float(r.normal() * 18), Float(sin(a) * rr), Float(80 + r.next() * 110)),
-                                    color: SIMD4(0.55, 0.51, 0.78, 0.05), meta: SIMD4(band, 0, 0, 0)))
+            out.append(GalaxySprite(posSize: SIMD4(Float(cos(a) * rr), Float(r.normal() * 18), Float(sin(a) * rr), Float(90 + r.next() * 130)),
+                                    color: SIMD4(0.56, 0.5, 0.8, 0.075), meta: SIMD4(band, 0, 0, 0)))
         }
         golden = []
         for i in 0..<GalaxyLayout.order.count {
@@ -354,14 +358,14 @@ final class GalaxyRenderer: NSObject, MTKViewDelegate {
             let e = GalaxyLayout.extent(i), reg = UInt32(i)
             // 云气：照这团画的亮处撒几百团又大又淡的光，云才厚（她：「云层太单薄」）
             var gas = 0, tries = 0
-            while gas < 160 && tries < 6000 {
+            while gas < 300 && tries < 9000 {
                 tries += 1
                 let u = r.next() * 1.8 - 0.9, v = r.next() * 1.8 - 0.9, b = art.brightness(u, v)
                 guard r.next() < b * 1.1 else { continue }
                 gas += 1
                 let second = r.next() < 0.3
-                let color = second ? GalaxyMath.rgb(g.hue + 32, 62, 64, Float(0.022 + 0.022 * b)) : GalaxyMath.rgb(g.hue, 55, 62, Float(0.022 + 0.022 * b))
-                out.append(GalaxySprite(posSize: SIMD4(local(i, SIMD3(u, v, r.normal() * 0.25)), e * Float(0.14 + r.next() * 0.22)),
+                let color = second ? GalaxyMath.rgb(g.hue + 32, 55, 64, Float(0.02 + 0.02 * b)) : GalaxyMath.rgb(g.hue, 48, 62, Float(0.02 + 0.02 * b))
+                out.append(GalaxySprite(posSize: SIMD4(local(i, SIMD3(u, v, r.normal() * 0.25)), e * Float(0.18 + r.next() * 0.26)),
                                         color: color, meta: SIMD4(reg, 0, 0, 0)))
             }
             let alphas: [Float] = [0.16, 0.26, 0.38, 0.52]
@@ -387,6 +391,17 @@ final class GalaxyRenderer: NSObject, MTKViewDelegate {
             if labelTextures[i] == nil, let t = labelTexture(g.name, g.astro) { labelTextures[i] = t }
         }
         if newTexture == nil { newTexture = textTexture("新", size: 13, color: UIColor(red: 1, green: 0.91, blue: 0.72, alpha: 1)) }
+        if rings == nil {
+            var segs: [GalaxyStreak] = []
+            let c = SIMD4<Float>(0.8, 0.78, 0.95, 0.16)
+            for i in 1..<GalaxyLayout.order.count {
+                let n = 160
+                func at(_ k: Int) -> SIMD3<Float> { GalaxyLayout.center(i, spin: Double(k) / Double(n) * 2 * .pi - Double(i - 1) * 2 * .pi / 7) }
+                for k in 0..<n { segs.append(GalaxyStreak(a: SIMD4(at(k), 1.1 * s), b: SIMD4(at(k + 1), 0), ca: c, cb: c)) }
+            }
+            ringCount = segs.count
+            rings = device.makeBuffer(bytes: segs, length: MemoryLayout<GalaxyStreak>.stride * segs.count)
+        }
         staticCount = out.count
         staticSprites = out.isEmpty ? nil : device.makeBuffer(bytes: out, length: MemoryLayout<GalaxySprite>.stride * out.count)
     }
@@ -543,10 +558,10 @@ final class GalaxyRenderer: NSObject, MTKViewDelegate {
             guard let tex = artTextures[i] else { continue }
             let e = GalaxyLayout.extent(i)
             let quads: [GalaxyQuad] = i == 0
-                ? [GalaxyQuad(center: SIMD4(0, 0, 0, e), tint: SIMD4(1, 1, 1, 0.7), meta: SIMD4(0, 1, 0, 0), extra: .zero),
-                   GalaxyQuad(center: SIMD4(0, 5, 0, e * 1.12), tint: SIMD4(1, 1, 1, 0.18), meta: SIMD4(0, 1, 0, 0), extra: .zero)]
-                : [GalaxyQuad(center: SIMD4(0, 0, 0, e), tint: SIMD4(1, 1, 1, 0.62), meta: SIMD4(UInt32(i), 0, 0, 0), extra: .zero),
-                   GalaxyQuad(center: SIMD4(0, 0, 6, e * 1.2), tint: SIMD4(1, 1, 1, 0.16), meta: SIMD4(UInt32(i), 0, 0, 0), extra: SIMD4(0.4, 0, 0, 0))]
+                ? [GalaxyQuad(center: SIMD4(0, 0, 0, e), tint: SIMD4(1, 1, 1, 0.8), meta: SIMD4(0, 1, 1, 0), extra: .zero),
+                   GalaxyQuad(center: SIMD4(0, 5, 0, e * 1.15), tint: SIMD4(1, 1, 1, 0.22), meta: SIMD4(0, 1, 1, 0), extra: .zero)]
+                : [GalaxyQuad(center: SIMD4(0, 0, 0, e), tint: SIMD4(1, 1, 1, 0.55), meta: SIMD4(UInt32(i), 0, 1, 0), extra: .zero),
+                   GalaxyQuad(center: SIMD4(0, 0, 6, e * 1.3), tint: SIMD4(1, 1, 1, 0.2), meta: SIMD4(UInt32(i), 0, 1, 0), extra: SIMD4(0.4, 0, 0, 0))]
             enc.setFragmentTexture(tex, index: 0)
             enc.setVertexBytes(quads, length: MemoryLayout<GalaxyQuad>.stride * quads.count, index: 0)
             enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: quads.count)
@@ -561,8 +576,12 @@ final class GalaxyRenderer: NSObject, MTKViewDelegate {
             enc.setVertexBytes(extra, length: MemoryLayout<GalaxySprite>.stride * extra.count, index: 0)
             enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: extra.count)
         }
+        enc.setRenderPipelineState(streakPipe)
+        if let rings, ringCount > 0 {
+            enc.setVertexBuffer(rings, offset: 0, index: 0)
+            enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: ringCount)
+        }
         if !streaks.isEmpty {
-            enc.setRenderPipelineState(streakPipe)
             enc.setVertexBytes(streaks, length: MemoryLayout<GalaxyStreak>.stride * streaks.count, index: 0)
             enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: streaks.count)
         }

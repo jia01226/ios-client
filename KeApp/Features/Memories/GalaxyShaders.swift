@@ -84,7 +84,9 @@ fragment float4 galaxySpriteFragment(SpriteOut in [[stage_in]]) {
     float d2 = dot(in.uv, in.uv);
     if (d2 > 1.0) discard_fragment();
     float a;
-    if (in.kind > 0.5 && in.kind < 2.5) {
+    if (in.kind > 1.5 && in.kind < 2.5) {
+        a = exp(-d2 * 18.0) * 1.4 + exp(-d2 * 2.2) * 0.55; // 新记的金星：亮芯 + 一大圈金光，云里也看得见
+    } else if (in.kind > 0.5 && in.kind < 1.5) {
         a = exp(-d2 * 14.0) + exp(-d2 * 3.0) * 0.3;     // 记忆星：亮芯 + 一圈光
     } else if (in.kind > 2.5) {
         a = exp(-d2 * 5.0);                              // 背景星
@@ -99,6 +101,7 @@ struct QuadOut {
     float4 pos [[position]];
     float2 uv;
     float4 tint;
+    float soft;
 };
 
 vertex QuadOut galaxyQuadVertex(uint vid [[vertex_id]], uint iid [[instance_id]],
@@ -127,11 +130,19 @@ vertex QuadOut galaxyQuadVertex(uint vid [[vertex_id]], uint iid [[instance_id]]
     o.pos = clip;
     o.uv = float2(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5);
     o.tint = clip.w > 0 ? q.tint : float4(0);
+    o.soft = float(q.meta.z);
     return o;
 }
 
 fragment float4 galaxyQuadFragment(QuadOut in [[stage_in]], texture2d<float> tex [[texture(0)]], sampler smp [[sampler(0)]]) {
     float4 t = tex.sample(smp, in.uv);
+    if (in.soft > 0.5) {
+        // 星云的画：边缘慢慢化开，颜色收一点，看着是一团雾，不是贴上去的贴纸
+        float r = length(in.uv * 2.0 - 1.0);
+        float edge = 1.0 - smoothstep(0.3, 1.0, r);
+        float grey = dot(t.rgb, float3(0.3, 0.59, 0.11));
+        t.rgb = mix(float3(grey), t.rgb, 0.72) * edge;
+    }
     return float4(t.rgb * in.tint.rgb * in.tint.a, 0);
 }
 
