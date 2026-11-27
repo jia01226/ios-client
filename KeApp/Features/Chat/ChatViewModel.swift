@@ -289,15 +289,15 @@ final class ChatViewModel: ObservableObject {
             modelGroups = [
                 ChatModelGroup(
                     id: "claude_1", label: "Claude 1", available: true,
-                    configured: true, message: nil
+                    configured: true, message: nil, email: nil, plan: nil
                 ),
                 ChatModelGroup(
                     id: "gpt", label: "GPT", available: true,
-                    configured: true, message: nil
+                    configured: true, message: nil, email: nil, plan: nil
                 ),
                 ChatModelGroup(
                     id: "deepseek", label: "DPSK", available: true,
-                    configured: true, message: nil
+                    configured: true, message: nil, email: nil, plan: nil
                 ),
             ]
             modelOptions = [

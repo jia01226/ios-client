@@ -1735,6 +1735,13 @@ struct ChatView: View {
                         Text(section.title)
                             .font(theme.font.sectionTitle)
                             .foregroundStyle(theme.color.textPrimary)
+                        // 11-26：每个号标出是谁（套餐 · 邮箱），三个号的额度一眼分得清
+                        if let identity = section.identityLine {
+                            Text(identity)
+                                .font(theme.font.caption)
+                                .foregroundStyle(theme.color.textSecondary)
+                                .accessibilityIdentifier("model-identity-\(section.id)")
+                        }
                         if let selected = section.options.first(where: { $0.id == vm.selectedModel }) {
                             Text(selected.displayName)
                                 .font(theme.font.caption)
@@ -1858,6 +1865,7 @@ struct ChatView: View {
     private func modelRouteTitle(_ id: String) -> String {
         switch ChatModelSection.normalizedGroup(id) {
         case "claude_1": return "Claude 1"
+        case "claude_3": return "Claude 3"
         case "claude_2": return "Claude 2"
         case "gpt": return "GPT"
         case "deepseek": return "DPSK"
@@ -1873,7 +1881,7 @@ struct ChatView: View {
 
     private func modelQuotaSummary(for id: String) -> String? {
         let normalized = ChatModelSection.normalizedGroup(id)
-        guard ["claude_1", "claude_2", "gpt"].contains(normalized) else { return nil }
+        guard ["claude_1", "claude_3", "claude_2", "gpt"].contains(normalized) else { return nil }
         guard let quota = modelQuotaGroup(for: normalized) else {
             if vm.isLoadingModelQuotas { return "正在读取额度…" }
             if vm.modelQuotaError != nil { return "额度暂时没读到" }

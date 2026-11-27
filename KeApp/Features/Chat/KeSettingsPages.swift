@@ -54,11 +54,11 @@ struct KeModelPage: View {
                     .buttonStyle(KeDrawerButtonStyle())
             } else {
                 if let error = vm.modelError { KeDrawerHint("刚才没换成：\(error)") }
-                // 112 她：「之前不是两个号码吗 2个claude额度 没有了」——1 号、2 号分开列，各自带额度
+                // 112 她：「之前不是两个号码吗 2个claude额度 没有了」——1、3、2 号分开列，各自带额度
                 ForEach(sections.filter { $0.id.hasPrefix("claude") }) { section in
                     modelGroup(
                         section.title,
-                        caption: claudeCaption(section.id),
+                        caption: claudeCaption(section),
                         sections: [section],
                         quotaID: section.id
                     )
@@ -77,12 +77,15 @@ struct KeModelPage: View {
         }
     }
 
-    private func claudeCaption(_ id: String) -> String {
+    private func claudeCaption(_ section: ChatModelSection) -> String {
+        let id = section.id
+        // 11-26：先标出这个号是谁（套餐 · 邮箱），再讲这扇窗和它自己的额度
+        let identity = section.identityLine.map { "账号：\($0)\n" } ?? ""
         let line = "柯的长窗：一直开着、记得刚才；这个号额度用完会自动换另一个，会推送告诉你"
-        guard let quota = quotaSummary(id) else { return line }
+        guard let quota = quotaSummary(id) else { return identity + line }
         // 124：刷新没成时留着上次的数，但要说清楚是上次的
         let stale = vm.modelQuotaError != nil && quotaGroup(id) != nil ? "\n刚才没刷新到，这是上次读到的" : ""
-        return line + "\n" + quota + stale
+        return identity + line + "\n" + quota + stale
     }
 
     private func quotaGroup(_ id: String) -> ChatModelQuotaGroup? {

@@ -45,6 +45,9 @@ targets:
           - NotoSerifSC.ttf
           - SourceSerif4.ttf
         LSRequiresIPhoneOS: true
+        # 2026-11-26：声明只用到 HTTPS 这一类豁免加密；否则每次上传 TestFlight 都要在
+        # App Store Connect 里手动回答一次出口合规，没答的构建不会出现在 TestFlight。
+        ITSAppUsesNonExemptEncryption: false
         NSMotionUsageDescription: 用于驾驶时暂缓到家后的提醒，不记录运动轨迹
         NSFaceIDUsageDescription: 用于打开只有你能进入的私密空间
         NSCameraUsageDescription: 用于拍照并把你选择的照片发送给柯

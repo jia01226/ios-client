@@ -150,6 +150,9 @@ struct ChatModelGroup: Decodable, Identifiable, Hashable, Sendable {
     let available: Bool?
     let configured: Bool?
     let message: String?
+    /// 11-26：服务器标出这个号是谁——邮箱和套餐，App 里显示出来，1/2/3 号才分得清。
+    let email: String?
+    let plan: String?
 }
 
 struct ChatModelCatalog: Decodable, Sendable {
@@ -223,8 +226,21 @@ struct ChatModelSection: Identifiable, Hashable, Sendable {
     let options: [ChatModelOption]
     let isAvailable: Bool
     let statusMessage: String?
+    /// 11-26：这个号是谁（服务器给的邮箱 + 套餐）；旧服务器没有这两个字段时就是 nil。
+    let email: String?
+    let plan: String?
 
-    static let orderedIDs = ["claude_1", "claude_2", "gpt", "deepseek"]
+    /// 顺序按她定的接力优先级：1 号 Max → 3 号 → 2 号。
+    static let orderedIDs = ["claude_1", "claude_3", "claude_2", "gpt", "deepseek"]
+
+    /// 「Max · jaspervance42@proton.me」这种一行字；没读到就不显示。
+    var identityLine: String? {
+        let parts = [plan, email].compactMap { raw -> String? in
+            let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return value.isEmpty ? nil : value
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
 
     static func make(
         options: [ChatModelOption],
@@ -241,6 +257,7 @@ struct ChatModelSection: Identifiable, Hashable, Sendable {
         }
         let titles = [
             "claude_1": "Claude 1",
+            "claude_3": "Claude 3",
             "claude_2": "Claude 2",
             "gpt": "GPT",
             "deepseek": "DPSK",
@@ -269,13 +286,17 @@ struct ChatModelSection: Identifiable, Hashable, Sendable {
                     ?? id,
                 options: rows,
                 isAvailable: available,
-                statusMessage: message
+                statusMessage: message,
+                email: group?.email,
+                plan: group?.plan
             )
         }
     }
 
     static func normalizedGroup(_ rawValue: String) -> String {
         let value = rawValue.lowercased().replacingOccurrences(of: "-", with: "_")
+        // 11-26：3 号（Mignon 的 Pro）单独一栏；顺序由 orderedIDs 按 1→3→2 给出
+        if value.contains("claude3") || value.contains("claude_3") { return "claude_3" }
         if value.contains("claude2") || value.contains("claude_2") { return "claude_2" }
         if value == "claude" || value.contains("claude_1")
             || value.contains("claude_subscription") { return "claude_1" }
