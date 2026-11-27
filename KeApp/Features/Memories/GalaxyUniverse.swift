@@ -39,6 +39,8 @@ struct GalaxyInput {
     var arrivals: [String] = []
     /// 她点亮的那一类（nil 是全部）
     var focus: NebulaKind?
+    /// 正打开着卡片的那颗（镜头飞过去放大，关了再缩回来）
+    var selected: String?
     /// 外面的东西变了就加一，这边才重新摆星
     var version = 0
 }
@@ -160,6 +162,8 @@ final class GalaxyCamera {
     var pinching = false
     /// 跟着哪一团（它在公转，镜头跟着走）
     var follow: Int?
+    /// 11-27 点开一颗星：镜头一直跟着它（它在绕月亮转）
+    var focusPoint: SIMD3<Float>?
     private var fly: (from: GalaxyCameraState, to: GalaxyCameraState, t0: Double, d: Double, done: (() -> Void)?)?
     var flying: Bool { fly != nil }
     var busy: Bool { dragging || pinching || fly != nil || abs(vYaw) + abs(vPitch) > 0.01 }
@@ -189,6 +193,7 @@ final class GalaxyCamera {
                 if abs(vPitch) < 0.002 { vPitch = 0 }
             }
             if let follow { s.target += (centers[follow] - s.target) * min(1, dt * 8) }
+            if let focusPoint { s.target += (focusPoint - s.target) * min(1, dt * 6) }
         }
         s.pitch = min(1.45, max(-1.2, s.pitch))
         s.zoom = min(4.5, max(0.45, s.zoom))
@@ -235,9 +240,10 @@ final class GalaxyRenderer: NSObject, MTKViewDelegate {
 
     let camera = GalaxyCamera()
     var reduceMotion = false
-    var onTapStar: (String) -> Void = { _ in }
+    var onTapStar: (String, CGPoint) -> Void = { _, _ in }
 
     private var input = GalaxyInput()
+    private var shownSelected: String?
     private var builtVersion = -1
     private var staticSprites: MTLBuffer?
     private var staticCount = 0
@@ -306,6 +312,36 @@ final class GalaxyRenderer: NSObject, MTKViewDelegate {
 
     func update(_ new: GalaxyInput) {
         input = new
+        guard new.selected != shownSelected else { return }
+        shownSelected = new.selected
+        let now = CACurrentMediaTime() - t0
+        if let id = new.selected, let seat = seats.first(where: { $0.id == id })?.seat ?? golden.first(where: { $0.id == id })?.seat {
+            // 点开一颗星：镜头飞过去、凑近，之后一直跟着它
+            var to = camera.s
+            to.zoom = max(camera.s.zoom, 2.3)
+            to.target = lifted(GalaxyLayout.world(seat, orbit: orbit + 0.9 / Float(GalaxyLayout.period) * 2 * .pi), zoom: to.zoom)
+            camera.focusPoint = nil
+            camera.flyTo(to, duration: reduceMotion ? 0.01 : 0.9, now: now) { [weak self] in
+                guard let self, self.shownSelected == id else { return }
+                self.camera.focusPoint = self.lifted(GalaxyLayout.world(seat, orbit: self.orbit), zoom: self.camera.s.zoom)
+            }
+            focusSeat = seat
+        } else {
+            // 关了卡片：缩回去，看的角度不变
+            camera.focusPoint = nil
+            focusSeat = nil
+            var to = camera.s
+            to.target = .zero
+            to.zoom = 1
+            camera.flyTo(to, duration: reduceMotion ? 0.01 : 0.9, now: now)
+        }
+    }
+    /// 正开着的那颗住哪儿（镜头每一帧跟着它挪）
+    private var focusSeat: SIMD3<Float>?
+    /// 卡片从下面盖上来占了大半屏：镜头对准星星下面一点，让那颗星停在卡片上面的空处
+    private func lifted(_ star: SIMD3<Float>, zoom: Float) -> SIMD3<Float> {
+        let f = normalize(camera.s.target - camera.eye), side = normalize(cross(f, SIMD3(0, 1, 0))), up = cross(side, f)
+        return star - up * (2050 / zoom) * tan(25 * .pi / 180) * 0.62
     }
 
     func flyHome() {
@@ -346,19 +382,21 @@ final class GalaxyRenderer: NSObject, MTKViewDelegate {
     func tap(at p: CGPoint, in size: CGSize) {
         let focus = input.focus.flatMap { GalaxyLayout.kinds.firstIndex(of: $0) }
         var best: (String, CGFloat)?
+        var at = p
         for g in golden {
             guard let s = screen(GalaxyLayout.world(g.seat, orbit: orbit), size) else { continue }
             let d = hypot(s.x - p.x, s.y - p.y)
-            if d < 32, d < (best?.1 ?? .infinity) { best = (g.id, d) }
+            if d < 32, d < (best?.1 ?? .infinity) { best = (g.id, d); at = s }
         }
         if best == nil {
             for s in seats where focus == nil || focus == s.cat {
                 guard let q = screen(GalaxyLayout.world(s.seat, orbit: orbit), size) else { continue }
                 let d = hypot(q.x - p.x, q.y - p.y)
-                if d < 24, d < (best?.1 ?? .infinity) { best = (s.id, d) }
+                if d < 24, d < (best?.1 ?? .infinity) { best = (s.id, d); at = q }
             }
         }
-        if let id = best?.0 { onTapStar(id) }
+        // 点到空的地方：收起卡片（镜头缩回去）
+        onTapStar(best?.0 ?? "", at)
     }
 
     private func screen(_ world: SIMD3<Float>, _ size: CGSize) -> CGPoint? {
@@ -469,6 +507,7 @@ final class GalaxyRenderer: NSObject, MTKViewDelegate {
         let now = nowAbs - t0
         scale = Float(view.contentScaleFactor)
         if !reduceMotion { orbit += dt / Float(GalaxyLayout.period) * 2 * .pi }
+        if let seat = focusSeat, camera.focusPoint != nil { camera.focusPoint = lifted(GalaxyLayout.world(seat, orbit: orbit), zoom: camera.s.zoom) }
         camera.update(now: now, dt: dt, centers: [.zero])
         // 动的时候按屏幕最快的刷新率画（她的 14 Pro Max 是 120），停着就 60，省电
         let fps = camera.busy || !landings.isEmpty ? 120 : 60
@@ -516,11 +555,27 @@ final class GalaxyRenderer: NSObject, MTKViewDelegate {
             builtVersion = -2
         }
         landings = flying
-        flashes.removeAll { now - $0.start > 0.7 }
+        // 新记忆落地：闪一圈，再炸开一小簇星屑往四周散（11-27 她要「新记忆出现」更有感觉）
+        flashes.removeAll { now - $0.start > 1.4 }
+        let f0 = normalize(camera.s.target - eye), side0 = normalize(cross(f0, SIMD3(0, 1, 0))), up0 = cross(side0, f0)
         for fl in flashes {
-            let k = Float((now - fl.start) / 0.7)
-            extra.append(GalaxySprite(posSize: SIMD4(GalaxyLayout.world(fl.seat, orbit: orbit), 10 + k * 70),
-                                      color: SIMD4(1, 0.92, 0.74, (1 - k) * 0.9), meta: SIMD4(1, 0, 0, 0)))
+            let t = Float(now - fl.start), at = GalaxyLayout.world(fl.seat, orbit: orbit)
+            if t < 0.7 {
+                let k = t / 0.7
+                extra.append(GalaxySprite(posSize: SIMD4(at, 10 + k * 70), color: SIMD4(1, 0.92, 0.74, (1 - k) * 0.9), meta: SIMD4(1, 0, 0, 0)))
+            }
+            let k = min(1, t / 1.4), ease = 1 - (1 - k) * (1 - k)
+            for j in 0..<10 {
+                let a = Float(j) / 10 * 2 * .pi + 0.3, reach = Float(40 + (j % 3) * 18)
+                let p = at + (side0 * cos(a) + up0 * sin(a)) * reach * ease
+                extra.append(GalaxySprite(posSize: SIMD4(p, 3.2), color: SIMD4(1, 0.93, 0.8, (1 - k) * 0.95), meta: SIMD4(1, 1, UInt32(j * 600), 0)))
+            }
+        }
+        // 正开着的那颗：外面一圈光，一明一暗
+        if let seat = focusSeat {
+            let at = GalaxyLayout.world(seat, orbit: orbit), pulse = 0.5 + 0.5 * sin(Float(now) * 3)
+            extra.append(GalaxySprite(posSize: SIMD4(at, 34 + pulse * 14), color: SIMD4(1, 0.93, 0.85, 0.3 + 0.3 * pulse), meta: SIMD4(1, 0, 0, 0)))
+            extra.append(GalaxySprite(posSize: SIMD4(at, 12 + pulse * 3), color: SIMD4(1, 1, 1, 1), meta: SIMD4(1, 1, 0, 0)))
         }
         // 背景偶尔划过一颗白色小流星
         if !reduceMotion {
@@ -554,7 +609,8 @@ final class GalaxyRenderer: NSObject, MTKViewDelegate {
         enc.setFragmentSamplerState(sampler, index: 0)
         if let tex = coreTexture {
             let e = GalaxyLayout.core
-            let breathe: Float = reduceMotion ? 1 : 0.92 + 0.08 * sin(Float(now) * 0.7)
+            // 凑近了月亮会很大很亮，跟着拉近收一点光，别抢了那颗星
+            let breathe: Float = (reduceMotion ? 1 : 0.92 + 0.08 * sin(Float(now) * 0.7)) * min(1, max(0.5, 1.4 / camera.s.zoom))
             let quads = [GalaxyQuad(center: SIMD4(0, 0, 0, e), tint: SIMD4(1, 1, 1, 0.82 * breathe), meta: SIMD4(0, 0, 0, 0), extra: .zero)]
             enc.setFragmentTexture(tex, index: 0)
             enc.setVertexBytes(quads, length: MemoryLayout<GalaxyQuad>.stride * quads.count, index: 0)
@@ -602,7 +658,7 @@ struct GalaxyUniverseView: UIViewRepresentable {
     /// 从一团里出来时加一：镜头飞回全景
     var homeRequest: Int
     var reduceMotion: Bool
-    var onTapStar: (String) -> Void
+    var onTapStar: (String, CGPoint) -> Void
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         var renderer: GalaxyRenderer?

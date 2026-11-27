@@ -382,6 +382,8 @@ struct MemoryNebulaView: View {
     @State private var creditsOpen = false
     /// 11-27 星河下面的分类按钮：点亮哪一类（nil 是全部）
     @State private var galaxyFocus: NebulaKind?
+    /// 星河上点开一颗星时，卡片从哪儿长出来
+    @State private var cardAnchor: UnitPoint = .bottom
     private static let hasMetal = MTLCreateSystemDefaultDevice() != nil
 
     private static let ink = Color(red: 0.945, green: 0.94, blue: 0.93)
@@ -432,7 +434,7 @@ struct MemoryNebulaView: View {
                 GalaxyMember(id: f.id, bright: f.author == "ke", recent: f.author == "ke" && (f.written_at ?? "") >= since)
             }
         }
-        return GalaxyInput(members: members, arrivals: arrivals, focus: galaxyFocus, version: galaxyVersion)
+        return GalaxyInput(members: members, arrivals: arrivals, focus: galaxyFocus, selected: current == nil ? selectedID : nil, version: galaxyVersion)
     }
     private static func dayString(_ d: Date) -> String {
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"
@@ -456,7 +458,13 @@ struct MemoryNebulaView: View {
                 // 11-27 新星河：一直留着（进了一团就停下来不画），出来时镜头从那一团飞回全景
                 GalaxyUniverseView(input: galaxyInput, active: visible && current == nil && !listOpen, homeRequest: homeRequest,
                                    reduceMotion: reduceMotion,
-                                   onTapStar: { id in selectedID = id })
+                                   onTapStar: { id, at in
+                                       guard !id.isEmpty else { selectedID = nil; return }
+                                       // 卡片从那颗星的位置长出来
+                                       cardAnchor = UnitPoint(x: at.x / max(1, overviewSize.width), y: at.y / max(1, overviewSize.height))
+                                       selectedID = id
+                                   })
+                    .background(GeometryReader { geo in Color.clear.onAppear { overviewSize = geo.size }.onChange(of: geo.size) { _, s in overviewSize = s } })
                     .ignoresSafeArea()
                     .opacity(current == nil ? 1 : 0)
                     .allowsHitTesting(current == nil)
@@ -494,7 +502,9 @@ struct MemoryNebulaView: View {
             if let flower = selected {
                 VStack { Spacer(); card(flower) }
                     .padding(.bottom, dockInset)
-                    .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.96, anchor: .bottom)))
+                    .transition(current == nil && Self.hasMetal
+                        ? .scale(scale: 0.05, anchor: cardAnchor).combined(with: .opacity)
+                        : .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.96, anchor: .bottom)))
             }
             overlays
             if let toast {
