@@ -5,7 +5,7 @@ import simd
 
 // MARK: - 11-27 新星河（整片宇宙，显卡画）
 // 她对着效果图改了十几版，最后定的（记在 memory-galaxy-redesign）：
-// 中间只有一个——草帽星系的真照片，不写字；所有记忆是散在四周的星星，绕着它慢慢转（里圈快、外圈慢），一类一个颜色（GalaxyInk）；
+// 中间只有一个——起先是草帽星系的真照片，后来她说换成发光的月亮；不写字；所有记忆是散在四周的星星，绕着它慢慢转（里圈快、外圈慢），一类一个颜色（GalaxyInk）；
 // 下面一排分类按钮（带颜色小圆点，也是图例），点一类那一类亮起来、别的暗下去；
 // 背景三层星星（远的动得慢）、一层紫色星盘的尘；偶尔划过白色小流星；
 // 新记忆是一颗金色流星，划进它那颗星的位置，落下闪一下变成「新」星。1–3 条一颗接一颗，4 条以上流星雨。点任何一颗星出卡片。
@@ -46,8 +46,8 @@ struct GalaxyInput {
 enum GalaxyLayout {
     /// 分类的固定顺序（着色器里用下标认是哪一类）
     static let kinds: [NebulaKind] = [.whirlpool, .andromeda, .pleiades, .orion, .heart, .lessons, .sombrero, .horsehead]
-    /// 中间那张草帽星系照片在世界里的半边长
-    static let core: Float = 230
+    /// 中间那轮月亮（照片）在世界里的半边长
+    static let core: Float = 130
     /// 记忆星住的那一圈：从多远到多远
     static let inner: Double = 250, outer: Double = 640
     /// 半径 230 那一圈转一圈要多久（秒）；里圈快、外圈慢
@@ -94,11 +94,15 @@ final class NebulaPhoto: @unchecked Sendable {
     static func of(_ kind: NebulaKind) -> NebulaPhoto? {
         lock.lock(); defer { lock.unlock() }
         if let hit = cache[kind] { return hit }
-        var made: NebulaPhoto?
-        if kind != .lessons, let path = Bundle.main.path(forResource: "nebula-\(kind.rawValue)", ofType: "jpg"),
-           let cg = UIImage(contentsOfFile: path)?.cgImage { made = NebulaPhoto(cg) }
+        let made = kind == .lessons ? nil : load("nebula-\(kind.rawValue)")
         cache[kind] = made
         return made
+    }
+    /// 11-27 她：「中间是发光的月球试试」——NASA 的满月照片
+    static let moon: NebulaPhoto? = load("nebula-moon")
+    private static func load(_ name: String) -> NebulaPhoto? {
+        guard let path = Bundle.main.path(forResource: name, ofType: "jpg"), let cg = UIImage(contentsOfFile: path)?.cgImage else { return nil }
+        return NebulaPhoto(cg)
     }
     /// 详情页（还是旧的画法）也换成这张
     static func image(_ kind: NebulaKind) -> Image? { of(kind).map { Image(decorative: $0.cgImage, scale: 1) } }
@@ -134,6 +138,7 @@ final class NebulaPhoto: @unchecked Sendable {
     亲密时刻 · 心脏星云：JPedro Bento，CC BY 4.0
     以后的家 · 草帽星系：NASA/ESA、Hubble Heritage Team，公有领域
     难过的夜里 · 马头星云：Dylan O'Donnell，CC0
+    中间的月亮：NASA Goddard Space Flight Center，公有领域
     照片都来自维基共享资源，裁剪、调暗了天空、边缘做了渐隐。
     """
 }
@@ -393,20 +398,13 @@ final class GalaxyRenderer: NSObject, MTKViewDelegate {
             out.append(GalaxySprite(posSize: SIMD4(Float(rr), Float(r.next() * 2 * .pi), Float(r.normal() * 12), Float(90 + r.next() * 130)),
                                     color: SIMD4(0.56, 0.5, 0.8, 0.055), meta: SIMD4(0, 0, 0, 255)))
         }
-        // 中间那团照片周围铺一点它自己的暖光，跟星盘接上
-        if let photo = NebulaPhoto.of(.sombrero) {
-            var puffs = 0, tries = 0
-            while puffs < 70 && tries < 4000 {
-                tries += 1
-                let u = r.next() * 1.6 - 0.8, v = r.next() * 1.6 - 0.8, b = photo.brightness(u, v)
-                guard r.next() < b * 2 else { continue }
-                puffs += 1
-                let c = simd_min(photo.color(u, v) * 1.5, SIMD3(repeating: 1))
-                let e = GalaxyLayout.core
-                out.append(GalaxySprite(posSize: SIMD4(Float(u) * e, -Float(v) * e, Float(r.normal()) * e * 0.2, e * Float(0.25 + r.next() * 0.3)),
-                                        color: SIMD4(c, 0.03), meta: SIMD4(0, 0, 0, 0)))
+        // 中间：一轮月亮，外面几圈淡淡的月光（11-27 她：「中间是发光的月球试试」）
+        if let moon = NebulaPhoto.moon {
+            let e = GalaxyLayout.core
+            for (k, a) in [(1.15, 0.14), (1.75, 0.24), (2.7, 0.12), (4.2, 0.06)] as [(Float, Float)] {
+                out.append(GalaxySprite(posSize: SIMD4(0, 0, 0, e * k), color: SIMD4(0.86, 0.9, 1, a), meta: SIMD4(1, 0, 0, 0)))
             }
-            if coreTexture == nil { coreTexture = try? loader.newTexture(cgImage: photo.cgImage, options: [.SRGB: false, .generateMipmaps: true]) }
+            if coreTexture == nil { coreTexture = try? loader.newTexture(cgImage: moon.cgImage, options: [.SRGB: false, .generateMipmaps: true]) }
         }
         // 记忆星：一类一个颜色，散在四周
         seats = []; golden = []
@@ -551,14 +549,13 @@ final class GalaxyRenderer: NSObject, MTKViewDelegate {
         enc.setVertexBytes(regions, length: MemoryLayout<simd_float4x4>.stride * regions.count, index: 2)
         enc.setVertexBytes(sky, length: MemoryLayout<simd_float4x4>.stride * sky.count, index: 3)
 
-        // 中间：草帽星系的真照片，外面一圈放大的淡光晕
+        // 中间：月亮，很轻地一亮一暗，像在呼吸
         enc.setRenderPipelineState(quadPipe)
         enc.setFragmentSamplerState(sampler, index: 0)
         if let tex = coreTexture {
             let e = GalaxyLayout.core
             let breathe: Float = reduceMotion ? 1 : 0.92 + 0.08 * sin(Float(now) * 0.7)
-            let quads = [GalaxyQuad(center: SIMD4(0, 0, 0, e), tint: SIMD4(1, 1, 1, 0.78 * breathe), meta: SIMD4(0, 0, 0, 0), extra: .zero),
-                         GalaxyQuad(center: SIMD4(0, 0, 10, e * 1.45), tint: SIMD4(1, 1, 1, 0.11 * breathe), meta: SIMD4(0, 0, 0, 0), extra: .zero)]
+            let quads = [GalaxyQuad(center: SIMD4(0, 0, 0, e), tint: SIMD4(1, 1, 1, 0.82 * breathe), meta: SIMD4(0, 0, 0, 0), extra: .zero)]
             enc.setFragmentTexture(tex, index: 0)
             enc.setVertexBytes(quads, length: MemoryLayout<GalaxyQuad>.stride * quads.count, index: 0)
             enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: quads.count)
