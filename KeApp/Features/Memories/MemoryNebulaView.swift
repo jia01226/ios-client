@@ -1,3 +1,4 @@
+import Metal
 import SwiftUI
 
 // 129：记忆星河 = 六团星云（10-21 她定的）。
@@ -372,6 +373,11 @@ struct MemoryNebulaView: View {
     @State private var enterAnchor: UnitPoint = .center
     @State private var overviewSize = CGSize(width: 390, height: 844)
     @AppStorage("memory.galaxy.lastSeen") private var lastSeen = ""
+    /// 11-27 新星河：这次打开才看到的新记忆（坐流星进来）、外面变了就加一、从一团里出来时让镜头飞回全景
+    @State private var arrivals: [String] = []
+    @State private var galaxyVersion = 0
+    @State private var homeRequest = 0
+    private static let hasMetal = MTLCreateSystemDefaultDevice() != nil
 
     private static let ink = Color(red: 0.945, green: 0.94, blue: 0.93)
     private static let muted = Color(red: 0.72, green: 0.74, blue: 0.81)
@@ -409,6 +415,23 @@ struct MemoryNebulaView: View {
         let shown = store.visible(includeOthers: true).sorted { ($0.occurred_at ?? $0.written_at ?? "") < ($1.occurred_at ?? $1.written_at ?? "") }
         byGroup = Dictionary(grouping: shown, by: { NebulaGroup.groupName(for: $0) })
         shownCount = shown.count
+        galaxyVersion += 1
+    }
+
+    /// 递给新星河的：每团有哪几颗、哪些是这几天新记的（金色）
+    private var galaxyInput: GalaxyInput {
+        let since = Self.dayString(Date().addingTimeInterval(-3 * 86_400))
+        var members: [NebulaKind: [GalaxyMember]] = [:]
+        for g in NebulaGroup.all {
+            members[g.kind] = self.members(g.name).map { f in
+                GalaxyMember(id: f.id, bright: f.author == "ke", recent: f.author == "ke" && (f.written_at ?? "") >= since)
+            }
+        }
+        return GalaxyInput(arts: arts, members: members, arrivals: arrivals, version: galaxyVersion)
+    }
+    private static func dayString(_ d: Date) -> String {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: d)
     }
     private var shown: [MemoryFlower] { byGroup.values.flatMap { $0 }.sorted { ($0.occurred_at ?? $0.written_at ?? "") < ($1.occurred_at ?? $1.written_at ?? "") } }
     private func members(_ name: String) -> [MemoryFlower] { byGroup[name] ?? [] }
@@ -424,7 +447,26 @@ struct MemoryNebulaView: View {
     var body: some View {
         ZStack {
             Self.night.ignoresSafeArea()
-            NebulaSky().ignoresSafeArea()
+            if Self.hasMetal {
+                // 11-27 新星河：一直留着（进了一团就停下来不画），出来时镜头从那一团飞回全景
+                GalaxyUniverseView(input: galaxyInput, active: visible && current == nil && !listOpen, homeRequest: homeRequest,
+                                   reduceMotion: reduceMotion,
+                                   canEnter: { kind in
+                                       if kind == .heart && !privateOpen { askUnlock = true; return false }
+                                       return true
+                                   },
+                                   onEnter: { kind in if let g = NebulaGroup.all.first(where: { $0.kind == kind }) { enter(g) } },
+                                   onTapStar: { id in selectedID = id })
+                    .ignoresSafeArea()
+                    .opacity(current == nil ? 1 : 0)
+                    .allowsHitTesting(current == nil)
+                    .accessibilityElement()
+                    .accessibilityLabel("记忆星河，\(shownCount) 颗")
+                    .accessibilityActions {
+                        ForEach(NebulaGroup.all) { g in Button("进入\(g.name)") { tapGroup(g) } }
+                    }
+            }
+            if current != nil || !Self.hasMetal { NebulaSky().ignoresSafeArea() }
             if let g = current {
                 if let art = arts[g.kind] {
                     NebulaDetailCanvas(group: g, art: art, stars: stars(g, art), motion: motion, selectedID: selectedID,
@@ -439,7 +481,7 @@ struct MemoryNebulaView: View {
                 } else {
                     ProgressView().tint(Self.muted)
                 }
-            } else {
+            } else if !Self.hasMetal {
                 overview.transition(reduceMotion ? .opacity : .asymmetric(
                     insertion: .opacity,
                     removal: .opacity.combined(with: .scale(scale: 1.04, anchor: enterAnchor))))
@@ -513,6 +555,7 @@ struct MemoryNebulaView: View {
             let group = g, ids = members(g.name).map(\.id)
             await Task.detached(priority: .userInitiated) { for id in ids { _ = art.seat(for: id, thickness: group.thickness) } }.value
             arts[kind] = art
+            galaxyVersion += 1
         }
     }
 
@@ -710,7 +753,7 @@ struct MemoryNebulaView: View {
 
     private var footer: some View {
         VStack(spacing: 10) {
-            Text(current == nil ? "轻点一团星云 · 双指拉开也能进去 · 暗暗的小星是还没归类的事"
+            Text(current == nil ? (Self.hasMetal ? "拖着转 · 双指缩放 · 点一团飞进去 · 金色的是新记的" : "轻点一团星云 · 双指拉开也能进去 · 暗暗的小星是还没归类的事")
                  : (current?.kind == .heart && !privateOpen ? "" : "拖动转着看 · 双指拉近出名字，拉近后拖动是挪 · 点星星读记忆"))
                 .font(.system(size: 11)).tracking(0.5).foregroundStyle(Self.muted)
                 .multilineTextAlignment(.center)
@@ -972,6 +1015,7 @@ struct MemoryNebulaView: View {
     private func leave() {
         selectedID = nil
         current = nil
+        homeRequest += 1
         motion.jump(.home)
     }
     private func open(_ flower: MemoryFlower) {
@@ -1006,6 +1050,17 @@ struct MemoryNebulaView: View {
         guard store.loaded, visible else { return }
         let ke = store.flowers.filter { $0.author == "ke" && $0.isDrawable }
         guard let newest = ke.compactMap(\.written_at).max() else { return }
+        // 11-27：上回看过以后柯新记的，坐金色流星进各自那一团（第一次打开不放，不然几百颗一起下来）
+        // 验收用：-ui-test-galaxy-meteors 假装新记了 2 条（一颗接一颗），-ui-test-galaxy-shower 假装 5 条（流星雨）
+        let args = ProcessInfo.processInfo.arguments
+        if arrivals.isEmpty, let n = args.contains("-ui-test-galaxy-shower") ? 5 : (args.contains("-ui-test-galaxy-meteors") ? 2 : nil) {
+            arrivals = ke.sorted { ($0.written_at ?? "") < ($1.written_at ?? "") }.suffix(n).map(\.id)
+            galaxyVersion += 1
+        } else if !lastSeen.isEmpty {
+            let fresh = ke.filter { ($0.written_at ?? "") > lastSeen && !arrivals.contains($0.id) }
+                .sorted { ($0.written_at ?? "") < ($1.written_at ?? "") }.suffix(8).map(\.id)
+            if !fresh.isEmpty { arrivals += fresh; galaxyVersion += 1 }
+        }
         defer { lastSeen = max(lastSeen, newest) }
         guard newest > lastSeen, let target = ke.first(where: { $0.written_at == newest }) else { return }
         let g = NebulaGroup.groupName(for: target)

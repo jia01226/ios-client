@@ -117,6 +117,8 @@ final class NebulaArt: @unchecked Sendable {
     static let scale: CGFloat = 1.5
     let image: Image
     let thumb: Image
+    /// 11-27：新星河（GPU 画）拿它做贴图
+    let cgImage: CGImage
     /// 128×128，0…1
     let density: [Double]
     let densityMax: Double
@@ -125,8 +127,8 @@ final class NebulaArt: @unchecked Sendable {
     /// 星尘：盘面坐标 (u, v, z)，-1…1；按亮度分四档，画的时候一档一笔
     let dust: [[SIMD3<Double>]]
 
-    private init(image: Image, thumb: Image, density: [Double], dust: [[SIMD3<Double>]]) {
-        self.image = image; self.thumb = thumb; self.density = density
+    private init(image: Image, thumb: Image, cgImage: CGImage, density: [Double], dust: [[SIMD3<Double>]]) {
+        self.image = image; self.thumb = thumb; self.cgImage = cgImage; self.density = density
         densityMax = max(0.0001, density.max() ?? 1)
         self.dust = dust
         var sx = 0.0, sy = 0.0, sw = 0.0
@@ -242,7 +244,7 @@ final class NebulaArt: @unchecked Sendable {
         tctx.draw(cg, in: CGRect(x: 0, y: 0, width: t, height: t))
         let thumb = tctx.makeImage()!
         let art = NebulaArt(image: Image(decorative: cg, scale: 1), thumb: Image(decorative: thumb, scale: 1),
-                            density: density, dust: [])
+                            cgImage: cg, density: density, dust: [])
         // 星尘：照亮度撒，越亮越多；四档亮度
         var dust: [[SIMD3<Double>]] = [[], [], [], []]
         var r = NebulaRandom(UInt32(77 + index * 13))
@@ -256,7 +258,7 @@ final class NebulaArt: @unchecked Sendable {
             let level = min(3, Int(b * 4))
             dust[level].append(SIMD3(u, v, depth(&r, b, g.thickness)))
         }
-        return NebulaArt(image: art.image, thumb: art.thumb, density: density, dust: dust)
+        return NebulaArt(image: art.image, thumb: art.thumb, cgImage: cg, density: density, dust: dust)
     }
 }
 
