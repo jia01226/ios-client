@@ -777,7 +777,9 @@ struct UsPondView: View {
                         HStack {
                             Text("月经记录").font(Ink.song(15)).foregroundStyle(Ink.primary)
                             Spacer()
-                            PeriodCalendarControls(store: periods)
+                            // 11-28 她点开 26 号，按了右上角「今天来了」——那是记在今天（28 号）的，又多出一条。
+                            // 不是今天的那天就不放「今天…」，只放下面那一天自己的按钮
+                            if Calendar.current.isDateInToday(date) { PeriodCalendarControls(store: periods) }
                         }
                         .padding(.horizontal, 20).padding(.top, 9)
 
