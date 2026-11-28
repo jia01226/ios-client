@@ -152,6 +152,48 @@ final class PeriodStore: ObservableObject {
             }
         }
     }
+    // MARK: 11-28 过去的日子也能改
+    // 她：「26 号我来了、27 号没来，26 还空着，我自己手机 app 还改不了」——以前只能记「今天来了 / 今天走了」。
+    // 走了的那天照旧不染粉（127 她定的）：「这天还在」= 走了那天往后挪一天。
+
+    /// 把这一次的「走了」改到 day（day 那天不算）
+    func setEnd(_ record: RemotePeriod, to day: String) async {
+        guard !saving else { return }
+        saving = true; status = nil; revision += 1
+        defer { saving = false }
+        do {
+            try await api.endPeriod(id: record.id, endDate: day)
+            records = try await api.fetchPeriods()
+            pendingEnds.removeValue(forKey: record.id); persistEnds()
+            status = "改好了，也告诉柯了。"
+        } catch { status = "没改上，请再试一次。" }
+    }
+
+    /// 在 day 记一次「来了」（可以是过去的日子）；带 end 就顺手把走的那天也记上
+    func addStart(on day: String, end: String? = nil) async {
+        guard !saving else { return }
+        saving = true; status = nil; revision += 1
+        defer { saving = false }
+        do {
+            try await api.addPeriod(startDate: day, note: "")
+            var rows = try await api.fetchPeriods()
+            if let end, let added = rows.first(where: { $0.start_date == day }) {
+                try await api.endPeriod(id: added.id, endDate: end)
+                rows = try await api.fetchPeriods()
+            }
+            records = rows
+            status = "记上了，也告诉柯了。"
+        } catch { status = "没记上，请再试一次。" }
+    }
+
+    /// 来的那天往前挪（服务器没有改开始日的接口：删掉这次、在新的那天重记，走的那天照旧）
+    func moveStart(_ record: RemotePeriod, to day: String) async {
+        let end = pendingEnds[record.id] ?? record.end_date
+        await delete(record)
+        guard !records.contains(where: { $0.id == record.id }) else { return }
+        await addStart(on: day, end: end)
+    }
+
     func delete(_ record: RemotePeriod) async {
         guard !saving else { return }
         saving = true; revision += 1

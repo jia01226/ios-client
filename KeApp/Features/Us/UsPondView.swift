@@ -47,6 +47,8 @@ struct UsPondView: View {
     /// 11-17 她：「天数是滚轮滑动，改成往上滑」——这次往哪边滚（往上划 = 下一个，数字从下面滚上来）
     @State private var rollingUp = true
     @State private var editDay: PondDay?
+    /// 11-28 删掉某一次经期前先问一声
+    @State private var deletingPeriod: RemotePeriod?
     /// 11-17 她：「点进去就弹窗出来」——日历下面那行一点，直接弹出这个日程
     @State private var openEvent: CalendarEvent?
     @State private var open: PondEntry?
@@ -653,6 +655,59 @@ struct UsPondView: View {
             .accessibilityHidden(true)
     }
 
+    /// 11-28 她：过去的日子也要能改姨妈期。看这一天跟哪一次挨着，给最顺手的一两个按钮。
+    @ViewBuilder private func pastPeriodControls(_ date: Date) -> some View {
+        let key = HomeReminderCoordinator.dayKey(date)
+        let records = periods.records
+        let inside = records.first { r in
+            let end = periods.shownEnd(of: r)
+            let marked = periods.pendingEnds[r.id] != nil || r.end_date != nil
+            return r.start_date <= key && (marked ? key < end || key == r.start_date : key <= end)
+        }
+        // 走了的那天（粉色后面紧挨着的空白那天）
+        let endsHere = records.first { r in (periods.pendingEnds[r.id] ?? r.end_date) == key }
+        let startsNext = records.first { $0.start_date == PeriodStore.dayKey(key, plus: 1) }
+        if key <= periods.today {
+            HStack(spacing: 8) {
+                if let r = inside {
+                    if r.start_date != key {
+                        periodPill("这天就走了") { Task { await periods.setEnd(r, to: key) } }
+                    }
+                    periodPill("删掉这一次", quiet: true) { deletingPeriod = r }
+                } else if let r = endsHere, let next = PeriodStore.dayKey(key, plus: 1) {
+                    periodPill("这天还在") { Task { await periods.setEnd(r, to: next) } }
+                } else if let r = startsNext {
+                    periodPill("这天就来了") { Task { await periods.moveStart(r, to: key) } }
+                } else {
+                    periodPill("这天来了") { Task { await periods.addStart(on: key) } }
+                }
+                Spacer(minLength: 0)
+            }
+            .disabled(periods.saving)
+            .padding(.horizontal, 20).padding(.top, 8)
+            .confirmationDialog("删掉这一次？", isPresented: Binding(get: { deletingPeriod != nil }, set: { if !$0 { deletingPeriod = nil } }),
+                                titleVisibility: .visible) {
+                Button("删掉", role: .destructive) {
+                    if let r = deletingPeriod { Task { await periods.delete(r) } }
+                    deletingPeriod = nil
+                }
+                Button("先不删", role: .cancel) { deletingPeriod = nil }
+            } message: {
+                if let r = deletingPeriod { Text("\(r.start_date) 那次会从日历上拿掉，柯那边也会删。") }
+            }
+        }
+    }
+
+    private func periodPill(_ title: String, quiet: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(KeFont.body(14, .medium))
+                .foregroundStyle(quiet ? KeColor.accentText : Color.white)
+                .padding(.horizontal, 16).frame(height: 36)
+                .background(Capsule().fill(quiet ? KeColor.accentSoft : KeColor.accent))
+        }
+        .buttonStyle(.plain)
+    }
+
     private func isPeriod(_ date: Date) -> Bool {
         let key = HomeReminderCoordinator.dayKey(date)
         // 127 她：「昨天还是粉色的显示来了，我不舒服」——她点了「走了」的那天就不染粉了
@@ -726,12 +781,8 @@ struct UsPondView: View {
                         }
                         .padding(.horizontal, 20).padding(.top, 9)
 
-                        if !Calendar.current.isDateInToday(date) {
-                            Text("「今天来了」「今天走了」都记在今天，不记在这一天")
-                                .font(Ink.song(11.5)).foregroundStyle(Ink.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 20).padding(.top, 2)
-                        }
+                        // 11-28：不是今天的那天，也能改这一天（以前只能记今天）
+                        if !Calendar.current.isDateInToday(date) { pastPeriodControls(date) }
                         Text(periods.summary).font(Ink.song(12)).foregroundStyle(Ink.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 20).padding(.top, 6)
