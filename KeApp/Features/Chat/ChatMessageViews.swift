@@ -329,6 +329,9 @@ struct MessageRow: View {
     @State private var resendAfterDismiss = false
     @State private var discardAfterDismiss = false
     @State private var notebookText: String?
+    /// 11-28 药丸：长按柯的一条「给他挂颗药」，只管他下一句
+    @State private var pillAfterDismiss = false
+    @State private var pillSheet = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -368,6 +371,10 @@ struct MessageRow: View {
         }
         .popover(isPresented: $actionsPresented) {
             actionsMenu
+        }
+        .sheet(isPresented: $pillSheet) {
+            KePillSheet(messageID: message.serverID)
+                .presentationDetents([.medium, .large])
         }
         .overlay {
             if isHighlighted {
@@ -491,6 +498,16 @@ struct MessageRow: View {
                         .frame(maxWidth: .infinity, alignment: .leading).padding(14)
                 }.accessibilityIdentifier("message-action-pin")
             }
+            if message.sender == .ke && message.serverID != nil && !message.isStreaming {
+                Divider()
+                Button {
+                    pillAfterDismiss = true
+                    actionsPresented = false
+                } label: {
+                    Label("给他挂颗药", systemImage: "pills")
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(14)
+                }.accessibilityIdentifier("message-action-pill")
+            }
             if message.canResend {
                 Divider()
                 Button(role: .destructive) {
@@ -525,6 +542,10 @@ struct MessageRow: View {
             if discardAfterDismiss {
                 discardAfterDismiss = false
                 onDiscard(message)
+            }
+            if pillAfterDismiss {
+                pillAfterDismiss = false
+                pillSheet = true
             }
             guard recallAfterDismiss else { return }
             recallAfterDismiss = false
@@ -865,5 +886,75 @@ enum ChatLinks {
         if host.hasSuffix("xiaohongshu.com") || host.hasSuffix("xhslink.com") { return "去小红书看 ›" }
         if host.hasSuffix("x.com") || host.hasSuffix("twitter.com") { return "去 X 看 ›" }
         return raw.count > 40 ? (host.isEmpty ? String(raw.prefix(36)) + "…" : host + " ›") : raw
+    }
+}
+
+
+// MARK: - 药丸（11-28，照 pilulier 的思路）
+
+/// 她长按柯的一条挂一颗药：只管他下一句，用完就没，不改长期设定。药方在服务器 ke_pills.py，这里的 id 跟它一一对应。
+struct KePillSheet: View {
+    @EnvironmentObject private var theme: Theme
+    @Environment(\.dismiss) private var dismiss
+    let messageID: Int?
+    @State private var custom = ""
+    @State private var sending = false
+    @State private var failed: String?
+
+    private static let pills: [(id: String, label: String)] = [
+        ("别像AI", "太像 AI 了"), ("别总结", "别总结"), ("多说点", "太短了"), ("短一点", "太长了"),
+        ("别复述", "别复述我的话"), ("别说教", "别说教"), ("不正经点", "太正经了"), ("暖一点", "太冷了"),
+        ("先听", "先别急着安慰"), ("别哄了", "别哄了直接说"), ("接梗", "接住我的梗"), ("别括号", "别写括号动作"),
+        ("凶一点", "可以凶一点"),
+    ]
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("挑一颗，只管他下一句。")
+                        .font(theme.font.caption)
+                        .foregroundStyle(theme.chatTextSecondary)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 10)], spacing: 10) {
+                        ForEach(Self.pills, id: \.id) { pill in
+                            Button { Task { await send(pill: pill.id, text: custom) } } label: {
+                                Text(pill.label)
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(theme.chatAccent.opacity(0.12)))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(sending)
+                        }
+                    }
+                    TextField("还想跟他说一句（可以不写）", text: $custom, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                    if !custom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Button("只挂这句话") { Task { await send(pill: "", text: custom) } }
+                            .disabled(sending)
+                    }
+                    if let failed {
+                        Text(failed).font(theme.font.caption).foregroundStyle(.red)
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle("给他挂颗药")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("算了") { dismiss() } } }
+        }
+    }
+
+    private func send(pill: String, text: String) async {
+        sending = true
+        defer { sending = false }
+        do {
+            try await APIClient(baseURL: ChatLine.test1.apiBaseURL)
+                .giveKePill(pill: pill, text: text.trimmingCharacters(in: .whitespacesAndNewlines), messageID: messageID)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            dismiss()
+        } catch {
+            failed = "没挂上，再试一次"
+        }
     }
 }

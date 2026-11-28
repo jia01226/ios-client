@@ -1638,6 +1638,20 @@ actor APIClient {
         return response.job
     }
 
+    /// 11-28 药丸：给柯挂一颗药，只管他下一句（服务器 /api/ke/pills）
+    func giveKePill(pill: String, text: String, messageID: Int?) async throws {
+        var request = try makeRequest(path: "/api/ke/pills", method: "POST")
+        var body: [String: Any] = ["pill": pill, "text": text]
+        if let messageID { body["message_id"] = messageID }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, _) = try await perform(request)
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let error = object["error"] as? String, !error.isEmpty {
+            throw APIError.serverMessage(error)
+        }
+    }
+
     /// 钉住按整轮算：传这一轮里任意一条消息的 id 都行。
     func setKePin(messageID: Int, pinned: Bool) async throws {
         var request = try makeRequest(path: "/api/ke/pins", method: "POST")
