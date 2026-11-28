@@ -50,7 +50,7 @@ struct CalendarFacePicker: View {
                         .foregroundStyle(on ? Cool.ink : Cool.secondary)
                         .padding(.bottom, 6)
                         .overlay(alignment: .bottom) {
-                            Capsule().fill(on ? Cool.mauve : .clear).frame(height: 3)
+                            Capsule().fill(on ? Cool.pink : .clear).frame(height: 3)
                         }
                         .frame(minHeight: 44)
                         .contentShape(Rectangle())

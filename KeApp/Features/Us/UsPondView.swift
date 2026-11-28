@@ -91,13 +91,8 @@ struct UsPondView: View {
                                                                   removal: .opacity))
                 .padding(.horizontal, -4)
                 .padding(.top, 2)
-            // 11-28 她这回要了「即将到来」的小标题（以前 1116 说不写，这次她给的样子里有）
-            if face == .shift {
-                Text("即将到来").font(.system(size: 15, weight: .semibold)).foregroundStyle(Cool.ink)
-                    .padding(.top, 16).padding(.bottom, 6)
-            } else {
-                Color.clear.frame(height: 12)
-            }
+            // 11-28 她：「不想要那个即将到来」——小标题拿掉，空一点距离直接排日程
+            Color.clear.frame(height: 14)
             ScrollView {
                 if face == .shift {
                     // 11-18 她：「中间 ----- 下面看医生 / 奶茶杯数 / 本月次数要一致的高度」——三面下面第一行都从同一个高度起
@@ -188,7 +183,7 @@ struct UsPondView: View {
                         // 11-17 她：「上面的说明也会动」——名字原地淡入淡出，不跟着走
                         Button { choosingAnniversary = true } label: {
                             Text(eyebrow(a)).font(.custom("NotoSerifSC-Light", size: 12, relativeTo: .caption)).tracking(2.2)
-                                .foregroundStyle(Cool.mauve)
+                                .foregroundStyle(Cool.pinkText)
                                 .id("eyebrow-" + a.id)
                                 .transition(.opacity)
                                 .frame(minHeight: 32, alignment: .leading).contentShape(Rectangle())
@@ -329,7 +324,7 @@ struct UsPondView: View {
                 Spacer(minLength: 4)
                 // 137：点的范围放到 44×44，箭头本身不变
                 Button { month = vm.month(byAdding: -1, to: month) } label: {
-                    Image(systemName: "chevron.left").font(.system(size: 14, weight: .medium)).foregroundStyle(Cool.mauve.opacity(0.7)).frame(width: 36, height: 44).contentShape(Rectangle())
+                    Image(systemName: "chevron.left").font(.system(size: 14, weight: .medium)).foregroundStyle(Cool.pink).frame(width: 36, height: 44).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("上个月")
@@ -345,7 +340,7 @@ struct UsPondView: View {
                 // 不用 .disabled：系统会把禁用的字自动调灰，年月就又退成背景了
                 .accessibilityLabel(vm.monthTitle(for: month) + (vm.isCurrentMonth(month) ? "" : "，点一下回到本月"))
                 Button { month = vm.month(byAdding: 1, to: month) } label: {
-                    Image(systemName: "chevron.right").font(.system(size: 14, weight: .medium)).foregroundStyle(Cool.mauve.opacity(0.7)).frame(width: 36, height: 44).contentShape(Rectangle())
+                    Image(systemName: "chevron.right").font(.system(size: 14, weight: .medium)).foregroundStyle(Cool.pink).frame(width: 36, height: 44).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("下个月")
@@ -360,7 +355,7 @@ struct UsPondView: View {
         return LazyVGrid(columns: columns, spacing: 0) {
             ForEach(Self.weekdayNames, id: \.self) { name in
                 // 星期比以前清楚一档；周末两天用主色，一眼分得出来
-                Text(name).font(.system(size: 13, weight: .light)).foregroundStyle(Cool.mauve.opacity(0.75))
+                Text(name).font(.system(size: 13, weight: .light)).foregroundStyle(Cool.pinkText.opacity(0.6))
                     .frame(height: 34).accessibilityHidden(true)
             }
             ForEach(Array(vm.monthCells(for: month).enumerated()), id: \.offset) { _, date in
@@ -406,24 +401,25 @@ struct UsPondView: View {
                 Text("\(c.component(.month, from: event.start))月").font(.system(size: 12, weight: .medium))
                 Text("\(c.component(.day, from: event.start))").font(.system(size: 20, weight: .semibold)).monospacedDigit()
             }
-            .foregroundStyle(Cool.ink)
+            .foregroundStyle(Cool.pinkText)
             .frame(width: 50, height: 50)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Cool.mauve.opacity(0.12)))
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.75)))
             VStack(alignment: .leading, spacing: 4) {
                 Text(Self.upcomingLine(event)).font(.system(size: 17, weight: .semibold)).foregroundStyle(Cool.ink)
                     .lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                Text("周\(weekday) · \(time)").font(.system(size: 13)).foregroundStyle(Cool.secondary)
+                Text("周\(weekday) · \(time)").font(.system(size: 13)).foregroundStyle(Cool.pinkText.opacity(0.75))
             }
             Spacer(minLength: 0)
             if let said = event.symptoms, !said.isEmpty {
                 // 有记下要跟医生说的，挂一个小点提示点进去看
                 Circle().fill(Cool.mauve).frame(width: 5, height: 5).accessibilityHidden(true)
             }
-            Image(systemName: "chevron.right").font(.system(size: 13, weight: .medium)).foregroundStyle(Cool.secondary)
+            Image(systemName: "chevron.right").font(.system(size: 13, weight: .medium)).foregroundStyle(Cool.pink)
         }
         .padding(.vertical, 14).padding(.leading, 16).padding(.trailing, 16)
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Cool.mauve.opacity(0.05)))
-        .overlay(alignment: .leading) { Capsule().fill(Cool.mauve.opacity(0.7)).frame(width: 3).padding(.vertical, 2) }
+        // 11-28 她：颜色太深难看——整张卡浅粉底，左边粉色竖条
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Cool.pinkSoft))
+        .overlay(alignment: .leading) { Capsule().fill(Cool.pink.opacity(0.8)).frame(width: 3).padding(.vertical, 10) }
         .padding(.bottom, 10)
         .contentShape(Rectangle())
         .onTapGesture { openEvent = event }
@@ -516,7 +512,7 @@ struct UsPondView: View {
                     // 11-17 她：「经期我想要方块的粉色阴影，比如 1-5 号可以连起来的那种」——粉色画在整格后面（见下面 periodBand），
                     // 数字这里只留「今天」的圈；今天正好在经期，就描一圈细线
                     // 11-28：今天是整张日历的锚——实心主色圆、纸色数字（以前的淡圈跟别的格子分不出来）
-                    .background(Circle().fill(isToday && !period ? Cool.mauve : .clear))
+                    .background(Circle().fill(isToday && !period ? Cool.pink : .clear))
                     .overlay(Circle().stroke(isToday && period ? Cool.number.opacity(0.45) : .clear, lineWidth: 0.8))
                     // 11-28 她：亲密还是小爱心挂右上（纪念日的☾跟着它）；有事的小圆点挂左上
                     .overlay(alignment: .topTrailing) {
@@ -530,13 +526,13 @@ struct UsPondView: View {
                     }
                     .overlay(alignment: .topLeading) {
                         if !dayEvents.isEmpty {
-                            Circle().fill(Cool.mauve).frame(width: 5, height: 5).offset(x: -1, y: 2)
+                            Circle().fill(Cool.pink).frame(width: 5, height: 5).offset(x: -1, y: 2)
                         }
                     }
                 // 有班写班（淡）；没班、写的是日程名（看医生）就用主色，有事的日子一眼看得到
                 let isEventLabel = vm.shift(on: date) == nil && !dayEvents.isEmpty
                 Text(shown ?? " ").font(Cool.tiny()).tracking(0.5).lineLimit(1).minimumScaleFactor(0.7)
-                    .foregroundStyle(isEventLabel ? Cool.mauve : (isPast ? Cool.faint : Cool.secondary))
+                    .foregroundStyle(isEventLabel ? Cool.pinkText : (isPast ? Cool.faint : Cool.secondary))
             }
             .frame(maxWidth: .infinity, minHeight: 56, maxHeight: 56, alignment: .top)   // 三面同一个高度，切换不跳
             .background(alignment: .top) { if period { periodBand(date) } }
@@ -870,7 +866,11 @@ enum Cool {
     static var line: Color { Ink.line.opacity(0.6) }
     static var today: Color { Ink.track }
     static let period = Color(hex: 0xF5E2EC)
-    static let heart = Color(hex: 0xB0849F)
+    static let heart = Color(hex: 0xE08AAE)
+    /// 11-28 她：「整体有点深了，要粉色、浅粉色」——这页的强调色从深梅换成粉
+    static let pink = Color(hex: 0xE07FA5)        // 今天的圆、选中的下划线、有事的小圆点
+    static let pinkSoft = Color(hex: 0xFCE8EF)    // 日程卡的底、日期小方块
+    static let pinkText = Color(hex: 0xB2557C)    // 粉底上的字
     /// 11-25 她：要锁屏时钟那种衬线数字。锁屏那档是苹果的 New York（系统自带衬线），
     /// 取不到就退回 Didot，不至于变成无衬线。
     private static let numberFont: String = {
