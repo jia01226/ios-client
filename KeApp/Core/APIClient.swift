@@ -1390,6 +1390,11 @@ actor APIClient {
         try await writeResource("/api/periods", body: ["start_date": startDate, "note": note])
     }
 
+    /// 11-28：一次把来的那天和走的那天都记上（服务器不让改已经记过的走的那天，改就得删了重记）
+    func addPeriod(startDate: String, endDate: String, note: String) async throws {
+        try await writeResource("/api/periods", body: ["start_date": startDate, "end_date": endDate, "note": note])
+    }
+
     // Requires the explicit end-date operation documented in the Build 73 handoff.
     // A 404/400 leaves the local end date pending; it never removes the start record.
     func endPeriod(id: Int, endDate: String) async throws {

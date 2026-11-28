@@ -4,10 +4,17 @@ import Combine
 protocol PeriodAPI {
     func fetchPeriods() async throws -> [RemotePeriod]
     func addPeriod(startDate: String, note: String) async throws
+    func addPeriod(startDate: String, endDate: String, note: String) async throws
     func deletePeriod(id: Int) async throws
     func endPeriod(id: Int, endDate: String) async throws
 }
 extension APIClient: PeriodAPI {}
+extension PeriodAPI {
+    /// 测试里的假接口没有这个：只记来的那天
+    func addPeriod(startDate: String, endDate: String, note: String) async throws {
+        try await addPeriod(startDate: startDate, note: note)
+    }
+}
 
 /// Starts/deletions use the existing service. End dates are queued until the
 /// server accepts the explicit end operation; never delete a start to mark an end.
@@ -156,13 +163,20 @@ final class PeriodStore: ObservableObject {
     // 她：「26 号我来了、27 号没来，26 还空着，我自己手机 app 还改不了」——以前只能记「今天来了 / 今天走了」。
     // 走了的那天照旧不染粉（127 她定的）：「这天还在」= 走了那天往后挪一天。
 
-    /// 把这一次的「走了」改到 day（day 那天不算）
+    /// 把这一次的「走了」改到 day（day 那天不算）。
+    /// 11-28 服务器规矩：已经记过走的那天就不让改成别的（她点了四次「这天还在」都被拒）——
+    /// 那就删掉这一次、带着原来的备注把来的那天和新的走的那天一起重记
     func setEnd(_ record: RemotePeriod, to day: String) async {
         guard !saving else { return }
         saving = true; status = nil; revision += 1
         defer { saving = false }
         do {
-            try await api.endPeriod(id: record.id, endDate: day)
+            if record.end_date != nil {
+                try await api.deletePeriod(id: record.id)
+                try await api.addPeriod(startDate: record.start_date, endDate: day, note: record.note ?? "")
+            } else {
+                try await api.endPeriod(id: record.id, endDate: day)
+            }
             records = try await api.fetchPeriods()
             pendingEnds.removeValue(forKey: record.id); persistEnds()
             status = "改好了，也告诉柯了。"
@@ -175,13 +189,12 @@ final class PeriodStore: ObservableObject {
         saving = true; status = nil; revision += 1
         defer { saving = false }
         do {
-            try await api.addPeriod(startDate: day, note: "")
-            var rows = try await api.fetchPeriods()
-            if let end, let added = rows.first(where: { $0.start_date == day }) {
-                try await api.endPeriod(id: added.id, endDate: end)
-                rows = try await api.fetchPeriods()
+            if let end {
+                try await api.addPeriod(startDate: day, endDate: end, note: "")
+            } else {
+                try await api.addPeriod(startDate: day, note: "")
             }
-            records = rows
+            records = try await api.fetchPeriods()
             status = "记上了，也告诉柯了。"
         } catch { status = "没记上，请再试一次。" }
     }
