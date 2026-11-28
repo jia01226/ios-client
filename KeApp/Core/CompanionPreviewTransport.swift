@@ -57,7 +57,14 @@ final class CompanionPreviewTransport: URLProtocol {
             case let p where p.hasSuffix("/shifts"):
                 body = #"[{"date":"2026-09-09","shift":"早班+睡班","note":""},{"date":"2026-09-10","shift":"上夜","note":""}]"#
             case let p where p.hasSuffix("/periods"):
-                body = #"[{"id":1,"start_date":"2026-09-07","end_date":"2026-09-11","note":""}]"#
+                if ProcessInfo.processInfo.arguments.contains("-ui-test-period-now") {
+                    // 验收用：这个月里放一段经期（今天往前 9 天来、往前 4 天走），看月历上怎么显示
+                    let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.locale = Locale(identifier: "en_US_POSIX")
+                    let day = { (n: Int) in f.string(from: Calendar.current.date(byAdding: .day, value: n, to: .now)!) }
+                    body = #"[{"id":1,"start_date":"\#(day(-9))","end_date":"\#(day(-4))","note":""}]"#
+                } else {
+                    body = #"[{"id":1,"start_date":"2026-09-07","end_date":"2026-09-11","note":""}]"#
+                }
             case let p where p.hasSuffix("/companion/intimate-counts"):
                 body = #"[{"date":"2026-09-09","count":2}]"#
             case let p where p.hasSuffix("/diary"):

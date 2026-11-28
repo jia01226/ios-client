@@ -56,7 +56,7 @@ struct TeaDayCell: View {
                 }
                 .frame(height: 16)
             }
-            .frame(maxWidth: .infinity, minHeight: 53, maxHeight: 53, alignment: .top)
+            .frame(maxWidth: .infinity, minHeight: 60, maxHeight: 60, alignment: .top)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

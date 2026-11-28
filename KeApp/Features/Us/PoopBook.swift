@@ -137,7 +137,7 @@ struct PoopDayCell: View {
                 }
                 .frame(width: 28, height: 20)
             }
-            .frame(maxWidth: .infinity, minHeight: 53, maxHeight: 53, alignment: .top)
+            .frame(maxWidth: .infinity, minHeight: 60, maxHeight: 60, alignment: .top)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

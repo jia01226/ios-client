@@ -361,7 +361,7 @@ struct UsPondView: View {
                     .frame(height: 34).accessibilityHidden(true)
             }
             ForEach(Array(vm.monthCells(for: month).enumerated()), id: \.offset) { _, date in
-                if let date { cell(date, anniversaries: annDays) } else { Color.clear.frame(height: 56) }
+                if let date { cell(date, anniversaries: annDays) } else { Color.clear.frame(height: 60) }
             }
         }
     }
@@ -503,10 +503,10 @@ struct UsPondView: View {
             guard !swiping, Date() > tapQuietUntil else { return }
             editDay = PondDay(date: date)
         } label: {
-            VStack(spacing: -3) {
+            VStack(spacing: 2) {
                 Text("\(Calendar.current.component(.day, from: date))")
                     .font(.system(size: 18, weight: isToday && !period ? .semibold : .regular)).monospacedDigit()
-                    .foregroundStyle(isToday && !period ? Cool.paper : (isPast ? Cool.secondary.opacity(0.75) : Cool.number))
+                    .foregroundStyle(isToday && !period ? Cool.paper : (period ? Cool.pinkText : (isPast ? Cool.secondary.opacity(0.75) : Cool.number)))
                     .lineLimit(1).minimumScaleFactor(0.7)
                     .frame(width: 40, height: 40)
                     // 11-17 她：「经期我想要方块的粉色阴影，比如 1-5 号可以连起来的那种」——粉色画在整格后面（见下面 periodBand），
@@ -534,7 +534,7 @@ struct UsPondView: View {
                 Text(shown ?? " ").font(Cool.tiny()).tracking(0.5).lineLimit(1).minimumScaleFactor(0.7)
                     .foregroundStyle(isEventLabel ? Cool.pinkText : Cool.secondary)
             }
-            .frame(maxWidth: .infinity, minHeight: 56, maxHeight: 56, alignment: .top)   // 三面同一个高度，切换不跳
+            .frame(maxWidth: .infinity, minHeight: 60, maxHeight: 60, alignment: .top)   // 三面同一个高度，切换不跳
             .background(alignment: .top) { if period { periodBand(date) } }
             .contentShape(Rectangle())
         }
@@ -639,12 +639,15 @@ struct UsPondView: View {
         let prev = c.date(byAdding: .day, value: -1, to: date).map(isPeriod) ?? false
         let next = c.date(byAdding: .day, value: 1, to: date).map(isPeriod) ?? false
         let left = !prev || weekday == 2, right = !next || weekday == 1
-        let r: CGFloat = 9
+        // 11-28 她：「姨妈期前后都是圆的，就是（）这样的」——两头半圆，像一颗胶囊；
+        // 粉块只包住数字，矮一点，不再压到下面「副班」那行小字
+        let r: CGFloat = 17
         return UnevenRoundedRectangle(topLeadingRadius: left ? r : 0, bottomLeadingRadius: left ? r : 0,
                                       bottomTrailingRadius: right ? r : 0, topTrailingRadius: right ? r : 0,
                                       style: .continuous)
             .fill(Cool.period)
-            .frame(height: 32)
+            .frame(height: 34)
+            .padding(.top, 3)
             .padding(.leading, left ? 4 : 0)
             .padding(.trailing, right ? 4 : 0)
             .accessibilityHidden(true)
@@ -867,7 +870,8 @@ enum Cool {
     static var faint: Color { KeColor.inkSoft.opacity(0.6) }
     static var line: Color { KeColor.line }
     static var today: Color { KeColor.accent }
-    static var period: Color { KeColor.accentSoft }
+    /// 经期：藕粉淡一层（浅底 accentSoft 在纸上几乎看不出来）
+    static var period: Color { KeColor.accent.opacity(0.24) }
     static var heart: Color { KeColor.accent }
     static var pink: Color { KeColor.accent }          // 今天的圆、选中的下划线、有事的小圆点
     static var pinkSoft: Color { KeColor.accentSoft }

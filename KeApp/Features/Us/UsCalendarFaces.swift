@@ -98,7 +98,7 @@ struct FaceDayCell: View {
                 Text(label).font(Cool.tiny()).tracking(0.5).lineLimit(1).minimumScaleFactor(0.7)
                     .foregroundStyle(Cool.secondary)
             }
-            .frame(maxWidth: .infinity, minHeight: 53, alignment: .top)
+            .frame(maxWidth: .infinity, minHeight: 60, alignment: .top)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
