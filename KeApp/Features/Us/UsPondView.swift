@@ -667,7 +667,9 @@ struct UsPondView: View {
         // 走了的那天（粉色后面紧挨着的空白那天）
         let endsHere = records.first { r in (periods.pendingEnds[r.id] ?? r.end_date) == key }
         let startsNext = records.first { $0.start_date == PeriodStore.dayKey(key, plus: 1) }
-        if key <= periods.today {
+        // 今天：「来了 / 走了」右上角已经有，这里只在今天落在某一次里时给「删掉这一次」
+        let isToday = key == periods.today
+        if key <= periods.today, !isToday || inside != nil {
             HStack(spacing: 8) {
                 if let r = inside {
                     if r.start_date != key {
@@ -784,7 +786,8 @@ struct UsPondView: View {
                         .padding(.horizontal, 20).padding(.top, 9)
 
                         // 11-28：不是今天的那天，也能改这一天（以前只能记今天）
-                        if !Calendar.current.isDateInToday(date) { pastPeriodControls(date) }
+                        // 11-28：今天也要能删掉（她误点出来一条 28 号的，今天的面板里只有「今天来了/走了」删不掉）
+                        pastPeriodControls(date)
                         Text(periods.summary).font(Ink.song(12)).foregroundStyle(Ink.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 20).padding(.top, 6)
