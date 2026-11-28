@@ -182,7 +182,7 @@ struct UsPondView: View {
                         // 106：点名字换成别的纪念日（还有几天、今天是……）
                         // 11-17 她：「上面的说明也会动」——名字原地淡入淡出，不跟着走
                         Button { choosingAnniversary = true } label: {
-                            Text(eyebrow(a)).font(Cool.tiny()).tracking(2.2)
+                            Text(eyebrow(a)).font(.custom("NotoSerifSC-Light", size: 12, relativeTo: .caption)).tracking(2.2)
                                 .foregroundStyle(Cool.mauve)
                                 .id("eyebrow-" + a.id)
                                 .transition(.opacity)
@@ -197,7 +197,7 @@ struct UsPondView: View {
                                 Text(n.number).font(Cool.didot(n.number == "今天" ? 34 : 46, .largeTitle))
                                     .foregroundStyle(Cool.number).lineLimit(1).minimumScaleFactor(0.6)
                                     .monospacedDigit()
-                                Text(n.unit).font(Cool.song(12, .footnote)).foregroundStyle(Cool.secondary)
+                                Text(n.unit).font(.custom("NotoSerifSC-Light", size: 14, relativeTo: .footnote)).foregroundStyle(Cool.ink.opacity(0.75))
                             }
                             .id("number-" + a.id)
                             .transition(rollTransition)
@@ -324,22 +324,23 @@ struct UsPondView: View {
                 Spacer(minLength: 4)
                 // 137：点的范围放到 44×44，箭头本身不变
                 Button { month = vm.month(byAdding: -1, to: month) } label: {
-                    Image(systemName: "chevron.left").font(.system(size: 13, weight: .ultraLight)).frame(width: 36, height: 44).contentShape(Rectangle())
+                    Image(systemName: "chevron.left").font(.system(size: 13, weight: .ultraLight)).foregroundStyle(Cool.faint).frame(width: 36, height: 44).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("上个月")
                 // 不在本月时点年月回到本月（原来那个「回到本月」挪到这里，顶上放不下了）
-                Button { month = vm.startOfMonth(for: .now) } label: {
-                    Text(Self.yearMonth(month)).font(Cool.didot(15, .subheadline))
-                        .foregroundStyle(vm.isCurrentMonth(month) ? Cool.secondary : Cool.mauve)
+                Button { if !vm.isCurrentMonth(month) { month = vm.startOfMonth(for: .now) } } label: {
+                    // 11-28 她：「优化视觉层级」——年月是日历的标题，跟数字一个颜色、大一号；箭头退到最淡
+                    Text(Self.yearMonth(month)).font(Cool.didot(17, .subheadline))
+                        .foregroundStyle(vm.isCurrentMonth(month) ? Cool.ink : Cool.mauve)
                         .lineLimit(1).fixedSize()
                         .frame(minHeight: 44).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .disabled(vm.isCurrentMonth(month))
+                // 不用 .disabled：系统会把禁用的字自动调灰，年月就又退成背景了
                 .accessibilityLabel(vm.monthTitle(for: month) + (vm.isCurrentMonth(month) ? "" : "，点一下回到本月"))
                 Button { month = vm.month(byAdding: 1, to: month) } label: {
-                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .ultraLight)).frame(width: 36, height: 44).contentShape(Rectangle())
+                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .ultraLight)).foregroundStyle(Cool.faint).frame(width: 36, height: 44).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("下个月")
@@ -352,8 +353,10 @@ struct UsPondView: View {
         let annDays = anniversaryKeys(month)
         let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
         return LazyVGrid(columns: columns, spacing: 0) {
-            ForEach(Self.weekdayNames, id: \.self) {
-                Text($0).font(Cool.tiny()).foregroundStyle(Cool.faint).frame(height: 26).accessibilityHidden(true)
+            ForEach(Self.weekdayNames, id: \.self) { name in
+                // 星期比以前清楚一档；周末两天用主色，一眼分得出来
+                Text(name).font(Cool.tiny()).foregroundStyle(name == "六" || name == "日" ? Cool.mauve.opacity(0.8) : Cool.secondary)
+                    .frame(height: 26).accessibilityHidden(true)
             }
             ForEach(Array(vm.monthCells(for: month).enumerated()), id: \.offset) { _, date in
                 if let date { cell(date, anniversaries: annDays) } else { Color.clear.frame(height: 53) }
@@ -400,7 +403,8 @@ struct UsPondView: View {
                 Text("周\(weekday) \(time)").font(Cool.tiny()).foregroundStyle(Cool.secondary)
             }
             .frame(width: 96, alignment: .leading)
-            Text(Self.upcomingLine(event)).font(Cool.song(13, .subheadline)).foregroundStyle(Cool.ink)
+            // 11-28：日程名是这一行的主角——细宋体太淡，换细一档的正常宋体、大一号
+            Text(Self.upcomingLine(event)).font(.custom("NotoSerifSC-Light", size: 14, relativeTo: .subheadline)).foregroundStyle(Cool.ink)
                 .lineLimit(2).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
             if let said = event.symptoms, !said.isEmpty {
@@ -408,7 +412,10 @@ struct UsPondView: View {
                 Circle().fill(Cool.mauve).frame(width: 4, height: 4).accessibilityHidden(true)
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
+        .padding(.leading, 10)
+        // 左边一道主色细线，像便签的边，跟上面的日历分开
+        .overlay(alignment: .leading) { Capsule().fill(Cool.mauve.opacity(0.55)).frame(width: 2).padding(.vertical, 8) }
         .contentShape(Rectangle())
         .onTapGesture { openEvent = event }
         .accessibilityElement(children: .combine)
@@ -477,6 +484,8 @@ struct UsPondView: View {
     /// 一天：Didot 数字，下面就是班次；今天淡蓝圆底，月经淡粉圆底，纪念日 ☾、亲密小心挂在右上
     private func dayCell(_ date: Date, anniversary: Bool) -> some View {
         let isToday = Calendar.current.isDateInToday(date)
+        // 11-28：过去的日子退后一点，今天和以后的更清楚
+        let isPast = !isToday && date < Calendar.current.startOfDay(for: .now)
         let period = isPeriod(date)
         let times = love.count(on: date)
         let dayEvents = events.events(on: date)
@@ -492,12 +501,13 @@ struct UsPondView: View {
             VStack(spacing: -3) {
                 Text("\(Calendar.current.component(.day, from: date))")
                     .font(Cool.didot(17, .body)).monospacedDigit()
-                    .foregroundStyle(isToday ? Cool.ink : Cool.number)
+                    .foregroundStyle(isToday && !period ? Cool.paper : (isPast ? Cool.secondary.opacity(0.75) : Cool.number))
                     .lineLimit(1).minimumScaleFactor(0.7)
                     .frame(width: 32, height: 32)
                     // 11-17 她：「经期我想要方块的粉色阴影，比如 1-5 号可以连起来的那种」——粉色画在整格后面（见下面 periodBand），
                     // 数字这里只留「今天」的圈；今天正好在经期，就描一圈细线
-                    .background(Circle().fill(isToday && !period ? Cool.today : .clear))
+                    // 11-28：今天是整张日历的锚——实心主色圆、纸色数字（以前的淡圈跟别的格子分不出来）
+                    .background(Circle().fill(isToday && !period ? Cool.mauve : .clear))
                     .overlay(Circle().stroke(isToday && period ? Cool.number.opacity(0.45) : .clear, lineWidth: 0.8))
                     .overlay(alignment: .topTrailing) {
                         if anniversary || times > 0 {
@@ -514,8 +524,10 @@ struct UsPondView: View {
                             Circle().fill(Cool.mauve).frame(width: 5, height: 5).offset(x: -4, y: 1)
                         }
                     }
+                // 有班写班（淡）；没班、写的是日程名（看医生）就用主色，有事的日子一眼看得到
+                let isEventLabel = vm.shift(on: date) == nil && !dayEvents.isEmpty
                 Text(shown ?? " ").font(Cool.tiny()).tracking(0.5).lineLimit(1).minimumScaleFactor(0.7)
-                    .foregroundStyle(Cool.secondary)
+                    .foregroundStyle(isEventLabel ? Cool.mauve : (isPast ? Cool.faint : Cool.secondary))
             }
             .frame(maxWidth: .infinity, minHeight: 53, maxHeight: 53, alignment: .top)   // 三面同一个高度，切换不跳
             .background(alignment: .top) { if period { periodBand(date) } }
