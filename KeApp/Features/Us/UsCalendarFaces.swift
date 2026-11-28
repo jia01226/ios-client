@@ -44,12 +44,13 @@ struct CalendarFacePicker: View {
                 Button {
                     withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.28)) { face = f }
                 } label: {
+                    // 11-28 她给的样子：选中的那面加粗、下面一道圆头粗线
                     Text(f.label)
-                        .font(Cool.song(on ? 14 : 13, .subheadline)).tracking(1.5)
+                        .font(.system(size: 17, weight: on ? .semibold : .regular)).tracking(1)
                         .foregroundStyle(on ? Cool.ink : Cool.secondary)
-                        .padding(.bottom, 3)
+                        .padding(.bottom, 6)
                         .overlay(alignment: .bottom) {
-                            Rectangle().fill(on ? Cool.mauve : .clear).frame(height: 1)
+                            Capsule().fill(on ? Cool.mauve : .clear).frame(height: 3)
                         }
                         .frame(minHeight: 44)
                         .contentShape(Rectangle())

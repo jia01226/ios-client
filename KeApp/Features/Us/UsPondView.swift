@@ -75,24 +75,31 @@ struct UsPondView: View {
         VStack(alignment: .leading, spacing: 0) {
             // 10-31 她：最上面不要标题。右上那枚月牙是 RootTabView 画的，页面从它下面起
             heroBlock.padding(.top, 0).simultaneousGesture(monthSwipe)
-            Rectangle().fill(Cool.line).frame(width: 28, height: 1)
-                .frame(maxWidth: .infinity).padding(.top, 8)
+            // 11-28 她给的样子：页首和日历之间一道通栏细线
+            Rectangle().fill(Cool.line).frame(height: 1)
+                .padding(.top, 12)
                 .accessibilityHidden(true)
             // 1116：一屏放下——月历常驻展开，翻月的箭头并进标题那一行
             calendarHeader.padding(.top, 6)
             // 换一面就是一整张新的月历：旧的淡出，新的从下面轻轻浮上来
+            // 11-28 她给的样子：月历放进一张细边圆角卡片里
             monthGrid
                 .offset(x: swipeX)
                 .simultaneousGesture(monthSwipe)
                 .id(face)
                 .transition(reduceMotion ? .opacity : .asymmetric(insertion: .opacity.combined(with: .offset(y: 12)),
                                                                   removal: .opacity))
-            // 1116 她：日历结束不写「接下来」，跟上面一样来一道短横线，下面直接排日程
-            Rectangle().fill(Cool.line).frame(width: 28, height: 1)
-                .frame(maxWidth: .infinity)
-                .padding(.top, 8)
-                .padding(.bottom, 4)
-                .accessibilityHidden(true)
+                .padding(.horizontal, 8).padding(.vertical, 6)
+                .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Cool.paper))
+                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Cool.line, lineWidth: 1))
+                .padding(.top, 4)
+            // 11-28 她这回要了「即将到来」的小标题（以前 1116 说不写，这次她给的样子里有）
+            if face == .shift {
+                Text("即将到来").font(.system(size: 15, weight: .semibold)).foregroundStyle(Cool.ink)
+                    .padding(.top, 16).padding(.bottom, 6)
+            } else {
+                Color.clear.frame(height: 12)
+            }
             ScrollView {
                 if face == .shift {
                     // 11-18 她：「中间 ----- 下面看医生 / 奶茶杯数 / 本月次数要一致的高度」——三面下面第一行都从同一个高度起
@@ -194,24 +201,24 @@ struct UsPondView: View {
                         // 11-17 她：「天数是滚轮滑动，改成往上滑」——一格窗口里，旧的数字往上滚出去、新的从下面滚上来
                         ZStack(alignment: .bottomLeading) {
                             HStack(alignment: .lastTextBaseline, spacing: 6) {
-                                Text(n.number).font(Cool.didot(n.number == "今天" ? 34 : 46, .largeTitle))
+                                Text(n.number).font(Cool.didot(n.number == "今天" ? 38 : 56, .largeTitle))
                                     .foregroundStyle(Cool.number).lineLimit(1).minimumScaleFactor(0.6)
                                     .monospacedDigit()
-                                Text(n.unit).font(.custom("NotoSerifSC-Light", size: 14, relativeTo: .footnote)).foregroundStyle(Cool.ink.opacity(0.75))
+                                Text(n.unit).font(.custom("NotoSerifSC-Regular", size: 22, relativeTo: .title3)).foregroundStyle(Cool.ink)
                             }
                             .id("number-" + a.id)
                             .transition(rollTransition)
                         }
-                        .frame(maxWidth: .infinity, minHeight: 58, maxHeight: 58, alignment: .bottomLeading)
+                        .frame(maxWidth: .infinity, minHeight: 68, maxHeight: 68, alignment: .bottomLeading)
                         .clipped()
                         .accessibilityElement(children: .combine)
                         .accessibilityHint("往上划换下一个日子，往下划换回上一个")
                     }
                 }
                 // 原型那两行：一句中文、一行斜体英文（她：留白克制，日期那行挪到纪念日面板里看）
-                Text(verseZh).font(Cool.song(12, .footnote)).tracking(0.6).lineSpacing(5).foregroundStyle(Cool.secondary)
+                Text(verseZh).font(.custom("NotoSerifSC-Light", size: 13, relativeTo: .footnote)).tracking(0.6).lineSpacing(5).foregroundStyle(Cool.ink.opacity(0.78))
                     .lineLimit(2).fixedSize(horizontal: false, vertical: true).padding(.top, 10)
-                Text(verseEn.lowercased()).font(Cool.didotItalic(12, .footnote)).tracking(0.4).lineSpacing(3).foregroundStyle(Cool.faint)
+                Text(verseEn).font(Cool.didot(13, .footnote)).tracking(0.4).lineSpacing(3).foregroundStyle(Cool.faint)
                     .lineLimit(2).fixedSize(horizontal: false, vertical: true).padding(.top, 7)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -324,14 +331,14 @@ struct UsPondView: View {
                 Spacer(minLength: 4)
                 // 137：点的范围放到 44×44，箭头本身不变
                 Button { month = vm.month(byAdding: -1, to: month) } label: {
-                    Image(systemName: "chevron.left").font(.system(size: 13, weight: .ultraLight)).foregroundStyle(Cool.faint).frame(width: 36, height: 44).contentShape(Rectangle())
+                    Image(systemName: "chevron.left").font(.system(size: 14, weight: .medium)).foregroundStyle(Cool.mauve.opacity(0.7)).frame(width: 36, height: 44).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("上个月")
                 // 不在本月时点年月回到本月（原来那个「回到本月」挪到这里，顶上放不下了）
                 Button { if !vm.isCurrentMonth(month) { month = vm.startOfMonth(for: .now) } } label: {
                     // 11-28 她：「优化视觉层级」——年月是日历的标题，跟数字一个颜色、大一号；箭头退到最淡
-                    Text(Self.yearMonth(month)).font(Cool.didot(17, .subheadline))
+                    Text(Self.yearMonth(month)).font(.system(size: 18, weight: .semibold, design: .default))
                         .foregroundStyle(vm.isCurrentMonth(month) ? Cool.ink : Cool.mauve)
                         .lineLimit(1).fixedSize()
                         .frame(minHeight: 44).contentShape(Rectangle())
@@ -340,7 +347,7 @@ struct UsPondView: View {
                 // 不用 .disabled：系统会把禁用的字自动调灰，年月就又退成背景了
                 .accessibilityLabel(vm.monthTitle(for: month) + (vm.isCurrentMonth(month) ? "" : "，点一下回到本月"))
                 Button { month = vm.month(byAdding: 1, to: month) } label: {
-                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .ultraLight)).foregroundStyle(Cool.faint).frame(width: 36, height: 44).contentShape(Rectangle())
+                    Image(systemName: "chevron.right").font(.system(size: 14, weight: .medium)).foregroundStyle(Cool.mauve.opacity(0.7)).frame(width: 36, height: 44).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("下个月")
@@ -355,14 +362,13 @@ struct UsPondView: View {
         return LazyVGrid(columns: columns, spacing: 0) {
             ForEach(Self.weekdayNames, id: \.self) { name in
                 // 星期比以前清楚一档；周末两天用主色，一眼分得出来
-                Text(name).font(Cool.tiny()).foregroundStyle(name == "六" || name == "日" ? Cool.mauve.opacity(0.8) : Cool.secondary)
-                    .frame(height: 26).accessibilityHidden(true)
+                Text(name).font(.system(size: 13, weight: .light)).foregroundStyle(Cool.mauve.opacity(0.75))
+                    .frame(height: 34).accessibilityHidden(true)
             }
             ForEach(Array(vm.monthCells(for: month).enumerated()), id: \.offset) { _, date in
-                if let date { cell(date, anniversaries: annDays) } else { Color.clear.frame(height: 53) }
+                if let date { cell(date, anniversaries: annDays) } else { Color.clear.frame(height: 56) }
             }
         }
-        .padding(.horizontal, -6)
     }
 
     /// 格子里那行字：取标题前 4 个字，去掉尾巴上的标点和空格（「复诊 · 抽血」不至于只剩「复诊 ·」）
@@ -394,28 +400,33 @@ struct UsPondView: View {
     /// 点这一行直接弹出这个日程，再看备注、要跟医生说的。
     private func upcomingRow(_ event: CalendarEvent) -> some View {
         let c = Calendar.current
-        let monthDay = "\(c.component(.month, from: event.start)) 月 \(c.component(.day, from: event.start)) 日"
         let weekday = Self.weekdayNames[(c.component(.weekday, from: event.start) + 5) % 7]
         let time = event.start.formatted(.dateTime.hour().minute())
-        return HStack(alignment: .firstTextBaseline, spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(monthDay).font(Cool.didot(15, .subheadline)).foregroundStyle(Cool.number).monospacedDigit()
-                Text("周\(weekday) \(time)").font(Cool.tiny()).foregroundStyle(Cool.secondary)
+        // 11-28 她给的样子：一张淡底圆角卡，左边一道主色竖条；左边日期小方块（月在上、日在下），中间标题加粗、下面周几和时间，右边一个小箭头
+        return HStack(spacing: 14) {
+            VStack(spacing: 0) {
+                Text("\(c.component(.month, from: event.start))月").font(.system(size: 12, weight: .medium))
+                Text("\(c.component(.day, from: event.start))").font(.system(size: 20, weight: .semibold)).monospacedDigit()
             }
-            .frame(width: 96, alignment: .leading)
-            // 11-28：日程名是这一行的主角——细宋体太淡，换细一档的正常宋体、大一号
-            Text(Self.upcomingLine(event)).font(.custom("NotoSerifSC-Light", size: 14, relativeTo: .subheadline)).foregroundStyle(Cool.ink)
-                .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            .foregroundStyle(Cool.ink)
+            .frame(width: 50, height: 50)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Cool.mauve.opacity(0.12)))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(Self.upcomingLine(event)).font(.system(size: 17, weight: .semibold)).foregroundStyle(Cool.ink)
+                    .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                Text("周\(weekday) · \(time)").font(.system(size: 13)).foregroundStyle(Cool.secondary)
+            }
             Spacer(minLength: 0)
             if let said = event.symptoms, !said.isEmpty {
-                // 有记下要跟医生说的，只挂一个小点提示点进去看
-                Circle().fill(Cool.mauve).frame(width: 4, height: 4).accessibilityHidden(true)
+                // 有记下要跟医生说的，挂一个小点提示点进去看
+                Circle().fill(Cool.mauve).frame(width: 5, height: 5).accessibilityHidden(true)
             }
+            Image(systemName: "chevron.right").font(.system(size: 13, weight: .medium)).foregroundStyle(Cool.secondary)
         }
-        .padding(.vertical, 8)
-        .padding(.leading, 10)
-        // 左边一道主色细线，像便签的边，跟上面的日历分开
-        .overlay(alignment: .leading) { Capsule().fill(Cool.mauve.opacity(0.55)).frame(width: 2).padding(.vertical, 8) }
+        .padding(.vertical, 14).padding(.leading, 16).padding(.trailing, 16)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Cool.mauve.opacity(0.05)))
+        .overlay(alignment: .leading) { Capsule().fill(Cool.mauve.opacity(0.7)).frame(width: 3).padding(.vertical, 2) }
+        .padding(.bottom, 10)
         .contentShape(Rectangle())
         .onTapGesture { openEvent = event }
         .accessibilityElement(children: .combine)
@@ -434,7 +445,7 @@ struct UsPondView: View {
 
     private static func yearMonth(_ date: Date) -> String {
         let c = Calendar.current
-        return "\(c.component(.year, from: date)) / " + String(format: "%02d", c.component(.month, from: date))
+        return "\(c.component(.year, from: date))年 \(c.component(.month, from: date))月"
     }
 
     @ViewBuilder private func cell(_ date: Date, anniversaries: Set<String>) -> some View {
@@ -500,36 +511,30 @@ struct UsPondView: View {
         } label: {
             VStack(spacing: -3) {
                 Text("\(Calendar.current.component(.day, from: date))")
-                    .font(Cool.didot(17, .body)).monospacedDigit()
+                    .font(.system(size: 18, weight: isToday && !period ? .semibold : .regular)).monospacedDigit()
                     .foregroundStyle(isToday && !period ? Cool.paper : (isPast ? Cool.secondary.opacity(0.75) : Cool.number))
                     .lineLimit(1).minimumScaleFactor(0.7)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 38, height: 38)
                     // 11-17 她：「经期我想要方块的粉色阴影，比如 1-5 号可以连起来的那种」——粉色画在整格后面（见下面 periodBand），
                     // 数字这里只留「今天」的圈；今天正好在经期，就描一圈细线
                     // 11-28：今天是整张日历的锚——实心主色圆、纸色数字（以前的淡圈跟别的格子分不出来）
                     .background(Circle().fill(isToday && !period ? Cool.mauve : .clear))
                     .overlay(Circle().stroke(isToday && period ? Cool.number.opacity(0.45) : .clear, lineWidth: 0.8))
-                    .overlay(alignment: .topTrailing) {
-                        if anniversary || times > 0 {
-                            HStack(spacing: 1) {
-                                if anniversary { Text("☾").font(.system(size: 9)) }
-                                if times > 0 { Image(systemName: "heart.fill").font(.system(size: 6)) }
-                            }
-                            .foregroundStyle(Cool.heart).offset(x: 9, y: -2)
+                    // 11-28 她给的样子：数字正上方挂小圆点——深色是有日程，浅粉是亲密，纪念日一弯小月
+                    .overlay(alignment: .top) {
+                        HStack(spacing: 3) {
+                            if !dayEvents.isEmpty { Circle().fill(Cool.mauve).frame(width: 5, height: 5) }
+                            if times > 0 { Circle().fill(Cool.heart.opacity(0.6)).frame(width: 5, height: 5) }
+                            if anniversary { Text("☾").font(.system(size: 8)).foregroundStyle(Cool.heart) }
                         }
-                    }
-                    // 1116：有日程（看医生的号）的那天，左上挂一个小点
-                    .overlay(alignment: .topLeading) {
-                        if !dayEvents.isEmpty {
-                            Circle().fill(Cool.mauve).frame(width: 5, height: 5).offset(x: -4, y: 1)
-                        }
+                        .offset(y: -7)
                     }
                 // 有班写班（淡）；没班、写的是日程名（看医生）就用主色，有事的日子一眼看得到
                 let isEventLabel = vm.shift(on: date) == nil && !dayEvents.isEmpty
                 Text(shown ?? " ").font(Cool.tiny()).tracking(0.5).lineLimit(1).minimumScaleFactor(0.7)
                     .foregroundStyle(isEventLabel ? Cool.mauve : (isPast ? Cool.faint : Cool.secondary))
             }
-            .frame(maxWidth: .infinity, minHeight: 53, maxHeight: 53, alignment: .top)   // 三面同一个高度，切换不跳
+            .frame(maxWidth: .infinity, minHeight: 56, maxHeight: 56, alignment: .top)   // 三面同一个高度，切换不跳
             .background(alignment: .top) { if period { periodBand(date) } }
             .contentShape(Rectangle())
         }
