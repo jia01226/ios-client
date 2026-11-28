@@ -55,6 +55,9 @@ struct UsPondView: View {
     @AppStorage("us.hero.anniversary") private var heroID = "together"
     /// 126：底栏浮在页面上，滚到最底时让出它那一截
     @Environment(\.floatingDockInset) private var dockInset
+    /// 11-28 挑粉色用：换了就整页重画
+    @AppStorage(Cool.pinkKey) private var pinkIndex = 0
+    private static let showsPinkPicker = ProcessInfo.processInfo.arguments.contains("-ui-test-pink-picker")
     private var paper: Color { Cool.paper }
 
     init(line: ChatLine) {
@@ -91,8 +94,15 @@ struct UsPondView: View {
                                                                   removal: .opacity))
                 .padding(.horizontal, -4)
                 .padding(.top, 2)
-            // 11-28 她：「不想要那个即将到来」——小标题拿掉，空一点距离直接排日程
-            Color.clear.frame(height: 14)
+            // 11-28 她：「不想要那个即将到来」——小标题拿掉；
+            // 又说「上面日历和下面提醒要有点区别」——跟页首下面一样来一道通栏细线，中间一颗粉色小花点，上下留够空
+            ZStack {
+                Rectangle().fill(Cool.line).frame(height: 1)
+                Text("✿").font(.system(size: 11)).foregroundStyle(Cool.pink)
+                    .padding(.horizontal, 8).background(Cool.paper)
+            }
+            .padding(.top, 10).padding(.bottom, 14)
+            .accessibilityHidden(true)
             ScrollView {
                 if face == .shift {
                     // 11-18 她：「中间 ----- 下面看医生 / 奶茶杯数 / 本月次数要一致的高度」——三面下面第一行都从同一个高度起
@@ -123,6 +133,27 @@ struct UsPondView: View {
         .padding(.horizontal, 28)
         .padding(.top, 8)
         .padding(.bottom, 4 + dockInset)
+        // 11-28 挑粉色：模拟器里底部一排切换（正式版不出现）
+        .overlay(alignment: .bottom) {
+            if Self.showsPinkPicker {
+                HStack(spacing: 6) {
+                    ForEach(Array(Cool.pinkPalettes.enumerated()), id: \.offset) { i, p in
+                        Button { pinkIndex = i } label: {
+                            HStack(spacing: 4) {
+                                Circle().fill(Color(hex: p.accent)).frame(width: 10, height: 10)
+                                Text(p.name).font(.system(size: 12, weight: pinkIndex == i ? .semibold : .regular))
+                            }
+                            .padding(.horizontal, 9).frame(height: 32)
+                            .background(Capsule().fill(Color(hex: p.soft)))
+                            .overlay(Capsule().strokeBorder(pinkIndex == i ? Color(hex: p.accent) : .clear, lineWidth: 1.5))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.bottom, dockInset + 8)
+            }
+        }
+        .id(pinkIndex)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(paper.ignoresSafeArea())
         .foregroundStyle(Cool.ink)
@@ -866,11 +897,23 @@ enum Cool {
     static var line: Color { Ink.line.opacity(0.6) }
     static var today: Color { Ink.track }
     static let period = Color(hex: 0xF5E2EC)
-    static let heart = Color(hex: 0xE08AAE)
-    /// 11-28 她：「整体有点深了，要粉色、浅粉色」——这页的强调色从深梅换成粉
-    static let pink = Color(hex: 0xE07FA5)        // 今天的圆、选中的下划线、有事的小圆点
-    static let pinkSoft = Color(hex: 0xFCE8EF)    // 日程卡的底、日期小方块
-    static let pinkText = Color(hex: 0xB2557C)    // 粉底上的字
+    /// 11-28 她：「整体有点深了，要粉色、浅粉色」→「太荧光了」→ 挑了 1/2/4/5 四版柔和粉在模拟器里切着比。
+    /// 每版三个色：主色（今天的圆、下划线、爱心、有事的点）、浅底（日程卡）、粉字。
+    static let pinkPalettes: [(name: String, accent: UInt32, soft: UInt32, text: UInt32)] = [
+        ("樱花雾粉", 0xE3A1B6, 0xFBF0F3, 0xA65F7B),
+        ("豆沙粉", 0xC88C9C, 0xF6ECEF, 0x8C5467),
+        ("藕粉", 0xCBA2AE, 0xF5EEF0, 0x896170),
+        ("奶油粉", 0xEDB8C7, 0xFEF5F7, 0xB06D86),
+    ]
+    static let pinkKey = "us.pink.palette"
+    private static var pinkNow: (name: String, accent: UInt32, soft: UInt32, text: UInt32) {
+        let i = UserDefaults.standard.integer(forKey: pinkKey)
+        return pinkPalettes[min(max(0, i), pinkPalettes.count - 1)]
+    }
+    static var heart: Color { Color(hex: pinkNow.accent) }
+    static var pink: Color { Color(hex: pinkNow.accent) }        // 今天的圆、选中的下划线、有事的小圆点
+    static var pinkSoft: Color { Color(hex: pinkNow.soft) }      // 日程卡的底
+    static var pinkText: Color { Color(hex: pinkNow.text) }      // 粉色的小字
     /// 11-25 她：要锁屏时钟那种衬线数字。锁屏那档是苹果的 New York（系统自带衬线），
     /// 取不到就退回 Didot，不至于变成无衬线。
     private static let numberFont: String = {
