@@ -908,10 +908,11 @@ enum Cool {
     static var pink: Color { Color(hex: pinkNow.accent) }        // 今天的圆、选中的下划线、有事的小圆点
     static var pinkSoft: Color { Color(hex: pinkNow.soft) }      // 日程卡的底
     static var pinkText: Color { Color(hex: pinkNow.text) }      // 粉色的小字
-    /// 11-28 她：今天那颗粉圆跟下面的提醒卡不要一个颜色——提醒卡用淡紫丁香，跟粉色搭
-    static let lilac = Color(hex: 0xB8A6D9)       // 竖条、箭头
-    static let lilacSoft = Color(hex: 0xF3F0FA)   // 卡片底
-    static let lilacText = Color(hex: 0x6F5E93)   // 卡片上的小字
+    /// 11-28 她：今天那颗粉圆跟下面的提醒卡不要一个颜色；试了淡紫她说不好看，要「两种不同的粉」——
+    /// 今天是偏冷的樱花粉，提醒卡是偏暖的蜜桃粉（名字沿用 lilac，省得到处改）
+    static let lilac = Color(hex: 0xEFAA9C)       // 竖条、箭头
+    static let lilacSoft = Color(hex: 0xFDF1EE)   // 卡片底
+    static let lilacText = Color(hex: 0xB0675C)   // 卡片上的小字
     /// 11-25 她：要锁屏时钟那种衬线数字。锁屏那档是苹果的 New York（系统自带衬线），
     /// 取不到就退回 Didot，不至于变成无衬线。
     private static let numberFont: String = {
