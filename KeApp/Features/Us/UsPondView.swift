@@ -95,14 +95,8 @@ struct UsPondView: View {
                 .padding(.horizontal, -4)
                 .padding(.top, 2)
             // 11-28 她：「不想要那个即将到来」——小标题拿掉；
-            // 又说「上面日历和下面提醒要有点区别」——跟页首下面一样来一道通栏细线，中间一颗粉色小花点，上下留够空
-            ZStack {
-                Rectangle().fill(Cool.line).frame(height: 1)
-                Text("✿").font(.system(size: 11)).foregroundStyle(Cool.pink)
-                    .padding(.horizontal, 8).background(Cool.paper)
-            }
-            .padding(.top, 10).padding(.bottom, 14)
-            .accessibilityHidden(true)
+            // 她说的「区别」是颜色：今天的粉圆和下面的提醒卡别撞色（不要加线）——提醒卡换成淡紫丁香
+            Color.clear.frame(height: 14)
             ScrollView {
                 if face == .shift {
                     // 11-18 她：「中间 ----- 下面看医生 / 奶茶杯数 / 本月次数要一致的高度」——三面下面第一行都从同一个高度起
@@ -432,25 +426,25 @@ struct UsPondView: View {
                 Text("\(c.component(.month, from: event.start))月").font(.system(size: 12, weight: .medium))
                 Text("\(c.component(.day, from: event.start))").font(.system(size: 20, weight: .semibold)).monospacedDigit()
             }
-            .foregroundStyle(Cool.pinkText)
+            .foregroundStyle(Cool.lilacText)
             .frame(width: 50, height: 50)
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.75)))
             VStack(alignment: .leading, spacing: 4) {
                 Text(Self.upcomingLine(event)).font(.system(size: 17, weight: .semibold)).foregroundStyle(Cool.ink)
                     .lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                Text("周\(weekday) · \(time)").font(.system(size: 13)).foregroundStyle(Cool.pinkText.opacity(0.75))
+                Text("周\(weekday) · \(time)").font(.system(size: 13)).foregroundStyle(Cool.lilacText.opacity(0.8))
             }
             Spacer(minLength: 0)
             if let said = event.symptoms, !said.isEmpty {
                 // 有记下要跟医生说的，挂一个小点提示点进去看
                 Circle().fill(Cool.mauve).frame(width: 5, height: 5).accessibilityHidden(true)
             }
-            Image(systemName: "chevron.right").font(.system(size: 13, weight: .medium)).foregroundStyle(Cool.pink)
+            Image(systemName: "chevron.right").font(.system(size: 13, weight: .medium)).foregroundStyle(Cool.lilac)
         }
         .padding(.vertical, 14).padding(.leading, 16).padding(.trailing, 16)
         // 11-28 她：颜色太深难看——整张卡浅粉底，左边粉色竖条
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Cool.pinkSoft))
-        .overlay(alignment: .leading) { Capsule().fill(Cool.pink.opacity(0.8)).frame(width: 3).padding(.vertical, 10) }
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Cool.lilacSoft))
+        .overlay(alignment: .leading) { Capsule().fill(Cool.lilac).frame(width: 3).padding(.vertical, 10) }
         .padding(.bottom, 10)
         .contentShape(Rectangle())
         .onTapGesture { openEvent = event }
@@ -914,6 +908,10 @@ enum Cool {
     static var pink: Color { Color(hex: pinkNow.accent) }        // 今天的圆、选中的下划线、有事的小圆点
     static var pinkSoft: Color { Color(hex: pinkNow.soft) }      // 日程卡的底
     static var pinkText: Color { Color(hex: pinkNow.text) }      // 粉色的小字
+    /// 11-28 她：今天那颗粉圆跟下面的提醒卡不要一个颜色——提醒卡用淡紫丁香，跟粉色搭
+    static let lilac = Color(hex: 0xB8A6D9)       // 竖条、箭头
+    static let lilacSoft = Color(hex: 0xF3F0FA)   // 卡片底
+    static let lilacText = Color(hex: 0x6F5E93)   // 卡片上的小字
     /// 11-25 她：要锁屏时钟那种衬线数字。锁屏那档是苹果的 New York（系统自带衬线），
     /// 取不到就退回 Didot，不至于变成无衬线。
     private static let numberFont: String = {
