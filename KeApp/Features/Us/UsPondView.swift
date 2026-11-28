@@ -131,13 +131,13 @@ struct UsPondView: View {
         .overlay(alignment: .bottom) {
             if Self.showsPinkPicker {
                 HStack(spacing: 6) {
-                    ForEach(Array(Cool.pinkPalettes.enumerated()), id: \.offset) { i, p in
+                    ForEach(Array(Cool.notePalettes.enumerated()), id: \.offset) { i, p in
                         Button { pinkIndex = i } label: {
-                            HStack(spacing: 4) {
-                                Circle().fill(Color(hex: p.accent)).frame(width: 10, height: 10)
-                                Text(p.name).font(.system(size: 12, weight: pinkIndex == i ? .semibold : .regular))
+                            HStack(spacing: 3) {
+                                Circle().fill(Color(hex: p.accent)).frame(width: 9, height: 9)
+                                Text(p.name).font(.system(size: 11, weight: pinkIndex == i ? .semibold : .regular))
                             }
-                            .padding(.horizontal, 9).frame(height: 32)
+                            .padding(.horizontal, 7).frame(height: 30)
                             .background(Capsule().fill(Color(hex: p.soft)))
                             .overlay(Capsule().strokeBorder(pinkIndex == i ? Color(hex: p.accent) : .clear, lineWidth: 1.5))
                         }
@@ -899,10 +899,20 @@ enum Cool {
         ("藕粉", 0xCBA2AE, 0xF5EEF0, 0x896170),
         ("奶油粉", 0xEDB8C7, 0xFEF5F7, 0xB06D86),
     ]
-    static let pinkKey = "us.pink.palette"
-    private static var pinkNow: (name: String, accent: UInt32, soft: UInt32, text: UInt32) {
+    /// 11-28 她：「上面可以定藕粉」——日历这边固定用藕粉
+    private static var pinkNow: (name: String, accent: UInt32, soft: UInt32, text: UInt32) { pinkPalettes[2] }
+    /// 下面的提醒卡换一种不同的粉，她在模拟器里切着挑
+    static let notePalettes: [(name: String, accent: UInt32, soft: UInt32, text: UInt32)] = [
+        ("蜜桃粉", 0xEFAA9C, 0xFDF1EE, 0xB0675C),
+        ("樱花粉", 0xE3A1B6, 0xFBF0F3, 0xA65F7B),
+        ("奶油粉", 0xEDB8C7, 0xFEF5F7, 0xB06D86),
+        ("杏粉", 0xF0B79C, 0xFEF4EF, 0xAE6F52),
+        ("豆沙粉", 0xC88C9C, 0xF6ECEF, 0x8C5467),
+    ]
+    static let pinkKey = "us.note.palette"
+    private static var noteNow: (name: String, accent: UInt32, soft: UInt32, text: UInt32) {
         let i = UserDefaults.standard.integer(forKey: pinkKey)
-        return pinkPalettes[min(max(0, i), pinkPalettes.count - 1)]
+        return notePalettes[min(max(0, i), notePalettes.count - 1)]
     }
     static var heart: Color { Color(hex: pinkNow.accent) }
     static var pink: Color { Color(hex: pinkNow.accent) }        // 今天的圆、选中的下划线、有事的小圆点
@@ -910,9 +920,9 @@ enum Cool {
     static var pinkText: Color { Color(hex: pinkNow.text) }      // 粉色的小字
     /// 11-28 她：今天那颗粉圆跟下面的提醒卡不要一个颜色；试了淡紫她说不好看，要「两种不同的粉」——
     /// 今天是偏冷的樱花粉，提醒卡是偏暖的蜜桃粉（名字沿用 lilac，省得到处改）
-    static let lilac = Color(hex: 0xEFAA9C)       // 竖条、箭头
-    static let lilacSoft = Color(hex: 0xFDF1EE)   // 卡片底
-    static let lilacText = Color(hex: 0xB0675C)   // 卡片上的小字
+    static var lilac: Color { Color(hex: noteNow.accent) }       // 竖条、箭头
+    static var lilacSoft: Color { Color(hex: noteNow.soft) }     // 卡片底
+    static var lilacText: Color { Color(hex: noteNow.text) }     // 卡片上的小字
     /// 11-25 她：要锁屏时钟那种衬线数字。锁屏那档是苹果的 New York（系统自带衬线），
     /// 取不到就退回 Didot，不至于变成无衬线。
     private static let numberFont: String = {
