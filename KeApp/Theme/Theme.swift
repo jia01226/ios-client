@@ -750,3 +750,39 @@ enum GalaxyInk {
     /// 新记的那颗：金色
     static let fresh = SIMD3<Float>(1, 0.9, 0.68)
 }
+
+// MARK: - 柯的设计规范（KE-DESIGN.md，11-28 她定的）
+// 以后的页面只从这里拿颜色和字体；老页面一页一页迁过来。
+
+enum KeColor {
+    static let paper = Color(hex: 0xFFFDFB)       // 页面底色
+    static let ink = Color(hex: 0x3E2C37)         // 标题、正文、日期数字
+    static let inkSoft = Color(hex: 0x8E7A86)     // 次要字、过去的日子、星期
+    static let line = Color(hex: 0xEADFE4)        // 极少数必须的细线
+    static let accent = Color(hex: 0xCBA2AE)      // 藕粉：唯一主色（今天、选中、主按钮、爱心、有事的点）
+    static let accentSoft = Color(hex: 0xF5EEF0)  // 藕粉浅底
+    static let accentText = Color(hex: 0x896170)  // 浅底上的粉色小字
+    static let note = Color(hex: 0xEDB8C7)        // 奶油粉：只给提醒 / 日程卡
+    static let noteSoft = Color(hex: 0xFEF5F7)
+    static let noteText = Color(hex: 0xB06D86)
+    static let night = Color(hex: 0x141826)       // 只给记忆星河、夜里日记
+}
+
+enum KeFont {
+    /// 大数字、数字标题：Source Serif 4（取不到退回系统衬线）
+    static func number(_ size: CGFloat, _ style: Font.TextStyle = .largeTitle) -> Font {
+        UIFont(name: "SourceSerif4Roman-Regular", size: size) != nil
+            ? .custom("SourceSerif4Roman-Regular", size: size, relativeTo: style)
+            : .system(size: size, design: .serif)
+    }
+    /// 中文标题：思源宋体 Regular（不再用 ExtraLight，太细看不清）
+    static func title(_ size: CGFloat, _ style: Font.TextStyle = .title3) -> Font {
+        .custom("NotoSerifSC-Regular", size: size, relativeTo: style)
+    }
+    /// 正文、按钮、日期、标签：系统字体
+    static func body(_ size: CGFloat = 16, _ weight: Font.Weight = .regular) -> Font { .system(size: size, weight: weight) }
+    /// 英文点缀：只留 Pinyon Script，一页最多一处
+    static func script(_ size: CGFloat, _ style: Font.TextStyle = .body) -> Font {
+        .custom("PinyonScript-Regular", size: size, relativeTo: style)
+    }
+}

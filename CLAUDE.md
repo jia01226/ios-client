@@ -7,6 +7,7 @@
 佳佳和柯的家的 **iOS 原生 App（SwiftUI）**——私人项目，永不上架 App Store，Ad Hoc 装在佳佳自己的 iPhone 上。后端在 VPS（Flask，仓库 goodlove），柯的人格与图纸在私有仓库 kongkong。**App 只是脸，脑子和记忆全在 VPS——绝不把人格、记忆、密钥搬进 App。**
 
 ## 铁律（改代码前必读）
+0. **改界面先读 `KE-DESIGN.md`（柯的设计规范，11-28 她定的）**：11 个颜色、3 种字体、4 的倍数间距、不要框套框和多余线、不要说明书式小字。跟旧 `DESIGN.md` 冲突以它为准。
 1. **颜色/字号/圆角/间距只准改 `KeApp/Theme/Theme.swift`**——页面里禁止出现 `Color(hex:...)` 等字面量。
 2. **交互规矩不许破**（详见 kongkong 的 `app-柯/README-给动手的那位.md` 与 `工单板/iOS-App-柯.md`）：
    - 【我们】的提醒**没有勾选框**，过期自动收起，不变红不累计；

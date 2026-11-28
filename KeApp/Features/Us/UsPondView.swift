@@ -55,9 +55,7 @@ struct UsPondView: View {
     @AppStorage("us.hero.anniversary") private var heroID = "together"
     /// 126：底栏浮在页面上，滚到最底时让出它那一截
     @Environment(\.floatingDockInset) private var dockInset
-    /// 11-28 挑粉色用：换了就整页重画
-    @AppStorage(Cool.pinkKey) private var pinkIndex = 0
-    private static let showsPinkPicker = ProcessInfo.processInfo.arguments.contains("-ui-test-pink-picker")
+
     private var paper: Color { Cool.paper }
 
     init(line: ChatLine) {
@@ -96,7 +94,7 @@ struct UsPondView: View {
                 .padding(.top, 2)
             // 11-28 她：「不想要那个即将到来」——小标题拿掉；
             // 她说的「区别」是颜色：今天的粉圆和下面的提醒卡别撞色（不要加线）——提醒卡换成淡紫丁香
-            Color.clear.frame(height: 14)
+            Color.clear.frame(height: 24)
             ScrollView {
                 if face == .shift {
                     // 11-18 她：「中间 ----- 下面看医生 / 奶茶杯数 / 本月次数要一致的高度」——三面下面第一行都从同一个高度起
@@ -127,27 +125,6 @@ struct UsPondView: View {
         .padding(.horizontal, 28)
         .padding(.top, 8)
         .padding(.bottom, 4 + dockInset)
-        // 11-28 挑粉色：模拟器里底部一排切换（正式版不出现）
-        .overlay(alignment: .bottom) {
-            if Self.showsPinkPicker {
-                HStack(spacing: 6) {
-                    ForEach(Array(Cool.notePalettes.enumerated()), id: \.offset) { i, p in
-                        Button { pinkIndex = i } label: {
-                            HStack(spacing: 3) {
-                                Circle().fill(Color(hex: p.accent)).frame(width: 9, height: 9)
-                                Text(p.name).font(.system(size: 11, weight: pinkIndex == i ? .semibold : .regular))
-                            }
-                            .padding(.horizontal, 7).frame(height: 30)
-                            .background(Capsule().fill(Color(hex: p.soft)))
-                            .overlay(Capsule().strokeBorder(pinkIndex == i ? Color(hex: p.accent) : .clear, lineWidth: 1.5))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.bottom, dockInset + 8)
-            }
-        }
-        .id(pinkIndex)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(paper.ignoresSafeArea())
         .foregroundStyle(Cool.ink)
@@ -207,7 +184,7 @@ struct UsPondView: View {
                         // 106：点名字换成别的纪念日（还有几天、今天是……）
                         // 11-17 她：「上面的说明也会动」——名字原地淡入淡出，不跟着走
                         Button { choosingAnniversary = true } label: {
-                            Text(eyebrow(a)).font(.custom("NotoSerifSC-Light", size: 12, relativeTo: .caption)).tracking(2.2)
+                            Text(eyebrow(a)).font(KeFont.body(12, .medium)).tracking(2)
                                 .foregroundStyle(Cool.pinkText)
                                 .id("eyebrow-" + a.id)
                                 .transition(.opacity)
@@ -219,10 +196,10 @@ struct UsPondView: View {
                         // 11-17 她：「天数是滚轮滑动，改成往上滑」——一格窗口里，旧的数字往上滚出去、新的从下面滚上来
                         ZStack(alignment: .bottomLeading) {
                             HStack(alignment: .lastTextBaseline, spacing: 6) {
-                                Text(n.number).font(Cool.didot(n.number == "今天" ? 38 : 56, .largeTitle))
+                                Text(n.number).font(n.number == "今天" ? KeFont.title(36, .largeTitle) : KeFont.number(56))
                                     .foregroundStyle(Cool.number).lineLimit(1).minimumScaleFactor(0.6)
                                     .monospacedDigit()
-                                Text(n.unit).font(.custom("NotoSerifSC-Regular", size: 22, relativeTo: .title3)).foregroundStyle(Cool.ink)
+                                Text(n.unit).font(KeFont.title(22)).foregroundStyle(Cool.ink)
                             }
                             .id("number-" + a.id)
                             .transition(rollTransition)
@@ -234,9 +211,9 @@ struct UsPondView: View {
                     }
                 }
                 // 原型那两行：一句中文、一行斜体英文（她：留白克制，日期那行挪到纪念日面板里看）
-                Text(verseZh).font(.custom("NotoSerifSC-Light", size: 13, relativeTo: .footnote)).tracking(0.6).lineSpacing(5).foregroundStyle(Cool.ink.opacity(0.78))
+                Text(verseZh).font(KeFont.title(14, .footnote)).tracking(0.6).lineSpacing(6).foregroundStyle(Cool.secondary)
                     .lineLimit(2).fixedSize(horizontal: false, vertical: true).padding(.top, 10)
-                Text(verseEn).font(Cool.didot(13, .footnote)).tracking(0.4).lineSpacing(3).foregroundStyle(Cool.faint)
+                Text(verseEn).font(KeFont.script(18, .footnote)).tracking(0.4).lineSpacing(3).foregroundStyle(Cool.faint)
                     .lineLimit(2).fixedSize(horizontal: false, vertical: true).padding(.top, 7)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -380,7 +357,7 @@ struct UsPondView: View {
         return LazyVGrid(columns: columns, spacing: 0) {
             ForEach(Self.weekdayNames, id: \.self) { name in
                 // 星期比以前清楚一档；周末两天用主色，一眼分得出来
-                Text(name).font(.system(size: 13, weight: .light)).foregroundStyle(Cool.pinkText.opacity(0.6))
+                Text(name).font(KeFont.body(12)).foregroundStyle(Cool.secondary)
                     .frame(height: 34).accessibilityHidden(true)
             }
             ForEach(Array(vm.monthCells(for: month).enumerated()), id: \.offset) { _, date in
@@ -440,8 +417,8 @@ struct UsPondView: View {
             Text("周\(weekday) \(time)").font(.system(size: 12)).foregroundStyle(Cool.lilacText.opacity(0.85))
                 .lineLimit(1).fixedSize()
         }
-        .padding(.vertical, 8).padding(.leading, 12).padding(.trailing, 14)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Cool.lilacSoft))
+        .padding(.vertical, 8).padding(.leading, 12).padding(.trailing, 16)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Cool.lilacSoft))
         .overlay(alignment: .leading) { Capsule().fill(Cool.lilac).frame(width: 3).padding(.vertical, 10) }
         .padding(.bottom, 8)
         .contentShape(Rectangle())
@@ -531,7 +508,7 @@ struct UsPondView: View {
                     .font(.system(size: 18, weight: isToday && !period ? .semibold : .regular)).monospacedDigit()
                     .foregroundStyle(isToday && !period ? Cool.paper : (isPast ? Cool.secondary.opacity(0.75) : Cool.number))
                     .lineLimit(1).minimumScaleFactor(0.7)
-                    .frame(width: 38, height: 38)
+                    .frame(width: 40, height: 40)
                     // 11-17 她：「经期我想要方块的粉色阴影，比如 1-5 号可以连起来的那种」——粉色画在整格后面（见下面 periodBand），
                     // 数字这里只留「今天」的圈；今天正好在经期，就描一圈细线
                     // 11-28：今天是整张日历的锚——实心主色圆、纸色数字（以前的淡圈跟别的格子分不出来）
@@ -555,7 +532,7 @@ struct UsPondView: View {
                 // 有班写班（淡）；没班、写的是日程名（看医生）就用主色，有事的日子一眼看得到
                 let isEventLabel = vm.shift(on: date) == nil && !dayEvents.isEmpty
                 Text(shown ?? " ").font(Cool.tiny()).tracking(0.5).lineLimit(1).minimumScaleFactor(0.7)
-                    .foregroundStyle(isEventLabel ? Cool.pinkText : (isPast ? Cool.faint : Cool.secondary))
+                    .foregroundStyle(isEventLabel ? Cool.pinkText : Cool.secondary)
             }
             .frame(maxWidth: .infinity, minHeight: 56, maxHeight: 56, alignment: .top)   // 三面同一个高度，切换不跳
             .background(alignment: .top) { if period { periodBand(date) } }
@@ -880,47 +857,24 @@ enum PondEntry: String, Identifiable {
 /// 11-17 她：「设置的那个统一，就应该统一所有的背景颜色」——「我们」「柯的」原来是一套冷的蓝灰（纸偏蓝、字蓝灰），
 /// 跟设置、聊天的暖墨对不上。现在纸跟她在「主题色」里挑的那张走，字、线、强调色都用设置那套暖墨（Ink）。
 enum Cool {
+    // 11-28 换成「柯的设计规范」（KE-DESIGN.md / Theme.swift 的 KeColor）：这页的颜色都从那里来。
+    // 纸色照旧跟她在素笺里挑的走。
     static var paper: Color { CamelliaPalette.stored().paper }
-    static var ink: Color { Ink.primary }
-    static var number: Color { Ink.primary }
-    static var secondary: Color { Ink.secondary }
-    static var mauve: Color { Ink.accent }
-    static var faint: Color { Ink.secondary.opacity(0.65) }   // 装饰用
-    static var line: Color { Ink.line.opacity(0.6) }
-    static var today: Color { Ink.track }
-    static let period = Color(hex: 0xF5E2EC)
-    /// 11-28 她：「整体有点深了，要粉色、浅粉色」→「太荧光了」→ 挑了 1/2/4/5 四版柔和粉在模拟器里切着比。
-    /// 每版三个色：主色（今天的圆、下划线、爱心、有事的点）、浅底（日程卡）、粉字。
-    static let pinkPalettes: [(name: String, accent: UInt32, soft: UInt32, text: UInt32)] = [
-        ("樱花雾粉", 0xE3A1B6, 0xFBF0F3, 0xA65F7B),
-        ("豆沙粉", 0xC88C9C, 0xF6ECEF, 0x8C5467),
-        ("藕粉", 0xCBA2AE, 0xF5EEF0, 0x896170),
-        ("奶油粉", 0xEDB8C7, 0xFEF5F7, 0xB06D86),
-    ]
-    /// 11-28 她：「上面可以定藕粉」——日历这边固定用藕粉
-    private static var pinkNow: (name: String, accent: UInt32, soft: UInt32, text: UInt32) { pinkPalettes[2] }
-    /// 下面的提醒卡换一种不同的粉，她在模拟器里切着挑
-    static let notePalettes: [(name: String, accent: UInt32, soft: UInt32, text: UInt32)] = [
-        ("蜜桃粉", 0xEFAA9C, 0xFDF1EE, 0xB0675C),
-        ("樱花粉", 0xE3A1B6, 0xFBF0F3, 0xA65F7B),
-        ("奶油粉", 0xEDB8C7, 0xFEF5F7, 0xB06D86),
-        ("杏粉", 0xF0B79C, 0xFEF4EF, 0xAE6F52),
-        ("豆沙粉", 0xC88C9C, 0xF6ECEF, 0x8C5467),
-    ]
-    static let pinkKey = "us.note.palette"
-    private static var noteNow: (name: String, accent: UInt32, soft: UInt32, text: UInt32) {
-        let i = UserDefaults.standard.integer(forKey: pinkKey)
-        return notePalettes[min(max(0, i), notePalettes.count - 1)]
-    }
-    static var heart: Color { Color(hex: pinkNow.accent) }
-    static var pink: Color { Color(hex: pinkNow.accent) }        // 今天的圆、选中的下划线、有事的小圆点
-    static var pinkSoft: Color { Color(hex: pinkNow.soft) }      // 日程卡的底
-    static var pinkText: Color { Color(hex: pinkNow.text) }      // 粉色的小字
-    /// 11-28 她：今天那颗粉圆跟下面的提醒卡不要一个颜色；试了淡紫她说不好看，要「两种不同的粉」——
-    /// 今天是偏冷的樱花粉，提醒卡是偏暖的蜜桃粉（名字沿用 lilac，省得到处改）
-    static var lilac: Color { Color(hex: noteNow.accent) }       // 竖条、箭头
-    static var lilacSoft: Color { Color(hex: noteNow.soft) }     // 卡片底
-    static var lilacText: Color { Color(hex: noteNow.text) }     // 卡片上的小字
+    static var ink: Color { KeColor.ink }
+    static var number: Color { KeColor.ink }
+    static var secondary: Color { KeColor.inkSoft }
+    static var mauve: Color { KeColor.accent }
+    static var faint: Color { KeColor.inkSoft.opacity(0.6) }
+    static var line: Color { KeColor.line }
+    static var today: Color { KeColor.accent }
+    static var period: Color { KeColor.accentSoft }
+    static var heart: Color { KeColor.accent }
+    static var pink: Color { KeColor.accent }          // 今天的圆、选中的下划线、有事的小圆点
+    static var pinkSoft: Color { KeColor.accentSoft }
+    static var pinkText: Color { KeColor.accentText }
+    static var lilac: Color { KeColor.note }           // 提醒卡：奶油粉（跟今天的藕粉区分开）
+    static var lilacSoft: Color { KeColor.noteSoft }
+    static var lilacText: Color { KeColor.noteText }
     /// 11-25 她：要锁屏时钟那种衬线数字。锁屏那档是苹果的 New York（系统自带衬线），
     /// 取不到就退回 Didot，不至于变成无衬线。
     private static let numberFont: String = {
