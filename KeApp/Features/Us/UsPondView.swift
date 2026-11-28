@@ -82,17 +82,15 @@ struct UsPondView: View {
             // 1116：一屏放下——月历常驻展开，翻月的箭头并进标题那一行
             calendarHeader.padding(.top, 6)
             // 换一面就是一整张新的月历：旧的淡出，新的从下面轻轻浮上来
-            // 11-28 她给的样子：月历放进一张细边圆角卡片里
+            // 11-28 她：不要最外面的框（卡片拿掉，月历直接铺在纸上）
             monthGrid
                 .offset(x: swipeX)
                 .simultaneousGesture(monthSwipe)
                 .id(face)
                 .transition(reduceMotion ? .opacity : .asymmetric(insertion: .opacity.combined(with: .offset(y: 12)),
                                                                   removal: .opacity))
-                .padding(.horizontal, 8).padding(.vertical, 6)
-                .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Cool.paper))
-                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Cool.line, lineWidth: 1))
-                .padding(.top, 4)
+                .padding(.horizontal, -4)
+                .padding(.top, 2)
             // 11-28 她这回要了「即将到来」的小标题（以前 1116 说不写，这次她给的样子里有）
             if face == .shift {
                 Text("即将到来").font(.system(size: 15, weight: .semibold)).foregroundStyle(Cool.ink)
@@ -520,14 +518,20 @@ struct UsPondView: View {
                     // 11-28：今天是整张日历的锚——实心主色圆、纸色数字（以前的淡圈跟别的格子分不出来）
                     .background(Circle().fill(isToday && !period ? Cool.mauve : .clear))
                     .overlay(Circle().stroke(isToday && period ? Cool.number.opacity(0.45) : .clear, lineWidth: 0.8))
-                    // 11-28 她给的样子：数字正上方挂小圆点——深色是有日程，浅粉是亲密，纪念日一弯小月
-                    .overlay(alignment: .top) {
-                        HStack(spacing: 3) {
-                            if !dayEvents.isEmpty { Circle().fill(Cool.mauve).frame(width: 5, height: 5) }
-                            if times > 0 { Circle().fill(Cool.heart.opacity(0.6)).frame(width: 5, height: 5) }
-                            if anniversary { Text("☾").font(.system(size: 8)).foregroundStyle(Cool.heart) }
+                    // 11-28 她：亲密还是小爱心挂右上（纪念日的☾跟着它）；有事的小圆点挂左上
+                    .overlay(alignment: .topTrailing) {
+                        if anniversary || times > 0 {
+                            HStack(spacing: 1) {
+                                if anniversary { Text("☾").font(.system(size: 9)) }
+                                if times > 0 { Image(systemName: "heart.fill").font(.system(size: 7)) }
+                            }
+                            .foregroundStyle(Cool.heart).offset(x: 6, y: -1)
                         }
-                        .offset(y: -7)
+                    }
+                    .overlay(alignment: .topLeading) {
+                        if !dayEvents.isEmpty {
+                            Circle().fill(Cool.mauve).frame(width: 5, height: 5).offset(x: -1, y: 2)
+                        }
                     }
                 // 有班写班（淡）；没班、写的是日程名（看医生）就用主色，有事的日子一眼看得到
                 let isEventLabel = vm.shift(on: date) == nil && !dayEvents.isEmpty
