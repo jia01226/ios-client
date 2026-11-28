@@ -420,32 +420,30 @@ struct UsPondView: View {
         let c = Calendar.current
         let weekday = Self.weekdayNames[(c.component(.weekday, from: event.start) + 5) % 7]
         let time = event.start.formatted(.dateTime.hour().minute())
-        // 11-28 她给的样子：一张淡底圆角卡，左边一道主色竖条；左边日期小方块（月在上、日在下），中间标题加粗、下面周几和时间，右边一个小箭头
-        return HStack(spacing: 14) {
-            VStack(spacing: 0) {
-                Text("\(c.component(.month, from: event.start))月").font(.system(size: 12, weight: .medium))
-                Text("\(c.component(.day, from: event.start))").font(.system(size: 20, weight: .semibold)).monospacedDigit()
+        // 11-28 她：「这个 tab 太大了，提醒多了装不下」——改成一行一条的小卡：左边小日期、中间标题、右边周几时间，
+        // 一屏能看四五条，再多在下面那块里往上滑
+        return HStack(spacing: 12) {
+            VStack(spacing: -1) {
+                Text("\(c.component(.month, from: event.start))月").font(.system(size: 9, weight: .medium))
+                Text("\(c.component(.day, from: event.start))").font(.system(size: 15, weight: .semibold)).monospacedDigit()
             }
             .foregroundStyle(Cool.lilacText)
-            .frame(width: 50, height: 50)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.75)))
-            VStack(alignment: .leading, spacing: 4) {
-                Text(Self.upcomingLine(event)).font(.system(size: 17, weight: .semibold)).foregroundStyle(Cool.ink)
-                    .lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                Text("周\(weekday) · \(time)").font(.system(size: 13)).foregroundStyle(Cool.lilacText.opacity(0.8))
-            }
-            Spacer(minLength: 0)
+            .frame(width: 36, height: 36)
+            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.white.opacity(0.8)))
+            Text(Self.upcomingLine(event)).font(.system(size: 15, weight: .medium)).foregroundStyle(Cool.ink)
+                .lineLimit(1)
+            Spacer(minLength: 6)
             if let said = event.symptoms, !said.isEmpty {
                 // 有记下要跟医生说的，挂一个小点提示点进去看
-                Circle().fill(Cool.mauve).frame(width: 5, height: 5).accessibilityHidden(true)
+                Circle().fill(Cool.lilac).frame(width: 5, height: 5).accessibilityHidden(true)
             }
-            Image(systemName: "chevron.right").font(.system(size: 13, weight: .medium)).foregroundStyle(Cool.lilac)
+            Text("周\(weekday) \(time)").font(.system(size: 12)).foregroundStyle(Cool.lilacText.opacity(0.85))
+                .lineLimit(1).fixedSize()
         }
-        .padding(.vertical, 14).padding(.leading, 16).padding(.trailing, 16)
-        // 11-28 她：颜色太深难看——整张卡浅粉底，左边粉色竖条
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Cool.lilacSoft))
+        .padding(.vertical, 8).padding(.leading, 12).padding(.trailing, 14)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Cool.lilacSoft))
         .overlay(alignment: .leading) { Capsule().fill(Cool.lilac).frame(width: 3).padding(.vertical, 10) }
-        .padding(.bottom, 10)
+        .padding(.bottom, 8)
         .contentShape(Rectangle())
         .onTapGesture { openEvent = event }
         .accessibilityElement(children: .combine)

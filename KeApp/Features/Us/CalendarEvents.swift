@@ -69,6 +69,16 @@ enum CalendarAlertOption: Int, CaseIterable, Identifiable {
         }
         pending = Set(defaults.stringArray(forKey: pendingKey) ?? [])
         deleted = Set(defaults.stringArray(forKey: deletedKey) ?? [])
+        // 验收用：-ui-test-many-events 摆五条假日程，看提醒多了装不装得下（不存、不送服务器）
+        if ProcessInfo.processInfo.arguments.contains("-ui-test-many-events") {
+            let day: (Int, Int) -> Date = { d, h in Calendar.current.date(byAdding: .hour, value: h, to: Calendar.current.date(byAdding: .day, value: d, to: Calendar.current.startOfDay(for: .now))!)! }
+            events = [CalendarEvent(title: "看医生", start: day(2, 9), note: "广脑 · 二楼诊室 · 序号13"),
+                      CalendarEvent(title: "交房租", start: day(4, 10)),
+                      CalendarEvent(title: "妈妈生日", start: day(9, 19)),
+                      CalendarEvent(title: "复诊抽血", start: day(15, 8)),
+                      CalendarEvent(title: "Pro 续费", start: day(22, 10))]
+            return
+        }
         // 头一回接上服务器：以前只存在手机上的日程全都送上去
         if !defaults.bool(forKey: syncedOnceKey) {
             pending.formUnion(events.map(\.id))
